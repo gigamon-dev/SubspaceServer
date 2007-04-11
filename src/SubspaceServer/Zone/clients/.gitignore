@@ -1,0 +1,2 @@
+# This folder contains the client executables (e.g. continuum.exe).  This is to prevent them from getting into source control.
+*.exe

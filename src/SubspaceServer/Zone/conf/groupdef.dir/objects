@@ -1,0 +1,23 @@
+
+;; manipulate objects
+cmd_objon
+privcmd_objon
+cmd_objoff
+privcmd_objoff
+cmd_objset
+privcmd_objset
+cmd_objmove
+privcmd_objmove
+cmd_objimage
+privcmd_objimage
+cmd_objlayer
+privcmd_objlayer
+cmd_objtimer
+privcmd_objtimer
+cmd_objmode
+privcmd_objmode
+
+;; get info on objects
+cmd_objinfo
+cmd_objlist
+

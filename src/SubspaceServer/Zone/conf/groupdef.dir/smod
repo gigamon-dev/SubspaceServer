@@ -1,0 +1,45 @@
+; conf/groups/smod
+
+seesysoplogarena
+; bypass checksums
+bypasssecurity
+
+; what groups can this group control
+higher_than_mod
+
+; prefix chars
+prefix_>
+
+privcmd_info
+privcmd_sg_info
+privcmd_sg_einfo
+privcmd_sg_tinfo
+
+cmd_aa
+cmd_az
+
+cmd_attmod
+
+cmd_moveflag
+
+cmd_watchdamage
+privcmd_watchdamage
+cmd_watchgreen
+privcmd_watchgreen
+
+cmd_energy
+privcmd_energy
+
+; the following three should always go together
+cmd_quickfix
+cmd_getsettings
+changesettings
+
+cmd_putmap
+
+cmd_userdbadm
+
+privcmd_send
+cmd_redirect
+privcmd_redirect
+

@@ -1,0 +1,54 @@
+; conf/groups/sysop
+
+seesysoplogall
+
+; setgroup:
+higher_than_smod
+
+; prefix chars
+prefix_#
+prefix_$$
+prefix_@
+
+cmd_shutdown
+cmd_netstats
+cmd_lastlog
+privcmd_lastlog
+
+cmd_lsmod
+cmd_modinfo
+cmd_insmod
+cmd_rmmod
+cmd_attmod
+
+cmd_setscore
+cmd_resetgame
+privcmd_points
+
+cmd_setg
+cmd_getg
+cmd_seta
+cmd_geta
+
+cmd_getfile
+cmd_putfile
+cmd_delfile
+cmd_renfile
+cmd_putzip
+cmd_makearena
+
+cmd_disablecmdgroup
+cmd_enablecmdgroup
+
+cmd_admlogfile
+cmd_reloadconf
+
+cmd_addallowed
+privcmd_set_local_password
+
+; temporary
+cmd_dropturret
+
+cmd_py
+privcmd_py
+

@@ -1,0 +1,75 @@
+; conf/groups/default
+
+cmd_help
+cmd_go
+cmd_arena
+cmd_spec
+cmd_stats
+privcmd_stats
+cmd_score
+cmd_myscore
+; you also need Misc:SelfScoreReset to use this
+cmd_scorereset
+cmd_time
+cmd_jackpot
+cmd_buy
+cmd_cheater
+cmd_where
+cmd_zone
+cmd_obscene
+
+cmd_version
+cmd_uptime
+cmd_mapinfo
+
+cmd_cd
+cmd_pwd
+
+cmd_listmod
+cmd_getgroup
+privcmd_getgroup
+cmd_grplogin
+
+cmd_lag
+privcmd_lag
+
+cmd_last
+cmd_listarena
+
+; this isn't as dangerous as it looks.
+; you need higher_than_x capabilities to set other people's groups.
+privcmd_setgroup
+privcmd_rmgroup
+
+privcmd_freqkick
+privcmd_giveowner
+
+cmd_joinpwd
+cmd_freqpwd
+
+cmd_usage
+privcmd_usage
+cmd_userid
+privcmd_userid
+
+cmd_passwd
+cmd_local_password
+
+cmd_sheep
+
+privcmd_sendfile
+cmd_cancelfile
+cmd_acceptfile
+; this needs to be enabled for anyone who's going to be sending files:
+uploadfile
+
+; turf:
+cmd_turftime
+cmd_turfinfo
+cmd_turfstats
+
+; not implemented yet
+cmd_packetloss
+cmd_zone
+cmd_find
+

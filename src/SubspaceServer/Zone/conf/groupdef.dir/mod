@@ -1,0 +1,91 @@
+; conf/groups/mod
+
+seemodchat
+sendmodchat
+sendsoundmessages
+seeprivfreq
+seeprivarena
+seeallstaff
+seeepd
+findinprivs
+bypasslock
+
+; mod and anything higher shows up in ?listmod for regular players
+isstaff
+
+; what groups can this group control
+higher_than_default
+
+; prefix chars
+prefix_+
+
+cmd_ballcount
+cmd_flagreset
+cmd_listmod
+cmd_a
+privcmd_a
+cmd_z
+privcmd_warn
+cmd_timer
+cmd_timereset
+cmd_pausetimer
+cmd_recyclearena
+privcmd_kick
+cmd_listmidbans
+cmd_delmidban
+cmd_setjackpot
+privcmd_where
+
+privcmd_scorereset
+cmd_endinterval
+
+cmd_flaginfo
+cmd_neutflag
+
+privcmd_setship
+privcmd_setfreq
+cmd_specall
+privcmd_specall
+
+cmd_prize
+privcmd_prize
+cmd_shipreset
+privcmd_shipreset
+
+privcmd_spec
+
+privcmd_usage
+privcmd_billingid
+
+; locking cmds
+cmd_lock
+privcmd_lock
+cmd_unlock
+privcmd_unlock
+cmd_lockarena
+cmd_unlockarena
+
+; turf commands
+cmd_turfresetflags
+cmd_turfresettimer
+cmd_forceding
+cmd_forcestats
+
+; koth
+cmd_resetkoth
+
+; fun stuff
+cmd_brickwrite
+privcmd_warpto
+
+cmd_resetturrets
+
+cmd_gamerecord
+cmd_rec
+
+; shutup, etc.
+cmd_getcm
+cmd_setcm
+privcmd_getcm
+privcmd_setcm
+
