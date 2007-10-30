@@ -6,6 +6,30 @@ using SS.Core.Packets;
 
 namespace SS.Core
 {
+    public interface IPlayerData : IModuleInterface
+    {
+        void Lock();
+        void Unlock();
+        void WriteLock();
+        void WriteUnlock();
+
+        IEnumerable<Player> PlayerList
+        {
+            get;
+        }
+
+        Player NewPlayer(ClientType clientType);
+        void FreePlayer(Player player);
+        void KickPlayer(Player player);
+        Player PidToPlayer(int pid);
+        Player FindPlayer(string name);
+        void TargetToSet(Target target, out LinkedList<Player> list);
+
+        // per player data
+        int AllocatePlayerData<T>() where T : new();
+        void FreePlayerData(int key);
+    }
+
     /// <summary>
     /// 
     /// </summary>
@@ -14,7 +38,7 @@ namespace SS.Core
     /// <returns></returns>
     public delegate void NewPlayerDelegate(Player p, bool isNew);
 
-    public class PlayerData : IModule
+    public class PlayerData : IModule, IPlayerData
     {
         /// <summary>
         /// how many seconds before we re-use a pid
@@ -348,20 +372,23 @@ namespace SS.Core
 
         #region IModule Members
 
-        Type[] IModule.ModuleDependencies
+        Type[] IModule.InterfaceDependencies
         {
             get
             {
-                return new Type[]{};
+                return new Type[] {
+                    typeof(IConfigManager)
+                };
             }
         }
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModule> moduleDependencies)
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
         {
+            mm.RegisterInterface<IPlayerData>(this);
             return true;
         }
 
-        bool IModule.Unload()
+        bool IModule.Unload(ModuleManager mm)
         {
             return true;
         }

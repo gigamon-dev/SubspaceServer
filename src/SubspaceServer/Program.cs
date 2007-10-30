@@ -6,6 +6,7 @@ using SS.Core;
 using SS.Utilities;
 using SS.Core.Packets;
 using System.IO;
+using System.Reflection;
 
 namespace SS
 {
@@ -19,10 +20,15 @@ namespace SS
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            //Application.Run(new Form1());
-
+            
+            Application.Run(new Form1());
+            
+            /*
             Server server = new Server(Environment.CurrentDirectory);
             server.Start();
+            System.Threading.Thread.Sleep(5000);
+            server.Stop();
+            */
 
             /*
             ModuleManager mm = new ModuleManager();

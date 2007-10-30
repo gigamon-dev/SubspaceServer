@@ -54,6 +54,10 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <EmbeddedResource Include="Form1.resx">
+      <SubType>Designer</SubType>
+      <DependentUpon>Form1.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <SubType>Designer</SubType>
@@ -80,6 +84,7 @@
     <None Include="Zone\conf\groupdef.dir\smod" />
     <None Include="Zone\conf\groupdef.dir\sysop" />
     <None Include="Zone\conf\modules.conf" />
+    <None Include="Zone\conf\Modules.config" />
     <None Include="Zone\conf\passwd.conf" />
     <None Include="Zone\conf\staff.conf" />
     <None Include="Zone\conf\svs\cost" />
@@ -106,6 +111,10 @@
     <ProjectReference Include="..\Packets\Packets.csproj">
       <Project>{96DC1A38-ACB9-494F-B41D-629D97CF7A1F}</Project>
       <Name>Packets</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\TurfReward\TurfReward.csproj">
+      <Project>{D16DBD66-3626-4B73-B54A-FCD9CF959107}</Project>
+      <Name>TurfReward</Name>
     </ProjectReference>
     <ProjectReference Include="..\Utilities\Utilities.csproj">
       <Project>{DFADC365-5E17-4C2D-AEC1-4F217DF4A6BF}</Project>

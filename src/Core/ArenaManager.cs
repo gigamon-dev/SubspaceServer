@@ -6,7 +6,7 @@ using SS.Core.Packets;
 
 namespace SS.Core
 {
-    public delegate void ArenaActionDelegate(Arena arena, ArenaAction action);
+    public delegate void ArenaActionEventHandler(Arena arena, ArenaAction action);
 
     internal interface IArenaManagerCore
     {
@@ -14,7 +14,7 @@ namespace SS.Core
         void LeaveArena(Player player);
     }
 
-    public class ArenaManager : IArenaManagerCore, IModule
+    public class ArenaManager : IModule, IArenaManagerCore
     {
         /// <summary>
         /// the read-write lock for the global arena list
@@ -23,11 +23,20 @@ namespace SS.Core
 
         private Dictionary<string, Arena> _arenaDictionary = new Dictionary<string, Arena>();
 
-        // other modules
+        /// <summary>
+        /// Key = module Type
+        /// Value = list of arenas that have the module attached
+        /// </summary>
+        private Dictionary<Type, List<Arena>> _attachedModules = new Dictionary<Type, List<Arena>>();
+
+
         private ModuleManager _mm;
-        private PlayerData _pd;
-        private ConfigManager _cfg;
-        private Mainloop _ml;
+        
+        // other modules
+        private ILogManager _logManager;
+        private IPlayerData _pd;
+        private IConfigManager _cfg;
+        private IServerTimer _ml;
 
         // for managing per player data
         private SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
@@ -35,7 +44,7 @@ namespace SS.Core
         // per arena data key (stores the resurrect boolean flag)
         private int _adkey;
 
-        public event ArenaActionDelegate ArenaActionEvent;
+        public event ArenaActionEventHandler ArenaActionEvent;
 
         private class SpawnLoc
         {
@@ -430,6 +439,21 @@ namespace SS.Core
             }
         }
 
+        public void AttachModule(IModule moduleToAttach, Arena arenaToAttachTo)
+        {
+            // TODO: implement this, and maybe move to Arena class?
+        }
+
+        public void DetachModule(IModule moduleToDetach, Arena arenaToDetachFrom)
+        {
+            // TODO: implement this, and maybe move to Arena class?
+        }
+
+        public void DetachAllFromArena(Arena arenaToDetachFrom)
+        {
+            // TODO: implement this, and maybe move to Arena class?
+        }
+
         private void doAttach(Arena a)
         {
             string attachMods = _cfg.GetStr(a.Cfg, "Modules", "AttachModules");
@@ -695,27 +719,30 @@ namespace SS.Core
 
         #region IModule Members
 
-        Type[] IModule.ModuleDependencies
+        Type[] IModule.InterfaceDependencies
         {
             get
             {
-                return new Type[]{
-                    typeof(PlayerData), 
-                    typeof(ConfigManager), 
-                    typeof(Mainloop), 
+                return new Type[] {
+                    typeof(ILogManager), 
+                    typeof(IPlayerData), 
+                    typeof(IConfigManager), 
+                    typeof(IServerTimer)
                 };
             }
         }
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModule> moduleDependencies)
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
         {
             _mm = mm;
-            _pd = moduleDependencies[typeof(PlayerData)] as PlayerData;
-            //_net = moduleDependencies[typeof(Network)] as Network;
+            _mm.ModuleUnloading += _mm_ModuleUnloading;
+
+            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
+            _pd = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
+            //_net = interfaceDependencies[typeof(Network)] as INetwork;
             //_chatnet = 
-            //_lm =
-            _cfg = moduleDependencies[typeof(ConfigManager)] as ConfigManager;
-            _ml = moduleDependencies[typeof(Mainloop)] as Mainloop;
+            _cfg = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
+            _ml = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
 
             if (_pd == null || _cfg == null || _ml == null)
                 return false;
@@ -727,11 +754,27 @@ namespace SS.Core
             _ml.SetTimer<object>(new TimerDelegate<object>(processArenaStates), 20, 20, null, null);
             _ml.SetTimer<object>(new TimerDelegate<object>(reapArenas), 170, 170, null, null);
 
+            _logManager.Log(LogLevel.Drivel, "ArenaManager.Load");
+            _logManager.LogP(LogLevel.Warn, "ArenaManager", null, "testing 123");
             return true;
         }
 
-        bool IModule.Unload()
+        private void _mm_ModuleUnloading(object sender, ModuleUnloadingEventArgs e)
         {
+            // TODO: handle unattaching the module from whatever arenas it is attached to
+            // remember to do this in a threadsafe manner..
+            /*
+            foreach (Arena arena in _arenaDictionary.Values)
+            {
+                
+            }
+            */
+        }
+
+        bool IModule.Unload(ModuleManager mm)
+        {
+            _mm.ModuleUnloading -= _mm_ModuleUnloading;
+
             _ml.ClearTimer<object>(new TimerDelegate<object>(processArenaStates), null);
             _ml.ClearTimer<object>(new TimerDelegate<object>(reapArenas), null);
 

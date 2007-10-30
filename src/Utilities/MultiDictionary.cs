@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+#if false
 namespace SS.Utilities
 {
     /// <summary>
@@ -320,3 +320,4 @@ namespace SS.Utilities
         #endregion
     }
 }
+#endif

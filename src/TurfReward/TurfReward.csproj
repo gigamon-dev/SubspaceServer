@@ -4,11 +4,11 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>8.0.50727</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{ADE34A70-E6EF-41B2-B5E0-15F1A9505E80}</ProjectGuid>
+    <ProjectGuid>{D16DBD66-3626-4B73-B54A-FCD9CF959107}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SS.Core</RootNamespace>
-    <AssemblyName>SS.Core</AssemblyName>
+    <RootNamespace>TurfReward</RootNamespace>
+    <AssemblyName>TurfReward</AssemblyName>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -33,39 +33,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Arena.cs" />
-    <Compile Include="ArenaManager.cs" />
-    <Compile Include="ArenaPlace.cs" />
-    <Compile Include="ComponentBroker.cs" />
-    <Compile Include="Config.cs" />
-    <Compile Include="Constants.cs" />
-    <Compile Include="Defs.cs" />
-    <Compile Include="ListenData.cs" />
-    <Compile Include="LogConsole.cs" />
-    <Compile Include="LogManager.cs" />
-    <Compile Include="Mainloop.cs">
-    </Compile>
-    <Compile Include="ModuleLoader.cs" />
-    <Compile Include="ModuleManager.cs">
-    </Compile>
-    <Compile Include="Network.cs" />
-    <Compile Include="PathUtil.cs" />
-    <Compile Include="Player.cs" />
-    <Compile Include="PlayerData.cs" />
-    <Compile Include="Preprocessor.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Server.cs" />
-    <Compile Include="SubspaceBuffer.cs" />
-    <Compile Include="Target.cs" />
+    <Compile Include="TurfModule.cs" />
+    <Compile Include="TurfRewardPoints.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Packets\Packets.csproj">
-      <Project>{96DC1A38-ACB9-494F-B41D-629D97CF7A1F}</Project>
-      <Name>Packets</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Utilities\Utilities.csproj">
-      <Project>{DFADC365-5E17-4C2D-AEC1-4F217DF4A6BF}</Project>
-      <Name>Utilities</Name>
+    <ProjectReference Include="..\Core\Core.csproj">
+      <Project>{ADE34A70-E6EF-41B2-B5E0-15F1A9505E80}</Project>
+      <Name>Core</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />

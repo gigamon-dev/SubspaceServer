@@ -8,6 +8,23 @@ using SS.Utilities;
 
 namespace SS.Core
 {
+    public interface IConfigManager : IModuleInterface
+    {
+        ConfigHandle Global
+        {
+            get;
+        }
+
+        ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate configChanged, object clos);
+        void CloseConfigFile(ConfigHandle ch);
+
+        string GetStr(ConfigHandle ch, string section, string key);
+        int GetInt(ConfigHandle ch, string section, string key, int defvalue);
+
+        void SetStr(ConfigHandle ch, string section, string key, string value, string info, bool permanent);
+        void SetInt(ConfigHandle ch, string section, string key, int value, string info, bool permanent);
+    }
+
     public delegate void ConfigChangedDelegate(object clos);
 
     /// <summary>
@@ -40,18 +57,20 @@ namespace SS.Core
     /// need to call them in general; the config module performs those
     /// actions internally based on timers also.
     /// </summary>
-    public class ConfigManager : IModule
+    public class ConfigManager : IModule, IModuleLoaderAware, IConfigManager
     {
         private readonly Dictionary<string, ConfigFile> _opened = new Dictionary<string, ConfigFile>();
         private readonly LinkedList<ConfigFile> _files = new LinkedList<ConfigFile>();
         private readonly object cfgmtx = new object(); // protects _opened and _files
 
-        private readonly ConfigHandle _global;
+        private ConfigHandle _global;
         public event EventHandler GlobalConfigChanged;
+
+        private IServerTimer _timerManager;
+        private ILogManager _logManager;
 
         public ConfigManager()
         {
-            _global = OpenConfigFile(null, null, global_changed, null);
         }
 
         /// <summary>
@@ -314,25 +333,56 @@ namespace SS.Core
 
         #region IModule Members
 
-        Type[] IModule.ModuleDependencies
+        Type[] IModule.InterfaceDependencies
         {
             get
             {
                 return new Type[] {
-                    typeof(Mainloop)
-                }; 
+                    typeof(IServerTimer)
+                };
             }
         }
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModule> moduleDependencies)
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
         {
-            // TODO: use mainloop
+            _timerManager = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
+
+
+            _global = OpenConfigFile(null, null, global_changed, null);
+            if (_global == null)
+                return false;
+
+            // TODO: set timer to watch for when the server should write to config files (this is not a priority so i will hold off doing this for now)
+            
+            // TODO: set timer to watch for when the server should reload a file
+            // TODO: instead of using timers to check for config files that have to be reloaded maybe use the FileSystemWatcher class
+            mm.RegisterInterface<IConfigManager>(this);
 
             return true;
         }
 
-        bool IModule.Unload()
+        bool IModule.Unload(ModuleManager mm)
         {
+            return true;
+        }
+
+        #endregion
+
+        #region IModuleLoaderAware Members
+
+        bool IModuleLoaderAware.PostLoad(ModuleManager mm)
+        {
+            // TODO: get logging interface
+            Console.WriteLine("[ConfigManager] PostLoad");
+            _logManager = mm.GetInterface<ILogManager>();
+            return true;
+        }
+
+        bool IModuleLoaderAware.PreUnload(ModuleManager mm)
+        {
+            // TODO: release logging interface
+            Console.WriteLine("[ConfigManager] PreUnload");
+            mm.ReleaseInterface<ILogManager>();
             return true;
         }
 

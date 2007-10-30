@@ -7,7 +7,11 @@ using SS.Utilities;
 
 namespace SS.Core
 {
-    public class Network
+    public interface INetwork
+    {
+    }
+
+    public class Network : IModule, IModuleLoaderAware, INetwork
     {
         // TODO: think about how to send a reference to this class as well (in listenData?)
         public delegate void DataRecievedHandler(ListenData listenData, SubspaceBuffer buffer);
@@ -138,5 +142,42 @@ namespace SS.Core
                     PingDataRecieved(ld, buffer);
             }
         }
+
+        #region IModule Members
+
+        Type[] IModule.InterfaceDependencies
+        {
+            get { return new Type[] { }; }
+        }
+
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
+        {
+            // TODO: 
+            return true;
+        }
+
+        bool IModule.Unload(ModuleManager mm)
+        {
+            // TODO: 
+            return true;
+        }
+
+        #endregion
+
+        #region IModuleLoaderAware Members
+
+        bool IModuleLoaderAware.PostLoad(ModuleManager mm)
+        {
+            // NOOP
+            return true;
+        }
+
+        bool IModuleLoaderAware.PreUnload(ModuleManager mm)
+        {
+            // TODO: 
+            return true;
+        }
+
+        #endregion
     }
 }
