@@ -4,19 +4,42 @@ using System.Text;
 
 namespace SS.Core
 {
-    public interface IModuleArenaAttachable
+    /// <summary>
+    /// modules that are capable of attaching to a module implement this interface
+    /// </summary>
+    public interface IArenaAttachableModule
     {
         void AttachModule(Arena arena);
         void DetachModule(Arena arena);
     }
 
+    // TODO: looks like the arena stuff has changed somewhat dramatically with the new version...
     public enum ArenaState
     {
         /// <summary>
-        /// someone wants to enter the arena. first, the config file must be
-        /// loaded, callbacks called, and the persistant data loaded.
+        /// someone wants to enter the arena. first, the config file must be loaded, callbacks called
         /// </summary>
-        DoInit,
+        DoInit0,
+
+        /// <summary>
+        /// waiting for first round of callbacks
+        /// </summary>
+        WaitHolds0, 
+
+        /// <summary>
+        /// attaching and more callbacks
+        /// </summary>
+        DoInit1, 
+
+        /// <summary>
+        /// waiting on modules to do init work.
+        /// </summary>
+        WaitHolds1, 
+
+        /// <summary>
+        /// load persistent data.
+        /// </summary>
+        DoInit2, 
 
         /// <summary>
         /// waiting on the database
@@ -45,9 +68,19 @@ namespace SS.Core
         WaitSync2, 
 
         /// <summary>
-        /// ...then unload the config file. status returns to free after this.
+        /// arena destroy callbacks.
         /// </summary>
-        DoDeinit
+        DoDestroy1, 
+
+        /// <summary>
+        /// waiting for modules to do destroy work.
+        /// </summary>
+        WaitHolds2, 
+
+        /// <summary>
+        /// finish destroy process.
+        /// </summary>
+        DoDestroy2
     }
 
     public enum ArenaAction
@@ -82,11 +115,11 @@ namespace SS.Core
         /** what state the arena is in. @see ARENA_DO_INIT, etc. */
 	    public ArenaState Status;
 	    /** the full name of the arena */
-	    public string Name;
+	    public readonly string Name;
 	    /** the name of the arena, minus any trailing digits.
 	     * the basename is used in many places to allow easy sharing of
 	     * settings and things among copies of one basic arena. */
-	    public string BaseName;
+        public readonly string BaseName;
 	    /** a handle to the main config file for this arena */
 	    public ConfigHandle Cfg;
 	    /** the frequency for spectators in this arena.
@@ -101,9 +134,17 @@ namespace SS.Core
 	    /** space for private data associated with this arena */
         Dictionary<int, object> _arenaExtraData = new Dictionary<int,object>();
 
-        public Arena(ModuleManager mm)
+        public Arena(ModuleManager mm, string name)
         {
             _mm = mm;
+
+            Name = name;
+            BaseName = name.TrimEnd(new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
+            if (string.IsNullOrEmpty(BaseName))
+                BaseName = PUBLIC;
+
+            Status = ArenaState.DoInit0;
+            Cfg = null;
         }
 
         /// <summary>
@@ -134,25 +175,38 @@ namespace SS.Core
 
         public override TInterface GetInterface<TInterface>()
         {
+            // try to get the interface specific to this arena
             TInterface theInterface = base.GetInterface<TInterface>();
-            if(theInterface == null)
+
+            if (theInterface == null)
+            {
+                // arena doesn't have the interface, try globally
                 theInterface = _mm.GetInterface<TInterface>();
+            }
 
             return theInterface;
         }
 
-        public override IModuleInterface GetInterface(Type interfaceType)
+        public override IComponentInterface GetInterface(Type interfaceType)
         {
-            IModuleInterface moduleInterface = base.GetInterface(interfaceType);
-            if(moduleInterface == null)
+            // try to get the interface specific to this arena
+            IComponentInterface moduleInterface = base.GetInterface(interfaceType);
+
+            if (moduleInterface == null)
+            {
+                // arena doesn't have the interface, try globally
                 moduleInterface = _mm.GetInterface(interfaceType);
+            }
 
             return moduleInterface;
         }
 
         public override void DoCallbacks(string callbackIdentifier, params object[] args)
         {
+            // call this arena's callbacks
             base.DoCallbacks(callbackIdentifier, args);
+
+            // call the global callbacks
             _mm.DoCallbacks(callbackIdentifier, args);
         }
 

@@ -6,7 +6,7 @@ using SS.Core;
 
 namespace TurfReward
 {
-    class TurfRewardPoints : IModule, IModuleArenaAttachable
+    class TurfRewardPoints : IModule, IArenaAttachableModule
     {
         #region IModule Members
 
@@ -15,7 +15,7 @@ namespace TurfReward
             get { return null; }
         }
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
             Console.WriteLine("TurfRewardPoints:Load");
             return true;
@@ -31,13 +31,13 @@ namespace TurfReward
 
         #region IModuleArenaAttachable Members
 
-        void IModuleArenaAttachable.AttachModule(Arena arena)
+        void IArenaAttachableModule.AttachModule(Arena arena)
         {
             //arena.
             Console.WriteLine("TurfRewardPoints:AttachModule");
         }
 
-        void IModuleArenaAttachable.DetachModule(Arena arena)
+        void IArenaAttachableModule.DetachModule(Arena arena)
         {
             Console.WriteLine("TurfRewardPoints:DetachModule");
         }

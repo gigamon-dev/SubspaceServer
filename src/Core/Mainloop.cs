@@ -6,17 +6,17 @@ using System.Threading;
 
 namespace SS.Core
 {
-    public interface IServerTimer : IModuleInterface
+    public interface IServerTimer : IComponentInterface
     {
         /// <summary>
         /// Starts a timer
         /// </summary>
-        /// <typeparam name="TArg"></typeparam>
-        /// <param name="callback"></param>
-        /// <param name="initialDelay"></param>
-        /// <param name="interval"></param>
-        /// <param name="parameter"></param>
-        /// <param name="key"></param>
+        /// <typeparam name="TArg">type of the parameter the callback accepts</typeparam>
+        /// <param name="callback">the method to call</param>
+        /// <param name="initialDelay">how long to wait for the first call (in milliseconds)</param>
+        /// <param name="interval">how long to wait between calls (in milliseconds)</param>
+        /// <param name="parameter">a closure argument that will get passed to the timer callback</param>
+        /// <param name="key">a key that can be used to selectively cancel timers</param>
         void SetTimer<TArg>(
             TimerDelegate<TArg> callback,
             int initialDelay,
@@ -27,9 +27,10 @@ namespace SS.Core
         /// <summary>
         /// Stops and removes a timer
         /// </summary>
-        /// <typeparam name="TArg"></typeparam>
-        /// <param name="callback"></param>
-        /// <param name="key"></param>
+        /// <typeparam name="TArg">type of the parameter the callback accepts</typeparam>
+        /// <param name="callback">the timer method you want to clear</param>
+        /// <param name="key">timers that match this key will be removed. 
+        /// using NULL means to clear all timers with the given function, regardless of key</param>
         void ClearTimer<TArg>(
             TimerDelegate<TArg> callback,
             object key);
@@ -37,10 +38,11 @@ namespace SS.Core
         /// <summary>
         /// Stops and removes a timer.  The cleanupCallback will be called for each timer that was stopped, with the state object from that timer.
         /// </summary>
-        /// <typeparam name="TArg"></typeparam>
-        /// <param name="callback"></param>
-        /// <param name="key"></param>
-        /// <param name="cleanupCallback"></param>
+        /// <typeparam name="TArg">type of the parameter the callback accepts</typeparam>
+        /// <param name="callback">the timer method you want to clear</param>
+        /// <param name="key">timers that match this key will be removed. 
+        /// using NULL means to clear all timers with the given function, regardless of key</param>
+        /// <param name="cleanupCallback">cleanup a CleanupFunc to call once for each timer being cancelled</param>
         void ClearTimer<TArg>(
             TimerDelegate<TArg> callback,
             object key,
@@ -56,7 +58,7 @@ namespace SS.Core
         bool RunInThread<TParam>(WorkerDelegate<TParam> callback, TParam state);
     }
 
-    internal interface IMainloop : IModuleInterface
+    internal interface IMainloop : IComponentInterface
     {
         /// <summary>
         /// called by the main thread which starts processing the timers
@@ -64,7 +66,7 @@ namespace SS.Core
         void RunLoop();
     }
 
-    public interface IMainloopController : IModuleInterface
+    public interface IMainloopController : IComponentInterface
     {
         /// <summary>
         /// Signals the main loop to stop
@@ -113,7 +115,7 @@ namespace SS.Core
             // for synchronization
             private object _lockObj = new object();
             private bool _stop = false;
-            private ManualResetEvent _timerExecuting = new ManualResetEvent(false);
+            private ManualResetEvent _timerExecuting = new ManualResetEvent(true);
 
             public MainloopTimer(
                 Mainloop owner, 
@@ -161,16 +163,16 @@ namespace SS.Core
             {
                 bool isContinuing = false;
 
+                lock (_lockObj)
+                {
+                    if (_stop)
+                        return; // we've been told to stop (plus we know someone else is taking care of removing us from the timer list)
+
+                    _timerExecuting.Reset();
+                }
+
                 try
                 {
-                    lock (_lockObj)
-                    {
-                        if (_stop)
-                            return;
-
-                        _timerExecuting.Reset();
-                    }
-
                     try
                     {
                         // execute the callback
@@ -195,6 +197,8 @@ namespace SS.Core
                     }
                     finally
                     {
+                        // note: releasing any threads waiting on us before trying to remove ourself from the timer list because
+                        // a thread waiting for us could be holding the lock to the timer list
                         _timerExecuting.Set();
                     }
                 }
@@ -288,7 +292,7 @@ namespace SS.Core
             get { return null; }
         }
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
             mm.RegisterInterface<IServerTimer>(this);
             mm.RegisterInterface<IMainloop>(this);

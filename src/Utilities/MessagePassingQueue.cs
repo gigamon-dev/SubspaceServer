@@ -8,42 +8,71 @@ namespace SS.Utilities
     /// <summary>
     /// A simple thread safe queue.
     /// Similar to asss' MPQueue.
+    /// 
+    /// Supports synchronization of multiple Enqueuing (writing) threads and multiple Dequeueing (reading) threads.
     /// </summary>
-    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="T">type of object to store in the queue</typeparam>
     public class MessagePassingQueue<T>
     {
-        private object _lockObj = new object();
-        private Queue<T> _queue; // TODO: maybe change this to a linked list
-        private AutoResetEvent _queuedItemSignal = new AutoResetEvent(false);
+        /// <summary>
+        /// object used to synchronize access to the queue
+        /// </summary>
+        private object _syncObj = new object();
 
+        private Queue<T> _queue; // TODO: maybe change this to a linked list
+
+        /// <summary>
+        /// create an empty queue
+        /// </summary>
         public MessagePassingQueue()
         {
             _queue = new Queue<T>();
         }
 
+        /// <summary>
+        /// creates a queue prepopulated with items
+        /// </summary>
+        /// <param name="collection">items to prepopulate the queue with</param>
         public MessagePassingQueue(IEnumerable<T> collection)
         {
             _queue = new Queue<T>(collection);
         }
 
+        /// <summary>
+        /// creates a queue, specifying the capacity of the queue
+        /// </summary>
+        /// <param name="capacity">the initial # of items the queue can contain</param>
         public MessagePassingQueue(int capacity)
         {
             _queue = new Queue<T>(capacity);
         }
 
+        /// <summary>
+        /// To add an object to the queue.
+        /// Any threads waiting for a message from the queue will be woken up.
+        /// </summary>
+        /// <param name="item">item to add to the queue</param>
         public void Enqueue(T item)
         {
-            lock (_lockObj)
+            lock (_syncObj)
             {
                 _queue.Enqueue(item);
-            }
 
-            _queuedItemSignal.Set();
+                Monitor.Pulse(_syncObj);
+            }
         }
 
+        /// <summary>
+        /// To try to read (and remove) the next item in the queue.
+        /// </summary>
+        /// <param name="item">
+        /// When this method returns, contains the item read from the queue.  
+        /// If no item is read, it will contain the default value for the type.
+        /// </param>
+        /// <returns>true if an item was read, otherwise false</returns>
         public bool TryDequeue(out T item)
         {
-            lock (_lockObj)
+            lock (_syncObj)
             {
                 if (_queue.Count == 0)
                 {
@@ -57,30 +86,32 @@ namespace SS.Utilities
         }
 
         /// <summary>
-        /// Removes an and returns the item at the beginning of the queue.
+        /// To read (and remove) the next item in the queue.
         /// If the queue is empty, this will block until there is an item to remove.
         /// </summary>
-        /// <param name="item"></param>
-        /// <returns></returns>
+        /// <returns>The item read from the queue.</returns>
         public T Dequeue()
         {
-            while (true)
+            lock (_syncObj)
             {
-                lock (_lockObj)
+                while (true)
                 {
                     if (_queue.Count > 0)
                     {
                         return _queue.Dequeue();
                     }
-                }
 
-                _queuedItemSignal.WaitOne();
+                    Monitor.Wait(_syncObj);
+                }
             }
         }
 
+        /// <summary>
+        /// To remove all items from the queue without reading them.
+        /// </summary>
         public void Clear()
         {
-            lock (_lockObj)
+            lock (_syncObj)
             {
                 _queue.Clear();
             }

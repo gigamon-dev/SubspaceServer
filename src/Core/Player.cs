@@ -146,6 +146,7 @@ namespace SS.Core
         public ShipType Ship
         {
             get { return (ShipType)pkt.Ship; }
+            set { pkt.Ship = (sbyte)value; }
         }
 
         public short Freq
@@ -259,6 +260,11 @@ namespace SS.Core
         internal void RemovePerPlayerData(int key)
         {
             _playerExtraData.Remove(key);
+        }
+
+        internal void RemoveAllPerPlayerData()
+        {
+            _playerExtraData.Clear();
         }
     }
 }

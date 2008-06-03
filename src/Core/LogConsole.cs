@@ -26,7 +26,7 @@ namespace SS.Core
             }
         }
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
             if (_logManager == null)

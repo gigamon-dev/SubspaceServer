@@ -7,7 +7,7 @@ using System.Xml;
 
 namespace SS.Core
 {
-    public interface IModuleLoader : IModuleInterface
+    public interface IModuleLoader : IComponentInterface
     {
         bool LoadModulesFromConfig(string moduleConfigFilename);
         bool AddModule(string assemblyPath, string moduleName);
@@ -32,7 +32,7 @@ namespace SS.Core
 
         }
 
-        public bool Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies)
+        public bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
 
@@ -43,6 +43,7 @@ namespace SS.Core
 
         public bool Unload(ModuleManager mm)
         {
+            _mm.UnregisterInterface<IModuleLoader>();
             return true;
         }
 

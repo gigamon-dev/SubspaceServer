@@ -5,6 +5,13 @@ using System.Text;
 namespace SS.Core
 {
     /// <summary>
+    /// Base interface for interfaces that are registerable with the ComponentBroker
+    /// </summary>
+    public interface IComponentInterface
+    {
+    }
+
+    /// <summary>
     /// Functions as an intermediary between components.
     /// It currently manages interfaces and callbacks.
     /// </summary>
@@ -17,10 +24,10 @@ namespace SS.Core
         #region Interface Methods
 
         private object _interfaceLockObj = new object();
-        private Dictionary<Type, IModuleInterface> _interfaceLookup = new Dictionary<Type, IModuleInterface>();
+        private Dictionary<Type, IComponentInterface> _interfaceLookup = new Dictionary<Type, IComponentInterface>();
         private Dictionary<Type, int> _interfaceReferenceLookup = new Dictionary<Type, int>();
 
-        public void RegisterInterface<TInterface>(TInterface implementor) where TInterface : IModuleInterface
+        public void RegisterInterface<TInterface>(TInterface implementor) where TInterface : IComponentInterface
         {
             Type interfaceType = typeof(TInterface);
             if (interfaceType.IsInterface == false)
@@ -41,7 +48,7 @@ namespace SS.Core
             }
         }
 
-        public int UnregisterInterface<TInterface>() where TInterface : IModuleInterface
+        public int UnregisterInterface<TInterface>() where TInterface : IComponentInterface
         {
             Type interfaceType = typeof(TInterface);
             int referenceCount;
@@ -62,7 +69,7 @@ namespace SS.Core
             }
         }
 
-        public virtual IModuleInterface GetInterface(Type interfaceType)
+        public virtual IComponentInterface GetInterface(Type interfaceType)
         {
             if (interfaceType == null)
                 throw new ArgumentNullException("interfaceType");
@@ -72,7 +79,7 @@ namespace SS.Core
 
             lock (_interfaceLockObj)
             {
-                IModuleInterface theInterface;
+                IComponentInterface theInterface;
                 if (_interfaceLookup.TryGetValue(interfaceType, out theInterface) == false)
                     return null;
 
@@ -92,7 +99,7 @@ namespace SS.Core
             }
         }
 
-        public virtual TInterface GetInterface<TInterface>() where TInterface : class, IModuleInterface
+        public virtual TInterface GetInterface<TInterface>() where TInterface : class, IComponentInterface
         {
             Type interfaceType = typeof(TInterface);
             if (interfaceType.IsInterface == false)
@@ -100,7 +107,7 @@ namespace SS.Core
 
             lock (_interfaceLockObj)
             {
-                IModuleInterface theInterface;
+                IComponentInterface theInterface;
                 if (_interfaceLookup.TryGetValue(interfaceType, out theInterface) == false)
                     return null;
 
@@ -238,7 +245,7 @@ namespace SS.Core
         /// <typeparam name="TDelegate">the type of delegate looking for</typeparam>
         /// <param name="callbackIdentifier">unique identifier of the callback</param>
         /// <returns>the multicast delegate, null if not found or type does not match</returns>
-        public virtual TDelegate LookupCallback<TDelegate>(string callbackIdentifier) where TDelegate : class
+        protected virtual TDelegate LookupCallback<TDelegate>(string callbackIdentifier) where TDelegate : class
         {
             Delegate d;
 

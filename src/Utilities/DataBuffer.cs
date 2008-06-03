@@ -18,6 +18,8 @@ namespace SS.Utilities
 
             if (thisAsSubclass == null)
                 throw new Exception("derived classes must send themselves as the template type parameter");
+
+            Clear();
         }
 
         /// <summary>

@@ -5,10 +5,6 @@ using System.ComponentModel;
 
 namespace SS.Core
 {
-    public interface IModuleInterface
-    {
-    }
-
     public interface IModule
     {
         Type[] InterfaceDependencies
@@ -16,7 +12,7 @@ namespace SS.Core
             get;
         }
 
-        bool Load(ModuleManager mm, Dictionary<Type, IModuleInterface> interfaceDependencies);
+        bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies);
         bool Unload(ModuleManager mm);
 
         // moved these to IModuleArenaAttachable
@@ -71,7 +67,7 @@ namespace SS.Core
         {
             private readonly IModule _module;
             private bool _isLoaded = false;
-            private readonly Dictionary<Type, IModuleInterface> _interfaceDependencies;
+            private readonly Dictionary<Type, IComponentInterface> _interfaceDependencies;
 
             public ModuleInfo(IModule module)
             {
@@ -79,11 +75,11 @@ namespace SS.Core
 
                 if (module.InterfaceDependencies == null)
                 {
-                    _interfaceDependencies = new Dictionary<Type, IModuleInterface>(0);
+                    _interfaceDependencies = new Dictionary<Type, IComponentInterface>(0);
                 }
                 else
                 {
-                    _interfaceDependencies = new Dictionary<Type, IModuleInterface>(module.InterfaceDependencies.Length);
+                    _interfaceDependencies = new Dictionary<Type, IComponentInterface>(module.InterfaceDependencies.Length);
                     foreach (Type interfaceType in module.InterfaceDependencies)
                     {
                         if (interfaceType.IsInterface == true)
@@ -116,7 +112,7 @@ namespace SS.Core
 
                 foreach (Type interfaceKey in interfaceKeyList)
                 {
-                    IModuleInterface moduleInterface = mm.GetInterface(interfaceKey);
+                    IComponentInterface moduleInterface = mm.GetInterface(interfaceKey);
                     if (moduleInterface == null)
                     {
                         // unable to get an interface
@@ -145,7 +141,7 @@ namespace SS.Core
 
                 _isLoaded = true;
                 mm._loadedModules.AddLast(_module.GetType());
-                Console.WriteLine(string.Format("[ModuleManager]) loaded module [{0}]", _module.GetType().FullName));
+                Console.WriteLine(string.Format("[ModuleManager] loaded module [{0}]", _module.GetType().FullName));
                 return true;
             }
 
@@ -169,7 +165,7 @@ namespace SS.Core
                 releaseInterfaces(mm);
 
                 _isLoaded = false;
-                Console.WriteLine(string.Format("[ModuleManager]) unloaded module [{0}]", _module.GetType().FullName));
+                Console.WriteLine(string.Format("[ModuleManager] unloaded module [{0}]", _module.GetType().FullName));
                 return true;
             }
 

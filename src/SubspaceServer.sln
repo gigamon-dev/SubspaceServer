@@ -1,6 +1,6 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 9.00
-# Visual Studio 2005
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SubspaceServer", "SubspaceServer\SubspaceServer.csproj", "{189D99AB-3D8B-47EC-8F87-21934B6414F9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Utilities", "Utilities\Utilities.csproj", "{DFADC365-5E17-4C2D-AEC1-4F217DF4A6BF}"
@@ -11,7 +11,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Packets", "Packets\Packets.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TurfReward", "TurfReward\TurfReward.csproj", "{D16DBD66-3626-4B73-B54A-FCD9CF959107}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestProject", "TestProject\TestProject.csproj", "{94434040-DA54-4957-9BF3-04F7DD0B8FFF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{35694A5C-163F-4773-A9AD-32980D5354BB}"
+	ProjectSection(SolutionItems) = preProject
+		LocalTestRun.testrunconfig = LocalTestRun.testrunconfig
+		SubspaceServer.vsmdi = SubspaceServer.vsmdi
+	EndProjectSection
+EndProject
 Global
+	GlobalSection(TestCaseManagementSettings) = postSolution
+		CategoryFile = SubspaceServer.vsmdi
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
@@ -37,6 +48,10 @@ Global
 		{D16DBD66-3626-4B73-B54A-FCD9CF959107}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D16DBD66-3626-4B73-B54A-FCD9CF959107}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D16DBD66-3626-4B73-B54A-FCD9CF959107}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94434040-DA54-4957-9BF3-04F7DD0B8FFF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94434040-DA54-4957-9BF3-04F7DD0B8FFF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94434040-DA54-4957-9BF3-04F7DD0B8FFF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94434040-DA54-4957-9BF3-04F7DD0B8FFF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

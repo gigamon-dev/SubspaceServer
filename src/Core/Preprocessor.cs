@@ -14,6 +14,8 @@ namespace SS.Core
     /// 
     /// app - the [a]sss [p]re[p]rocessor
     /// 
+    /// this is used as a helper for reading config files
+    /// 
     /// handles selected features of the C preprocessor, including #include,
     /// #define, #if[n]def, #else, #endif.
     /// 

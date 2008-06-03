@@ -10,11 +10,22 @@ namespace SS.Core
         public readonly Socket GameSocket;
         public readonly Socket PingSocket;
         
-        // might need things (ASSS has it)
-        //private string connectas;
-	    //bool allowVIE;
-        //bool allowContinuum;
-   	    /* dynamic population data */
+        /// <summary>
+        /// used to determine the default arena users should be sent to
+        /// </summary>
+        public string ConnectAs;
+
+        /// <summary>
+        /// Whether VIE clients are allowed to connect
+        /// </summary>
+	    public bool AllowVIE;
+
+        /// <summary>
+        /// Whether Continuum clients are allowed to connect
+        /// </summary>
+        public bool AllowContinuum;
+
+        /* dynamic population data */
 	    //int total, playing;
 
         public ListenData(Socket gameSocket, Socket pingSocket)
