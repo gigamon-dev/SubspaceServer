@@ -5,6 +5,13 @@ using System.Text;
 
 namespace SS.Core
 {
+    public interface IClientConn
+    {
+        void Connected();
+        void HandlePacket(byte[] pkt, int len);
+        void Disconnected();
+    }
+
     public abstract class BaseClientConnection
     {
         protected BaseClientConnection(IClientConn i, IClientEncrypt enc)

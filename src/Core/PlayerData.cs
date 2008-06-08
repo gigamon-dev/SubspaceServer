@@ -3,37 +3,10 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using SS.Core.Packets;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Core
 {
-    public interface IPlayerData : IComponentInterface
-    {
-        void Lock();
-        void Unlock();
-        void WriteLock();
-        void WriteUnlock();
-
-        /// <summary>
-        /// Use to enumerate over all of the players.
-        /// Rember to Lock() and Unlock().
-        /// </summary>
-        IEnumerable<Player> PlayerList
-        {
-            get;
-        }
-
-        Player NewPlayer(ClientType clientType);
-        void FreePlayer(Player player);
-        void KickPlayer(Player player);
-        Player PidToPlayer(int pid);
-        Player FindPlayer(string name);
-        void TargetToSet(Target target, out LinkedList<Player> list);
-
-        // per player data
-        int AllocatePlayerData<T>() where T : new();
-        void FreePlayerData(int key);
-    }
-
     /// <summary>
     /// 
     /// </summary>
@@ -44,6 +17,8 @@ namespace SS.Core
 
     public class PlayerData : IModule, IPlayerData
     {
+        private ModuleManager _mm;
+
         /// <summary>
         /// how many seconds before we re-use a pid
         /// </summary>
@@ -84,7 +59,7 @@ namespace SS.Core
         /// <summary>
         /// List of unused player objects (sort of like a pool).
         /// Players objects are stored in here so that they don't have to be reallocated
-        /// every time a plays logoff and login.
+        /// every time a player logs off and on.
         /// This doubles as a way to keep track of which Ids are in use too.
         /// </summary>
         private LinkedList<FreePlayerInfo> _freePlayersList = new LinkedList<FreePlayerInfo>();
@@ -125,12 +100,14 @@ namespace SS.Core
 
         bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
+            _mm = mm;
             mm.RegisterInterface<IPlayerData>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
+            mm.UnregisterInterface<IPlayerData>();
             return true;
         }
 
@@ -168,12 +145,14 @@ namespace SS.Core
 
         #endregion
 
-        public IEnumerable<Player> PlayerList
+        private IEnumerable<Player> playerList
         {
-            get
-            {
-                return _playerDictionary.Values;
-            }
+            get { return _playerDictionary.Values; }
+        }
+
+        IEnumerable<Player> IPlayerData.PlayerList
+        {
+            get { return playerList; }
         }
 
         Player IPlayerData.NewPlayer(ClientType clientType)
@@ -219,12 +198,15 @@ namespace SS.Core
                 _playerDictionary.Add(player.Id, player);
 
                 // set player info
-                player.pkt.PktType = (byte)S2CPacketType.PlayerEntering;
+                player.pkt.PkType = (byte)S2CPacketType.PlayerEntering;
                 player.Status = PlayerState.Uninitialized;
                 player.Type = clientType;
                 player.Arena = null;
                 player.NewArena = null;
                 player.pkt.Ship = (sbyte)ShipType.Spec;
+                player.Attached = -1;
+                player.ConnectTime = DateTime.Now;
+                player.ConnectAs = null;
             }
             finally
             {
@@ -274,11 +256,36 @@ namespace SS.Core
 
         void IPlayerData.KickPlayer(Player player)
         {
+            if (player == null)
+                return;
+
             WriteLock();
+            try
+            {
+                // this will set state to S_LEAVING_ARENA, if it was anywhere above S_LOGGEDIN
+                if (player.Arena != null)
+                {
+                    IArenaManagerCore aman = _mm.GetInterface<IArenaManagerCore>();
+                    try
+                    {
+                        if (aman != null)
+                            aman.LeaveArena(player);
+                    }
+                    finally
+                    {
+                        if (aman != null)
+                            _mm.ReleaseInterface<IArenaManagerCore>();
+                    }
+                }
 
-            // TODO:
-
-            WriteUnlock();
+                // set this special flag so that the player will be set to leave
+                // the zone when the S_LEAVING_ARENA-initiated actions are completed
+                player.WhenLoggedIn = PlayerState.LeavingZone;
+            }
+            finally
+            {
+                WriteUnlock();
+            }
         }
 
         Player IPlayerData.PidToPlayer(int pid)
@@ -379,7 +386,7 @@ namespace SS.Core
             Lock();
             try
             {
-                foreach (Player player in PlayerList)
+                foreach (Player player in playerList)
                 {
                     player[key] = new T();
                 }
@@ -397,7 +404,7 @@ namespace SS.Core
             Lock();
             try
             {
-                foreach (Player player in PlayerList)
+                foreach (Player player in playerList)
                 {
                     player.RemovePerPlayerData(key);
                 }

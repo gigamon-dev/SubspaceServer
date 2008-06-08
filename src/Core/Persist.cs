@@ -1,15 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Core
 {
-    // TODO: 
-    public interface IPersist : IComponentInterface
-    {
-    }
     /*
-    class Persist
+    public class Persist : IModule, IPersist
     {
     }
     */

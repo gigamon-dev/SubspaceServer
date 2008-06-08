@@ -4,17 +4,10 @@ using System.Text;
 using System.Reflection;
 using System.IO;
 using System.Xml;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Core
 {
-    public interface IModuleLoader : IComponentInterface
-    {
-        bool LoadModulesFromConfig(string moduleConfigFilename);
-        bool AddModule(string assemblyPath, string moduleName);
-        void DoPostLoadStage();
-        void DoPreUnloadStage();
-    }
-
     public class ModuleLoader : IModule, IModuleLoader
     {
         private ModuleManager _mm;

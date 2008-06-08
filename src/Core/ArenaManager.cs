@@ -5,31 +5,13 @@ using System.Text;
 using System.Threading;
 
 using SS.Core.Packets;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Core
 {
     public delegate void ArenaActionEventHandler(Arena arena, ArenaAction action);
 
-    public interface IArenaManagerCore : IComponentInterface
-    {
-        void Lock();
-        void Unlock();
-
-        void SendArenaResponse(Player player);
-        void LeaveArena(Player player);
-        bool RecycleArena(Arena arena);
-        void SendToArena(Player p, string arenaName, int spawnx, int spawny);
-
-        Arena FindArena(string name);
-        Arena FindArena(string name, out int totalCount, out int playing);
-        void GetPopulationSummary(out int total, out int playing);
-
-        int AllocateArenaData<T>() where T : new();
-        void FreeArenaData(int key);
-
-        void HoldArena(Arena arena);
-        void UnholdArena(Arena arena);
-    }
+    
 
     public interface IArenaPlace
     {
@@ -123,21 +105,11 @@ namespace SS.Core
 
         #region Locks
 
-        /// <summary>
-        /// Locks the global arena lock.
-        /// There is a lock protecting the arena list, which you need to hold
-        /// whenever you access ArenaList. 
-        /// Call this before you start, and Unlock() when you're done.
-        /// </summary>
         public void Lock()
         {
             _arenaLock.AcquireReaderLock(Timeout.Infinite);
         }
-
-        /// <summary>
-        /// Unlocks the global arena lock.
-        /// Use this whenever you used Lock()
-        /// </summary>
+        
         public void Unlock()
         {
             _arenaLock.ReleaseReaderLock();
@@ -299,7 +271,7 @@ namespace SS.Core
                      * things will get screwed up. so mark it here and let core
                      * take care of it. this is really messy and it would be
                      * nice to find a better way to handle it. */
-                    player.flags.leave_arena_when_done_waiting = true;
+                    player.Flags.LeaveArenaWhenDoneWaiting = true;
                     break;
 
                 case PlayerState.ArenaRespAndCBS:
@@ -333,7 +305,7 @@ namespace SS.Core
 
         #endregion
 
-        public bool RecycleArena(Arena arena)
+        bool IArenaManagerCore.RecycleArena(Arena arena)
         {
             writeLock();
             try
@@ -393,7 +365,7 @@ namespace SS.Core
             }
         }
 
-        public void SendToArena(Player player, string arenaName, int spawnx, int spawny)
+        void IArenaManagerCore.SendToArena(Player player, string arenaName, int spawnx, int spawny)
         {
             switch(player.Type)
             {
@@ -407,7 +379,7 @@ namespace SS.Core
             }
         }
 
-        public Arena FindArena(string name)
+        private Arena FindArena(string name)
         {
             Lock();
             try
@@ -420,7 +392,12 @@ namespace SS.Core
             }
         }
 
-        public Arena FindArena(string name, out int totalCount, out int playing)
+        Arena IArenaManagerCore.FindArena(string name)
+        {
+            return FindArena(name);
+        }
+
+        Arena IArenaManagerCore.FindArena(string name, out int totalCount, out int playing)
         {
             Arena arena = FindArena(name);
 
@@ -565,8 +542,8 @@ namespace SS.Core
                 player.Ship = ship;
                 player.Xres = (short)xRes;
                 player.Yres = (short)yRes;
-                player.flags.want_all_lvz = gfx;
-                player.pkt.AcceptsAudio = voices ? (byte)1 : (byte)0;
+                player.Flags.WantAllLvz = gfx;
+                player.pkt.AcceptAudio = voices ? (byte)1 : (byte)0;
             }
             finally
             {
@@ -604,7 +581,7 @@ namespace SS.Core
             }
         }
 
-        public void GetPopulationSummary(out int total, out int playing)
+        void IArenaManagerCore.GetPopulationSummary(out int total, out int playing)
         {
             // TODO: for some reason asss does counting
             // i'm not sure why it has to count
@@ -613,7 +590,7 @@ namespace SS.Core
             playing = 0;
         }
 
-        public int AllocateArenaData<T>() where T : new()
+        int IArenaManagerCore.AllocateArenaData<T>()
         {
             int key = 0;
 
@@ -650,7 +627,7 @@ namespace SS.Core
             return key;
         }
 
-        public void FreeArenaData(int key)
+        void IArenaManagerCore.FreeArenaData(int key)
         {
             
             Lock();
@@ -1104,7 +1081,8 @@ namespace SS.Core
 
             _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
 
-            _adkey = AllocateArenaData<ArenaData>();
+            IArenaManagerCore amc = this;
+            _adkey = amc.AllocateArenaData<ArenaData>();
 
             // TODO: 
             //if(_net)
@@ -1159,8 +1137,9 @@ namespace SS.Core
 
             _playerData.FreePlayerData(_spawnkey);
 
-            FreeArenaData(_spawnkey);
-            FreeArenaData(_adkey);
+            IArenaManagerCore amc = this;
+            amc.FreeArenaData(_spawnkey);
+            amc.FreeArenaData(_adkey);
 
             _arenaDictionary.Clear();
 

@@ -13,6 +13,13 @@ namespace SS.Utilities
 
     public class Pool<T> : IPool where T : PooledObject, new() 
     {
+        private static Pool<T> _default = new Pool<T>();
+
+        public static Pool<T> Default
+        {
+            get { return _default; }
+        }
+
         private LinkedList<PooledObject> _availableList = new LinkedList<PooledObject>();
 
         private int _objectsCreated = 0;

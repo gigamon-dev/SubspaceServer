@@ -44,6 +44,7 @@ namespace SS
             // 
             // stopBbutton
             // 
+            this.stopBbutton.Enabled = false;
             this.stopBbutton.Location = new System.Drawing.Point(61, 90);
             this.stopBbutton.Name = "stopBbutton";
             this.stopBbutton.Size = new System.Drawing.Size(75, 23);

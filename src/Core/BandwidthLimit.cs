@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
+using SS.Core.ComponentInterfaces;
+
 namespace SS.Core
 {
     /// <summary>
@@ -16,45 +18,6 @@ namespace SS.Core
         Reliable, 
         Ack, 
         NumPriorities
-    }
-
-    public interface IBWLimit
-    {
-        /// <summary>
-        /// adjust the current idea of how many bytes have been sent
-        /// recently. call once in a while. now is in millis, not ticks
-        /// </summary>
-        /// <param name="ms"></param>
-        void Iter(DateTime now);
-
-        /// <summary>
-        /// checks if <paramref name="bytes"/> bytes at priority <paramref name="pri"/> can be sent according to
-        /// the current limit and sent counters. if they can be sent, modifies bw
-        /// and returns true, otherwise returns false
-        /// </summary>
-        /// <param name="bytes"></param>
-        /// <param name="pri"></param>
-        /// <returns></returns>
-        bool Check(int bytes, int pri);
-
-        void AdjustForAck();
-        void AdjustForRetry();
-
-        /// <summary>
-        /// to get how many reliable packets can be buffered
-        /// </summary>
-        /// <returns></returns>
-        int GetCanBufferPackets();
-        string GetInfo();
-    }
-
-    public interface IBandwidthLimit : IComponentInterface
-    {
-        /// <summary>
-        /// To get an object which handles bandwidth limiting for a single connection.
-        /// </summary>
-        /// <returns>a bandwidth limiter</returns>
-        IBWLimit New();
     }
 
     public class BandwidthNoLimit : IModule, IBandwidthLimit
@@ -175,9 +138,9 @@ namespace SS.Core
 
             public void Iter(DateTime now)
             {
-                const int granularity = 8;
-                int pri = 0;
-                int slices = 0;
+                //const int granularity = 8;
+                //int pri = 0;
+                //int slices = 0;
 
                 //(now - _sincetime)
             }

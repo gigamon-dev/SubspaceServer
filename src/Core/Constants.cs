@@ -22,6 +22,15 @@ namespace SS.Core
         public const int MaxPacket = 512;
 
         /// <summary>
+        /// maximum size of a "big packet"
+        /// </summary>
+        public const int CFG_MAX_BIG_PACKET = 65536;
+
+        public const int MaxBigPacket = CFG_MAX_BIG_PACKET;
+
+        public const int ReliableHeaderLen = 6;
+
+        /// <summary>
         /// callbacks / events
         /// </summary>
         public static class Events

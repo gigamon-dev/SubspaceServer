@@ -39,12 +39,13 @@ namespace SS
             }
             */
 
-            // 
+            /*
             for (int x = 0; x <= 32; x++)
             {
                 uint val = 0xFFFFFFFF;
                 Console.WriteLine("0x{0:X},", ~(val << x));
             }
+            */
 
             /*
             // right shift on a signed integer maintains the sign bit (divide by 2)
@@ -78,9 +79,11 @@ namespace SS
             object t = b1 & b2;
             */
 
+            /*
             byte b1 = 0xFF;
             uint ui = 123;
             object o = b1 & ui;
+            */
 
             //uint u1 = 0x01;
             //object t = u1 & b1;

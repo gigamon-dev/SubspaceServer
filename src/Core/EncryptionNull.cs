@@ -5,6 +5,7 @@ using System.Text;
 using System.Net;
 using SS.Utilities;
 using SS.Core.Packets;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Core
 {
@@ -83,13 +84,13 @@ namespace SS.Core
 
         #endregion
 
-        private void connectionInit(IPEndPoint remoteEndpoint, byte[] buffer, object v)
+        private void connectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, object v)
         {
             ClientType type;
             Player p;
 
             // make sure the packet fits
-            if(buffer.Length != 8 ||
+            if (len != 8 ||
                 buffer[0] != 0x00 ||
                 buffer[1] != 0x01 ||
                 buffer[7] != 0x00)

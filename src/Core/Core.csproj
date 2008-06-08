@@ -36,7 +36,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;CFG_DUMP_RAW_PACKETS CFG_LOG_STUPID_STUFF</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
@@ -63,9 +63,25 @@
     <Compile Include="BandwidthLimit.cs" />
     <Compile Include="ClientConnection.cs" />
     <Compile Include="ComponentBroker.cs" />
+    <Compile Include="ComponentInterfaces\IArenaManagerCore.cs" />
+    <Compile Include="ComponentInterfaces\IAuth.cs" />
+    <Compile Include="ComponentInterfaces\IBandwidthLimit.cs" />
+    <Compile Include="ComponentInterfaces\IConfigManager.cs" />
+    <Compile Include="ComponentInterfaces\ILogManager.cs" />
+    <Compile Include="ComponentInterfaces\IMainloop.cs" />
+    <Compile Include="ComponentInterfaces\IMainloopController.cs" />
+    <Compile Include="ComponentInterfaces\IModuleLoader.cs" />
+    <Compile Include="ComponentInterfaces\INetwork.cs" />
+    <Compile Include="ComponentInterfaces\INetworkClient.cs" />
+    <Compile Include="ComponentInterfaces\INetworkEncryption.cs" />
+    <Compile Include="ComponentInterfaces\IPersist.cs" />
+    <Compile Include="ComponentInterfaces\IPlayerData.cs" />
+    <Compile Include="ComponentInterfaces\IServerTimer.cs" />
     <Compile Include="Config.cs" />
     <Compile Include="ConnData.cs" />
     <Compile Include="Constants.cs" />
+    <Compile Include="CoreModule.cs" />
+    <Compile Include="DataBuffer.cs" />
     <Compile Include="Defs.cs" />
     <Compile Include="EncryptionNull.cs" />
     <Compile Include="ListenData.cs" />

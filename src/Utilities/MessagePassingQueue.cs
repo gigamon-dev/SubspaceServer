@@ -19,7 +19,7 @@ namespace SS.Utilities
         /// </summary>
         private object _syncObj = new object();
 
-        private Queue<T> _queue; // TODO: maybe change this to a linked list
+        private Queue<T> _queue; // TODO: maybe change this to a linked list (i dont know the allocation of linkedlistnode though)
 
         /// <summary>
         /// create an empty queue
@@ -114,6 +114,26 @@ namespace SS.Utilities
             lock (_syncObj)
             {
                 _queue.Clear();
+            }
+        }
+
+        /// <summary>
+        /// To clear all instances of an item from the queue
+        /// </summary>
+        /// <param name="item">item to remove from the queue</param>
+        public void ClearOne(T item)
+        {
+            EqualityComparer<T> comparer = EqualityComparer<T>.Default;
+
+            lock (_syncObj)
+            {
+                int count = _queue.Count;
+                while (--count >= 0)
+                {
+                    T i = _queue.Dequeue();
+                    if(!comparer.Equals(i, item))
+                        _queue.Enqueue(i);
+                }
             }
         }
     }

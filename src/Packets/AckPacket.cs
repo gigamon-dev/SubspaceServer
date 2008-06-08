@@ -6,28 +6,28 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct ReliablePacket
+    public struct AckPacket
     {
         // static constructor to initialize packet's info
-        static ReliablePacket()
+        static AckPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
             t1 = locationBuilder.CreateDataLocation(8);
             t2 = locationBuilder.CreateDataLocation(8);
             seqNum = locationBuilder.CreateDataLocation(32);
-            dataStartIndex = locationBuilder.CreateDataLocation(1).ByteOffset;
+            length = locationBuilder.NumBytes;
         }
 
         // static data members that tell the location of each field in the byte array of a packet
         private static readonly DataLocation t1;
         private static readonly DataLocation t2;
         private static readonly DataLocation seqNum;
-        private static readonly int dataStartIndex;
+        private static readonly int length;
 
         // data members
         private readonly byte[] data;
 
-        public ReliablePacket(byte[] data)
+        public AckPacket(byte[] data)
         {
             this.data = data;
         }
@@ -50,19 +50,9 @@ namespace SS.Core.Packets
             set { ExtendedBitConverter.WriteInt32Bits(value, data, seqNum.ByteOffset, seqNum.BitOffset, seqNum.NumBits); }
         }
 
-        public void SetData(byte[] d, int len)
+        public static int Length
         {
-            Array.Copy(d, 0, data, 3, len);
-        }
-        /*
-        public static int DataStartIndex
-        {
-            get { return dataStartIndex; }
-        }*/
-
-        public ArraySegment<byte> GetData(int len)
-        {
-            return new ArraySegment<byte>(data, dataStartIndex, len);
+            get { return length; }
         }
     }
 }
