@@ -22,11 +22,15 @@ namespace SS.Core
         public const int MaxPacket = 512;
 
         /// <summary>
-        /// maximum size of a "big packet"
+        /// maximum size of a "big packet" allowed to recieve
         /// </summary>
         public const int CFG_MAX_BIG_PACKET = 65536;
-
         public const int MaxBigPacket = CFG_MAX_BIG_PACKET;
+
+        /// <summary>
+        /// how many bytes to 'chunk' data into when sending "big packets"
+        /// </summary>
+        public const int ChunkSize = 480;
 
         public const int ReliableHeaderLen = 6;
 
@@ -36,6 +40,8 @@ namespace SS.Core
         public static class Events
         {
             public const string ConnectionInit = "conninit";
+            public const string PlayerAction = "playeraction";
+            public const string ArenaAction = "ArenaAction";
         }
     }
 }

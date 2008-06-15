@@ -4,6 +4,7 @@ using System.Threading;
 
 namespace SS.Utilities
 {
+    /*
     public class BufferPool<T> where T : DataBuffer<T>, new()
     {
         private LinkedList<T> _bufferList = new LinkedList<T>();
@@ -113,5 +114,5 @@ namespace SS.Utilities
                 _bufferList.AddFirst(node);
             }
         }
-    }
+    }*/
 }

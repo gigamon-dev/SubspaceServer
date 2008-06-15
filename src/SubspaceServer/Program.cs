@@ -7,11 +7,29 @@ using SS.Utilities;
 using SS.Core.Packets;
 using System.IO;
 using System.Reflection;
+using System.Text;
 
 namespace SS
 {
     static class Program
     {
+        private class TestClass
+        {
+            public TestStruct ts;
+        }
+
+        private struct TestStruct
+        {
+            public byte[] ByteArray;
+            public int IntValue;
+
+            public TestStruct(byte[] d)
+            {
+                ByteArray = d;
+                IntValue = 5;
+            }
+        }
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -22,6 +40,22 @@ namespace SS
             Application.SetCompatibleTextRenderingDefault(false);
             
             Application.Run(new Form1());
+
+            byte[] test = new byte[5];
+            test[0] = (byte)'a';
+
+            string s1 = Encoding.ASCII.GetString(test);
+            string s2 = Encoding.ASCII.GetString(test, 0, 2);
+            string s3 = s1.Trim('\0');
+
+            /*
+            // value type test
+            TestClass tc = new TestClass();
+            TestStruct ts = tc.ts = new TestStruct(new byte[] { 1, 2, 3 });
+            ts.ByteArray[0] = 4;
+            tc.ts.ByteArray[1] = 131;
+            ts.IntValue = 123;
+            */
 
             /*
             uint ui = uint.MaxValue;

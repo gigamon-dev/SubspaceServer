@@ -17,6 +17,7 @@ namespace SS.Core.Packets
             type = locationBuilder.CreateDataLocation(8);
             flags = locationBuilder.CreateDataLocation(8);
             name = locationBuilder.CreateDataLocation(8 * 32);
+            password = locationBuilder.CreateDataLocation(8 * 32);
             macid = locationBuilder.CreateDataLocation(32);
             blah = locationBuilder.CreateDataLocation(8);
             timezonebias = locationBuilder.CreateDataLocation(16);
@@ -24,9 +25,10 @@ namespace SS.Core.Packets
             cversion = locationBuilder.CreateDataLocation(16);
             field444 = locationBuilder.CreateDataLocation(32);
             field555 = locationBuilder.CreateDataLocation(32);
+            d2 = locationBuilder.CreateDataLocation(32);
             blah2 = locationBuilder.CreateDataLocation(8 * 12);
             LengthVIE = locationBuilder.NumBytes;
-            contid = locationBuilder.CreateDataLocation(64);
+            contid = locationBuilder.CreateDataLocation(8 * 64);
             LengthContinuum = locationBuilder.NumBytes;
         }
 
@@ -56,12 +58,39 @@ namespace SS.Core.Packets
 
         public string Name
         {
-            get { return Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBits / 8); }
+            get
+            {
+                string str = Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBits / 8);
+                int index = str.IndexOf('\0');
+                if (index != -1)
+                {
+                    return str.Substring(0, index);
+                }
+                return str;
+            }
+        }
+
+        public uint MacId
+        {
+            get { return ExtendedBitConverter.ToUInt32(data, macid.ByteOffset, macid.BitOffset); }
         }
 
         public short CVersion
         {
             get { return ExtendedBitConverter.ToInt16(data, cversion.ByteOffset, cversion.BitOffset); }
+        }
+
+        public uint D2
+        {
+            get { return ExtendedBitConverter.ToUInt32(data, d2.ByteOffset, d2.BitOffset); }
+        }
+
+        public static int Copy(LoginPacket sourcePacket, LoginPacket destinationPacket)
+        {
+            int minDataLength = Math.Min(sourcePacket.data.Length, destinationPacket.data.Length);
+            Array.Copy(sourcePacket.data, destinationPacket.data, minDataLength);
+
+            return minDataLength;
         }
     }
 }

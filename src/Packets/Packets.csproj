@@ -59,7 +59,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AckPacket.cs" />
+    <Compile Include="ContinuumChecksumPacket.cs" />
+    <Compile Include="GoArenaPacket.cs" />
     <Compile Include="LoginPacket.cs" />
+    <Compile Include="LoginResponsePacket.cs" />
+    <Compile Include="MapFilenamePacket.cs" />
     <Compile Include="PacketTypes.cs" />
     <Compile Include="PData.cs" />
     <Compile Include="PlayerDataPacket.cs" />

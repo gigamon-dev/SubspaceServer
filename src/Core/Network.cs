@@ -17,8 +17,6 @@ namespace SS.Core
     public delegate void ReliableDelegate(Player p, bool success, object clos);
     public delegate void GetSizedSendDataDelegate(object clos, int offset, byte[] buf, int bytesNeeded);
 
-    
-
     // looks like asss uses this one like a void* type
     public interface IClientEncrypt
     {
@@ -26,32 +24,20 @@ namespace SS.Core
 
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
-        private class SubspaceBuffer : PooledObject
+        private class SubspaceBuffer : DataBuffer
         {
-            internal ConnData conn;
-            //short len;  // uses NumBytes instead
+            internal ConnData Conn;
 
-            public byte tries;
-            public NetSendFlags flags;
+            public byte Tries;
+            public NetSendFlags Flags;
 
-            public DateTime lastretry;
+            public DateTime LastRetry;
 
-            public ReliableDelegate callback;
-            public object clos;
-
-            public readonly byte[] Bytes = new byte[Constants.MaxPacket+4]; // asss does MAXPACKET+4 and i'm not sure why
-            public int NumBytes;
-
-            protected override void Dispose(bool isDisposing)
-            {
-                // clear
-
-                // return object to its pool
-                base.Dispose(isDisposing);
-            }
+            public ReliableDelegate Callback;
+            public object Clos;
         }
 
-        private Pool<SubspaceBuffer> _bufferPool = new Pool<SubspaceBuffer>();
+        private Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
 
         private class SizedSendData
         {
@@ -194,6 +180,9 @@ namespace SS.Core
 
             public LinkedList<SubspaceBuffer>[] outlist = new LinkedList<SubspaceBuffer>[5];
 
+            /// <summary>
+            /// incoming reliable packets
+            /// </summary>
             public SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
 
             // TODO: some other members here that i dont understand yet
@@ -274,6 +263,9 @@ namespace SS.Core
             public int pingrefreshtime;
         }
 
+        /// <summary>
+        /// per player data key to ConnData
+        /// </summary>
         private int _connKey;
 
         private Dictionary<EndPoint, Player> _clienthash = new Dictionary<EndPoint, Player>();
@@ -281,646 +273,78 @@ namespace SS.Core
 
         private Config _config = new Config();
 
-        // TODO: think about how to send a reference to this class as well (in listenData?)
-        //public delegate void DataRecievedHandler(ListenData listenData, SubspaceBuffer buffer);
-        //public event DataRecievedHandler GameDataRecieved;
-        //public event DataRecievedHandler PingDataRecieved;
+        /// <summary>
+        /// this is a helper to group up packets to be send out together as 1 combined packet
+        /// </summary>
+        private struct GroupedPacket
+        {
+            private Network _network;
+            //private SubspaceBuffer _sb;
+            private byte[] _buf;
+            private ArraySegment<byte> _remainingSegment;
+            private int _count;
+
+            public GroupedPacket(Network network, byte[] buf)
+            {
+                _network = network;
+                //_sb = _network._bufferPool.Get();
+                _buf = buf;
+                _remainingSegment = new ArraySegment<byte>(_buf, 0, _buf.Length);
+                _count = 0;
+            }
+
+            public void Init()
+            {
+                _buf[0] = 0x00;
+                _buf[1] = 0x0E;
+                _remainingSegment = new ArraySegment<byte>(_buf, 2, _buf.Length - 2);
+                _count = 0;
+            }
+
+            public void Flush(ConnData conn)
+            {
+                if (_count == 1)
+                {
+                    // there's only one in the group, so don't send it
+                    // in a group. +3 to skip past the 00 0E and size of
+                    // first packet
+                    _network.sendRaw(conn, new ArraySegment<byte>(_buf, 3, _remainingSegment.Offset - 3));
+                }
+                else if (_count > 1)
+                {
+                    _network.sendRaw(conn, _buf, _remainingSegment.Offset);
+                }
+
+                // TODO: record stats
+                //if(count > 0 && count < _config.n
+
+                Init();
+            }
+
+            public void Send(SubspaceBuffer buffer, ConnData conn)
+            {
+                if (buffer.NumBytes <= 255) // 255 must be the size limit a grouped packet can store (max 1 byte can represent for the length)
+                {
+                    if (_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes))
+                        Flush(conn);
+
+                    _remainingSegment.Array[_remainingSegment.Offset] = (byte)buffer.NumBytes;
+                    Array.Copy(buffer.Bytes, 0, _remainingSegment.Array, _remainingSegment.Offset + 1, buffer.NumBytes);
+
+                    _remainingSegment = new ArraySegment<byte>(_remainingSegment.Array, _remainingSegment.Offset + (buffer.NumBytes + 1), _remainingSegment.Count - (buffer.NumBytes + 1));
+                    _count++;
+                }
+                else
+                {
+                    // can't fit in group, send immediately
+                    _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
+                }
+            }
+        }
 
         private delegate void oohandler(SubspaceBuffer buffer);
 
         private oohandler[] _oohandlers;
-        /*
-        {
-            null, //00 - nothing
-            null, //01 - key initiation
-            processKeyResponse, //02 - key response
-            processReliable, //03 - reliable
-            processAck, //04 - reliable response
-            processSyncRequest, //05 - time sync request
-            null, //06 - time sync response
-            processDrop, //07 - close connection
-            processBigData, //08 - bigpacket
-            processBigData, //09 - bigpacket2
-            processPresize, //0A - presized data (file transfer)
-            processCancelReq, //0B - cancel presized
-            processCancel, //0C - presized has been cancelled
-            null, //0D - nothing
-            processGrouped, //0E - grouped
-            null, // 0x0F
-            null, // 0x10
-            null, // 0x11
-            null, // 0x12
-            processSpecial, // 0x13 - cont key response
-            null
-        };*/
-
-        #region oohandlers (network layer header handling)
-
-        private void processKeyResponse(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes != 6)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                if (conn.cc != null)
-                    conn.cc.i.Connected();
-                else if (conn.p != null)
-                    _logManager.LogP(LogLevel.Malicious, "net", conn.p, "got key response packet");
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private void processReliable(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            if (buffer.NumBytes < 7)
-            {
-                buffer.Dispose();
-                return;
-            }
-
-            ReliablePacket rp = new ReliablePacket(buffer.Bytes);
-            int sn = rp.SeqNum;
-
-            ConnData conn = buffer.conn;
-            if (conn == null)
-            {
-                buffer.Dispose();
-                return;
-            }
-
-            Monitor.Enter(conn.relmtx);
-
-            if ((sn - conn.c2sn) >= Constants.CFG_INCOMING_BUFFER || sn < 0)
-            {
-                Monitor.Exit(conn.relmtx);
-
-                // just drop it
-                if (conn.p != null)
-                    _logManager.Log(LogLevel.Drivel, "<net> [{0}] [pid={1}] reliable packet with too big delta ({2} - {3})", conn.p.Name, conn.p.Id, sn, conn.c2sn);
-                else
-                    _logManager.Log(LogLevel.Drivel, "<net> (client connection) reliable packet with too big delta ({0} - {1})", sn, conn.c2sn);
-
-                buffer.Dispose();
-            }
-            else
-            {
-                // ack and store it
-                using (SubspaceBuffer ackBuffer = _bufferPool.Get())
-                {
-                    AckPacket ap = new AckPacket(ackBuffer.Bytes);
-                    ap.T1 = 0x00;
-                    ap.T2 = 0x04;
-                    ap.SeqNum = sn;
-
-                    // add to rel stuff to be processed
-                    int spot = sn % Constants.CFG_INCOMING_BUFFER;
-                    if ((sn < conn.c2sn) || (conn.relbuf[spot] != null))
-                    {
-                        // a dup
-                        conn.relDups++;
-                        buffer.Dispose();
-                    }
-                    else
-                    {
-                        conn.relbuf[spot] = buffer;
-                    }
-
-                    Monitor.Exit(conn.relmtx);
-
-                    // send the ack
-                    lock (conn.olmtx)
-                    {
-                        bufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack, null, null);
-                    }
-                }
-
-                // add to global rel list for processing
-                _relqueue.Enqueue(conn);
-            }
-        }
-
-        private void processAck(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            if (buffer.NumBytes != 6)
-            {
-                // ack packets are 6 bytes long
-                buffer.Dispose();
-                return;
-            }
-
-            ConnData conn = buffer.conn;
-            if (conn == null)
-            {
-                buffer.Dispose();
-                return;
-            }
-
-            ReliablePacket rp = new ReliablePacket(buffer.Bytes);
-            int seqNum = rp.SeqNum;
-
-            Monitor.Enter(conn.olmtx);
-
-            LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriorities.Reliable];
-            LinkedListNode<SubspaceBuffer> nextNode = null;
-            for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
-            {
-                nextNode = node.Next;
-
-                SubspaceBuffer b = node.Value;
-                ReliablePacket brp = new ReliablePacket(b.Bytes);
-                if (seqNum == brp.SeqNum)
-                {
-                    outlist.Remove(node);
-                    Monitor.Exit(conn.olmtx);
-
-                    if (b.callback != null)
-                        b.callback(conn.p, true, b.clos);
-
-                    if (b.tries == 1)
-                    {
-                        int rtt = (int)DateTime.Now.Subtract(b.lastretry).TotalMilliseconds;
-                        if (rtt < 0)
-                        {
-                            _logManager.Log(LogLevel.Error, "<net> negative rtt ({0}); clock going backwards", rtt);
-                            rtt = 100;
-                        }
-
-                        int dev = conn.avgrtt - rtt;
-                        if (dev < 0)
-                            dev = -dev;
-
-                        conn.rttdev = (conn.rttdev * 3 + dev) / 4;
-                        conn.avgrtt = (conn.avgrtt * 7 + rtt) / 8;
-
-                        //if (_lagc != null && conn.p != null)
-                            //_lagc.RelDelay(conn->p, rtt);
-                    }
-
-                    // handle limit adjustment
-                    conn.bw.AdjustForAck();
-
-                    b.Dispose();
-                    buffer.Dispose();
-                    return;
-                }
-            }
-
-            Monitor.Exit(conn.olmtx);
-            buffer.Dispose();
-        }
-
-        private void processSyncRequest(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes != 14)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                TimeSyncC2SPacket cts = new TimeSyncC2SPacket(buffer.Bytes);
-                using (SubspaceBuffer b = _bufferPool.Get())
-                {
-                    TimeSyncS2CPacket ts = new TimeSyncS2CPacket(b.Bytes);
-                    ts.T1 = 0x00;
-                    ts.T2 = 0x06;
-                    ts.Clienttime = cts.Time;
-                    ts.Servertime = Environment.TickCount; // asss does this one in the lock, but i rather lock as short as possbile
-
-                    lock (conn.olmtx)
-                    {
-                        // note: this bypasses bandwidth limits
-                        sendRaw(conn, b.Bytes, TimeSyncS2CPacket.Length);
-
-                        // submit data to lagdata
-                        /*if (_lagc != null && conn.p != null)
-	                    {
-		                    struct TimeSyncData data;
-		                    data.s_pktrcvd = conn->pktrecvd;
-		                    data.s_pktsent = conn->pktsent;
-		                    data.c_pktrcvd = cts->pktrecvd;
-		                    data.c_pktsent = cts->pktsent;
-		                    data.s_time = ts.servertime;
-		                    data.c_time = ts.clienttime;
-		                    lagc->TimeSync(conn->p, &data);
-	                    }*/
-                    }
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private  void processDrop(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes != 2)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                if (conn.p != null)
-                {
-                    _playerData.KickPlayer(conn.p);
-                }
-                else if (conn.cc != null)
-                {
-                    //buf->conn->cc->i->Disconnected();
-                    /* FIXME: this sends an extra 0007 to the client. that should
-                     * probably go away. */
-                    //DropClientConnection(buf->conn->cc);
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private void processBigData(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes < 3)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                lock (conn.bigmtx)
-                {
-                    int newsize = conn.bigrecv.size + buffer.NumBytes - 2;
-                    if (newsize <= 0 || newsize > Constants.MaxBigPacket)
-                    {
-                        if (conn.p != null)
-                            _logManager.LogP(LogLevel.Malicious, "net", conn.p, "refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
-                        else
-                            _logManager.Log(LogLevel.Malicious, "<net> (client connection) refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
-
-                        conn.bigrecv.free();
-                        return;
-                    }
-
-                    byte[] newbuf = null;
-
-                    if (conn.bigrecv.room < newsize)
-                    {
-                        conn.bigrecv.room *= 2;
-                        if (conn.bigrecv.room < newsize)
-                            conn.bigrecv.room = newsize;
-
-                        newbuf = new byte[conn.bigrecv.room];
-                        Array.Copy(conn.bigrecv.buf, newbuf, conn.bigrecv.buf.Length);
-                        conn.bigrecv.buf = newbuf;
-                    }
-                    else
-                        newbuf = conn.bigrecv.buf;
-
-                    if (newbuf == null)
-                    {
-                        if (conn.p != null)
-                            _logManager.LogP(LogLevel.Error, "net", conn.p, "cannot allocate {0} bytes for bigpacket", newsize);
-                        else
-                            _logManager.Log(LogLevel.Error, "<net> (client connection) cannot allocate {0} bytes for bigpacket", newsize);
-
-                        conn.bigrecv.free();
-                        return;
-                    }
-
-                    Array.Copy(buffer.Bytes, 2, newbuf, conn.bigrecv.size, buffer.NumBytes - 2);
-                    conn.bigrecv.buf = newbuf;
-                    conn.bigrecv.size = newsize;
-
-                    ReliablePacket rp = new ReliablePacket(buffer.Bytes);
-                    if (rp.T2 == 0x08)
-                        return;
-
-                    if (newbuf[0] > 0 && newbuf[0] < MAXTYPES)
-                    {
-                        if (conn.p != null)
-                        {
-                            PacketDelegate pd;
-                            if (_handlers.TryGetValue(newbuf[0], out pd) == true)
-                            {
-                                pd(conn.p, newbuf, newsize);
-                            }
-                        }
-                        else
-                            conn.cc.i.HandlePacket(newbuf, newsize);
-                    }
-                    else
-                    {
-                        if (conn.p != null)
-                            _logManager.LogP(LogLevel.Warn, "net", conn.p, "bad type for bigpacket: {0}", newbuf[0]);
-                        else
-                            _logManager.Log(LogLevel.Warn, "<net> (client connection) bad type for bigpacket: {0}", newbuf[0]);
-                    }
-
-                    conn.bigrecv.free();
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private void processPresize(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes < 7)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                ReliablePacket rp = new ReliablePacket(buffer.Bytes);
-                int size = rp.SeqNum;
-                ArraySegment<byte> rpData = rp.GetData(buffer.NumBytes - 6);
-
-                lock (conn.bigmtx)
-                {
-                    // only handle presized packets for player connections, not client connections
-                    if (conn.p == null)
-                        return;
-
-                    if (conn.sizedrecv.offset == 0)
-                    {
-                        // first packet
-                        
-                        int type = rpData.Array[rpData.Offset];
-                        if (type < MAXTYPES)
-                        {
-                            conn.sizedrecv.type = type;
-                            conn.sizedrecv.totallen = size;
-                        }
-                        else
-                        {
-                            endSized(conn.p, false);
-                        }
-                    }
-
-                    if (conn.sizedrecv.totallen != size)
-                    {
-                        _logManager.LogP(LogLevel.Malicious, "net", conn.p, "length mismatch in sized packet");
-                        endSized(conn.p, false);
-                    }
-                    else if ((conn.sizedrecv.offset + buffer.NumBytes - 6) > size)
-                    {
-                        _logManager.LogP(LogLevel.Malicious, "net", conn.p, "sized packet overflow");
-                        endSized(conn.p, false);
-                    }
-                    else
-                    {
-                        SizedPacketDelegate spd;
-                        if (_sizedhandlers.TryGetValue(conn.sizedrecv.type, out spd) == true)
-                        {
-                            spd(conn.p, rpData, conn.sizedrecv.offset, size);
-                        }
-
-                        conn.sizedrecv.offset += rpData.Count;
-
-                        if (conn.sizedrecv.offset >= size)
-                            endSized(conn.p, true); // sized recieve is complete
-                    }
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private void processCancelReq(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes != 2)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                // the client has requested a cancel for the file transfer
-                lock (conn.olmtx)
-                {
-                    // cancel current presized transfer
-                    LinkedListNode<SizedSendData> node = conn.sizedsends.First;
-                    if (node != null)
-                    {
-                        SizedSendData sd = node.Value;
-                        if (sd != null)
-                        {
-                            sd.RequestData(sd.Clos, 0, null, 0); // notify transfer complete
-                        }
-                        conn.sizedsends.RemoveFirst();
-                    }
-
-                    ReliablePacket rp = new ReliablePacket(buffer.Bytes); // reusing buffer
-                    rp.T1 = 0x00;
-                    rp.T2 = 0x0C;
-                    bufferPacket(conn, buffer.Bytes, 2, NetSendFlags.Reliable, null, null);
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private  void processCancel(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes != 2)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                if (conn.p != null)
-                {
-                    lock (conn.bigmtx)
-                    {
-                        endSized(conn.p, false);
-                    }
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        // call with bigmtx locked
-        private void endSized(Player p, bool success)
-        {
-            if (p == null)
-                return;
-
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
-                return;
-
-            if (conn.sizedrecv.offset != 0)
-            {
-                int type = conn.sizedrecv.type;
-                int arg = success ? conn.sizedrecv.totallen : -1;
-
-                // tell listeners that they're cancelled
-                if (type < MAXTYPES)
-                {
-                    SizedPacketDelegate spd;
-                    if (_sizedhandlers.TryGetValue(type, out spd) == true)
-                    {
-                        spd(p, null, arg, arg);
-                    }
-                }
-
-                conn.sizedrecv.type = 0;
-                conn.sizedrecv.totallen = 0;
-                conn.sizedrecv.offset = 0;
-            }
-        }
-
-        private void processGrouped(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                if (buffer.NumBytes < 4)
-                    return;
-
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                int pos = 2, len = 1;
-
-                while (pos < buffer.NumBytes && len > 0)
-                {
-                    len = buffer.Bytes[pos++];
-                    if (pos + len <= buffer.NumBytes)
-                    {
-                        SubspaceBuffer b = _bufferPool.Get();
-                        b.conn = conn;
-                        b.NumBytes = len;
-                        Array.Copy(buffer.Bytes, pos, b.Bytes, 0, len);
-                        processBuffer(b);
-                    }
-
-                    pos += len;
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        private void processSpecial(SubspaceBuffer buffer)
-        {
-            if (buffer == null)
-                return;
-
-            try
-            {
-                ConnData conn = buffer.conn;
-                if (conn == null)
-                    return;
-
-                if (conn.p == null)
-                    return;
-
-                ReliablePacket rp = new ReliablePacket(buffer.Bytes);
-                PacketDelegate pd;
-                if (_nethandlers.TryGetValue(rp.T2, out pd) == true)
-                {
-                    pd(conn.p, buffer.Bytes, buffer.NumBytes);
-                }
-            }
-            finally
-            {
-                buffer.Dispose();
-            }
-        }
-
-        #endregion
-
-        public Network()
-        {
-            _oohandlers = new oohandler[20];
-
-            _oohandlers[0] = null; //00 - nothing
-            _oohandlers[1] = null; //01 - key initiation
-            _oohandlers[2] = processKeyResponse; //02 - key response
-            _oohandlers[3] = processReliable; //03 - reliable
-            _oohandlers[4] = processAck; //04 - reliable response
-            _oohandlers[5] = processSyncRequest; //05 - time sync request
-            _oohandlers[6] = null; //06 - time sync response
-            _oohandlers[7] = processDrop; //07 - close connection
-            _oohandlers[8] = processBigData; //08 - bigpacket
-            _oohandlers[9] = processBigData; //09 - bigpacket2
-            _oohandlers[10] = processPresize; //0A - presized data (file transfer)
-            _oohandlers[11] = processCancelReq;  //0B - cancel presized
-            _oohandlers[12] = processCancel; //0C - presized has been cancelled
-            _oohandlers[13] = null; //0D - nothing
-            _oohandlers[14] = processGrouped; //0E - grouped
-            _oohandlers[15] = null; // 0x0F
-            _oohandlers[16] = null; // 0x10
-            _oohandlers[17] = null; // 0x11
-            _oohandlers[18] = null; // 0x12
-            _oohandlers[19] = processSpecial; // 0x13 - cont key response
-        }
 
         private const int MAXTYPES = 64;
 
@@ -952,13 +376,32 @@ namespace SS.Core
 
         private NetStats _globalStats = new NetStats();
 
-        //private BufferPool<SubspaceBuffer> _bufferPool = new BufferPool<SubspaceBuffer>();
-        /*
-        public Network(BufferPool<SubspaceBuffer> bufferPool)
+        public Network()
         {
-            _bufferPool = bufferPool;
+            _oohandlers = new oohandler[20];
+
+            _oohandlers[0] = null; //00 - nothing
+            _oohandlers[1] = null; //01 - key initiation
+            _oohandlers[2] = processKeyResponse; //02 - key response
+            _oohandlers[3] = processReliable; //03 - reliable
+            _oohandlers[4] = processAck; //04 - reliable response
+            _oohandlers[5] = processSyncRequest; //05 - time sync request
+            _oohandlers[6] = null; //06 - time sync response
+            _oohandlers[7] = processDrop; //07 - close connection
+            _oohandlers[8] = processBigData; //08 - bigpacket
+            _oohandlers[9] = processBigData; //09 - bigpacket2
+            _oohandlers[10] = processPresize; //0A - presized data (file transfer)
+            _oohandlers[11] = processCancelReq;  //0B - cancel presized
+            _oohandlers[12] = processCancel; //0C - presized has been cancelled
+            _oohandlers[13] = null; //0D - nothing
+            _oohandlers[14] = processGrouped; //0E - grouped
+            _oohandlers[15] = null; // 0x0F
+            _oohandlers[16] = null; // 0x10
+            _oohandlers[17] = null; // 0x11
+            _oohandlers[18] = null; // 0x12
+            _oohandlers[19] = processSpecial; // 0x13 - cont key response
         }
-        */
+
         private Socket createSocket(int port, IPAddress bindAddress)
         {
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -1309,14 +752,14 @@ namespace SS.Core
                     nextNode = node.Next;
 
                     SubspaceBuffer b = node.Value;
-                    if (b.callback != null)
+                    if (b.Callback != null)
                     {
                         // this is ugly, but we have to release the outlist mutex
                         // during these callbacks, because the callback might need
                         // to acquire some mutexes of its own, and we want to avoid
                         // deadlock.
                         Monitor.Exit(conn.olmtx);
-                        b.callback(p, false, b.clos);
+                        b.Callback(p, false, b.Clos);
                         Monitor.Enter(conn.olmtx);
                     }
 
@@ -1364,7 +807,7 @@ namespace SS.Core
             // process lagouts
             if (p.WhenLoggedIn == PlayerState.Uninitialized // acts as flag to prevent dups
                 && p.Status < PlayerState.LeavingZone // don't kick them if they're already on the way out
-                && (diff.TotalMilliseconds > _config.droptimeout || conn.hitmaxretries || conn.hitmaxoutlist) // these three are our kicking conditions, for now
+                && ((diff.TotalMilliseconds/10) > _config.droptimeout || conn.hitmaxretries || conn.hitmaxoutlist) // these three are our kicking conditions, for now
                 )
             {
                 // manually create an unreliable chat packet because we won't have time to send it properly
@@ -1563,7 +1006,7 @@ namespace SS.Core
                             Debug.Assert((pri != (int)BandwidthPriorities.Reliable) && (pri != (int)BandwidthPriorities.Ack));
 
                         // check if it's time to send this yet (use linearly increasing timeouts)
-                        if ((buf.tries != 0) && ((now - buf.lastretry).TotalMilliseconds <= (timeout * buf.tries)))
+                        if ((buf.Tries != 0) && ((now - buf.LastRetry).TotalMilliseconds <= (timeout * buf.Tries)))
                             continue;
 
                         // only buffer fixed number of rel packets to client
@@ -1572,7 +1015,7 @@ namespace SS.Core
                             continue;
 
                         // if we've retried too many times, kick the player
-                        if (buf.tries > _config.maxretries)
+                        if (buf.Tries > _config.maxretries)
                         {
                             conn.hitmaxretries = true;
                             return;
@@ -1584,7 +1027,7 @@ namespace SS.Core
                             pri))
                         {
                             // try dropping it, if we can
-                            if ((buf.flags & NetSendFlags.Dropabble) != 0)
+                            if ((buf.Flags & NetSendFlags.Dropabble) != 0)
                             {
                                 Debug.Assert(pri < (int)BandwidthPriorities.Reliable);
                                 outlist.Remove(node);
@@ -1597,7 +1040,7 @@ namespace SS.Core
                             continue;
                         }
 
-                        if (buf.tries > 0)
+                        if (buf.Tries > 0)
                         {
                             // this is a retry, not an initial send. record it for
                             // lag stats and also reduce bw limit (with clipping)
@@ -1605,8 +1048,8 @@ namespace SS.Core
                             conn.bw.AdjustForRetry();
                         }
 
-                        buf.lastretry = DateTime.Now;
-                        buf.tries++;
+                        buf.LastRetry = DateTime.Now;
+                        buf.Tries++;
 
                         // this sends it or adds it to a pending grouped packet
                         gp.Send(buf, conn);
@@ -1631,75 +1074,6 @@ namespace SS.Core
                 conn.hitmaxoutlist = true;
         }
 
-        /// <summary>
-        /// this is a helper to group up packets to be send out together as 1 combined packet
-        /// </summary>
-        private struct GroupedPacket
-        {
-            private Network _network;
-            //private SubspaceBuffer _sb;
-            private byte[] _buf;
-            private ArraySegment<byte> _remainingSegment;
-            private int _count;
-            
-            public GroupedPacket(Network network, byte[] buf)
-            {
-                _network = network;
-                //_sb = _network._bufferPool.Get();
-                _buf = buf;
-                _remainingSegment = new ArraySegment<byte>(_buf, 0, _buf.Length);
-                _count = 0;
-            }
-            
-            public void Init()
-            {
-                _buf[0] = 0x00;
-                _buf[1] = 0x0E;
-                _remainingSegment = new ArraySegment<byte>(_buf, 2, _buf.Length - 2);
-                _count = 0;
-            }
-
-            public void Flush(ConnData conn)
-            {
-                if (_count == 1)
-                {
-                    // there's only one in the group, so don't send it
-                    // in a group. +3 to skip past the 00 0E and size of
-                    // first packet
-                    _network.sendRaw(conn, new ArraySegment<byte>(_buf, 3, _remainingSegment.Offset - 3));
-                }
-                else if (_count > 1)
-                {
-                    _network.sendRaw(conn, _buf, _remainingSegment.Offset);
-                }
-
-                // TODO: record stats
-                //if(count > 0 && count < _config.n
-
-                Init();
-            }
-
-            public void Send(SubspaceBuffer buffer, ConnData conn)
-            {
-                if (buffer.NumBytes <= 255) // 255 must be the size limit a grouped packet can store (max 1 byte can represent for the length)
-                {
-                    if(_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes))
-                        Flush(conn);
-
-                    _remainingSegment.Array[_remainingSegment.Offset] = (byte)buffer.NumBytes;
-                    Array.Copy(buffer.Bytes, 0, _remainingSegment.Array, _remainingSegment.Offset + 1, buffer.NumBytes);
-
-                    _remainingSegment = new ArraySegment<byte>(_remainingSegment.Array, _remainingSegment.Offset + (buffer.NumBytes + 1), _remainingSegment.Count - (buffer.NumBytes + 1));
-                    _count++;
-                }
-                else
-                {
-                    // can't fit in group, send immediately
-                    _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
-                }
-            }
-        }
-
         private void clip(ref uint timeout, uint low, uint high)
         {
             if(timeout > high)
@@ -1710,7 +1084,7 @@ namespace SS.Core
 
         private static bool isOurs(Player p)
         {
-            return p.Type == ClientType.Continuum || p.Type == ClientType.Vie;
+            return p.Type == ClientType.Continuum || p.Type == ClientType.VIE;
         }
 
         private void handleGamePacketRecieved(ListenData ld)
@@ -1806,7 +1180,7 @@ namespace SS.Core
                 return;
             }
 
-            buffer.conn = conn;
+            buffer.Conn = conn;
             conn.lastPkt = DateTime.Now;
             conn.bytesRecieved += (ulong)buffer.NumBytes;
             conn.pktRecieved++;
@@ -1842,7 +1216,7 @@ namespace SS.Core
         /// <param name="buffer"></param>
         private void processBuffer(SubspaceBuffer buffer)
         {
-            ConnData conn = buffer.conn;
+            ConnData conn = buffer.Conn;
             ReliablePacket rp = new ReliablePacket(buffer.Bytes);
             if (rp.T1 == 0x00)
             {
@@ -1871,6 +1245,8 @@ namespace SS.Core
                     PacketDelegate packetDelegate;
                     if (_handlers.TryGetValue(rp.T1, out packetDelegate) == true)
                         packetDelegate(conn.p, buffer.Bytes, buffer.NumBytes);
+                    else
+                        _logManager.Log(LogLevel.Drivel, "<net> no handler for packet T1 [{0}]", rp.T1);
                 }
                 else if (conn.cc != null)
                 {
@@ -2013,20 +1389,20 @@ namespace SS.Core
             }
 
             SubspaceBuffer buf = _bufferPool.Get();
-            buf.conn = conn;
-            buf.lastretry = DateTime.Now.Subtract(new TimeSpan(0, 0, 100));
-            buf.tries = 0;
-            buf.callback = callback;
-            buf.clos = clos;
-            buf.flags = flags;
+            buf.Conn = conn;
+            buf.LastRetry = DateTime.Now.Subtract(new TimeSpan(0, 0, 100));
+            buf.Tries = 0;
+            buf.Callback = callback;
+            buf.Clos = clos;
+            buf.Flags = flags;
 
             // get data into packet
             if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
             {
                 buf.NumBytes = len + Constants.ReliableHeaderLen;
                 ReliablePacket rp = new ReliablePacket(buf.Bytes);
-                rp.T1 = 0;
-                rp.T2 = 3;
+                rp.T1 = 0x00;
+                rp.T2 = 0x03;
                 rp.SeqNum = conn.s2cn++;
                 rp.SetData(data, len);
             }
@@ -2040,6 +1416,590 @@ namespace SS.Core
 
             return buf;
         }
+
+        #region oohandlers (network layer header handling)
+
+        private void processKeyResponse(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes != 6)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                if (conn.cc != null)
+                    conn.cc.i.Connected();
+                else if (conn.p != null)
+                    _logManager.LogP(LogLevel.Malicious, "net", conn.p, "got key response packet");
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processReliable(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            if (buffer.NumBytes < 7)
+            {
+                buffer.Dispose();
+                return;
+            }
+
+            ReliablePacket rp = new ReliablePacket(buffer.Bytes);
+            int sn = rp.SeqNum;
+
+            ConnData conn = buffer.Conn;
+            if (conn == null)
+            {
+                buffer.Dispose();
+                return;
+            }
+
+            Monitor.Enter(conn.relmtx);
+
+            if ((sn - conn.c2sn) >= Constants.CFG_INCOMING_BUFFER || sn < 0)
+            {
+                Monitor.Exit(conn.relmtx);
+
+                // just drop it
+                if (conn.p != null)
+                    _logManager.Log(LogLevel.Drivel, "<net> [{0}] [pid={1}] reliable packet with too big delta ({2} - {3})", conn.p.Name, conn.p.Id, sn, conn.c2sn);
+                else
+                    _logManager.Log(LogLevel.Drivel, "<net> (client connection) reliable packet with too big delta ({0} - {1})", sn, conn.c2sn);
+
+                buffer.Dispose();
+            }
+            else
+            {
+                // store it and ack
+
+                // add to rel stuff to be processed
+                int spot = sn % Constants.CFG_INCOMING_BUFFER;
+                if ((sn < conn.c2sn) || (conn.relbuf[spot] != null))
+                {
+                    // a dup
+                    conn.relDups++;
+                    buffer.Dispose();
+                }
+                else
+                {
+                    conn.relbuf[spot] = buffer;
+                }
+
+                Monitor.Exit(conn.relmtx);
+
+                // send the ack
+                using (SubspaceBuffer ackBuffer = _bufferPool.Get())
+                {
+                    AckPacket ap = new AckPacket(ackBuffer.Bytes);
+                    ap.T1 = 0x00;
+                    ap.T2 = 0x04;
+                    ap.SeqNum = sn;
+
+                    lock (conn.olmtx)
+                    {
+                        bufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack, null, null);
+                    }
+                }
+
+                // add to global rel list for processing
+                _relqueue.Enqueue(conn);
+            }
+        }
+
+        private void processAck(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            if (buffer.NumBytes != 6)
+            {
+                // ack packets are 6 bytes long
+                buffer.Dispose();
+                return;
+            }
+
+            ConnData conn = buffer.Conn;
+            if (conn == null)
+            {
+                buffer.Dispose();
+                return;
+            }
+
+            ReliablePacket rp = new ReliablePacket(buffer.Bytes);
+            int seqNum = rp.SeqNum;
+
+            Monitor.Enter(conn.olmtx);
+
+            LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriorities.Reliable];
+            LinkedListNode<SubspaceBuffer> nextNode = null;
+            for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
+            {
+                nextNode = node.Next;
+
+                SubspaceBuffer b = node.Value;
+                ReliablePacket brp = new ReliablePacket(b.Bytes);
+                if (seqNum == brp.SeqNum)
+                {
+                    outlist.Remove(node);
+                    Monitor.Exit(conn.olmtx);
+
+                    if (b.Callback != null)
+                        b.Callback(conn.p, true, b.Clos);
+
+                    if (b.Tries == 1)
+                    {
+                        int rtt = (int)DateTime.Now.Subtract(b.LastRetry).TotalMilliseconds;
+                        if (rtt < 0)
+                        {
+                            _logManager.Log(LogLevel.Error, "<net> negative rtt ({0}); clock going backwards", rtt);
+                            rtt = 100;
+                        }
+
+                        int dev = conn.avgrtt - rtt;
+                        if (dev < 0)
+                            dev = -dev;
+
+                        conn.rttdev = (conn.rttdev * 3 + dev) / 4;
+                        conn.avgrtt = (conn.avgrtt * 7 + rtt) / 8;
+
+                        //if (_lagc != null && conn.p != null)
+                        //_lagc.RelDelay(conn->p, rtt);
+                    }
+
+                    // handle limit adjustment
+                    conn.bw.AdjustForAck();
+
+                    b.Dispose();
+                    buffer.Dispose();
+                    return;
+                }
+            }
+
+            Monitor.Exit(conn.olmtx);
+            buffer.Dispose();
+        }
+
+        private void processSyncRequest(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes != 14)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                TimeSyncC2SPacket cts = new TimeSyncC2SPacket(buffer.Bytes);
+                using (SubspaceBuffer b = _bufferPool.Get())
+                {
+                    TimeSyncS2CPacket ts = new TimeSyncS2CPacket(b.Bytes);
+                    ts.Initialize();
+                    //ts.T1 = 0x00;
+                    //ts.T2 = 0x06;
+                    ts.Clienttime = cts.Time;
+                    ts.Servertime = Environment.TickCount; // asss does this one in the lock, but i rather lock as short as possbile
+
+                    lock (conn.olmtx)
+                    {
+                        // note: this bypasses bandwidth limits
+                        sendRaw(conn, b.Bytes, TimeSyncS2CPacket.Length);
+
+                        // submit data to lagdata
+                        /*if (_lagc != null && conn.p != null)
+	                    {
+		                    struct TimeSyncData data;
+		                    data.s_pktrcvd = conn->pktrecvd;
+		                    data.s_pktsent = conn->pktsent;
+		                    data.c_pktrcvd = cts->pktrecvd;
+		                    data.c_pktsent = cts->pktsent;
+		                    data.s_time = ts.servertime;
+		                    data.c_time = ts.clienttime;
+		                    lagc->TimeSync(conn->p, &data);
+	                    }*/
+                    }
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processDrop(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes != 2)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                if (conn.p != null)
+                {
+                    _playerData.KickPlayer(conn.p);
+                }
+                else if (conn.cc != null)
+                {
+                    //buf->conn->cc->i->Disconnected();
+                    /* FIXME: this sends an extra 0007 to the client. that should
+                     * probably go away. */
+                    //DropClientConnection(buf->conn->cc);
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processBigData(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes < 3)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                lock (conn.bigmtx)
+                {
+                    int newsize = conn.bigrecv.size + buffer.NumBytes - 2;
+                    if (newsize <= 0 || newsize > Constants.MaxBigPacket)
+                    {
+                        if (conn.p != null)
+                            _logManager.LogP(LogLevel.Malicious, "net", conn.p, "refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
+                        else
+                            _logManager.Log(LogLevel.Malicious, "<net> (client connection) refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
+
+                        conn.bigrecv.free();
+                        return;
+                    }
+
+                    byte[] newbuf = null;
+
+                    if (conn.bigrecv.room < newsize)
+                    {
+                        conn.bigrecv.room *= 2;
+                        if (conn.bigrecv.room < newsize)
+                            conn.bigrecv.room = newsize;
+
+                        newbuf = new byte[conn.bigrecv.room];
+                        Array.Copy(conn.bigrecv.buf, newbuf, conn.bigrecv.buf.Length);
+                        conn.bigrecv.buf = newbuf;
+                    }
+                    else
+                        newbuf = conn.bigrecv.buf;
+
+                    if (newbuf == null)
+                    {
+                        if (conn.p != null)
+                            _logManager.LogP(LogLevel.Error, "net", conn.p, "cannot allocate {0} bytes for bigpacket", newsize);
+                        else
+                            _logManager.Log(LogLevel.Error, "<net> (client connection) cannot allocate {0} bytes for bigpacket", newsize);
+
+                        conn.bigrecv.free();
+                        return;
+                    }
+
+                    Array.Copy(buffer.Bytes, 2, newbuf, conn.bigrecv.size, buffer.NumBytes - 2);
+                    conn.bigrecv.buf = newbuf;
+                    conn.bigrecv.size = newsize;
+
+                    ReliablePacket rp = new ReliablePacket(buffer.Bytes);
+                    if (rp.T2 == 0x08)
+                        return;
+
+                    if (newbuf[0] > 0 && newbuf[0] < MAXTYPES)
+                    {
+                        if (conn.p != null)
+                        {
+                            PacketDelegate pd;
+                            if (_handlers.TryGetValue(newbuf[0], out pd) == true)
+                            {
+                                pd(conn.p, newbuf, newsize);
+                            }
+                        }
+                        else
+                            conn.cc.i.HandlePacket(newbuf, newsize);
+                    }
+                    else
+                    {
+                        if (conn.p != null)
+                            _logManager.LogP(LogLevel.Warn, "net", conn.p, "bad type for bigpacket: {0}", newbuf[0]);
+                        else
+                            _logManager.Log(LogLevel.Warn, "<net> (client connection) bad type for bigpacket: {0}", newbuf[0]);
+                    }
+
+                    conn.bigrecv.free();
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processPresize(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes < 7)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                ReliablePacket rp = new ReliablePacket(buffer.Bytes);
+                int size = rp.SeqNum;
+                ArraySegment<byte> rpData = rp.GetData(buffer.NumBytes - 6);
+
+                lock (conn.bigmtx)
+                {
+                    // only handle presized packets for player connections, not client connections
+                    if (conn.p == null)
+                        return;
+
+                    if (conn.sizedrecv.offset == 0)
+                    {
+                        // first packet
+
+                        int type = rpData.Array[rpData.Offset];
+                        if (type < MAXTYPES)
+                        {
+                            conn.sizedrecv.type = type;
+                            conn.sizedrecv.totallen = size;
+                        }
+                        else
+                        {
+                            endSized(conn.p, false);
+                        }
+                    }
+
+                    if (conn.sizedrecv.totallen != size)
+                    {
+                        _logManager.LogP(LogLevel.Malicious, "net", conn.p, "length mismatch in sized packet");
+                        endSized(conn.p, false);
+                    }
+                    else if ((conn.sizedrecv.offset + buffer.NumBytes - 6) > size)
+                    {
+                        _logManager.LogP(LogLevel.Malicious, "net", conn.p, "sized packet overflow");
+                        endSized(conn.p, false);
+                    }
+                    else
+                    {
+                        SizedPacketDelegate spd;
+                        if (_sizedhandlers.TryGetValue(conn.sizedrecv.type, out spd) == true)
+                        {
+                            spd(conn.p, rpData, conn.sizedrecv.offset, size);
+                        }
+
+                        conn.sizedrecv.offset += rpData.Count;
+
+                        if (conn.sizedrecv.offset >= size)
+                            endSized(conn.p, true); // sized recieve is complete
+                    }
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processCancelReq(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes != 2)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                // the client has requested a cancel for the file transfer
+                lock (conn.olmtx)
+                {
+                    // cancel current presized transfer
+                    LinkedListNode<SizedSendData> node = conn.sizedsends.First;
+                    if (node != null)
+                    {
+                        SizedSendData sd = node.Value;
+                        if (sd != null)
+                        {
+                            sd.RequestData(sd.Clos, 0, null, 0); // notify transfer complete
+                        }
+                        conn.sizedsends.RemoveFirst();
+                    }
+
+                    ReliablePacket rp = new ReliablePacket(buffer.Bytes); // reusing buffer
+                    rp.T1 = 0x00;
+                    rp.T2 = 0x0C;
+                    bufferPacket(conn, buffer.Bytes, 2, NetSendFlags.Reliable, null, null);
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processCancel(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes != 2)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                if (conn.p != null)
+                {
+                    lock (conn.bigmtx)
+                    {
+                        endSized(conn.p, false);
+                    }
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        // call with bigmtx locked
+        private void endSized(Player p, bool success)
+        {
+            if (p == null)
+                return;
+
+            ConnData conn = p[_connKey] as ConnData;
+            if (conn == null)
+                return;
+
+            if (conn.sizedrecv.offset != 0)
+            {
+                int type = conn.sizedrecv.type;
+                int arg = success ? conn.sizedrecv.totallen : -1;
+
+                // tell listeners that they're cancelled
+                if (type < MAXTYPES)
+                {
+                    SizedPacketDelegate spd;
+                    if (_sizedhandlers.TryGetValue(type, out spd) == true)
+                    {
+                        spd(p, null, arg, arg);
+                    }
+                }
+
+                conn.sizedrecv.type = 0;
+                conn.sizedrecv.totallen = 0;
+                conn.sizedrecv.offset = 0;
+            }
+        }
+
+        private void processGrouped(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                if (buffer.NumBytes < 4)
+                    return;
+
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                int pos = 2, len = 1;
+
+                while (pos < buffer.NumBytes && len > 0)
+                {
+                    len = buffer.Bytes[pos++];
+                    if (pos + len <= buffer.NumBytes)
+                    {
+                        SubspaceBuffer b = _bufferPool.Get();
+                        b.Conn = conn;
+                        b.NumBytes = len;
+                        Array.Copy(buffer.Bytes, pos, b.Bytes, 0, len);
+                        processBuffer(b);
+                    }
+
+                    pos += len;
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        private void processSpecial(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            try
+            {
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
+                if (conn.p == null)
+                    return;
+
+                ReliablePacket rp = new ReliablePacket(buffer.Bytes);
+                PacketDelegate pd;
+                if (_nethandlers.TryGetValue(rp.T2, out pd) == true)
+                {
+                    pd(conn.p, buffer.Bytes, buffer.NumBytes);
+                }
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
+        #endregion
 
         #region IModule Members
 
@@ -2079,8 +2039,8 @@ namespace SS.Core
 
             _connKey = _playerData.AllocatePlayerData<ConnData>();
 
-            _config.droptimeout = _configManager.GetInt(_configManager.Global, "Net", "DropTimeout", 3000);
-            _config.maxoutlist = _configManager.GetInt(_configManager.Global, "Net", "MaxOutlistSize", 200);
+            _config.droptimeout = _configManager.GetInt(_configManager.Global, "Net", "DropTimeout", 3000); // centiseconds (ticks)
+            _config.maxoutlist = _configManager.GetInt(_configManager.Global, "Net", "MaxOutlistSize", 500);
 
             // (deliberately) undocumented settings
             _config.maxretries = _configManager.GetInt(_configManager.Global, "Net", "MaxRetries", 15);
@@ -2197,7 +2157,7 @@ namespace SS.Core
                 throw new ArgumentException("is null or not of type ListenData", "v");
 
             // certain ports may have restrictions on client types
-            if ((clientType == ClientType.Vie && !ld.AllowVIE) ||
+            if ((clientType == ClientType.VIE && !ld.AllowVIE) ||
                 (clientType == ClientType.Continuum && !ld.AllowContinuum))
                 return null;
 
@@ -2239,7 +2199,7 @@ namespace SS.Core
 
             switch (clientType)
             {
-                case ClientType.Vie:
+                case ClientType.VIE:
                     p.ClientName = "<ss/vie client>";
                     break;
                 case ClientType.Continuum:
@@ -2285,6 +2245,131 @@ namespace SS.Core
         #endregion
 
         #region INetwork Members
+
+        void INetwork.SendToOne(Player p, byte[] data, int len, NetSendFlags flags)
+        {
+            if (p == null)
+                return;
+
+            if (data == null)
+                return;
+
+            if (len <= 0)
+                return;
+
+            if (!isOurs(p))
+                return;
+
+            ConnData conn = p[_connKey] as ConnData;
+            if (conn == null)
+                return;
+
+            // see if we can do it the quick way
+            if (len <= (Constants.MaxPacket - Constants.ReliableHeaderLen))
+            {
+                lock (conn.olmtx)
+                {
+                    bufferPacket(conn, data, len, flags, null, null);
+                }
+            }
+            else
+            {
+                // not very efficient to allocate a new list and node just to send to one player
+                LinkedList<Player> set = new LinkedList<Player>();
+                set.AddLast(p);
+                sendToSet(set, data, len, flags);
+            }
+        }
+
+        void INetwork.SendToArena(Arena arena, Player except, byte[] data, int len, NetSendFlags flags)
+        {
+            if (data == null)
+                return;
+
+            LinkedList<Player> set = new LinkedList<Player>();
+
+            _playerData.Lock();
+            try
+            {
+                foreach (Player p in _playerData.PlayerList)
+                {
+                    if (p.Status == PlayerState.Playing &&
+                        (p.Arena == arena || arena == null) &&
+                        p != except &&
+                        isOurs(p))
+                    {
+                        set.AddLast(p);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            sendToSet(set, data, len, flags);
+        }
+
+        void INetwork.SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags)
+        {
+            sendToSet(set, data, len, flags);
+        }
+
+        private void sendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags)
+        {
+            if (set == null)
+                return;
+
+            if (data == null)
+                return;
+
+            if (len <= 0)
+                return;
+
+            if (len > Constants.MaxPacket - Constants.ReliableHeaderLen)
+            {
+                // use 00 08/9 packets (big data packets)
+                // send these reliably (to maintain ordering with sequence #)
+                using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
+                {
+                    buffer.Bytes[0] = 0x00;
+                    buffer.Bytes[1] = 0x08;
+
+                    int position = 0;
+
+                    // first send the 08 packets
+                    while (len > Constants.ChunkSize)
+                    {
+                        Array.Copy(data, position, buffer.Bytes, 2, Constants.ChunkSize);
+                        sendToSet(set, buffer.Bytes, Constants.ChunkSize + 2, flags); // only the 09 is sent reliably for some reason
+                        position += Constants.ChunkSize;
+                        len -= Constants.ChunkSize;
+                    }
+
+                    // final packet is the 09 (signals the end of the big data)
+                    buffer.Bytes[1] = 0x09;
+                    Array.Copy(data, position, buffer.Bytes, 2, len);
+                    sendToSet(set, buffer.Bytes, len + 2, flags | NetSendFlags.Reliable);
+                }
+            }
+            else
+            {
+                foreach (Player p in set)
+                {
+                    ConnData conn = p[_connKey] as ConnData;
+                    if (conn == null)
+                        continue;
+
+                    if (!isOurs(p))
+                        continue;
+
+                    lock (conn.olmtx)
+                    {
+                        bufferPacket(conn, data, len, flags, null, null);
+                    }
+                }
+            }
+        }
 
         void INetwork.AddPacket(int pktype, PacketDelegate func)
         {
@@ -2412,6 +2497,8 @@ namespace SS.Core
 
             int dIdx = d.Offset;
 
+            StringBuilder asciiBuilder = new StringBuilder(16);
+
             while (len > 0)
             {
                 for (int c = 0; c < 16 && len > 0; c++, len--)
@@ -2419,10 +2506,13 @@ namespace SS.Core
                     if(c > 0)
                         sb.Append(' ');
 
+                    asciiBuilder.Append(char.IsLetterOrDigit((char)d.Array[dIdx]) ? (char)d.Array[dIdx] : '.');
                     sb.Append(d.Array[dIdx++].ToString("X2"));
                 }
 
-                sb.AppendLine();
+                sb.Append("  ");
+                sb.AppendLine(asciiBuilder.ToString());
+                asciiBuilder.Length = 0;
             }
 
             Debug.Write(sb.ToString());

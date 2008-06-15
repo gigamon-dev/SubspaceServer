@@ -98,7 +98,11 @@ namespace SS.Core
             StringBuilder sb = new StringBuilder();
             sb.Append(((LogCode)level).ToString());
             sb.Append(' ');
-            sb.Append(string.Format(format, args));
+
+            if (args != null && args.Length > 0)
+                sb.Append(string.Format(format, args));
+            else
+                sb.Append(format);
 
             _logQueue.Enqueue(sb.ToString());
         }

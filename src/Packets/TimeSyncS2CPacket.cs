@@ -34,6 +34,12 @@ namespace SS.Core.Packets
             this.data = data;
         }
 
+        public void Initialize()
+        {
+            T1 = 0x00;
+            T2 = 0x06;
+        }
+
         public byte T1
         {
             //get { return ExtendedBitConverter.ToByte(data, t1.ByteOffset, t1.BitOffset); }

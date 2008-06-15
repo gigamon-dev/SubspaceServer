@@ -6,6 +6,7 @@ using System.Threading;
 
 using SS.Utilities;
 using SS.Core.ComponentInterfaces;
+using System.Diagnostics;
 
 namespace SS.Core
 {
@@ -96,8 +97,8 @@ namespace SS.Core
                     _files.AddLast(cf);
                 }
 
-                // create handle while holding cfgmtx to preserve invariant:
-                // all open files have at least one handle
+                // create handle while holding cfgmtx so that the file doesn't get
+                // garbage collected before it has a reference
                 return new ConfigHandle(cf, configChanged, clos);
             }
         }
@@ -107,26 +108,21 @@ namespace SS.Core
             if (ch == null)
                 return;
 
-            lock (cfgmtx)
+            ConfigFile cf = ch.file;
+            bool removed = false;
+
+            cf.Lock();
+
+            try
             {
-                ConfigFile cf = ch.file;
-                cf.Lock();
-
-                System.Diagnostics.Debug.Assert(cf.Handles.Remove(ch));
-
-                if (cf.Handles.Count == 0)
-                {
-                    cf.writeDirtyValuesOne(false);
-                    cf.Unlock();
-                    _opened.Remove(cf.filename);
-                    _files.Remove(cf);
-                    cf.Dispose(); //cf.free_file();
-                }
-                else
-                {
-                    cf.Unlock();
-                }
+                 removed = cf.Handles.Remove(ch);
             }
+            finally
+            {
+                cf.Unlock();
+            }
+
+            Debug.Assert(removed);
         }
 
         /// <summary>

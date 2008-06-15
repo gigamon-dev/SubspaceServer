@@ -22,7 +22,7 @@ namespace SS.Core
         /// <summary>
         /// SubSpace client
         /// </summary>
-        Vie, 
+        VIE, 
 
         /// <summary>
         /// Continuum client
@@ -461,7 +461,7 @@ namespace SS.Core
 
         public bool IsStandard
         {
-            get { return (Type == ClientType.Vie) || (Type == ClientType.Continuum); }
+            get { return (Type == ClientType.VIE) || (Type == ClientType.Continuum); }
         }
 
         public bool IsChat

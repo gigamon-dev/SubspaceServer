@@ -6,17 +6,11 @@ using System.Threading;
 
 using SS.Core.Packets;
 using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 
 namespace SS.Core
 {
     public delegate void ArenaActionEventHandler(Arena arena, ArenaAction action);
-
-    
-
-    public interface IArenaPlace
-    {
-        bool Place(string arenaName, int? spawnX, int? spawnY, Player player);
-    }
 
     public class ArenaManager : IModule, IArenaManagerCore, IModuleLoaderAware
     {
@@ -38,6 +32,7 @@ namespace SS.Core
         // other modules
         private ILogManager _logManager;
         private IPlayerData _playerData;
+        private INetwork _net;
         private IConfigManager _configManager;
         private IServerTimer _mainLoop;
         //private IPersist _persist;
@@ -46,7 +41,7 @@ namespace SS.Core
         private ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
         private SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
 
-        public event ArenaActionEventHandler ArenaActionEvent;
+        //public event ArenaActionEventHandler ArenaActionEvent;
 
         private class SpawnLoc
         {
@@ -86,6 +81,9 @@ namespace SS.Core
         /// per arena data key (ArenaData) 
         /// </summary>
         private int _adkey;
+
+        private static readonly byte[] _brickClearBytes = new byte[1] { (byte)Packets.S2CPacketType.Brick };
+        private static readonly byte[] _enteringArenaBytes = new byte[1] { (byte)Packets.S2CPacketType.EnteringArena };
 
         public ArenaManager()
         {
@@ -131,8 +129,8 @@ namespace SS.Core
 
         void IArenaManagerCore.SendArenaResponse(Player player)
         {
-            SimplePacket whoami = new SimplePacket();
-            whoami.type = (byte)S2CPacketType.WhoAmI;
+            if (player == null)
+                return;
 
             Arena arena = player.Arena;
 
@@ -142,13 +140,19 @@ namespace SS.Core
                 return;
             }
 
-            _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [{0}] entering arena", player.Name);
+            _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [" + player.Name + "] entering arena");
 
             if (player.IsStandard)
             {
                 // send whoami packet
-                whoami.d1 = (short)player.Id;
-                //_net.SendToOne(player, whoami.GetBytes(), 3, NetworkSendFlag.NetReliable);
+                using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
+                {
+                    SimplePacket whoami = new SimplePacket(buffer.Bytes);
+                    whoami.Type = (byte)S2CPacketType.WhoAmI;
+
+                    whoami.D1 = (short)player.Id;
+                    _net.SendToOne(player, buffer.Bytes, 3, NetSendFlags.Reliable);
+                }
                 /*
                 // send settings
                 ClientSet clientset = _mm.GetModule<ClientSet>();
@@ -186,20 +190,25 @@ namespace SS.Core
 
             if (player.IsStandard)
             {
-                /*
-                MapNewsDl map = _mm.GetModule<MapNewsDl>();
+                // send to self
+                _net.SendToOne(player, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
+
+                IMapNewsDownload map = _mm.GetInterface<IMapNewsDownload>();
                 if (map != null)
                 {
-                    map.SendMapFilename(player);
+                    try
+                    {
+                        map.SendMapFilename(player);
+                    }
+                    finally
+                    {
+                        _mm.ReleaseInterface<IMapNewsDownload>();
+                    }
                 }
-                */
 
                 // send brick clear and finisher
-                //whoami.type = S2CPacketType.Brick;
-                //_net.SendToOne(player, whoami.GetBytes(), 1, NetworkSendFlag.NetReliable);
-
-                //whoami.type = S2CPacketType.EnteringArena;
-                //_net.SendToOne(player, whoami.GetBytes(), 1, NetworkSendFlag.NetReliable);
+                _net.SendToOne(player, _brickClearBytes, 1, NetSendFlags.Reliable);
+                _net.SendToOne(player, _enteringArenaBytes, 1, NetSendFlags.Reliable);
 
                 SpawnLoc sp = player[_spawnkey] as SpawnLoc;
 
@@ -207,11 +216,15 @@ namespace SS.Core
                 {
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
-                        SimplePacket wto = new SimplePacket();
-                        wto.type = (byte)S2CPacketType.WarpTo;
-                        wto.d1 = sp.X;
-                        wto.d2 = sp.Y;
-                        //_net.SendToOne(player, wto, 5, NetworkSendFlag.NetReliable);
+                        using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
+                        {
+                            SimplePacket wto = new SimplePacket(buffer.Bytes);
+                        
+                            wto.Type = (byte)S2CPacketType.WarpTo;
+                            wto.D1 = sp.X;
+                            wto.D2 = sp.Y;
+                            _net.SendToOne(player, buffer.Bytes, 5, NetSendFlags.Reliable);
+                        }
                     }
                 }
             }
@@ -219,34 +232,7 @@ namespace SS.Core
 
         void IArenaManagerCore.LeaveArena(Player player)
         {
-            bool notify;
-            Arena arena;
-
-            _playerData.WriteLock();
-            try
-            {
-                arena = player.Arena;
-                if (arena == null)
-                    return;
-
-                notify = initiateLeaveArena(player);
-            }
-            finally
-            {
-                _playerData.WriteUnlock();
-            }
-
-            if (notify)
-            {
-                SimplePacket pk = new SimplePacket();
-                pk.type = (byte)S2CPacketType.PlayerLeaving;
-                pk.d1 = (short)player.Id;
-
-                //_net.SendToArena(
-                //chatnet.SendToArena(
-
-                _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [{0}] leaving arena", player.Name);
-            }
+            leaveArena(player);
         }
 
         private bool initiateLeaveArena(Player player)
@@ -327,23 +313,32 @@ namespace SS.Core
                         }
                     }
 
-                    // first move playing players elsewhere
-                    foreach (Player player in _playerData.PlayerList)
+                    using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
                     {
-                        if (player.Arena == arena)
+                        SimplePacket whoami = new SimplePacket(buffer.Bytes);
+                        whoami.Type = (byte)S2CPacketType.WhoAmI;
+
+                        // first move playing players elsewhere
+                        foreach (Player player in _playerData.PlayerList)
                         {
-                            // TODO: 
+                            if (player.Arena == arena)
+                            {
+                                if(player.IsStandard)
+                                {
+                                    whoami.D1 = (short)player.Id;
+                                    _net.SendToOne(player, buffer.Bytes, 3, NetSendFlags.Reliable);
+                                }
+                                else if (player.IsChat)
+                                {
+                                    //_chatNet.SendToOne(
+                                }
 
-                            //if(player.IsStandard)
-                                //net.SendToOne(
-                            //else if(player.IsChat)
-                                //net.SendToOne(
+                                // actually initiate the client leaving arena on our side
+                                initiateLeaveArena(player);
 
-                            // actually initiate the client leaving arena on our side
-                            initiateLeaveArena(player);
-
-                            // and mark the same arena as his desired arena to enter
-                            player.NewArena = arena;
+                                // and mark the same arena as his desired arena to enter
+                                player.NewArena = arena;
+                            }
                         }
                     }
                 }
@@ -370,11 +365,31 @@ namespace SS.Core
             switch(player.Type)
             {
                 case ClientType.Continuum:
-                    //completeGo(
+                    completeGo(
+                        player, 
+                        arenaName, 
+                        player.Ship, 
+                        player.Xres, 
+                        player.Yres, 
+                        player.Flags.WantAllLvz, 
+                        player.pkt.AcceptAudio != 0, 
+                        player.Flags.ObscenityFilter, 
+                        spawnx, 
+                        spawny);
                     break;
 
                 case ClientType.Chat:
-                    //completeGo(
+                    completeGo(
+                        player,
+                        arenaName,
+                        ShipType.Spec,
+                        0,
+                        0,
+                        false,
+                        false,
+                        player.Flags.ObscenityFilter,
+                        0,
+                        0);
                     break;
             }
         }
@@ -467,7 +482,7 @@ namespace SS.Core
             playing = playingCount;
         }
 
-        private void completeGo(Player player, string reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, int obscene, int spawnX, int spawnY)
+        private void completeGo(Player player, string reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
         {
             if (player.Status != PlayerState.LoggedIn && player.Status != PlayerState.Playing && player.Status != PlayerState.LeavingArena)
             {
@@ -498,7 +513,7 @@ namespace SS.Core
             writeLock();
             try
             {
-                Arena arena = doFindArena(name, null, null);
+                Arena arena = doFindArena(name, ArenaState.DoInit0, ArenaState.DoDestroy2);
                 if (arena == null)
                 {
                     arena = createArena(name);
@@ -556,8 +571,8 @@ namespace SS.Core
 
         private void leaveArena(Player player)
         {
-            Arena arena;
             bool notify;
+            Arena arena;
 
             _playerData.WriteLock();
             try
@@ -575,9 +590,18 @@ namespace SS.Core
 
             if (notify)
             {
-                // TODO:
-                //SimplePacket
-                _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [{0}] leaving arena", player.Name);
+                using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
+                {
+                    SimplePacket pk = new SimplePacket(buffer.Bytes);
+
+                    pk.Type = (byte)S2CPacketType.PlayerLeaving;
+                    pk.D1 = (short)player.Id;
+
+                    _net.SendToArena(arena, player, buffer.Bytes, 3, NetSendFlags.Reliable);
+                    //chatnet.SendToArena(
+                }
+
+                _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [" + player.Name + "] leaving arena");
             }
         }
 
@@ -697,7 +721,10 @@ namespace SS.Core
                         if (arenaData == null)
                             return;
 
-                        arenaData.Holds--;
+                        if (arenaData.Holds > 0)
+                        {
+                            arenaData.Holds--;
+                        }
                         break;
 
                     default:
@@ -752,6 +779,7 @@ namespace SS.Core
             Lock();
             try
             {
+                // only running arenas should receive confchanged events
                 if (arena.Status == ArenaState.Running)
                 {
                     OnArenaAction(arena, ArenaAction.ConfChanged);
@@ -767,11 +795,11 @@ namespace SS.Core
         {
             if (playerTo.IsStandard)
             {
-                //net.SendToOne(
+                _net.SendToOne(player, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
             }
             else if (playerTo.IsChat)
             {
-                //chatnet.SendToOne(
+                //_chatNet.SendToOne(
             }
         }
 
@@ -807,10 +835,11 @@ namespace SS.Core
 
         protected virtual void OnArenaAction(Arena arena, ArenaAction action)
         {
-            if (ArenaActionEvent != null)
+            _mm.DoCallbacks(Constants.Events.ArenaAction, arena, action);
+            /*(if (ArenaActionEvent != null)
             {
                 ArenaActionEvent(arena, action);
-            }
+            }*/
         }
 
         private bool processArenaStates(object dummy)
@@ -942,6 +971,7 @@ namespace SS.Core
                             else
                             {
                                 _arenaDictionary.Remove(arena.Name);
+                                return true; // kinda hacky, but we can't enumerate again if we modify the dictionary
                             }
 
                             break;
@@ -973,8 +1003,6 @@ namespace SS.Core
             {
                 _perArenaDataLock.ReleaseReaderLock();
             }
-
-            arena[_adkey] = new ArenaData();
 
             writeLock();
             try
@@ -1058,6 +1086,7 @@ namespace SS.Core
                 return new Type[] {
                     typeof(ILogManager), 
                     typeof(IPlayerData), 
+                    typeof(INetwork), 
                     typeof(IConfigManager), 
                     typeof(IServerTimer)
                 };
@@ -1071,7 +1100,7 @@ namespace SS.Core
 
             _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
             _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            //_net = interfaceDependencies[typeof(INetwork)] as INetwork;
+            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
             //_chatnet = 
             _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
             _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
@@ -1084,18 +1113,19 @@ namespace SS.Core
             IArenaManagerCore amc = this;
             _adkey = amc.AllocateArenaData<ArenaData>();
 
-            // TODO: 
-            //if(_net)
-            //{
-            //}
+            if(_net != null)
+            {
+                _net.AddPacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);
+                _net.AddPacket((int)Packets.C2SPacketType.Leaving, packetLeaving);
+            }
 
             // TODO: 
             //if(_chatnet)
             //{
             //}
 
-            _mainLoop.SetTimer<object>(new TimerDelegate<object>(processArenaStates), 10, 10, null, null);
-            _mainLoop.SetTimer<object>(new TimerDelegate<object>(reapArenas), 170, 170, null, null);
+            _mainLoop.SetTimer<object>(new TimerDelegate<object>(processArenaStates), 100, 100, null, null);
+            _mainLoop.SetTimer<object>(new TimerDelegate<object>(reapArenas), 1700, 1700, null, null);
 
             _mm.RegisterInterface<IArenaManagerCore>(this);
 
@@ -1163,5 +1193,109 @@ namespace SS.Core
         }
 
         #endregion
+
+        private void packetGotoArena(Player p, byte[] data, int len)
+        {
+            if (p == null)
+                return;
+
+            if (data == null)
+                return;
+
+            if (len != GoArenaPacket.LengthVIE && len != GoArenaPacket.LengthContinuum)
+            {
+                _logManager.LogP(LogLevel.Malicious, "arenaman", p, "bad arena packet len={0}", len);
+                return;
+            }
+
+            GoArenaPacket go = new GoArenaPacket(data);
+
+            if (go.ShipType > (byte)ShipType.Spec)
+            {
+                _logManager.LogP(LogLevel.Malicious, "arenaman", p, "<arenaman> [{0}] bad shiptype in arena request", p.Name);
+                return;
+            }
+
+            // make a name from the request
+            string name;
+            int spx = 0;
+            int spy = 0;
+            if (go.ArenaType == -3)
+            {
+                if (!hasCapGo(p))
+                    return;
+
+                name = go.ArenaName;
+
+                if (p.Type == ClientType.Continuum)
+                {
+                    // TODO
+                    //IRedirect
+                }
+            }
+            else if (go.ArenaType == -2 || go.ArenaType == -1)
+            {
+                IArenaPlace ap = _mm.GetInterface<IArenaPlace>();
+                if (ap != null)
+                {
+                    try
+                    {
+                        if (ap.Place(out name, ref spx, ref spy, p) == false)
+                        {
+                            name = "0";
+                        }
+                    }
+                    finally
+                    {
+                        _mm.ReleaseInterface<IArenaPlace>();
+                    }
+                }
+                else
+                {
+                    name = "0";
+                }
+            }
+            else if (go.ArenaType >= 0)
+            {
+                if (!hasCapGo(p))
+                    return;
+
+                name = go.ArenaType.ToString();
+            }
+            else
+            {
+                _logManager.Log(LogLevel.Malicious, "<arenaman> [{0}] bad arenatype in arena request", p.Name);
+                return;
+            }
+
+            completeGo(
+                p,
+                name,
+                (ShipType)go.ShipType,
+                go.XRes,
+                go.YRes,
+                (len >= GoArenaPacket.LengthContinuum) ? go.OptionalGraphics != 0 : false,
+                go.WavMsg != 0,
+                (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
+                spx,
+                spy);
+        }
+
+        private void packetLeaving(Player p, byte[] data, int len)
+        {
+#if !CFG_RELAX_LENGTH_CHECKS
+            if (len != 1)
+            {
+                _logManager.LogP(LogLevel.Malicious, "arenaman", p, "bad arena leaving packet len={0}", len);
+            }
+#endif
+            leaveArena(p);
+        }
+
+        private bool hasCapGo(Player p)
+        {
+            // TODO: 
+            return true;
+        }
     }
 }

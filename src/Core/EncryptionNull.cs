@@ -100,7 +100,7 @@ namespace SS.Core
             switch (buffer[6])
             {
                 case 0x01:
-                    type = ClientType.Vie;
+                    type = ClientType.VIE;
                     break;
 
                 case 0x11:

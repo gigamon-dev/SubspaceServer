@@ -105,6 +105,11 @@ namespace SS.Core
             public static int LimitHigh;
 
             /// <summary>
+            /// initial bandwidth limit
+            /// </summary>
+            public static int LimitInitial;
+
+            /// <summary>
             /// this array represents the percentage of traffic that is allowed to be at or lower than each priority level
             /// </summary>
             public static int[] PriorityLimits = new int[Enum.GetNames(typeof(BandwidthPriorities)).Length];
@@ -128,7 +133,7 @@ namespace SS.Core
 
             public BWLimit()
             {
-                _limit = LimitLow; // start slow
+                _limit = LimitInitial;
                 _maxavail = MaxAvail;
                 _hitlimit = false;
                 _sincetime = DateTime.Now;
@@ -188,7 +193,8 @@ namespace SS.Core
             {
                 BWLimit.LimitLow = config.GetInt(config.Global, "Net", "LimitMinimum", 2500);
                 BWLimit.LimitHigh = config.GetInt(config.Global, "Net", "LimitMaximum", 102400);
-                BWLimit.ClientCanBuffer = config.GetInt(config.Global, "Net", "SendAtOnce", 30);
+                BWLimit.LimitInitial = config.GetInt(config.Global, "Net", "LimitInitial", 5000);
+                BWLimit.ClientCanBuffer = config.GetInt(config.Global, "Net", "SendAtOnce", 255);
                 BWLimit.LimitScale = config.GetInt(config.Global, "Net", "LimitScale", Constants.MaxPacket * 1);
                 BWLimit.MaxAvail = config.GetInt(config.Global, "Net", "Burst", Constants.MaxPacket * 4);
                 BWLimit.UseHitLimit = config.GetInt(config.Global, "Net", "UseHitLimit", 0) != 0;

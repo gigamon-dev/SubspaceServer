@@ -348,12 +348,18 @@ namespace SS.Core
                 case TargetType.Freq:
                 case TargetType.Zone:
                     Lock();
-                    foreach (Player p in _playerDictionary.Values)
+                    try
                     {
-                        if ((p.Status == PlayerState.Playing) && matches(target, p))
-                            list.AddLast(p);
+                        foreach (Player p in _playerDictionary.Values)
+                        {
+                            if ((p.Status == PlayerState.Playing) && matches(target, p))
+                                list.AddLast(p);
+                        }
                     }
-                    Unlock();
+                    finally
+                    {
+                        Unlock();
+                    }
                     return;
 
                 case TargetType.None:

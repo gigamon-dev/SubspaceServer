@@ -51,6 +51,11 @@ namespace SS.Core.Packets
             this.data = data;
         }
 
+        public byte[] Bytes
+        {
+            get { return data; }
+        }
+
         public byte PkType
         {
             get { return ExtendedBitConverter.ToByte(data, pktype.ByteOffset, pktype.BitOffset); }
@@ -72,13 +77,38 @@ namespace SS.Core.Packets
         public string Name
         {
             get { return Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBits / 8); }
-            set { Encoding.ASCII.GetBytes(value, 0, value.Length, data, name.ByteOffset); }
+            set
+            {
+                int charCount = name.NumBits / 8;
+                if (value.Length < charCount)
+                    charCount = value.Length;
+
+                Encoding.ASCII.GetBytes(value, 0, charCount, data, name.ByteOffset);
+            }
         }
 
         public string Squad
         {
             get { return Encoding.ASCII.GetString(data, squad.ByteOffset, squad.NumBits / 8); }
-            set { Encoding.ASCII.GetBytes(value, 0, value.Length, data, squad.ByteOffset); }
+            set
+            {
+                if (value == null)
+                {
+                    int numBytes = squad.NumBits / 8;
+                    for (int x = 0; x < numBytes; x++)
+                    {
+                        data[squad.ByteOffset + x] = 0;
+                    }
+                }
+                else
+                {
+                    int charCount = squad.NumBits / 8;
+                    if (value.Length < charCount)
+                        charCount = value.Length;
+
+                    Encoding.ASCII.GetBytes(value, 0, charCount, data, squad.ByteOffset);
+                }
+            }
         }
 
         public int KillPoints

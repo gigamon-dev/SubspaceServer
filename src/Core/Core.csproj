@@ -64,12 +64,17 @@
     <Compile Include="ClientConnection.cs" />
     <Compile Include="ComponentBroker.cs" />
     <Compile Include="ComponentInterfaces\IArenaManagerCore.cs" />
+    <Compile Include="ComponentInterfaces\IArenaPlace.cs" />
     <Compile Include="ComponentInterfaces\IAuth.cs" />
     <Compile Include="ComponentInterfaces\IBandwidthLimit.cs" />
+    <Compile Include="ComponentInterfaces\ICapabilityManager.cs" />
+    <Compile Include="ComponentInterfaces\IChatNet.cs" />
     <Compile Include="ComponentInterfaces\IConfigManager.cs" />
     <Compile Include="ComponentInterfaces\ILogManager.cs" />
     <Compile Include="ComponentInterfaces\IMainloop.cs" />
     <Compile Include="ComponentInterfaces\IMainloopController.cs" />
+    <Compile Include="ComponentInterfaces\IMapData.cs" />
+    <Compile Include="ComponentInterfaces\IMapNewsDownload.cs" />
     <Compile Include="ComponentInterfaces\IModuleLoader.cs" />
     <Compile Include="ComponentInterfaces\INetwork.cs" />
     <Compile Include="ComponentInterfaces\INetworkClient.cs" />
@@ -77,6 +82,7 @@
     <Compile Include="ComponentInterfaces\IPersist.cs" />
     <Compile Include="ComponentInterfaces\IPlayerData.cs" />
     <Compile Include="ComponentInterfaces\IServerTimer.cs" />
+    <Compile Include="ComponentInterfaces\IStats.cs" />
     <Compile Include="Config.cs" />
     <Compile Include="ConnData.cs" />
     <Compile Include="Constants.cs" />
@@ -89,6 +95,7 @@
     <Compile Include="LogManager.cs" />
     <Compile Include="Mainloop.cs">
     </Compile>
+    <Compile Include="MapNewsDownload.cs" />
     <Compile Include="ModuleLoader.cs" />
     <Compile Include="ModuleManager.cs">
     </Compile>

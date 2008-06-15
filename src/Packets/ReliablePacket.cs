@@ -52,7 +52,7 @@ namespace SS.Core.Packets
 
         public void SetData(byte[] d, int len)
         {
-            Array.Copy(d, 0, data, 3, len);
+            Array.Copy(d, 0, data, dataStartIndex, len);
         }
         /*
         public static int DataStartIndex

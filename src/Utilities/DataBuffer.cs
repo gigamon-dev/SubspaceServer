@@ -2,6 +2,7 @@ using System;
 
 namespace SS.Utilities
 {
+    /*
     /// <summary>
     /// Pooled buffer used to derive off of for use in the BufferPool class.
     /// </summary>
@@ -53,4 +54,5 @@ namespace SS.Utilities
 
         #endregion
     }
+    */
 }

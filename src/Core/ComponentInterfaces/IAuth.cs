@@ -6,17 +6,6 @@ using SS.Core.Packets;
 
 namespace SS.Core.ComponentInterfaces
 {
-    public class AuthData
-    {
-        public bool demodata;
-        public AuthCode code;
-        public bool authenticated;
-        public string name;
-        public string sendname;
-        public string squad;
-        public string customtext;
-    }
-
     public delegate void AuthDoneDelegate(Player p, AuthData data);
 
     public interface IAuth : IComponentInterface

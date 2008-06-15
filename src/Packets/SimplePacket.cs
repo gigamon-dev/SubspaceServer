@@ -5,58 +5,13 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct DataLocation
-    {
-        public readonly int ByteOffset;
-        public readonly int BitOffset;
-        public readonly int NumBits;
-
-        public DataLocation(int byteOffset, int bitOffset, int numBits)
-        {
-            ByteOffset = byteOffset;
-            BitOffset = bitOffset;
-            NumBits = numBits;
-        }
-    }
-
-    public class DataLocationBuilder
-    {
-        private int _nextByte = 0;
-        private int _nextBit = 0;
-
-        public DataLocation CreateDataLocation(int numBits)
-        {
-            if (numBits < 1)
-                throw new ArgumentOutOfRangeException("must be >= 1", "numBits");
-
-            try
-            {
-                return new DataLocation(_nextByte, _nextBit, numBits);
-            }
-            finally
-            {
-                _nextBit += numBits;
-                _nextByte += (int)(_nextBit / 8);
-                _nextBit %= 8;
-            }
-        }
-
-        public int NumBytes
-        {
-            get
-            {
-                return (_nextBit > 0) ? _nextByte + 1 : _nextByte;
-            }
-        }
-    }
-
-    public struct SimplePacketTest
+    public struct SimplePacket
     {
         // static constructor to initialize packet's info
-        static SimplePacketTest()
+        static SimplePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(7);
+            type = locationBuilder.CreateDataLocation(8);
             d1 = locationBuilder.CreateDataLocation(16);
             d2 = locationBuilder.CreateDataLocation(16);
             d3 = locationBuilder.CreateDataLocation(16);
@@ -77,7 +32,7 @@ namespace SS.Core.Packets
         // data members
         private readonly byte[] data;
 
-        public SimplePacketTest(byte[] data)
+        public SimplePacket(byte[] data)
         {
             this.data = data;
         }
@@ -85,39 +40,40 @@ namespace SS.Core.Packets
         public byte Type
         {
             get { return ExtendedBitConverter.ToByte(data, type.ByteOffset, type.BitOffset); }
+            set { ExtendedBitConverter.WriteByteBits(value, data, type.ByteOffset, type.BitOffset, type.NumBits); }
         }
 
         public short D1
         {
             get { return ExtendedBitConverter.ToInt16(data, d1.ByteOffset, d1.BitOffset); }
+            set { ExtendedBitConverter.WriteInt16Bits(value, data, d1.ByteOffset, d1.BitOffset, d1.NumBits); }
         }
 
         public short D2
         {
             get { return ExtendedBitConverter.ToInt16(data, d2.ByteOffset, d2.BitOffset); }
+            set { ExtendedBitConverter.WriteInt16Bits(value, data, d2.ByteOffset, d2.BitOffset, d2.NumBits); }
         }
 
         public short D3
         {
             get { return ExtendedBitConverter.ToInt16(data, d3.ByteOffset, d3.BitOffset); }
+            set { ExtendedBitConverter.WriteInt16Bits(value, data, d3.ByteOffset, d3.BitOffset, d3.NumBits); }
         }
 
         public short D4
         {
             get { return ExtendedBitConverter.ToInt16(data, d4.ByteOffset, d4.BitOffset); }
+            set { ExtendedBitConverter.WriteInt16Bits(value, data, d4.ByteOffset, d4.BitOffset, d4.NumBits); }
         }
 
         public short D5
         {
             get { return ExtendedBitConverter.ToInt16(data, d5.ByteOffset, d5.BitOffset); }
+            set { ExtendedBitConverter.WriteInt16Bits(value, data, d5.ByteOffset, d5.BitOffset, d5.NumBits); }
         }
     }
 
-    public class SimplePacket
-    {
-        public byte type;
-        public short d1, d2, d3, d4, d5;
-    }
     /*
     public class SimplePacketA
     {

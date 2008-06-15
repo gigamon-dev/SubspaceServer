@@ -58,7 +58,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BufferPool.cs" />
+    <Compile Include="CRC32.cs" />
     <Compile Include="DataBuffer.cs" />
+    <Compile Include="DataLocation.cs" />
+    <Compile Include="DataLocationBuilder.cs" />
     <Compile Include="ExtendedBitConverter.cs" />
     <Compile Include="MessagePassingQueue.cs" />
     <Compile Include="MultiDictionary.cs" />
