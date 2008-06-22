@@ -29,6 +29,7 @@ namespace SS.Core
 
         /// <summary>
         /// how many bytes to 'chunk' data into when sending "big packets"
+        /// (this includes sized send data (eg, map/news/lvz downloads)
         /// </summary>
         public const int ChunkSize = 480;
 
@@ -42,6 +43,7 @@ namespace SS.Core
             public const string ConnectionInit = "conninit";
             public const string PlayerAction = "playeraction";
             public const string ArenaAction = "ArenaAction";
+            public const string ChatMessage = "chatmessage";
         }
     }
 }

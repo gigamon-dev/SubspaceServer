@@ -15,13 +15,13 @@ namespace SS.Core.Packets
             code = locationBuilder.CreateDataLocation(8);
             serverversion = locationBuilder.CreateDataLocation(32);
             isvip = locationBuilder.CreateDataLocation(8);
-            blah = locationBuilder.CreateDataLocation(8*3);
+            blah = locationBuilder.CreateDataLocation(8 * 3);
             exechecksum = locationBuilder.CreateDataLocation(32);
-            blah2 = locationBuilder.CreateDataLocation(8*5);
+            blah2 = locationBuilder.CreateDataLocation(8 * 5);
             demodata = locationBuilder.CreateDataLocation(8);
             codechecksum = locationBuilder.CreateDataLocation(32);
             newschecksum = locationBuilder.CreateDataLocation(32);
-            blah4 = locationBuilder.CreateDataLocation(8*8);
+            blah4 = locationBuilder.CreateDataLocation(8 * 8);
             Length = locationBuilder.NumBytes;
         }
 
@@ -52,10 +52,10 @@ namespace SS.Core.Packets
             ServerVersion = 134;
             IsVip = 0;
 
-            for (int x = 0; x < blah.NumBits / 8; x++)
+            for (int x = 0; x < (blah.NumBits / 8); x++)
                 data[blah.ByteOffset + x] = 0;
 
-            for (int x = 0; x < blah2.NumBits / 8; x++)
+            for (int x = 0; x < (blah2.NumBits / 8); x++)
                 data[blah2.ByteOffset + x] = 0;
 
             ExeChecksum = 0;
@@ -63,7 +63,7 @@ namespace SS.Core.Packets
             CodeChecksum = 0;
             NewsChecksum = 0;
 
-            for (int x = 0; x < blah4.NumBits / 8; x++)
+            for (int x = 0; x < (blah4.NumBits / 8); x++)
                 data[blah4.ByteOffset + x] = 0;
         }
 

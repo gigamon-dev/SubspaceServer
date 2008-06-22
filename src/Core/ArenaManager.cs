@@ -153,14 +153,20 @@ namespace SS.Core
                     whoami.D1 = (short)player.Id;
                     _net.SendToOne(player, buffer.Bytes, 3, NetSendFlags.Reliable);
                 }
-                /*
+                
                 // send settings
-                ClientSet clientset = _mm.GetModule<ClientSet>();
+                IClientSettings clientset = _mm.GetInterface<IClientSettings>();
                 if (clientset != null)
                 {
-                    clientset.SendClientSettings(player);
+                    try
+                    {
+                        clientset.SendClientSettings(player);
+                    }
+                    finally
+                    {
+                        _mm.ReleaseInterface<IClientSettings>();
+                    }
                 }
-                */
             }
             else if (player.IsChat)
             {
@@ -559,6 +565,14 @@ namespace SS.Core
                 player.Yres = (short)yRes;
                 player.Flags.WantAllLvz = gfx;
                 player.pkt.AcceptAudio = voices ? (byte)1 : (byte)0;
+                player.Flags.ObscenityFilter = obscene;
+
+                SpawnLoc sp = player[_spawnkey] as SpawnLoc;
+                if (sp != null)
+                {
+                    sp.X = (short)spawnX;
+                    sp.Y = (short)spawnY;
+                }
             }
             finally
             {
@@ -795,7 +809,7 @@ namespace SS.Core
         {
             if (playerTo.IsStandard)
             {
-                _net.SendToOne(player, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
+                _net.SendToOne(playerTo, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
             }
             else if (playerTo.IsChat)
             {

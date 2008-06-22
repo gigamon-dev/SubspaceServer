@@ -33,7 +33,7 @@ namespace SS.Core
         /// use EnterArena for general stuff that should happen on
         /// entering arenas.
         /// </summary>
-        BeforeEnterArena, 
+        PreEnterArena, 
 
         /// <summary>
         /// the player is entering an arena.
@@ -52,6 +52,8 @@ namespace SS.Core
         /// </summary>
         EnterGame, 
     }
+
+    public delegate void PlayerActionDelegate(Player p, PlayerAction action, Arena arena);
 
     /// <summary>
     /// authentication return codes
@@ -210,6 +212,9 @@ namespace SS.Core
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
             //_capManager = 
 
+            _continuumChecksum = getChecksum(ContinuumExeFile);
+            _codeChecksum = getU32(ContinuumChecksumFile, 4);
+
             _pdkey = _playerData.AllocatePlayerData<CorePlayerData>();
 
             // set up callbacks
@@ -226,9 +231,6 @@ namespace SS.Core
 
             // set up periodic events
             _mainLoop.SetTimer<object>(sendKeepAlive, 5000, 5000, null, null); // every 5 seconds
-
-            _continuumChecksum = getChecksum(ContinuumExeFile);
-            _codeChecksum = getU32(ContinuumChecksumFile, 4);
 
             return true;
         }
@@ -352,6 +354,7 @@ namespace SS.Core
             if (actions == null)
                 return true;
 
+            Arena arena;
             foreach (PlayerStateChange action in actions)
             {
                 Player player = action.Player;
@@ -414,7 +417,11 @@ namespace SS.Core
                         player.Freq = -1;
 
                         // do pre-callbacks
-                        _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.BeforeEnterArena, player.Arena);
+                        arena = player.Arena;
+                        if(arena != null)
+                            arena.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.PreEnterArena, player.Arena);
+                        else // i think the player has an arena set at this point, but putting this here just in case
+                            _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.PreEnterArena, player.Arena);
 
                         // get a freq
                         if ((int)player.Ship == -1 || player.Freq == -1)
@@ -434,6 +441,10 @@ namespace SS.Core
                                     _mm.ReleaseInterface<IFreqManager>();
                                 }
                             }*/
+
+                            // set results back
+                            player.Ship = ship;
+                            player.Freq = (short)freq;
                         }
 
                         // sync scores
@@ -461,7 +472,12 @@ namespace SS.Core
                         player.Flags.SentPositionPacket = false;
                         player.Flags.SentWeaponPacket = false;
 
-                        player.Arena.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.EnterArena, player.Arena);
+                        arena = player.Arena;
+                        if (arena != null)
+                            arena.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.EnterArena, player.Arena);
+                        else // i think the player has an arena set at this point, but putting this here just in case
+                            _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.EnterArena, player.Arena);
+
                         break;
 
                     case PlayerState.LeavingArena:
@@ -493,7 +509,7 @@ namespace SS.Core
             return true;
         }
 
-        private void failVersionWith(Player p, AuthCode authCode, string text, string logmsg)
+        private void failLoginWith(Player p, AuthCode authCode, string text, string logmsg)
         {
             AuthData auth = new AuthData();
 
@@ -551,7 +567,7 @@ namespace SS.Core
                 // Continuum clients will need to ask for an update
                 if(p.Type == ClientType.VIE && pkt.CVersion != ClientVersion_VIE)
                 {
-                    failVersionWith(p, AuthCode.LockedOut, null, "bad VIE client version");
+                    failLoginWith(p, AuthCode.LockedOut, null, "bad VIE client version");
                     return;
                 }
 #endif

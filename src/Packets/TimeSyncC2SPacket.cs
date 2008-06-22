@@ -54,13 +54,13 @@ namespace SS.Core.Packets
             //set { ExtendedBitConverter.WriteInt32Bits(value, data, time.ByteOffset, time.BitOffset, time.NumBits); }
         }
 
-        public int Pktsent
+        public int PktSent
         {
             get { return ExtendedBitConverter.ToInt32(data, pktsent.ByteOffset, pktsent.BitOffset); }
             //set { ExtendedBitConverter.WriteInt32Bits(value, data, pktsent.ByteOffset, pktsent.BitOffset, pktsent.NumBits); }
         }
 
-        public int Pktrecvd
+        public int PktRecvd
         {
             get { return ExtendedBitConverter.ToInt32(data, pktrecvd.ByteOffset, pktrecvd.BitOffset); }
             //set { ExtendedBitConverter.WriteInt32Bits(value, data, pktrecvd.ByteOffset, pktrecvd.BitOffset, pktrecvd.NumBits); }

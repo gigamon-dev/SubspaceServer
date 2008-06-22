@@ -52,13 +52,13 @@ namespace SS.Core.Packets
             set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
         }
 
-        public int Clienttime
+        public int ClientTime
         {
             //get { return ExtendedBitConverter.ToInt32(data, clienttime.ByteOffset, clienttime.BitOffset); }
             set { ExtendedBitConverter.WriteInt32Bits(value, data, clienttime.ByteOffset, clienttime.BitOffset, clienttime.NumBits); }
         }
 
-        public int Servertime
+        public int ServerTime
         {
             //get { return ExtendedBitConverter.ToInt32(data, servertime.ByteOffset, servertime.BitOffset); }
             set { ExtendedBitConverter.WriteInt32Bits(value, data, servertime.ByteOffset, servertime.BitOffset, servertime.NumBits); }

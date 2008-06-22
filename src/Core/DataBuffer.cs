@@ -27,7 +27,8 @@ namespace SS.Core
 
         protected override void Dispose(bool isDisposing)
         {
-            Clear();
+            if (isDisposing)
+                Clear();
 
             base.Dispose(isDisposing); // returns this object to its pool
         }

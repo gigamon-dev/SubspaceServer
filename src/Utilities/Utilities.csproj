@@ -57,6 +57,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BitField32.cs" />
     <Compile Include="BufferPool.cs" />
     <Compile Include="CRC32.cs" />
     <Compile Include="DataBuffer.cs" />
@@ -86,6 +87,10 @@
       <ProductName>.NET Framework 3.5</ProductName>
       <Install>false</Install>
     </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Lib\zlib.net.dll" />
+    <Content Include="Lib\zlib.net.dll.license.txt" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

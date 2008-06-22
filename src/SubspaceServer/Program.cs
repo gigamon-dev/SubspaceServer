@@ -8,6 +8,7 @@ using SS.Core.Packets;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Collections.Specialized;
 
 namespace SS
 {
@@ -30,6 +31,17 @@ namespace SS
             }
         }
 
+        private struct TestStruct1
+        {
+            public int x;
+        }
+
+        private struct TestStruct2
+        {
+            public int x;
+            public static int y;
+        }
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -40,13 +52,128 @@ namespace SS
             Application.SetCompatibleTextRenderingDefault(false);
             
             Application.Run(new Form1());
+            /*
+            string hexString = @"0f 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 01 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 48 10 31 02 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 48 50 30 02 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 48 58 31 02 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00
 
+b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 48 40 31 03 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 48 50 31 06 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 48 50 31 1a 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01
+
+1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 64 03 03
+00 00 64 00 00 00 00 01 48 50 31 02 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 70 17 00 00
+a0 0f 00 00 00 00 64 00 14 00 1e 00 2c 01 32 00
+0e 01 96 00 d0 07 d0 07 00 00 f4 01 64 00 4d 01
+64 00 fa 00 e6 00 11 00 b2 0c 7e 04 a4 06 c8 00
+0f 00 da 07 90 01 e8 03 28 00 02 00 fa 00 a6 00
+64 00 b0 04 90 01 b8 0b 01 00 7d 00 19 00 32 00
+96 00 7d 00 e8 03 f4 01 1e 00 64 00 00 00 b0 04
+0c 00 40 00 c4 09 05 18 05 03 03 03 03 03 03 03
+00 00 00 00 00 00 00 00 5f 54 31 02 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 40 0d 03 00
+e0 70 72 00 26 02 00 00 40 1f 00 00 dc 05 00 00
+90 5f 01 00 84 03 00 00 0f 27 00 00 88 13 00 00
+e0 2e 00 00 60 ae 0a 00 a0 86 01 00 b8 0b 00 00
+e8 03 00 00 19 00 00 00 7c 15 00 00 b8 0b 00 00
+a0 86 01 00 00 00 00 00 b8 0b 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 f4 01 96 00
+14 00 50 00 20 03 48 00 c8 00 bc 02 03 00 06 00
+16 00 0a 00 00 00 00 00 00 00 e1 00 00 02 e8 03
+01 00 02 00 10 27 bc 02 0a 00 06 00 40 1f a0 0f
+2c 01 58 02 e8 03 fe ff c8 00 f4 01 0a 00 e8 03
+14 00 90 01 e8 03 80 00 70 17 00 00 e8 03 e8 03
+32 00 00 00 e8 03 e8 03 00 00 14 00 c8 00 f4 01
+00 00 00 00 64 00 00 00 00 00 00 00 00 00 00 00
+01 01 01 01 00 06 00 0c 01 01 00 00 01 0a 00 00
+01 00 00 00 01 01 01 01 00 00 00 00 00 00 00 00
+28 28 28 28 19 28 07 19 19 19 28 28 0a 00 1e 19
+0a 0a 1e 19 46 46 28 1e 82 c8 32 3c";
+            //string[] arr = hexString.Split(new char[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            hexString = hexString.Replace(" ", ",0x").Replace(Environment.NewLine, ",0x");
+            Console.WriteLine(hexString);
+             */
+             
+            //Console.WriteLine("ClientSettingsPacke.Length = {0}" + ClientSettingsPacket.Length);
+
+            //ClientSettingsPacket s = new ClientSettingsPacket(new DataBuffer().Bytes);
+            //ClientSettingsPacket.ClientBitSet sc = s.BitSet;
+            //sc.HideFlags = 1;
+            //s.BitSet.HideFlags = 1;
+            /*
+            unsafe
+            {
+                Console.WriteLine("TestStruct1: {0}", sizeof(TestStruct1));
+                Console.WriteLine("TestStruct2: {0}", sizeof(TestStruct2));
+            }
+            */
+
+            /*
             byte[] test = new byte[5];
             test[0] = (byte)'a';
 
             string s1 = Encoding.ASCII.GetString(test);
             string s2 = Encoding.ASCII.GetString(test, 0, 2);
             string s3 = s1.Trim('\0');
+            */
 
             /*
             // value type test

@@ -55,20 +55,29 @@
     </Reference>
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="zlib.net, Version=1.0.3.0, Culture=neutral, PublicKeyToken=47d7877cb3620160">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Utilities\Lib\zlib.net.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Arena.cs" />
     <Compile Include="ArenaManager.cs" />
     <Compile Include="ArenaPlace.cs" />
     <Compile Include="BandwidthLimit.cs" />
+    <Compile Include="Chat.cs" />
     <Compile Include="ClientConnection.cs" />
+    <Compile Include="ClientSettings.cs" />
     <Compile Include="ComponentBroker.cs" />
     <Compile Include="ComponentInterfaces\IArenaManagerCore.cs" />
     <Compile Include="ComponentInterfaces\IArenaPlace.cs" />
     <Compile Include="ComponentInterfaces\IAuth.cs" />
     <Compile Include="ComponentInterfaces\IBandwidthLimit.cs" />
     <Compile Include="ComponentInterfaces\ICapabilityManager.cs" />
+    <Compile Include="ComponentInterfaces\IChat.cs" />
     <Compile Include="ComponentInterfaces\IChatNet.cs" />
+    <Compile Include="ComponentInterfaces\IClientSettings.cs" />
+    <Compile Include="ComponentInterfaces\ICommandManager.cs" />
     <Compile Include="ComponentInterfaces\IConfigManager.cs" />
     <Compile Include="ComponentInterfaces\ILogManager.cs" />
     <Compile Include="ComponentInterfaces\IMainloop.cs" />
@@ -79,6 +88,7 @@
     <Compile Include="ComponentInterfaces\INetwork.cs" />
     <Compile Include="ComponentInterfaces\INetworkClient.cs" />
     <Compile Include="ComponentInterfaces\INetworkEncryption.cs" />
+    <Compile Include="ComponentInterfaces\IObscene.cs" />
     <Compile Include="ComponentInterfaces\IPersist.cs" />
     <Compile Include="ComponentInterfaces\IPlayerData.cs" />
     <Compile Include="ComponentInterfaces\IServerTimer.cs" />

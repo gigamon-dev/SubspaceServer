@@ -54,6 +54,11 @@ namespace SS.Core.Packets
         {
             Array.Copy(d, 0, data, dataStartIndex, len);
         }
+
+        public void SetData(ArraySegment<byte> d)
+        {
+            Array.Copy(d.Array, d.Offset, data, dataStartIndex, d.Count);
+        }
         /*
         public static int DataStartIndex
         {

@@ -4,6 +4,7 @@ using System.Text;
 using System.Net;
 using SS.Core.Packets;
 using System.Collections.Specialized;
+using SS.Utilities;
 
 namespace SS.Core
 {
@@ -320,15 +321,15 @@ namespace SS.Core
 
         public class PlayerFlags
         {
-            private BitVector32 flagVector = new BitVector32();
+            private BitVector32 flagVector = new BitVector32(0);
 
             /// <summary>
             /// if the player has been authenticated by either a billing server or a password file
             /// </summary>
             public bool Authenticated
             {
-                get { return flagVector[0]; }
-                set { flagVector[0] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(0)]; }
+                set { flagVector[BitVector32Masks.GetMask(0)] = value; }
             }
 
             /// <summary>
@@ -336,8 +337,8 @@ namespace SS.Core
             /// </summary>
             public bool DuringChange
             {
-                get { return flagVector[1]; }
-                set { flagVector[1] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(1)]; }
+                set { flagVector[BitVector32Masks.GetMask(1)] = value; }
             }
 
             /// <summary>
@@ -345,8 +346,8 @@ namespace SS.Core
             /// </summary>
             public bool WantAllLvz
             {
-                get { return flagVector[2]; }
-                set { flagVector[2] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(2)]; }
+                set { flagVector[BitVector32Masks.GetMask(2)] = value; }
             }
 
             /// <summary>
@@ -354,8 +355,8 @@ namespace SS.Core
             /// </summary>
             public bool DuringQuery
             {
-                get { return flagVector[3]; }
-                set { flagVector[3] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(3)]; }
+                set { flagVector[BitVector32Masks.GetMask(3)] = value; }
             }
 
             /// <summary>
@@ -363,8 +364,8 @@ namespace SS.Core
             /// </summary>
             public bool NoShip
             {
-                get { return flagVector[4]; }
-                set { flagVector[4] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(4)]; }
+                set { flagVector[BitVector32Masks.GetMask(4)] = value; }
             }
 
             /// <summary>
@@ -372,8 +373,8 @@ namespace SS.Core
             /// </summary>
             public bool NoFlagsBalls
             {
-                get { return flagVector[5]; }
-                set { flagVector[5] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(5)]; }
+                set { flagVector[BitVector32Masks.GetMask(5)] = value; }
             }
 
             /// <summary>
@@ -381,8 +382,8 @@ namespace SS.Core
             /// </summary>
             public bool SentPositionPacket
             {
-                get { return flagVector[6]; }
-                set { flagVector[6] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(6)]; }
+                set { flagVector[BitVector32Masks.GetMask(6)] = value; }
             }
 
             /// <summary>
@@ -390,8 +391,8 @@ namespace SS.Core
             /// </summary>
             public bool SentWeaponPacket
             {
-                get { return flagVector[7]; }
-                set { flagVector[7] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(7)]; }
+                set { flagVector[BitVector32Masks.GetMask(7)] = value; }
             }
 
             /// <summary>
@@ -399,8 +400,8 @@ namespace SS.Core
             /// </summary>
             public bool SeeAllPositionPackets
             {
-                get { return flagVector[8]; }
-                set { flagVector[8] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(8)]; }
+                set { flagVector[BitVector32Masks.GetMask(8)] = value; }
             }
 
             /// <summary>
@@ -408,8 +409,8 @@ namespace SS.Core
             /// </summary>
             public bool SeeOwnPosition
             {
-                get { return flagVector[9]; }
-                set { flagVector[9] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(9)]; }
+                set { flagVector[BitVector32Masks.GetMask(9)] = value; }
             }
 
             /// <summary>
@@ -417,8 +418,8 @@ namespace SS.Core
             /// </summary>
             public bool LeaveArenaWhenDoneWaiting
             {
-                get { return flagVector[10]; }
-                set { flagVector[10] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(10)]; }
+                set { flagVector[BitVector32Masks.GetMask(10)] = value; }
             }
 
             /// <summary>
@@ -426,15 +427,15 @@ namespace SS.Core
             /// </summary>
             public bool ObscenityFilter
             {
-                get { return flagVector[11]; }
-                set { flagVector[11] = value; }
+                get { return flagVector[BitVector32Masks.GetMask(11)]; }
+                set { flagVector[BitVector32Masks.GetMask(11)] = value; }
             }
         }
 
         /// <summary>
         /// some extra flags that don't have a better place to go
         /// </summary>
-        public PlayerFlags Flags = new PlayerFlags();
+        public readonly PlayerFlags Flags = new PlayerFlags();
 
         // used for PPD (Per Player Data)
         // TODO: consider storing this in central lookup instead of a dictionary on each player object

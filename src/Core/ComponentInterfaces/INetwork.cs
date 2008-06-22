@@ -8,6 +8,10 @@ namespace SS.Core.ComponentInterfaces
     [Flags]
     public enum NetSendFlags
     {
+        /// <summary>
+        /// Same as Unreliable
+        /// </summary>
+        None = 0x00,
         Unreliable = 0x00,
         Reliable = 0x01,
         Dropabble = 0x02,
@@ -26,6 +30,11 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         Ack = 0x0100,
     }
+
+    public delegate void PacketDelegate(Player p, byte[] data, int length);
+    public delegate void SizedPacketDelegate(Player p, ArraySegment<byte>? data, int offset, int totallen);
+    public delegate void ReliableDelegate(Player p, bool success, object clos);
+    public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
 
     public interface INetwork : IComponentInterface
     {
@@ -61,7 +70,7 @@ namespace SS.Core.ComponentInterfaces
 
         //void SendToTarget(Target target, byte[] data, int len, NetSendFlags flags);
         //void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object obj);
-        //void SendSized(Player p, object clos, int len, 
+        bool SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback);
 
         void AddPacket(int pktype, PacketDelegate func);
         void RemovePacket(int pktype, PacketDelegate func);

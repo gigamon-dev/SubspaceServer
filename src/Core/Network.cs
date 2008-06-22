@@ -12,10 +12,6 @@ using SS.Core.ComponentInterfaces;
 namespace SS.Core
 {
     public delegate void ConnectionInitDelegate(IPEndPoint remoteEndpoint, byte[] buffer, int len, object v);
-    public delegate void PacketDelegate(Player p, byte[] data, int length);
-    public delegate void SizedPacketDelegate(Player p, ArraySegment<byte>? data, int offset, int totallen);
-    public delegate void ReliableDelegate(Player p, bool success, object clos);
-    public delegate void GetSizedSendDataDelegate(object clos, int offset, byte[] buf, int bytesNeeded);
 
     // looks like asss uses this one like a void* type
     public interface IClientEncrypt
@@ -39,12 +35,55 @@ namespace SS.Core
 
         private Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
 
-        private class SizedSendData
+        private interface ISizedSendData
         {
-            public GetSizedSendDataDelegate RequestData;
-            public object Clos;
-            public int TotalLength;
-            public int Offset;
+            void RequestData(int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
+
+            int TotalLength
+            {
+                get;
+            }
+
+            int Offset
+            {
+                get;
+                set;
+            }
+        }
+
+        private class SizedSendData<T> : ISizedSendData
+        {
+            private GetSizedSendDataDelegate<T> _requestDataCallback;
+            private T _clos;
+            private int _totalLength;
+            private int _offset;
+
+            public SizedSendData(GetSizedSendDataDelegate<T> requestDataCallback, T clos, int totalLength, int offset)
+            {
+                if (requestDataCallback == null)
+                    throw new ArgumentNullException("requestDataCallback");
+
+                _requestDataCallback = requestDataCallback;
+                _clos = clos;
+                _totalLength = totalLength;
+                _offset = offset;
+            }
+
+            void ISizedSendData.RequestData(int offset, byte[] buf, int bufStartIndex, int bytesNeeded)
+            {
+                _requestDataCallback(_clos, offset, buf, bufStartIndex, bytesNeeded);
+            }
+
+            int ISizedSendData.TotalLength
+            {
+                get { return _totalLength; }
+            }
+
+            int ISizedSendData.Offset
+            {
+                get { return _offset; }
+                set { _offset = value; }
+            }
         }
 
         private class ConnData
@@ -171,7 +210,7 @@ namespace SS.Core
             /// <summary>
             /// stuff for sending sized packets, protected by olmtx
             /// </summary>
-            public LinkedList<SizedSendData> sizedsends = new LinkedList<SizedSendData>();
+            public LinkedList<ISizedSendData> sizedsends = new LinkedList<ISizedSendData>();
 
             /// <summary>
             /// bandwidth limiting
@@ -323,6 +362,9 @@ namespace SS.Core
 
             public void Send(SubspaceBuffer buffer, ConnData conn)
             {
+#if DISABLE_GROUPED_SEND
+                _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
+#else
                 if (buffer.NumBytes <= 255) // 255 must be the size limit a grouped packet can store (max 1 byte can represent for the length)
                 {
                     if (_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes))
@@ -339,6 +381,7 @@ namespace SS.Core
                     // can't fit in group, send immediately
                     _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
                 }
+#endif
             }
         }
 
@@ -402,9 +445,18 @@ namespace SS.Core
             _oohandlers[19] = processSpecial; // 0x13 - cont key response
         }
 
+        #region Socket initialization
+
         private Socket createSocket(int port, IPAddress bindAddress)
         {
+            const int SIO_UDP_CONNRESET = -1744830452;  // since IOControl() takes int instead of uint
+
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+            // to prevent the exception "An existing connection was forcibly closed by the remote host"
+            // http://support.microsoft.com/kb/263823
+            byte[] optionInValue = new byte[] { 0, 0, 0, 0 };
+            socket.IOControl(SIO_UDP_CONNRESET, optionInValue, null);
 
             try
             {
@@ -520,6 +572,8 @@ namespace SS.Core
 
             return true;
         }
+
+        #endregion
 
         private void recieveThread()
         {
@@ -730,6 +784,100 @@ namespace SS.Core
             }
         }
 
+        private byte[] _queueDataBuffer = null;
+        private byte[] _queueDataHeader = new byte[6] { 0x00, 0x0A, 0, 0, 0, 0 }; // size of a presized data packet header
+
+        // NOTE: this is optimized slightly more than asss in the sense that it doesn't copy the array to another buffer just to send it off to bufferPacket()
+        private bool queueMoreData(object dummy)
+        {
+            int requestAtOnce = _config.queue_packets * Constants.ChunkSize;
+
+            byte[] buffer = _queueDataBuffer;
+            if (buffer == null || buffer.Length < requestAtOnce + _queueDataHeader.Length)
+                buffer = _queueDataBuffer = new byte[requestAtOnce + _queueDataHeader.Length];
+
+            // NOTE: asss allocates the buffer on the stack, which can be done here as well using stackalloc in an unsafe context
+            // however, i don't see much of a benefit to using unsafe code here
+            // if performance becomes a problem, then this can be changed
+
+            ReliablePacket packet = new ReliablePacket(_queueDataHeader);
+
+            _playerData.Lock();
+            try
+            {
+                foreach (Player p in _playerData.PlayerList)
+                {
+                    if(!isOurs(p) || p.Status >= PlayerState.TimeWait)
+                        continue;
+
+                    ConnData conn = p[_connKey] as ConnData;
+                    if (conn == null)
+                        continue;
+
+                    if (Monitor.TryEnter(conn.olmtx) == false)
+                        continue;
+
+                    if (conn.sizedsends.First != null &&
+                        conn.outlist[(int)BandwidthPriorities.Reliable].Count < _config.queue_threshold)
+                    {
+                        ISizedSendData sd = conn.sizedsends.First.Value;
+
+                        // unlock while we get the data
+                        Monitor.Exit(conn.olmtx);
+
+                        // prepare packet
+                        //packet.T1 = 0x00;
+                        //packet.T2 = 0x0A; // this is really a sized packet
+                        packet.SeqNum = sd.TotalLength; // header packet already has type bytes set, only need to set the length field
+
+                        // get needed bytes
+                        int needed = requestAtOnce;
+                        if (sd.TotalLength - sd.Offset < needed)
+                            needed = sd.TotalLength - sd.Offset;
+
+                        sd.RequestData(sd.Offset, buffer, 6, needed); // skipping the first 6 bytes for the header
+                        sd.Offset += needed;
+
+                        // now lock while we buffer it
+                        Monitor.Enter(conn.olmtx);
+
+                        // put data in outlist, in 480 byte chunks
+                        int bufferIndex = 0;
+                        while (needed > Constants.ChunkSize)
+                        {
+                            // copy the header
+                            Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
+
+                            // queue the the header + chunk to be sent reliably (which gives the sequence to keep ordering of chunks)
+                            bufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
+                            bufferIndex += Constants.ChunkSize;
+                            needed -= Constants.ChunkSize;
+                        }
+
+                        // copy the header
+                        Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
+                        bufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
+
+                        // check if we need more
+                        if (sd.Offset >= sd.TotalLength)
+                        {
+                            // notify sender that this is the end
+                            sd.RequestData(sd.Offset, null, 0, 0);
+                            conn.sizedsends.RemoveFirst();
+                        }
+                    }
+
+                    Monitor.Exit(conn.olmtx);
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            return true;
+        }
+
         private void clearBuffers(Player p)
         {
             if (p == null)
@@ -769,9 +917,9 @@ namespace SS.Core
             }
 
 
-            foreach (SizedSendData sd in conn.sizedsends)
+            foreach (ISizedSendData sd in conn.sizedsends)
             {
-                sd.RequestData(sd.Clos, 0, null, 0);
+                sd.RequestData(0, null, 0, 0);
             }
             conn.sizedsends.Clear();
 
@@ -1294,9 +1442,9 @@ namespace SS.Core
                 }
 
                 // HACK: so that we can actually get something other than 0 ms :)
-                Random random = new Random();
-                int randomDelay = random.Next(100, 200);
-                System.Threading.Thread.Sleep(randomDelay);
+                //Random random = new Random();
+                //int randomDelay = random.Next(100, 200);
+                //System.Threading.Thread.Sleep(randomDelay);
 
                 // bytes from recieve
                 buffer.Bytes[4] = buffer.Bytes[0];
@@ -1336,7 +1484,10 @@ namespace SS.Core
 
         private SubspaceBuffer bufferPacket(ConnData conn, byte[] data, int len, NetSendFlags flags, ReliableDelegate callback, object clos)
         {
-            Debug.Assert(len <= Constants.MaxPacket + Constants.ReliableHeaderLen);
+            return bufferPacket(conn, new ArraySegment<byte>(data, 0, len), flags, callback, clos);
+            /*
+            // data has to be able to fit into a reliable packet
+            Debug.Assert(len <= Constants.MaxPacket - Constants.ReliableHeaderLen);
 
             // you can't buffer already-reliable packets
             Debug.Assert(!(data[0] == 0x00 && data[1] == 0x03));
@@ -1410,6 +1561,93 @@ namespace SS.Core
             {
                 buf.NumBytes = len;
                 Array.Copy(data, 0, buf.Bytes, 0, len);
+            }
+
+            conn.outlist[(int)pri].AddLast(buf);
+
+            return buf;
+            */
+        }
+
+        private SubspaceBuffer bufferPacket(ConnData conn, ArraySegment<byte> data, NetSendFlags flags, ReliableDelegate callback, object clos)
+        {
+            int len = data.Count;
+
+            // data has to be able to fit into a reliable packet
+            Debug.Assert(len <= Constants.MaxPacket - Constants.ReliableHeaderLen);
+
+            // you can't buffer already-reliable packets
+            Debug.Assert(!(data.Array[0] == 0x00 && data.Array[1] == 0x03));
+
+            // reliable packets can't be droppable
+            Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Dropabble)) != (NetSendFlags.Reliable | NetSendFlags.Dropabble));
+
+            BandwidthPriorities pri;
+            if ((flags & NetSendFlags.PriorityN1) == NetSendFlags.PriorityN1)
+            {
+                pri = BandwidthPriorities.UnreiableLow;
+            }
+            else if (((flags & NetSendFlags.PriorityP4) == NetSendFlags.PriorityP4) ||
+                ((flags & NetSendFlags.PriorityP5) == NetSendFlags.PriorityP5))
+            {
+                pri = BandwidthPriorities.UnreliableHigh;
+            }
+            else
+            {
+                pri = BandwidthPriorities.Unreliable;
+            }
+
+            if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
+                pri = BandwidthPriorities.Reliable;
+
+            if ((flags & NetSendFlags.Ack) == NetSendFlags.Ack)
+                pri = BandwidthPriorities.Ack;
+
+            // update global stats based on requested priority
+            _globalStats.pri_stats[(int)pri] += (ulong)len;
+
+            // try the fast path
+            if (((flags & NetSendFlags.Reliable) != NetSendFlags.Reliable) &&
+                ((flags & NetSendFlags.Urgent) == NetSendFlags.Urgent))
+            {
+                // urgent and not reliable
+                if (conn.bw.Check(len, (int)pri))
+                {
+                    sendRaw(conn, data);
+                    return null;
+                }
+                else
+                {
+                    if ((flags & NetSendFlags.Dropabble) == NetSendFlags.Dropabble)
+                    {
+                        conn.pktdropped++;
+                        return null;
+                    }
+                }
+            }
+
+            SubspaceBuffer buf = _bufferPool.Get();
+            buf.Conn = conn;
+            buf.LastRetry = DateTime.Now.Subtract(new TimeSpan(0, 0, 100));
+            buf.Tries = 0;
+            buf.Callback = callback;
+            buf.Clos = clos;
+            buf.Flags = flags;
+
+            // get data into packet
+            if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
+            {
+                buf.NumBytes = len + Constants.ReliableHeaderLen;
+                ReliablePacket rp = new ReliablePacket(buf.Bytes);
+                rp.T1 = 0x00;
+                rp.T2 = 0x03;
+                rp.SeqNum = conn.s2cn++;
+                rp.SetData(data);
+            }
+            else
+            {
+                buf.NumBytes = len;
+                Array.Copy(data.Array, data.Offset, buf.Bytes, 0, data.Count);
             }
 
             conn.outlist[(int)pri].AddLast(buf);
@@ -1611,8 +1849,8 @@ namespace SS.Core
                     ts.Initialize();
                     //ts.T1 = 0x00;
                     //ts.T2 = 0x06;
-                    ts.Clienttime = cts.Time;
-                    ts.Servertime = Environment.TickCount; // asss does this one in the lock, but i rather lock as short as possbile
+                    ts.ClientTime = cts.Time;
+                    ts.ServerTime = Environment.TickCount; // asss does this one in the lock, but i rather lock as short as possbile
 
                     lock (conn.olmtx)
                     {
@@ -1853,13 +2091,13 @@ namespace SS.Core
                 lock (conn.olmtx)
                 {
                     // cancel current presized transfer
-                    LinkedListNode<SizedSendData> node = conn.sizedsends.First;
+                    LinkedListNode<ISizedSendData> node = conn.sizedsends.First;
                     if (node != null)
                     {
-                        SizedSendData sd = node.Value;
+                        ISizedSendData sd = node.Value;
                         if (sd != null)
                         {
-                            sd.RequestData(sd.Clos, 0, null, 0); // notify transfer complete
+                            sd.RequestData(0, null, 0, 0); // notify transfer complete
                         }
                         conn.sizedsends.RemoveFirst();
                     }
@@ -2069,6 +2307,9 @@ namespace SS.Core
             _reliableThreads.Add(thread);
             _threadList.Add(thread);
 
+            // queue more data thread (sends sized data)
+            _serverTimer.SetTimer<object>(queueMoreData, 200, 110, null, null); // TODO: maybe change it to be in its own thread?
+            
             mm.RegisterInterface<INetwork>(this);
             mm.RegisterInterface<INetworkClient>(this);
             mm.RegisterInterface<INetworkEncryption>(this);
@@ -2080,6 +2321,8 @@ namespace SS.Core
             mm.UnregisterInterface<INetwork>();
             mm.UnregisterInterface<INetworkClient>();
             mm.UnregisterInterface<INetworkEncryption>();
+
+            _serverTimer.ClearTimer<object>(queueMoreData, null);
 
             // stop threads
             _stopThreads = true;
@@ -2371,6 +2614,28 @@ namespace SS.Core
             }
         }
 
+        bool INetwork.SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback)
+        {
+            if (!isOurs(p))
+            {
+                _logManager.LogP(LogLevel.Drivel, "net", p, "tried to send sized data to non-udp client");
+                return false;
+            }
+
+            ConnData conn = p[_connKey] as ConnData;
+            if (conn == null)
+                return false;
+
+            SizedSendData<T> sd = new SizedSendData<T>(requestCallback, clos, len, 0);
+
+            lock (conn.olmtx)
+            {
+                conn.sizedsends.AddLast(sd);
+            }
+
+            return true;
+        }
+
         void INetwork.AddPacket(int pktype, PacketDelegate func)
         {
             if (pktype >= 0 && pktype < MAXTYPES)
@@ -2506,7 +2771,7 @@ namespace SS.Core
                     if(c > 0)
                         sb.Append(' ');
 
-                    asciiBuilder.Append(char.IsLetterOrDigit((char)d.Array[dIdx]) ? (char)d.Array[dIdx] : '.');
+                    asciiBuilder.Append(!char.IsControl((char)d.Array[dIdx]) ? (char)d.Array[dIdx] : '.');
                     sb.Append(d.Array[dIdx++].ToString("X2"));
                 }
 

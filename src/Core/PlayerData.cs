@@ -26,6 +26,8 @@ namespace SS.Core
 
         private ReaderWriterLock _globalPlayerDataRwLock = new ReaderWriterLock();
 
+        private int _nextPid = 0;
+
         /// <summary>
         /// Dictionary to look up players by Id.
         /// Doubles as the list of players that can be enumerated on (PlayerList).
@@ -76,7 +78,7 @@ namespace SS.Core
         private SortedList<int, Type> _perPlayerDataKeys = new SortedList<int, Type>();
 
         /// <summary>
-        /// this callback is called whenever a Player struct is allocated or
+        /// this callback is called whenever a Player is allocated or
         /// deallocated. in general you probably want to use CB_PLAYERACTION
         /// instead of this callback for general initialization tasks.
         /// </summary>
@@ -169,7 +171,7 @@ namespace SS.Core
                     (DateTime.Now > pidNode.Value.AvailableTimestamp))
                 {
                     // got an existing player object
-                    _freePlayersList.RemoveFirst();
+                    _freePlayersList.Remove(pidNode);
                     player = pidNode.Value.Player;
 
                     pidNode.Value.Player = null;
@@ -178,7 +180,7 @@ namespace SS.Core
                 else
                 {
                     // no available player objects
-                    player = new Player(_playerDictionary.Count);
+                    player = new Player(_nextPid++);
                 }
 
                 // initialize the player's per player data
@@ -239,7 +241,7 @@ namespace SS.Core
             if (node != null)
             {
                 // got a node
-                _freeNodesList.RemoveFirst();
+                _freeNodesList.Remove(node);
                 node.Value.SetAvailableTimestampFromNow();
                 node.Value.Player = player;
             }

@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
+#if false
     /// <summary>
     /// the player data packet
     /// 
@@ -161,4 +162,5 @@ namespace SS.Core.Packets
         }
         */
     }
+#endif
 }
