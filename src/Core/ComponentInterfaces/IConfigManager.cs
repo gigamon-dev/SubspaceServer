@@ -5,6 +5,36 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
+    /// <summary>
+    /// configuration manager
+    /// 
+    /// modules get all of their settings from here and nowhere else. there
+    /// are two types of configuration files: global and arena. global ones
+    /// apply to the whole zone, and are stored in the conf directory of the
+    /// zone directory. arena ones are usually stored in arenas/arenaname,
+    /// but this can be customized with the search path.
+    /// 
+    /// the main global configuration file is maintained internally to this
+    /// moudule and you don't have to open or close it. just use GLOBAL as
+    /// your ConfigHandle. arena configuration files are also maintained for
+    /// you as arena->cfg. so typically you will only need to call GetStr and
+    /// GetInt.
+    ///
+    /// there can also be secondary global or arena config files, specified
+    /// with the second parameter of OpenConfigFile. these are used for staff
+    /// lists and a few other special things. in general, you should use a
+    /// new section in the global or arena config files rather than using a
+    /// different file.
+    ///
+    /// setting configuration values is relatively straightforward. the info
+    /// parameter to SetStr and SetInt should describe who initiated the
+    /// change and when. this information may be written back to the
+    /// configuration files.
+    ///
+    /// FlushDirtyValues and CheckModifiedFiles do what they say. there's no
+    /// need to call them in general; the config module performs those
+    /// actions internally based on timers also.
+    /// </summary>
     public interface IConfigManager : IComponentInterface
     {
         ConfigHandle Global

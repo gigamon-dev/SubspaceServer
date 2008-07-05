@@ -4,17 +4,10 @@ using System.Text;
 using System.Threading;
 using SS.Core.Packets;
 using SS.Core.ComponentInterfaces;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="p">the player being allocated/deallocated</param>
-    /// <param name="isNew">true if being allocated, false if being deallocated</param>
-    /// <returns></returns>
-    public delegate void NewPlayerDelegate(Player p, bool isNew);
-
     public class PlayerData : IModule, IPlayerData
     {
         private ModuleManager _mm;
@@ -72,17 +65,9 @@ namespace SS.Core
         /// </summary>
         private LinkedList<FreePlayerInfo> _freeNodesList = new LinkedList<FreePlayerInfo>();
 
-
         // for managing per player data
         private ReaderWriterLock _perPlayerDataLock = new ReaderWriterLock();
         private SortedList<int, Type> _perPlayerDataKeys = new SortedList<int, Type>();
-
-        /// <summary>
-        /// this callback is called whenever a Player is allocated or
-        /// deallocated. in general you probably want to use CB_PLAYERACTION
-        /// instead of this callback for general initialization tasks.
-        /// </summary>
-        public event NewPlayerDelegate NewPlayerEvent;
 
         public PlayerData()
         {
@@ -215,20 +200,14 @@ namespace SS.Core
                 WriteUnlock();
             }
 
-            if(NewPlayerEvent != null)
-            {
-                NewPlayerEvent(player, true);
-            }
+            NewPlayerCallback.Fire(_mm, player, true);
 
             return player;
         }
 
         void IPlayerData.FreePlayer(Player player)
         {
-            if (NewPlayerEvent != null)
-            {
-                NewPlayerEvent(player, false);
-            }
+            NewPlayerCallback.Fire(_mm, player, false);
 
             WriteLock();
 

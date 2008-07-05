@@ -7,92 +7,10 @@ using SS.Utilities;
 using SS.Core.ComponentInterfaces;
 using System.IO;
 using System.Diagnostics;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
-    /// <summary>
-    /// playeraction event codes
-    /// </summary>
-    public enum PlayerAction
-    {
-        /// <summary>
-        /// the player is connecting to the server. not arena-specific
-        /// </summary>
-        Connect, 
-
-        /// <summary>
-        /// the player is disconnecting from the server. not arena-specific.
-        /// </summary>
-        Disconnect, 
-
-        /// <summary>
-        /// this is called at the earliest point after a player indicates an
-        /// intention to enter an arena.
-        /// you can use this for some questionable stuff, like redirecting
-        /// the player to a different arena. but in general it's better to
-        /// use EnterArena for general stuff that should happen on
-        /// entering arenas.
-        /// </summary>
-        PreEnterArena, 
-
-        /// <summary>
-        /// the player is entering an arena.
-        /// </summary>
-        EnterArena, 
-
-        /// <summary>
-        /// the player is leaving an arena.
-        /// </summary>
-        LeaveArena, 
-
-        /// <summary>
-        /// this is called at some point after the player has sent his first
-        /// position packet (indicating that he's joined the game, as
-        /// opposed to still downloading a map).
-        /// </summary>
-        EnterGame, 
-    }
-
-    public delegate void PlayerActionDelegate(Player p, PlayerAction action, Arena arena);
-
-    /// <summary>
-    /// authentication return codes
-    /// </summary>
-    public enum AuthCode : byte
-    {
-        OK = 0x00, // success
-        NewName = 0x01, // fail
-        BadPassword = 0x02, // fail
-        ArenaFull = 0x03, // fail
-        LockedOut = 0x04, // fail
-        NoPermission = 0x05, // fail
-        SpecOnly = 0x06,  // success
-        TooManyPoints = 0x07, // fail
-        TooSlow = 0x08, // fail
-        NoPermission2 = 0x09,// fail
-        NoNewConn = 0x0A,// fail
-        BadName = 0x0B,// fail
-        OffensiveName = 0x0C, // fail
-        NoScores = 0x0D, // sucess
-        ServerBusy = 0x0E, // fail
-        TooLowUsage = 0x0F, // fail
-        NoName = 0x10, // fail
-        TooManyDemo = 0x11, // fail
-        NoDemo = 0x12, // fail
-        CustomText = 0x13, // fail
-    }
-
-    public class AuthData
-    {
-        public bool demodata;
-        public AuthCode code;
-        public bool authenticated;
-        public string name;
-        public string sendname;
-        public string squad;
-        public string customtext;
-    }
-
     public static class AuthCodeExtension
     {
         /// <summary>
@@ -119,7 +37,7 @@ namespace SS.Core
         private IServerTimer _mainLoop;
         private IMapNewsDownload _map;
         private IArenaManagerCore _arenaManager;
-        private ICapabilityManager _capManager;
+        private ICapabilityManager _capabiltyManager;
         private IPersist _persist;
         private IStats _stats;
 
@@ -195,7 +113,8 @@ namespace SS.Core
                     typeof(ILogManager), 
                     typeof(IConfigManager), 
                     typeof(IServerTimer), 
-                    typeof(IArenaManagerCore)
+                    typeof(IArenaManagerCore), 
+                    typeof(ICapabilityManager)
                 };
             }
         }
@@ -210,7 +129,7 @@ namespace SS.Core
             _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
             _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            //_capManager = 
+            _capabiltyManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
 
             _continuumChecksum = getChecksum(ContinuumExeFile);
             _codeChecksum = getU32(ContinuumChecksumFile, 4);
@@ -401,7 +320,7 @@ namespace SS.Core
                         break;
 
                     case PlayerState.DoGlobalCallbacks:
-                        _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.Connect, null);
+                        firePlayerActionEvent(player, PlayerAction.Connect, null);
                         pdata.hasdonegcallbacks = true;
                         break;
 
@@ -418,19 +337,16 @@ namespace SS.Core
 
                         // do pre-callbacks
                         arena = player.Arena;
-                        if(arena != null)
-                            arena.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.PreEnterArena, player.Arena);
-                        else // i think the player has an arena set at this point, but putting this here just in case
-                            _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.PreEnterArena, player.Arena);
+                        firePlayerActionEvent(player, PlayerAction.PreEnterArena, arena);
 
                         // get a freq
                         if ((int)player.Ship == -1 || player.Freq == -1)
                         {
                             ShipType ship = player.Ship = requestedShip;
-                            int freq = player.Freq = 0;
+                            short freq = player.Freq = 0;
 
-                            /*IFreqManager fm = _mm.GetInterface<IFreqManager>();
-                            if (fm)
+                            IFreqManager fm = _mm.GetInterface<IFreqManager>();
+                            if (fm != null)
                             {
                                 try
                                 {
@@ -440,11 +356,11 @@ namespace SS.Core
                                 {
                                     _mm.ReleaseInterface<IFreqManager>();
                                 }
-                            }*/
+                            }
 
                             // set results back
                             player.Ship = ship;
-                            player.Freq = (short)freq;
+                            player.Freq = freq;
                         }
 
                         // sync scores
@@ -473,15 +389,12 @@ namespace SS.Core
                         player.Flags.SentWeaponPacket = false;
 
                         arena = player.Arena;
-                        if (arena != null)
-                            arena.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.EnterArena, player.Arena);
-                        else // i think the player has an arena set at this point, but putting this here just in case
-                            _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.EnterArena, player.Arena);
+                        firePlayerActionEvent(player, PlayerAction.EnterArena, arena);
 
                         break;
 
                     case PlayerState.LeavingArena:
-                        player.Arena.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.LeaveArena, player.Arena);
+                        firePlayerActionEvent(player, PlayerAction.LeaveArena, player.Arena);
                         break;
 
                     case PlayerState.DoArenaSync2:
@@ -494,7 +407,7 @@ namespace SS.Core
 
                     case PlayerState.LeavingZone:
                         if (pdata.hasdonegcallbacks)
-                            _mm.DoCallbacks(Constants.Events.PlayerAction, player, PlayerAction.Disconnect, null);
+                            firePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
                         /*if (_persist != null && pdata.hasdonegsync)
                             _persist.PutPlayer(player, null, playerSyncDone);
@@ -507,6 +420,17 @@ namespace SS.Core
             }
 
             return true;
+        }
+
+        private void firePlayerActionEvent(Player p, PlayerAction action, Arena arena)
+        {
+            if (p == null)
+                return;
+
+            if (arena != null)
+                PlayerActionCallback.Fire(arena, p, action, arena);
+            else
+                PlayerActionCallback.Fire(_mm, p, action, arena);
         }
 
         private void failLoginWith(Player p, AuthCode authCode, string text, string logmsg)
@@ -809,6 +733,13 @@ namespace SS.Core
                         // old VIE exe checksums
                         lr.ExeChecksum = 0xF1429CE8;
                         lr.CodeChecksum = 0x281CC948;
+                    }
+
+                    if (_capabiltyManager != null && _capabiltyManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
+                    {
+                        // to make the client think it's a mod
+                        lr.ExeChecksum = uint.MaxValue;
+                        lr.CodeChecksum = uint.MaxValue;
                     }
 
                     if (lr.Code == (byte)AuthCode.CustomText)

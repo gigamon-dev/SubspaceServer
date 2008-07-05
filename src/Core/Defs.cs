@@ -52,36 +52,4 @@ namespace SS.Core
         Ding, 
         Goal
     }
-
-    public enum Prize
-    {
-        Recharge = 1, 
-        Energy, 
-        Rotation, 
-        Stealth, 
-        Cloak, 
-        XRadar, 
-        Warp, 
-        Gun, 
-        Bomb, 
-        Bounce, 
-        Thrust, 
-        Speed, 
-        FullCharge, 
-        Shutdown, 
-        Multifire, 
-        Prox, 
-        Super, 
-        Shield, 
-        Shrap, 
-        Antiwarp, 
-        Repel, 
-        Burst, 
-        Decoy, 
-        Thor, 
-        Multiprize, 
-        Brick, 
-        Rocket, 
-        Portal
-    }
 }

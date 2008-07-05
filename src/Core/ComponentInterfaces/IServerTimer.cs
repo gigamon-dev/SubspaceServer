@@ -5,6 +5,18 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <typeparam name="TArg"></typeparam>
+    /// <param name="arg"></param>
+    /// <returns>true to continue timer events</returns>
+    public delegate bool TimerDelegate<TArg>(TArg state);
+
+    public delegate void TimerCleanupDelegate<TArg>(TArg state);
+
+    public delegate void WorkerDelegate<TParam>(TParam param);
+
     public interface IServerTimer : IComponentInterface
     {
         /// <summary>

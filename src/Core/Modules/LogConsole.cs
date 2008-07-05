@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using SS.Core.ComponentInterfaces;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
     public class LogConsole : IModule
     {
@@ -33,14 +34,14 @@ namespace SS.Core
             if (_logManager == null)
                 return false;
 
-            mm.RegisterCallback<LogManager.LogDelegate>(LogManager.LogCallbackIdentifier, new LogManager.LogDelegate(logToConsole));
+            LogCallback.Register(mm, logToConsole);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterCallback(LogManager.LogCallbackIdentifier, new LogManager.LogDelegate(logToConsole));
+            LogCallback.Unregister(mm, logToConsole);
             mm.ReleaseInterface<ILogManager>();
             return true;
         }

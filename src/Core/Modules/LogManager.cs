@@ -5,14 +5,12 @@ using System.Threading;
 
 using SS.Utilities;
 using SS.Core.ComponentInterfaces;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
     public class LogManager : IModule, IModuleLoaderAware, ILogManager
     {
-        public delegate void LogDelegate(string message);
-        public const string LogCallbackIdentifier = "log";
-
         private MessagePassingQueue<string> _logQueue = new MessagePassingQueue<string>();
         private Thread _loggingThread;
 
@@ -32,7 +30,7 @@ namespace SS.Core
                 if (message == null)
                     return;
 
-                _mm.DoCallbacks(LogCallbackIdentifier, message);
+                LogCallback.Fire(_mm, message);
             }
         }
 

@@ -48,21 +48,21 @@ namespace SS.Core.Packets
             //set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
         }
 
-        public int Time
+        public uint Time
         {
-            get { return ExtendedBitConverter.ToInt32(data, time.ByteOffset, time.BitOffset); }
+            get { return ExtendedBitConverter.ToUInt32(data, time.ByteOffset, time.BitOffset); }
             //set { ExtendedBitConverter.WriteInt32Bits(value, data, time.ByteOffset, time.BitOffset, time.NumBits); }
         }
 
-        public int PktSent
+        public uint PktSent
         {
-            get { return ExtendedBitConverter.ToInt32(data, pktsent.ByteOffset, pktsent.BitOffset); }
+            get { return ExtendedBitConverter.ToUInt32(data, pktsent.ByteOffset, pktsent.BitOffset); }
             //set { ExtendedBitConverter.WriteInt32Bits(value, data, pktsent.ByteOffset, pktsent.BitOffset, pktsent.NumBits); }
         }
 
-        public int PktRecvd
+        public uint PktRecvd
         {
-            get { return ExtendedBitConverter.ToInt32(data, pktrecvd.ByteOffset, pktrecvd.BitOffset); }
+            get { return ExtendedBitConverter.ToUInt32(data, pktrecvd.ByteOffset, pktrecvd.BitOffset); }
             //set { ExtendedBitConverter.WriteInt32Bits(value, data, pktrecvd.ByteOffset, pktrecvd.BitOffset, pktrecvd.NumBits); }
         }
 

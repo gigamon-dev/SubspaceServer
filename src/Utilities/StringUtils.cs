@@ -6,7 +6,7 @@ namespace SS.Utilities
 {
     public static class StringUtils
     {
-        public static string TrimWhitespaceAndExtras(string str, params char[] characters)
+        public static string TrimWhitespaceAndExtras(this string str, params char[] characters)
         {
             Dictionary<char, char> characterLookup = new Dictionary<char,char>(characters.Length);
             foreach(char c in characters)

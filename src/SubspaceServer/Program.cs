@@ -42,6 +42,30 @@ namespace SS
             public static int y;
         }
 
+        private static int tickDiff(uint a, uint b)
+        {
+            int retVal = ((int)(((a) << 1) - ((b) << 1)) >> 1);
+            return retVal;
+        }
+
+        private static bool tickGt(uint a, uint b)
+        {
+            int diff = tickDiff(a, b);
+            return tickDiff(a, b) > 0;
+        }
+
+        public delegate void TestDelegate(int x, ref int y);
+
+        public static void MyMethodA(int x, ref int y)
+        {
+            y++;
+        }
+
+        public static void MyMethodB(int x, ref int y)
+        {
+            y++;
+        }
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -52,6 +76,48 @@ namespace SS
             Application.SetCompatibleTextRenderingDefault(false);
             
             Application.Run(new Form1());
+
+            //uint test = uint.MaxValue;
+            //byte val = ExtendedBitConverter.GetByte(test, 24, 8);
+            //test = ExtendedBitConverter.SetByte(test, 0, 24, 7);
+            //byte val2 = ExtendedBitConverter.GetByte(test, 24, 8);
+            
+            //int x=1, y=2;
+            //TestDelegate d = new TestDelegate(MyMethodA);
+            //d += new TestDelegate(MyMethodB);
+            //IntPtr ip = ;
+            
+            //d(x, ref y);
+            //d.DynamicInvoke(x, new IntPtr(y));
+            //Console.WriteLine("x=" + x);
+            //Console.WriteLine("y=" + y);
+            
+            /*
+            ServerTick t1 = ServerTick.Now;
+            System.Threading.Thread.Sleep(1000);
+            ServerTick t2 = ServerTick.Now;
+
+            int diff = t2 - t1;
+            int diff2 = t1 - t2;
+
+            bool gt = t2 > t1;
+            bool gt2 = t1 > t2;
+
+            bool lt = t2 < t1;
+            bool lt2 = t1 < t2;
+            */
+
+            /*
+            uint a = 0x7FFFFFFF;
+            uint b = a+2;
+
+            int diff = tickDiff(a, b);
+            int diff2 = tickDiff(b,a);
+
+            bool gt1 = tickGt(a, b);
+            bool gt2 = tickGt(b, a);
+            */
+
             /*
             string hexString = @"0f 00 00 00 70 17 00 00
 a0 0f 00 00 dc 05 64 00 14 00 1e 00 2c 01 32 00
@@ -153,11 +219,32 @@ a0 86 01 00 00 00 00 00 b8 0b 00 00 00 00 00 00
              */
              
             //Console.WriteLine("ClientSettingsPacke.Length = {0}" + ClientSettingsPacket.Length);
+            /*
+            DataBuffer buffer = new DataBuffer();
+            C2SPositionPacket pos = new C2SPositionPacket(buffer.Bytes);
+            Weapons w = pos.Weapon;
+            Weapons src = new Weapons(new byte[512], 0);
+            src.Type = 1;
+            src.Level = 2;
+            src.ShrapBouncing = true;
+            src.ShrapLevel = 2;
+            src.Shrap = 32;
+            src.Alternate = true;
 
-            //ClientSettingsPacket s = new ClientSettingsPacket(new DataBuffer().Bytes);
-            //ClientSettingsPacket.ClientBitSet sc = s.BitSet;
-            //sc.HideFlags = 1;
-            //s.BitSet.HideFlags = 1;
+            pos.Weapon = src;
+            */
+            //pos.Weapon.Type
+
+            /*
+            ClientSettingsPacket s = new ClientSettingsPacket();
+            ClientSettingsPacket.ClientBitSet sc = s.BitSet;
+            sc.HideFlags = 1;
+            s.BitSet.HideFlags = 1;
+            s.LongSet[0] = 123;
+            //s.TestBitSet.HideFlags = 1;
+            //s.TestBitSet2.HideFlags = 1;
+            */
+
             /*
             unsafe
             {

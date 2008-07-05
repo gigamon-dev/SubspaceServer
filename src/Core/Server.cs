@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Modules;
 
 namespace SS.Core
 {

@@ -8,6 +8,49 @@ using SS.Utilities;
 
 namespace SS.Core
 {
+    /// <summary>
+    /// playeraction event codes
+    /// </summary>
+    public enum PlayerAction
+    {
+        /// <summary>
+        /// the player is connecting to the server. not arena-specific
+        /// </summary>
+        Connect,
+
+        /// <summary>
+        /// the player is disconnecting from the server. not arena-specific.
+        /// </summary>
+        Disconnect,
+
+        /// <summary>
+        /// this is called at the earliest point after a player indicates an
+        /// intention to enter an arena.
+        /// you can use this for some questionable stuff, like redirecting
+        /// the player to a different arena. but in general it's better to
+        /// use EnterArena for general stuff that should happen on
+        /// entering arenas.
+        /// </summary>
+        PreEnterArena,
+
+        /// <summary>
+        /// the player is entering an arena.
+        /// </summary>
+        EnterArena,
+
+        /// <summary>
+        /// the player is leaving an arena.
+        /// </summary>
+        LeaveArena,
+
+        /// <summary>
+        /// this is called at some point after the player has sent his first
+        /// position packet (indicating that he's joined the game, as
+        /// opposed to still downloading a map).
+        /// </summary>
+        EnterGame,
+    }
+
     public enum ClientType
     {
         /// <summary>
@@ -174,47 +217,8 @@ namespace SS.Core
         public int yspeed;      /**< velocity in positive y direction (pixels/second) */
         public int rotation;    /**< rotation value (0-63) */
         public uint bounty;     /**< current bounty */
-        public uint status;     /**< status bitfield */
+        public PlayerPositionStatus status;     /**< status bitfield */
     };
-
-    [FlagsAttribute]
-    public enum PlayerPositionStatus
-    {
-        /// <summary>
-        /// whether stealth is on
-        /// </summary>
-        Stealth = 1, 
-
-        /// <summary>
-        /// whether cloak is on
-        /// </summary>
-        Cloak = 2, 
-        
-        /// <summary>
-        /// whether xradar is on
-        /// </summary>
-        XRadar = 4, 
-        
-        /// <summary>
-        /// whether antiwarp is on
-        /// </summary>
-        Antiwarp = 8, 
-        
-        /// <summary>
-        /// whether to display the flashing image for a few frames
-        /// </summary>
-        Flash = 16, 
-
-        /// <summary>
-        /// whether the player is in a safezone
-        /// </summary>
-        Safezone = 32, 
-
-        /// <summary>
-        /// whether the player is a ufo
-        /// </summary>
-        Ufo = 64
-    }
 
     public class Player
     {
@@ -232,7 +236,10 @@ namespace SS.Core
             set { pkt.Freq = value; }
         }
 
-        public int Attached
+        /// <summary>
+        /// id of the player attached to (-1 means not attached)
+        /// </summary>
+        public short Attached
         {
             get { return pkt.AttachedTo; }
             set { pkt.AttachedTo = (short)value; }
@@ -460,6 +467,9 @@ namespace SS.Core
             set { _playerExtraData[key] = value; }
         }
 
+        /// <summary>
+        /// checks if the player type is VIE Client or Continuum
+        /// </summary>
         public bool IsStandard
         {
             get { return (Type == ClientType.VIE) || (Type == ClientType.Continuum); }

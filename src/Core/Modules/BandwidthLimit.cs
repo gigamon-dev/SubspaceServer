@@ -5,14 +5,14 @@ using System.Text;
 
 using SS.Core.ComponentInterfaces;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
     /// <summary>
     /// these are the available classes/priorities of traffic
     /// </summary>
     public enum BandwidthPriorities
     {
-        UnreiableLow = 0, 
+        UnreliableLow = 0, 
         Unreliable, 
         UnreliableHigh, 
         Reliable, 
@@ -87,7 +87,7 @@ namespace SS.Core
         #endregion
     }
 
-    // TODO: dont understand what ASSS is doing with the calculations with millseconds, ticks, etc
+    // TODO: i dont understand what ASSS is doing with the calculations with millseconds, ticks, etc
     public class DefaultBandwithLimit : IModule, IBandwidthLimit
     {
         private class BWLimit : IBWLimit

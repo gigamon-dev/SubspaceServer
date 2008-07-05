@@ -6,8 +6,9 @@ using System.Net;
 using SS.Utilities;
 using SS.Core.Packets;
 using SS.Core.ComponentInterfaces;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
     public class EncryptionNull : IModule
     {
@@ -70,14 +71,15 @@ namespace SS.Core
         public bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _net = interfaceDependencies[typeof(INetworkEncryption)] as INetworkEncryption;
-            mm.RegisterCallback<ConnectionInitDelegate>(Constants.Events.ConnectionInit, new ConnectionInitDelegate(connectionInit));
+
+            ConnectionInitCallback.Register(mm, connectionInit);
 
             return true;
         }
 
         public bool Unload(ModuleManager mm)
         {
-            mm.UnregisterCallback(Constants.Events.ConnectionInit, new ConnectionInitDelegate(connectionInit));
+            ConnectionInitCallback.Unregister(mm, connectionInit);
 
             return true;
         }

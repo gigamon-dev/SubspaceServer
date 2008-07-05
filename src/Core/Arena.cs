@@ -124,7 +124,7 @@ namespace SS.Core
 	    public ConfigHandle Cfg;
 	    /** the frequency for spectators in this arena.
 	     * this setting is so commonly used, it deserves a spot here. */
-	    public int SpecFreq;
+	    public short SpecFreq;
 	    /** how many players are in ships in this arena.
 	     * call GetPopulationSummary to update this. */
 	    public int Playing;
@@ -187,6 +187,13 @@ namespace SS.Core
             return theInterface;
         }
 
+        public override void ReleaseInterface<TInterface>()
+        {
+            base.ReleaseInterface<TInterface>();
+
+            // TODO: figure out if the interface was released here, otherwise release it on _mm
+        }
+
         public override IComponentInterface GetInterface(Type interfaceType)
         {
             // try to get the interface specific to this arena
@@ -208,6 +215,48 @@ namespace SS.Core
 
             // call the global callbacks
             _mm.DoCallbacks(callbackIdentifier, args);
+        }
+
+        public override void DoCallback<T1>(string callbackIdentifier, T1 t1)
+        {
+            base.DoCallback<T1>(callbackIdentifier, t1);
+            _mm.DoCallback<T1>(callbackIdentifier, t1);
+        }
+
+        public override void DoCallback<T1, T2>(string callbackIdentifier, T1 t1, T2 t2)
+        {
+            base.DoCallback<T1, T2>(callbackIdentifier, t1, t2);
+            _mm.DoCallback<T1, T2>(callbackIdentifier, t1, t2);
+        }
+
+        public override void DoCallback<T1, T2, T3>(string callbackIdentifier, T1 t1, T2 t2, T3 t3)
+        {
+            base.DoCallback<T1, T2, T3>(callbackIdentifier, t1, t2, t3);
+            _mm.DoCallback<T1, T2, T3>(callbackIdentifier, t1, t2, t3);
+        }
+
+        public override void DoCallback<T1, T2, T3, T4>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4)
+        {
+            base.DoCallback<T1, T2, T3, T4>(callbackIdentifier, t1, t2, t3, t4);
+            _mm.DoCallback<T1, T2, T3, T4>(callbackIdentifier, t1, t2, t3, t4);
+        }
+
+        public override void DoCallback<T1, T2, T3, T4, T5>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5)
+        {
+            base.DoCallback<T1, T2, T3, T4, T5>(callbackIdentifier, t1, t2, t3, t4, t5);
+            _mm.DoCallback<T1, T2, T3, T4, T5>(callbackIdentifier, t1, t2, t3, t4, t5);
+        }
+
+        public override void DoCallback<T1, T2, T3, T4, T5, T6>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6)
+        {
+            base.DoCallback<T1, T2, T3, T4, T5, T6>(callbackIdentifier, t1, t2, t3, t4, t5, t6);
+            _mm.DoCallback<T1, T2, T3, T4, T5, T6>(callbackIdentifier, t1, t2, t3, t4, t5, t6);
+        }
+
+        public override void DoCallback<T1, T2, T3, T4, T5, T6, T7>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6, T7 t7)
+        {
+            base.DoCallback<T1, T2, T3, T4, T5, T6, T7>(callbackIdentifier, t1, t2, t3, t4, t5, t6, t7);
+            _mm.DoCallback<T1, T2, T3, T4, T5, T6, T7>(callbackIdentifier, t1, t2, t3, t4, t5, t6, t7);
         }
 
         #endregion

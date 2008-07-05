@@ -7,11 +7,10 @@ using System.Threading;
 using SS.Core.Packets;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
-    public delegate void ArenaActionEventHandler(Arena arena, ArenaAction action);
-
     public class ArenaManager : IModule, IArenaManagerCore, IModuleLoaderAware
     {
         /// <summary>
@@ -849,11 +848,10 @@ namespace SS.Core
 
         protected virtual void OnArenaAction(Arena arena, ArenaAction action)
         {
-            _mm.DoCallbacks(Constants.Events.ArenaAction, arena, action);
-            /*(if (ArenaActionEvent != null)
-            {
-                ArenaActionEvent(arena, action);
-            }*/
+            if (arena != null)
+                ArenaActionCallback.Fire(arena, arena, action);
+            else
+                ArenaActionCallback.Fire(_mm, arena, action);
         }
 
         private bool processArenaStates(object dummy)
@@ -888,7 +886,7 @@ namespace SS.Core
                     {
                         case ArenaState.DoInit0:
                             arena.Cfg = _configManager.OpenConfigFile(arena.BaseName, null, new ConfigChangedDelegate(arenaConfChanged), arena);
-                            arena.SpecFreq = _configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DEFAULT_SPEC_FREQ);
+                            arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DEFAULT_SPEC_FREQ);
                             arena.Status = ArenaState.WaitHolds0;
                             Debug.Assert(arenaData.Holds == 0);
 

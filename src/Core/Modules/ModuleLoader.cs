@@ -6,7 +6,7 @@ using System.IO;
 using System.Xml;
 using SS.Core.ComponentInterfaces;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
     public class ModuleLoader : IModule, IModuleLoader
     {

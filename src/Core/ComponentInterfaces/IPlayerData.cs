@@ -5,6 +5,14 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="p">the player being allocated/deallocated</param>
+    /// <param name="isNew">true if being allocated, false if being deallocated</param>
+    /// <returns></returns>
+    public delegate void NewPlayerDelegate(Player p, bool isNew);
+
     public interface IPlayerData : IComponentInterface
     {
         void Lock();

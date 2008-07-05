@@ -8,15 +8,11 @@ using SS.Core.Packets;
 using System.Threading;
 using System.Diagnostics;
 using SS.Core.ComponentInterfaces;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
-    public delegate void ConnectionInitDelegate(IPEndPoint remoteEndpoint, byte[] buffer, int len, object v);
 
-    // looks like asss uses this one like a void* type
-    public interface IClientEncrypt
-    {
-    }
 
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
@@ -31,8 +27,36 @@ namespace SS.Core
 
             public ReliableDelegate Callback;
             public object Clos;
+
+            //public IReliableDelegateInvoker CallbackInvoker;
+        }
+        /*
+        private interface IReliableDelegateInvoker
+        {
+            void InvokeCallback(Player p, bool success);
         }
 
+        private class ReliableDelegateWrapper<T> : IReliableDelegateInvoker
+        {
+            private ReliableDelegate<T> callback;
+            private T clos;
+
+            public ReliableDelegateWrapper(ReliableDelegate<T> callback, T clos)
+            {
+                this.callback = callback;
+                this.clos = clos;
+            }
+
+            #region IReliableDelegateInvoker Members
+
+            public void InvokeCallback(Player p, bool success)
+            {
+                callback(p, success, clos);
+            }
+
+            #endregion
+        }
+        */
         private Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
 
         private interface ISizedSendData
@@ -1262,7 +1286,7 @@ namespace SS.Core
                 // this might be a new connection. make sure it's really a connection init packet
                 if (isConnectionInitPacket(buffer.Bytes))
                 {
-                    _mm.DoCallbacks(Constants.Events.ConnectionInit, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    ConnectionInitCallback.Fire(_mm, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
 #if CFG_LOG_STUPID_STUFF
                 else if (buffer.NumBytes > 1)
@@ -1294,7 +1318,7 @@ namespace SS.Core
                     // if the player is in S_CONNECTED, it means that
                     // the connection init response got dropped on the
                     // way to the client. we have to resend it.
-                    _mm.DoCallbacks(Constants.Events.ConnectionInit, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    ConnectionInitCallback.Fire(_mm, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
                 else
                 {
@@ -1368,6 +1392,7 @@ namespace SS.Core
             ReliablePacket rp = new ReliablePacket(buffer.Bytes);
             if (rp.T1 == 0x00)
             {
+                // 'core' packet
                 if ((rp.T2 < _oohandlers.Length) && (_oohandlers[rp.T2] != null))
                 {
                     _oohandlers[rp.T2](buffer);
@@ -1387,31 +1412,41 @@ namespace SS.Core
             }
             else if (rp.T1 < MAXTYPES)
             {
-                if (conn.p != null)
+                try
                 {
-                    // player connection
-                    PacketDelegate packetDelegate;
-                    if (_handlers.TryGetValue(rp.T1, out packetDelegate) == true)
-                        packetDelegate(conn.p, buffer.Bytes, buffer.NumBytes);
-                    else
-                        _logManager.Log(LogLevel.Drivel, "<net> no handler for packet T1 [{0}]", rp.T1);
+                    if (conn.p != null)
+                    {
+                        // player connection
+                        PacketDelegate packetDelegate;
+                        if (_handlers.TryGetValue(rp.T1, out packetDelegate) == true)
+                            packetDelegate(conn.p, buffer.Bytes, buffer.NumBytes);
+                        else
+                            _logManager.Log(LogLevel.Drivel, "<net> no handler for packet T1 [0x{0:X2}]", rp.T1);
+                    }
+                    else if (conn.cc != null)
+                    {
+                        // client connection
+                        conn.cc.i.HandlePacket(buffer.Bytes, buffer.NumBytes);
+                    }
                 }
-                else if (conn.cc != null)
+                finally
                 {
-                    // client connection
-                    conn.cc.i.HandlePacket(buffer.Bytes, buffer.NumBytes);
-
                     buffer.Dispose();
                 }
             }
             else
             {
-                if (conn.p != null)
-                    _logManager.Log(LogLevel.Malicious, "<net> [{0}] [pid={1}] unknown packet type {2}", conn.p.Name, conn.p.Id, rp.T1);
-                else
-                    _logManager.Log(LogLevel.Malicious, "<net> (client connection) unknown packet type {0}", rp.T1);
-
-                buffer.Dispose();
+                try
+                {
+                    if (conn.p != null)
+                        _logManager.Log(LogLevel.Malicious, "<net> [{0}] [pid={1}] unknown packet type {2}", conn.p.Name, conn.p.Id, rp.T1);
+                    else
+                        _logManager.Log(LogLevel.Malicious, "<net> (client connection) unknown packet type {0}", rp.T1);
+                }
+                finally
+                {
+                    buffer.Dispose();
+                }
             }
         }
 
@@ -1585,7 +1620,7 @@ namespace SS.Core
             BandwidthPriorities pri;
             if ((flags & NetSendFlags.PriorityN1) == NetSendFlags.PriorityN1)
             {
-                pri = BandwidthPriorities.UnreiableLow;
+                pri = BandwidthPriorities.UnreliableLow;
             }
             else if (((flags & NetSendFlags.PriorityP4) == NetSendFlags.PriorityP4) ||
                 ((flags & NetSendFlags.PriorityP5) == NetSendFlags.PriorityP5))
@@ -1850,7 +1885,7 @@ namespace SS.Core
                     //ts.T1 = 0x00;
                     //ts.T2 = 0x06;
                     ts.ClientTime = cts.Time;
-                    ts.ServerTime = Environment.TickCount; // asss does this one in the lock, but i rather lock as short as possbile
+                    ts.ServerTime = ServerTick.Now; // asss does this one in the lock, but i rather lock as short as possbile
 
                     lock (conn.olmtx)
                     {
@@ -2611,6 +2646,24 @@ namespace SS.Core
                         bufferPacket(conn, data, len, flags, null, null);
                     }
                 }
+            }
+        }
+
+        void INetwork.SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object clos)
+        {
+            ConnData conn = p[_connKey] as ConnData;
+            if (conn == null)
+                return;
+
+            // we can't handle big packets here
+            Debug.Assert(len <= (Constants.MaxPacket - Constants.ReliableHeaderLen));
+
+            if (!isOurs(p))
+                return;
+
+            lock (conn.olmtx)
+            {
+                bufferPacket(conn, data, len, NetSendFlags.Reliable, callback, clos);
             }
         }
 

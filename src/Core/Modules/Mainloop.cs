@@ -5,20 +5,8 @@ using System.Timers;
 using System.Threading;
 using SS.Core.ComponentInterfaces;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <typeparam name="TArg"></typeparam>
-    /// <param name="arg"></param>
-    /// <returns>true to continue timer events</returns>
-    public delegate bool TimerDelegate<TArg>(TArg state);
-
-    public delegate void TimerCleanupDelegate<TArg>(TArg state);
-
-    public delegate void WorkerDelegate<TParam>(TParam param);
-
     /// <summary>
     /// The equivalent of ASSS' mainloop.[ch] but without using the main thread
     /// in a loop that processes the timers sequentially.  All the timers can run

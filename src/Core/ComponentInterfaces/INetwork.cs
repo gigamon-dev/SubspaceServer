@@ -34,6 +34,7 @@ namespace SS.Core.ComponentInterfaces
     public delegate void PacketDelegate(Player p, byte[] data, int length);
     public delegate void SizedPacketDelegate(Player p, ArraySegment<byte>? data, int offset, int totallen);
     public delegate void ReliableDelegate(Player p, bool success, object clos);
+    //public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
     public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
 
     public interface INetwork : IComponentInterface
@@ -67,6 +68,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="len">length of data to send</param>
         /// <param name="flags">flags specifying options for the send</param>
         void SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags);
+
+        void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object clos);
 
         //void SendToTarget(Target target, byte[] data, int len, NetSendFlags flags);
         //void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object obj);

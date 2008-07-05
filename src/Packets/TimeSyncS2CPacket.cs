@@ -52,16 +52,16 @@ namespace SS.Core.Packets
             set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
         }
 
-        public int ClientTime
+        public uint ClientTime
         {
             //get { return ExtendedBitConverter.ToInt32(data, clienttime.ByteOffset, clienttime.BitOffset); }
-            set { ExtendedBitConverter.WriteInt32Bits(value, data, clienttime.ByteOffset, clienttime.BitOffset, clienttime.NumBits); }
+            set { ExtendedBitConverter.WriteUInt32Bits(value, data, clienttime.ByteOffset, clienttime.BitOffset, clienttime.NumBits); }
         }
 
-        public int ServerTime
+        public uint ServerTime
         {
             //get { return ExtendedBitConverter.ToInt32(data, servertime.ByteOffset, servertime.BitOffset); }
-            set { ExtendedBitConverter.WriteInt32Bits(value, data, servertime.ByteOffset, servertime.BitOffset, servertime.NumBits); }
+            set { ExtendedBitConverter.WriteUInt32Bits(value, data, servertime.ByteOffset, servertime.BitOffset, servertime.NumBits); }
         }
 
         public static int Length

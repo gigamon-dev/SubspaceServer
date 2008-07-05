@@ -6,8 +6,170 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
+    public class Int32Array
+    {
+        private byte[] _data;
+        private int _byteOffset;
+        private int _bitOffset;
+        private DataLocation[] _dataLocations;
+
+        public Int32Array(byte[] data, int byteOffset, int bitOffset, DataLocation[] dataLocations)
+        {
+            if (data == null)
+                throw new ArgumentNullException("data");
+
+            if (dataLocations == null)
+                throw new ArgumentNullException("dataLocations");
+
+            _data = data;
+            _byteOffset = byteOffset;
+            _bitOffset = bitOffset;
+            _dataLocations = dataLocations;
+        }
+
+        public Int32Array(byte[] data, DataLocation[] dataLocations)
+            : this(data, 0, 0, dataLocations)
+        {
+        }
+
+        public int this[int index]
+        {
+            get
+            {
+                return ExtendedBitConverter.ToInt32(
+                    _data, 
+                    _byteOffset + _dataLocations[index].ByteOffset, 
+                    _bitOffset + _dataLocations[index].BitOffset, 
+                    _dataLocations[index].NumBits);
+            }
+
+            set
+            {
+                ExtendedBitConverter.WriteInt32Bits(
+                    value,
+                    _data,
+                    _byteOffset + _dataLocations[index].ByteOffset,
+                    _bitOffset + _dataLocations[index].BitOffset,
+                    _dataLocations[index].NumBits);
+            }
+        }
+
+        public int Length
+        {
+            get { return _dataLocations.Length; }
+        }
+    }
+
+    public class Int16Array
+    {
+        private byte[] _data;
+        private int _byteOffset;
+        private int _bitOffset;
+        private DataLocation[] _dataLocations;
+
+        public Int16Array(byte[] data, int byteOffset, int bitOffset, DataLocation[] dataLocations)
+        {
+            if (data == null)
+                throw new ArgumentNullException("data");
+
+            if (dataLocations == null)
+                throw new ArgumentNullException("dataLocations");
+
+            _data = data;
+            _byteOffset = byteOffset;
+            _bitOffset = bitOffset;
+            _dataLocations = dataLocations;
+        }
+
+        public Int16Array(byte[] data, DataLocation[] dataLocations)
+            : this(data, 0, 0, dataLocations)
+        {
+        }
+
+        public short this[int index]
+        {
+            get
+            {
+                return ExtendedBitConverter.ToInt16(
+                    _data, 
+                    _byteOffset + _dataLocations[index].ByteOffset, 
+                    _bitOffset + _dataLocations[index].BitOffset, 
+                    _dataLocations[index].NumBits);
+            }
+
+            set
+            {
+                ExtendedBitConverter.WriteInt16Bits(
+                    value,
+                    _data,
+                    _byteOffset + _dataLocations[index].ByteOffset,
+                    _bitOffset + _dataLocations[index].BitOffset,
+                    _dataLocations[index].NumBits);
+            }
+        }
+
+        public int Length
+        {
+            get { return _dataLocations.Length; }
+        }
+    }
+
+    public class ByteArray
+    {
+        private byte[] _data;
+        private int _byteOffset;
+        private int _bitOffset;
+        private DataLocation[] _dataLocations;
+
+        public ByteArray(byte[] data, int byteOffset, int bitOffset, DataLocation[] dataLocations)
+        {
+            if (data == null)
+                throw new ArgumentNullException("data");
+
+            if (dataLocations == null)
+                throw new ArgumentNullException("dataLocations");
+
+            _data = data;
+            _byteOffset = byteOffset;
+            _bitOffset = bitOffset;
+            _dataLocations = dataLocations;
+        }
+
+        public ByteArray(byte[] data, DataLocation[] dataLocations)
+            : this(data, 0, 0, dataLocations)
+        {
+        }
+
+        public byte this[int index]
+        {
+            get
+            {
+                return ExtendedBitConverter.ToByte(
+                    _data, 
+                    _byteOffset + _dataLocations[index].ByteOffset, 
+                    _bitOffset + _dataLocations[index].BitOffset, 
+                    _dataLocations[index].NumBits);
+            }
+
+            set
+            {
+                ExtendedBitConverter.WriteByteBits(
+                    value,
+                    _data,
+                    _byteOffset + _dataLocations[index].ByteOffset,
+                    _bitOffset + _dataLocations[index].BitOffset,
+                    _dataLocations[index].NumBits);
+            }
+        }
+
+        public int Length
+        {
+            get { return _dataLocations.Length; }
+        }
+    }
+
     // note to self, luckily each part of the packet is padded to byte boundary.  otherwise i wouldn't be able to use ArraySegment<byte>
-    public struct ClientSettingsPacket
+    public class ClientSettingsPacket
     {
         static ClientSettingsPacket()
         {
@@ -66,9 +228,43 @@ namespace SS.Core.Packets
 
         private readonly byte[] data;
 
+        public readonly ClientBitSet BitSet;
+        public readonly ShipSettings[] Ships;
+        public readonly Int32Array LongSet;
+        public readonly SpawnPos[] SpawnPosition;
+        public readonly Int16Array ShortSet;
+        public readonly ByteArray ByteSet;
+        public readonly ByteArray PrizeWeightSet;
+
+        public ClientSettingsPacket() : this(new byte[ClientSettingsPacket.Length])
+        {
+        }
+
         public ClientSettingsPacket(byte[] data)
         {
+            if (data == null)
+                throw new ArgumentNullException("data");
+
+            if (data.Length != ClientSettingsPacket.Length)
+                throw new ArgumentOutOfRangeException("data", "must be of length " + ClientSettingsPacket.Length + " (was " + data.Length + ")");
+
             this.data = data;
+
+            BitSet = new ClientBitSet(new ArraySegment<byte>(data, bitset.ByteOffset, bitset.NumBits / 8));
+
+            Ships = new ShipSettings[ships.Length];
+            for (int x = 0; x < Ships.Length; x++)
+                Ships[x] = new ShipSettings(new ArraySegment<byte>(data, ships[x].ByteOffset, ships[x].NumBits / 8));
+
+            LongSet = new Int32Array(data, longSet);
+
+            SpawnPosition = new SpawnPos[spawnPos.Length];
+            for (int x = 0; x < SpawnPosition.Length; x++)
+                SpawnPosition[x] = new SpawnPos(new ArraySegment<byte>(data, spawnPos[x].ByteOffset, spawnPos[x].NumBits / 8));
+
+            ShortSet = new Int16Array(data, shortSet);
+            ByteSet = new ByteArray(data, byteSet);
+            PrizeWeightSet = new ByteArray(data, prizeWeightSet);
         }
 
         public byte[] Bytes
@@ -82,31 +278,43 @@ namespace SS.Core.Packets
             set { ExtendedBitConverter.WriteByteBits(value, data, type.ByteOffset, type.BitOffset, type.NumBits); }
         }
 
-        public struct ClientBitSet
+        public class ClientBitSet
         {
             static ClientBitSet()
             {
+                // note: ASSS puts Type as part of the client bit set (hacky)
+                // instead i have type separate and split the bit field into 2 separate bit fields (first is a byte, second is a ushort)
+
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                exactDamage = locationBuilder.CreateDataLocation(1);
-                hideFlags = locationBuilder.CreateDataLocation(1);
-                noXRadar = locationBuilder.CreateDataLocation(1);
-                slowFramerate = locationBuilder.CreateDataLocation(3);
-                disableScreenshot = locationBuilder.CreateDataLocation(1);
-                reserved = locationBuilder.CreateDataLocation(1);
-                maxTimerDrift = locationBuilder.CreateDataLocation(3);
-                disableBallThroughWalls = locationBuilder.CreateDataLocation(1);
-                disableBallKilling = locationBuilder.CreateDataLocation(1);
+                bitField1 = locationBuilder.CreateDataLocation(8);
+                bitField2 = locationBuilder.CreateDataLocation(16);
+
+                BitFieldBuilder builder = new BitFieldBuilder((byte)bitField1.NumBits);
+                exactDamage = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                hideFlags = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                noXRadar = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                slowFramerate = (ByteBitFieldLocation)builder.CreateBitFieldLocation(3);
+                disableScreenshot = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                //reserved = builder.CreateBitFieldLocation(1);
+
+                builder = new BitFieldBuilder((byte)bitField2.NumBits);
+                maxTimerDrift = (ByteBitFieldLocation)builder.CreateBitFieldLocation(3);
+                disableBallThroughWalls = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                disableBallKilling = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
             }
 
-            private static readonly DataLocation exactDamage;
-            private static readonly DataLocation hideFlags;
-            private static readonly DataLocation noXRadar;
-            private static readonly DataLocation slowFramerate;
-            private static readonly DataLocation disableScreenshot;
-            private static readonly DataLocation reserved;
-            private static readonly DataLocation maxTimerDrift;
-            private static readonly DataLocation disableBallThroughWalls;
-            private static readonly DataLocation disableBallKilling;
+            private static readonly DataLocation bitField1;
+            private static readonly BoolBitFieldLocation exactDamage;
+            private static readonly BoolBitFieldLocation hideFlags;
+            private static readonly BoolBitFieldLocation noXRadar;
+            private static readonly ByteBitFieldLocation slowFramerate;
+            private static readonly BoolBitFieldLocation disableScreenshot;
+            //private static readonly BitFieldLocation reserved;
+
+            private static readonly DataLocation bitField2;            
+            private static readonly ByteBitFieldLocation maxTimerDrift;
+            private static readonly BoolBitFieldLocation disableBallThroughWalls;
+            private static readonly BoolBitFieldLocation disableBallKilling;
 
             private ArraySegment<byte> segment;
 
@@ -115,53 +323,60 @@ namespace SS.Core.Packets
                 this.segment = segment;
             }
 
-            public byte ExactDamage
+            private byte BitField1
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + exactDamage.ByteOffset, exactDamage.BitOffset, exactDamage.NumBits); }
+                get { return ExtendedBitConverter.ToByte(segment.Array, segment.Offset + bitField1.ByteOffset, bitField1.BitOffset, bitField1.NumBits); }
+                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + bitField1.ByteOffset, bitField1.BitOffset, bitField1.NumBits); }
             }
 
-            public byte HideFlags
+            private ushort BitField2
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + hideFlags.ByteOffset, hideFlags.BitOffset, hideFlags.NumBits); }
+                get { return ExtendedBitConverter.ToUInt16(segment.Array, segment.Offset + bitField2.ByteOffset, bitField2.BitOffset, bitField2.NumBits); }
+                set { ExtendedBitConverter.WriteUInt16Bits(value, segment.Array, segment.Offset + bitField2.ByteOffset, bitField2.BitOffset, bitField2.NumBits); }
             }
 
-            public byte NoXRadar
+            public bool ExactDamage
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + noXRadar.ByteOffset, noXRadar.BitOffset, noXRadar.NumBits); }
+                set { BitField1 = exactDamage.SetValue(value, BitField1); }
+            }
+
+            public bool HideFlags
+            {
+                set { BitField1 = hideFlags.SetValue(value, BitField1); }
+            }
+
+            public bool NoXRadar
+            {
+                set { BitField1 = noXRadar.SetValue(value, BitField1); }
             }
 
             public byte SlowFramerate
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + slowFramerate.ByteOffset, slowFramerate.BitOffset, slowFramerate.NumBits); }
+                set { BitField1 = slowFramerate.SetValue(value, BitField1); }
             }
 
-            public byte DisableScreenshot
+            public bool DisableScreenshot
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + disableScreenshot.ByteOffset, disableScreenshot.BitOffset, disableScreenshot.NumBits); }
+                set { BitField1 = disableScreenshot.SetValue(value, BitField1); }
             }
 
             public byte MaxTimerDrift
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + maxTimerDrift.ByteOffset, maxTimerDrift.BitOffset, maxTimerDrift.NumBits); }
+                set { BitField2 = maxTimerDrift.SetValue(value, BitField2); }
             }
 
-            public byte DisableBallThroughWalls
+            public bool DisableBallThroughWalls
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + disableBallThroughWalls.ByteOffset, disableBallThroughWalls.BitOffset, disableBallThroughWalls.NumBits); }
+                set { BitField2 = disableBallThroughWalls.SetValue(value, BitField2); }
             }
 
-            public byte DisableBallKilling
+            public bool DisableBallKilling
             {
-                set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + disableBallKilling.ByteOffset, disableBallKilling.BitOffset, disableBallKilling.NumBits); }
+                set { BitField2 = disableBallKilling.SetValue(value, BitField2); }
             }
         }
 
-        public ClientBitSet BitSet
-        {
-            get { return new ClientBitSet(new ArraySegment<byte>(data, bitset.ByteOffset, bitset.NumBits / 8)); }
-        }
-
-        public struct ShipSettings
+        public class ShipSettings
         {
             static ShipSettings()
             {
@@ -187,61 +402,57 @@ namespace SS.Core.Packets
             private static readonly DataLocation[] byteSet;
             private static readonly DataLocation weaponBits;
 
-            private ArraySegment<byte> segment;
+            private readonly ArraySegment<byte> segment;
+
+            public readonly Int32Array LongSet;
+            public readonly Int16Array ShortSet;
+            public readonly ByteArray ByteSet;
+            public readonly WeaponBits Weapons;
+            public readonly MiscBitField MiscBits;
 
             public ShipSettings(ArraySegment<byte> segment)
             {
                 this.segment = segment;
-            }
-
-            public void SetLongSet(int index, int value)
-            {
-                ExtendedBitConverter.WriteInt32Bits(value, segment.Array, segment.Offset + longSet[index].ByteOffset, longSet[index].BitOffset, longSet[index].NumBits);
-            }
-
-            public void SetShortSet(int index, short value)
-            {
-                ExtendedBitConverter.WriteInt16Bits(value, segment.Array, segment.Offset + shortSet[index].ByteOffset, shortSet[index].BitOffset, shortSet[index].NumBits);
-            }
-
-            public void SetByteSet(int index, byte value)
-            {
-                ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + byteSet[index].ByteOffset, byteSet[index].BitOffset, byteSet[index].NumBits);
+                LongSet = new Int32Array(segment.Array, segment.Offset, 0, longSet);
+                ShortSet = new Int16Array(segment.Array, segment.Offset, 0, shortSet);
+                ByteSet = new ByteArray(segment.Array, segment.Offset, 0, byteSet);
+                Weapons = new WeaponBits(new ArraySegment<byte>(segment.Array, segment.Offset + weaponBits.ByteOffset, weaponBits.NumBits / 8));
+                MiscBits = new MiscBitField(segment.Array, new DataLocation(segment.Offset + shortSet[10].ByteOffset, 0, 16));
             }
 
             public struct WeaponBits
             {
                 static WeaponBits()
                 {
-                    DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                    shrapnelMax = locationBuilder.CreateDataLocation(5);
-                    shrapnelRate = locationBuilder.CreateDataLocation(5);
-                    cloakStatus = locationBuilder.CreateDataLocation(2);
-                    stealthStatus = locationBuilder.CreateDataLocation(2);
-                    xRadarStatus = locationBuilder.CreateDataLocation(2);
-                    antiWarpStatus = locationBuilder.CreateDataLocation(2);
-                    initialGuns = locationBuilder.CreateDataLocation(2);
-                    maxGuns = locationBuilder.CreateDataLocation(2);
-                    initialBombs = locationBuilder.CreateDataLocation(2);
-                    maxBombs = locationBuilder.CreateDataLocation(2);
-                    doubleBarrel = locationBuilder.CreateDataLocation(1);
-                    empBomb = locationBuilder.CreateDataLocation(1);
-                    seeMines = locationBuilder.CreateDataLocation(1);
+                    BitFieldBuilder builder = new BitFieldBuilder(32);
+                    shrapnelMax = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
+                    shrapnelRate = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
+                    cloakStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    stealthStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    xRadarStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    antiWarpStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    initialGuns = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    maxGuns = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    initialBombs = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    maxBombs = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    doubleBarrel = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                    empBomb = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                    seeMines = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
                 }
 
-                private static readonly DataLocation shrapnelMax;
-                private static readonly DataLocation shrapnelRate;
-                private static readonly DataLocation cloakStatus;
-                private static readonly DataLocation stealthStatus;
-                private static readonly DataLocation xRadarStatus;
-                private static readonly DataLocation antiWarpStatus;
-                private static readonly DataLocation initialGuns;
-                private static readonly DataLocation maxGuns;
-                private static readonly DataLocation initialBombs;
-                private static readonly DataLocation maxBombs;
-                private static readonly DataLocation doubleBarrel;
-                private static readonly DataLocation empBomb;
-                private static readonly DataLocation seeMines;
+                private static readonly ByteBitFieldLocation shrapnelMax;
+                private static readonly ByteBitFieldLocation shrapnelRate;
+                private static readonly ByteBitFieldLocation cloakStatus;
+                private static readonly ByteBitFieldLocation stealthStatus;
+                private static readonly ByteBitFieldLocation xRadarStatus;
+                private static readonly ByteBitFieldLocation antiWarpStatus;
+                private static readonly ByteBitFieldLocation initialGuns;
+                private static readonly ByteBitFieldLocation maxGuns;
+                private static readonly ByteBitFieldLocation initialBombs;
+                private static readonly ByteBitFieldLocation maxBombs;
+                private static readonly BoolBitFieldLocation doubleBarrel;
+                private static readonly BoolBitFieldLocation empBomb;
+                private static readonly BoolBitFieldLocation seeMines;
 
                 private ArraySegment<byte> segment;
 
@@ -250,100 +461,146 @@ namespace SS.Core.Packets
                     this.segment = segment;
                 }
 
+                private uint BitField
+                {
+                    get { return ExtendedBitConverter.ToUInt32(segment.Array, segment.Offset, 0, segment.Count*8); }
+                    set { ExtendedBitConverter.WriteUInt32Bits(value, segment.Array, segment.Offset, 0, segment.Count*8); }
+                }
+
                 public byte ShrapnelMax
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + shrapnelMax.ByteOffset, shrapnelMax.BitOffset, shrapnelMax.NumBits); }
+                    set { BitField = shrapnelMax.SetValue(value, BitField); }
                 }
 
                 public byte ShrapnelRate
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + shrapnelRate.ByteOffset, shrapnelRate.BitOffset, shrapnelRate.NumBits); }
+                    set { BitField = shrapnelRate.SetValue(value, BitField); }
                 }
 
                 public byte CloakStatus
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + cloakStatus.ByteOffset, cloakStatus.BitOffset, cloakStatus.NumBits); }
+                    set { BitField = cloakStatus.SetValue(value, BitField); }
                 }
 
                 public byte StealthStatus
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + stealthStatus.ByteOffset, stealthStatus.BitOffset, stealthStatus.NumBits); }
+                    set { BitField = stealthStatus.SetValue(value, BitField); }
                 }
 
                 public byte XRadarStatus
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + xRadarStatus.ByteOffset, xRadarStatus.BitOffset, xRadarStatus.NumBits); }
+                    set { BitField = xRadarStatus.SetValue(value, BitField); }
                 }
 
                 public byte AntiWarpStatus
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + antiWarpStatus.ByteOffset, antiWarpStatus.BitOffset, antiWarpStatus.NumBits); }
+                    set { BitField = antiWarpStatus.SetValue(value, BitField); }
                 }
 
                 public byte InitialGuns
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + initialGuns.ByteOffset, initialGuns.BitOffset, initialGuns.NumBits); }
+                    set { BitField = initialGuns.SetValue(value, BitField); }
                 }
 
                 public byte MaxGuns
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + maxGuns.ByteOffset, maxGuns.BitOffset, maxGuns.NumBits); }
+                    set { BitField = maxGuns.SetValue(value, BitField); }
                 }
+
                 public byte InitialBombs
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + initialBombs.ByteOffset, initialBombs.BitOffset, initialBombs.NumBits); }
+                    set { BitField = initialBombs.SetValue(value, BitField); }
                 }
 
                 public byte MaxBombs
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + maxBombs.ByteOffset, maxBombs.BitOffset, maxBombs.NumBits); }
+                    set { BitField = maxBombs.SetValue(value, BitField); }
                 }
 
-                public byte DoubleBarrel
+                public bool DoubleBarrel
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + doubleBarrel.ByteOffset, doubleBarrel.BitOffset, doubleBarrel.NumBits); }
+                    set { BitField = doubleBarrel.SetValue(value, BitField); }
                 }
 
-                public byte EmpBomb
+                public bool EmpBomb
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + empBomb.ByteOffset, empBomb.BitOffset, empBomb.NumBits); }
+                    set { BitField = empBomb.SetValue(value, BitField); }
                 }
 
-                public byte SeeMines
+                public bool SeeMines
                 {
-                    set { ExtendedBitConverter.WriteByteBits(value, segment.Array, segment.Offset + seeMines.ByteOffset, seeMines.BitOffset, seeMines.NumBits); }
+                    set { BitField = seeMines.SetValue(value, BitField); }
                 }
             }
 
-            public WeaponBits Weapons
+            public class MiscBitField
             {
-                get { return new WeaponBits(new ArraySegment<byte>(segment.Array, segment.Offset + weaponBits.ByteOffset, weaponBits.NumBits/8)); }
+                static MiscBitField()
+                {
+                    BitFieldBuilder builder = new BitFieldBuilder(16);
+                    seeBombLevel = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
+                    disableFastShooting = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+                    radius = (ByteBitFieldLocation)builder.CreateBitFieldLocation(8);
+                    padding = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
+                }
+
+                private static readonly ByteBitFieldLocation seeBombLevel;
+                private static readonly BoolBitFieldLocation disableFastShooting;
+                private static readonly ByteBitFieldLocation radius;
+                private static readonly ByteBitFieldLocation padding;
+
+                private byte[] _data;
+                private DataLocation _dataLocation;
+
+                public MiscBitField(byte[] data, DataLocation dataLocation)
+                {
+                    if (data == null)
+                        throw new ArgumentException("data");
+
+                    _data = data;
+                    _dataLocation = dataLocation;
+                }
+
+                private ushort BitField
+                {
+                    get { return ExtendedBitConverter.ToUInt16(_data, _dataLocation.ByteOffset, _dataLocation.BitOffset, _dataLocation.NumBits); }
+                    set { ExtendedBitConverter.WriteUInt16Bits(value, _data, _dataLocation.ByteOffset, _dataLocation.BitOffset, _dataLocation.NumBits); }
+                }
+
+                public byte SeeBombLevel
+                {
+                    set { BitField = seeBombLevel.SetValue(value, BitField); }
+                }
+
+                public bool DisableFastShooting
+                {
+                    set { BitField = disableFastShooting.SetValue(value, BitField); }
+                }
+
+                public byte Radius
+                {
+                    set { BitField = radius.SetValue(value, BitField); }
+                }
             }
         }
 
-        public ShipSettings GetShipSetting(int index)
-        {
-            return new ShipSettings(new ArraySegment<byte>(data, ships[index].ByteOffset, ships[index].NumBits / 8));
-        }
-
-        public void SetLongSet(int index, int value)
-        {
-            ExtendedBitConverter.WriteInt32Bits(value, data, longSet[index].ByteOffset, longSet[index].BitOffset, longSet[index].NumBits);
-        }
-
-        public struct SpawnPos
+        public class SpawnPos
         {
             static SpawnPos()
             {
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                x = locationBuilder.CreateDataLocation(10);
-                y = locationBuilder.CreateDataLocation(10);
-                r = locationBuilder.CreateDataLocation(9);
+                bitField = locationBuilder.CreateDataLocation(32);
+
+                BitFieldBuilder builder = new BitFieldBuilder(32);
+                x = builder.CreateBitFieldLocation(10);
+                y = builder.CreateBitFieldLocation(10);
+                r = builder.CreateBitFieldLocation(9);
             }
 
-            private static readonly DataLocation x;
-            private static readonly DataLocation y;
-            private static readonly DataLocation r;
+            private static readonly DataLocation bitField;
+            private static readonly BitFieldLocation x;
+            private static readonly BitFieldLocation y;
+            private static readonly BitFieldLocation r;
 
             private ArraySegment<byte> segment;
 
@@ -352,35 +609,26 @@ namespace SS.Core.Packets
                 this.segment = segment;
             }
 
+            private uint BitField
+            {
+                get { return ExtendedBitConverter.ToUInt32(segment.Array, segment.Offset + bitField.ByteOffset, bitField.BitOffset, bitField.NumBits); }
+                set { ExtendedBitConverter.WriteUInt32Bits(value, segment.Array, segment.Offset + bitField.ByteOffset, bitField.BitOffset, bitField.NumBits); }
+            }
+
             public ushort X
             {
-                set { ExtendedBitConverter.WriteUInt16Bits(value, segment.Array, segment.Offset + x.ByteOffset, x.BitOffset, x.NumBits); }
+                set { BitField = ExtendedBitConverter.SetUInt16(value, BitField, x.LowestOrderBit, x.NumBits); }
             }
 
             public ushort Y
             {
-                set { ExtendedBitConverter.WriteUInt16Bits(value, segment.Array, segment.Offset + y.ByteOffset, y.BitOffset, y.NumBits); }
+                set { BitField = ExtendedBitConverter.SetUInt16(value, BitField, y.LowestOrderBit, y.NumBits); }
             }
 
             public ushort R
             {
-                set { ExtendedBitConverter.WriteUInt16Bits(value, segment.Array, segment.Offset + r.ByteOffset, r.BitOffset, r.NumBits); }
+                set { BitField = ExtendedBitConverter.SetUInt16(value, BitField, r.LowestOrderBit, r.NumBits); }
             }
-        }
-
-        public SpawnPos GetSpawnPos(int index)
-        {
-            return new SpawnPos(new ArraySegment<byte>(data, spawnPos[index].ByteOffset, spawnPos[index].NumBits));
-        }
-
-        public void SetShortSet(int index, short value)
-        {
-            ExtendedBitConverter.WriteInt16Bits(value, data, shortSet[index].ByteOffset, shortSet[index].BitOffset, shortSet[index].NumBits);
-        }
-
-        public void SetByteSet(int index, byte value)
-        {
-            ExtendedBitConverter.WriteByteBits(value, data, byteSet[index].ByteOffset, byteSet[index].BitOffset, byteSet[index].NumBits);
         }
     }
 }

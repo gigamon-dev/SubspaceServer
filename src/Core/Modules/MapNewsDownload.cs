@@ -8,8 +8,9 @@ using SS.Core.Packets;
 using System.Diagnostics;
 using System.Threading;
 using System.IO;
+using SS.Core.ComponentCallbacks;
 
-namespace SS.Core
+namespace SS.Core.Modules
 {
     public class MapNewsDownload : IModule, IMapNewsDownload
     {
@@ -136,7 +137,7 @@ namespace SS.Core
             _net.AddPacket((int)Packets.C2SPacketType.MapRequest, packetMapNewsRequest);
             _net.AddPacket((int)Packets.C2SPacketType.NewsRequest, packetMapNewsRequest);
 
-            mm.RegisterCallback<ArenaActionEventHandler>(Constants.Events.ArenaAction, new ArenaActionEventHandler(arenaAction));
+            ArenaActionCallback.Register(_mm, arenaAction);
 
             mm.RegisterInterface<IMapNewsDownload>(this);
             return true;
@@ -150,8 +151,10 @@ namespace SS.Core
             _net.RemovePacket((int)Packets.C2SPacketType.MapRequest, packetMapNewsRequest);
             _net.RemovePacket((int)Packets.C2SPacketType.NewsRequest, packetMapNewsRequest);
 
-            mm.UnregisterCallback(Constants.Events.ArenaAction, new ArenaActionEventHandler(arenaAction));
+            ArenaActionCallback.Unregister(_mm, arenaAction);
+
             _arenaManager.FreeArenaData(_dlKey);
+
             return true;
         }
 
@@ -309,8 +312,8 @@ namespace SS.Core
 
                     if (docomp)
                     {
-                        //using (MemoryStream outputStream = new MemoryStream(mdd.cmpmap, 17, mdd.cmpmap.Length - 17))
-                        using (MemoryStream outputStream = new MemoryStream())
+                        using (MemoryStream outputStream = new MemoryStream(mdd.cmpmap, 17, mdd.cmpmap.Length - 17))
+                        //using (MemoryStream outputStream = new MemoryStream())
                         using (zlib.ZOutputStream outZStream = new zlib.ZOutputStream(outputStream, zlib.zlibConst.Z_DEFAULT_COMPRESSION))
                         {
                             byte[] buffer = new byte[4096];

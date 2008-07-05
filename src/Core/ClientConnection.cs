@@ -5,6 +5,11 @@ using System.Text;
 
 namespace SS.Core
 {
+    // looks like asss uses this one like a void* type
+    public interface IClientEncrypt
+    {
+    }
+
     public interface IClientConn
     {
         void Connected();
