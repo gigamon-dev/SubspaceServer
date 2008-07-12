@@ -214,10 +214,28 @@ namespace SS.Core.Modules
             return set;
         }
 
-        private LinkedList<Player> getCapSet(string cap, Player except)
+        private LinkedList<Player> getCapabilitySet(string capability, Player except)
         {
-            // TODO
-            return null;
+            LinkedList<Player> set = new LinkedList<Player>();
+            _playerData.Lock();
+            try
+            {
+                foreach (Player p in _playerData.PlayerList)
+                {
+                    if (p.Status == PlayerState.Playing &&
+                        _capabilityManager.HasCapability(p, capability) &&
+                        p != except)
+                    {
+                        set.AddLast(p);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            return set;
         }
 
         void IChat.SendArenaSoundMessage(Arena arena, ChatSound sound, string format, params object[] args)
@@ -229,7 +247,7 @@ namespace SS.Core.Modules
 
         void IChat.SendModMessage(string format, params object[] args)
         {
-            IEnumerable<Player> set = getCapSet("seemodchat", null);
+            IEnumerable<Player> set = getCapabilitySet(Constants.Capabilities.ModChat, null);
             if (set != null)
                 sendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, format, args);
         }
@@ -394,8 +412,8 @@ namespace SS.Core.Modules
             from.RemoveControlCharactersFromText(len);
 
             ChatSound sound = ChatSound.None;
-            // TODO: check capability to send sound messages
-            sound = (ChatSound)from.Sound;
+            if(_capabilityManager.HasCapability(p, Constants.Capabilities.SoundMessages))
+                sound = (ChatSound)from.Sound;
 
             string text = from.GetText(len);
 
@@ -471,7 +489,9 @@ namespace SS.Core.Modules
                 pm.msgs++;
 
                 // TODO: add capability to spam (for bots)
-                if (pm.msgs >= _cfg.floodlimit && _cfg.floodlimit > 0)
+                if (pm.msgs >= _cfg.floodlimit && 
+                    _cfg.floodlimit > 0 &&
+                    !_capabilityManager.HasCapability(p, Constants.Capabilities.CanSpam))
                 {
                     pm.msgs >>= 1;
 
@@ -548,6 +568,7 @@ namespace SS.Core.Modules
 
             if (ok(p, ChatMessageType.Chat))
             {
+                // msg should look like "text" or "#;text"
                 fireChatMessageEvent(null, p, ChatMessageType.Chat, sound, null, -1, text);
 #if CFG_LOG_PRIVATE
                 _logManager.LogP(LogLevel.Drivel, "Chat", p, "chat msg: {0}", text);
@@ -573,7 +594,7 @@ namespace SS.Core.Modules
             string dest = tokens[1];
             string message = tokens[2];
 
-            if ((isCommandChar(message[0]) && message.Length > 1 && message[1] != '\0') || isAllCmd)
+            if ((isCommandChar(message[0]) && message.Length > 1) || isAllCmd)
             {
                 if (ok(p, ChatMessageType.Command))
                 {
@@ -592,11 +613,14 @@ namespace SS.Core.Modules
                     LinkedList<Player> set = new LinkedList<Player>();
                     set.AddLast(d);
 
-                    // TODO: figure out this stuff...
-                    //sendReply(set, ChatMessageType.RemotePrivate, sound, p, p.Id, 
+                    sendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, string.Format("({0})>{1}", p.Name, message), p.Name.Length + 3);
                 }
 
                 fireChatMessageEvent(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
+
+#if CFG_LOG_PRIVATE
+                _logManager.LogP(LogLevel.Drivel, "Chat", p, "to [{0}] remote priv: {1}", dest, message);
+#endif
             }
         }
 
@@ -610,7 +634,7 @@ namespace SS.Core.Modules
 
             Arena arena = p.Arena; // this can be null
 
-            if ((isCommandChar(text[0]) && text.Length > 1 && text[1] != '\0') || isAllCmd)
+            if ((isCommandChar(text[0]) && text.Length > 1) || isAllCmd)
             {
                 if (ok(p, ChatMessageType.Command))
                 {
@@ -654,7 +678,7 @@ namespace SS.Core.Modules
 
             ChatMessageType type = p.Freq == freq ? ChatMessageType.Freq : ChatMessageType.EnemyFreq;
 
-            if (isCommandChar(text[0]) && text.Length > 1 && text[1] != '\0')
+            if (isCommandChar(text[0]) && text.Length > 1)
             {
                 if (ok(p, ChatMessageType.Command))
                 {
@@ -709,9 +733,9 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if(_capabilityManager.HasCapability(p, Constants.Capabilities.ModChat) && ok(p, ChatMessageType.ModChat))
+            if(_capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat) && ok(p, ChatMessageType.ModChat))
             {
-                LinkedList<Player> set = getCapSet(Constants.Capabilities.ModChat, p);
+                LinkedList<Player> set = getCapabilitySet(Constants.Capabilities.ModChat, p);
                 if (set != null)
                 {
                     message = p.Name + "> " + message;
@@ -732,14 +756,14 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (msg == null)
+            if (string.IsNullOrEmpty(msg))
                 return;
 
             Arena arena = p.Arena;
             if (arena == null)
                 return;
 
-            if ((msg[0] == CmdChar1 || msg[0] == CmdChar2) && msg[1] != '\0' || isAllCmd)
+            if ((isCommandChar(msg[0]) && (msg.Length > 1)) || isAllCmd)
             {
                 if (ok(p, ChatMessageType.Command))
                 {
@@ -851,7 +875,6 @@ namespace SS.Core.Modules
                 default: return null;
             }
         }
-
 
         private bool ok(Player p, ChatMessageType messageType)
         {

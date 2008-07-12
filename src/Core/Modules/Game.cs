@@ -19,7 +19,7 @@ namespace SS.Core.Modules
         private INetwork _net;
         //private IChatNet _chatnet;
         private IArenaManagerCore _arenaManager;
-        //private ICapabilityManager _capabilityManager;
+        private ICapabilityManager _capabilityManager;
         //private IMapData _mapData;
         //private ILagCollect _lagCollect;
         private IChat _chat;
@@ -40,6 +40,7 @@ namespace SS.Core.Modules
 
         private static readonly byte[] _addSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 1 };
         private static readonly byte[] _clearSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 0 };
+        private static readonly byte[] _shipResetBytes = new byte[] { (byte)S2CPacketType.ShipReset };
 
         private Random random = new Random();
 
@@ -156,7 +157,7 @@ namespace SS.Core.Modules
                     typeof(INetwork),
                     //typeof(IChatNet),
                     typeof(IArenaManagerCore),
-                    //typeof(ICapabilityManager),
+                    typeof(ICapabilityManager),
                     //typeof(IMapData),
                     //typeof(ILagCollect),
                     typeof(IChat),
@@ -176,7 +177,7 @@ namespace SS.Core.Modules
             _net = interfaceDependencies[typeof(INetwork)] as INetwork;
             //_chatnet = interfaceDependencies[typeof(IChatNet)] as IChatNet;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            //_capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
+            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
             //_mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
             //_lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
             _chat = interfaceDependencies[typeof(IChat)] as IChat;
@@ -363,6 +364,11 @@ namespace SS.Core.Modules
             pd.ignoreWeapons = (int)((float)Constants.RandMax * proportion);
         }
 
+        void IGame.ShipReset(Target target)
+        {
+            //_net.SendToTarget(target, _shipResetBytes, _shipResetBytes.Length, NetSendFlags.Reliable);
+        }
+
         #endregion
 
 
@@ -458,7 +464,14 @@ namespace SS.Core.Modules
                 if (ad.spec_epd)
                     seePd = SeeEnergy.All;
 
-                //if(_capabilityManager != null &&
+                if(_capabilityManager != null)
+                {
+                    if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeEnergy))
+                        seeNrg = seeNrgSpec = SeeEnergy.All;
+
+                    if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeExtraPlayerData))
+                        seePd = SeeEnergy.All;
+                }
 
                 pd.pl_epd.seeNrg = seeNrg;
                 pd.pl_epd.seeNrgSpec = seeNrgSpec;
@@ -1117,9 +1130,8 @@ namespace SS.Core.Modules
 
             // checked lock state (but always allow switching to spec)
             if (pd.lockship &&
-                ship != ShipType.Spec //&&
-                //!(_capabilityManager != null && _capabilityManager.
-                )
+                ship != ShipType.Spec &&
+                !(_capabilityManager != null && _capabilityManager.HasCapability(p, Constants.Capabilities.BypassLock)))
             {
                 if (_chat != null)
                     _chat.SendMessage(p, "You have been locked in {0}.", p.Ship == ShipType.Spec ? "spectator mode" : "your ship");
@@ -1183,11 +1195,10 @@ namespace SS.Core.Modules
                 expireLock(p);
             }
 
-            if(pd.lockship //&&
-                //!(_capabilityManager != null && _capabilityManager.
-                )
+            if (pd.lockship &&
+                !(_capabilityManager != null && _capabilityManager.HasCapability(p, Constants.Capabilities.BypassLock)))
             {
-                if(_chat != null)
+                if (_chat != null)
                     _chat.SendMessage(p, "You have been locked in {0}.", (p.Ship == ShipType.Spec) ? "spectator mode" : "your ship");
                 return;
             }

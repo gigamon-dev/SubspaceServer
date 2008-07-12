@@ -79,11 +79,23 @@ namespace SS.Core.Packets
             get { return Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBits / 8); }
             set
             {
-                int charCount = name.NumBits / 8;
-                if (value.Length < charCount)
-                    charCount = value.Length;
-
-                Encoding.ASCII.GetBytes(value, 0, charCount, data, name.ByteOffset);
+                if (string.IsNullOrEmpty(value))
+                    throw new ArgumentException("cannot be null or emmpty", "value");
+                
+                int fieldLength = name.NumBits / 8;
+                if (value.Length < fieldLength)
+                {
+                    int bytesWritten = Encoding.ASCII.GetBytes(value, 0, value.Length, data, name.ByteOffset);
+                    while (bytesWritten < fieldLength)
+                    {
+                        data[name.ByteOffset + bytesWritten] = 0;
+                        bytesWritten++;
+                    }
+                }
+                else
+                {
+                    Encoding.ASCII.GetBytes(value, 0, fieldLength, data, name.ByteOffset);
+                }
             }
         }
 
@@ -93,20 +105,21 @@ namespace SS.Core.Packets
             set
             {
                 if (value == null)
+                    value = string.Empty;
+                
+                int fieldLength = squad.NumBits / 8;
+                if (value.Length < fieldLength)
                 {
-                    int numBytes = squad.NumBits / 8;
-                    for (int x = 0; x < numBytes; x++)
+                    int bytesWritten = Encoding.ASCII.GetBytes(value, 0, value.Length, data, squad.ByteOffset);
+                    while (bytesWritten < fieldLength)
                     {
-                        data[squad.ByteOffset + x] = 0;
+                        data[squad.ByteOffset + bytesWritten] = 0;
+                        bytesWritten++;
                     }
                 }
                 else
                 {
-                    int charCount = squad.NumBits / 8;
-                    if (value.Length < charCount)
-                        charCount = value.Length;
-
-                    Encoding.ASCII.GetBytes(value, 0, charCount, data, squad.ByteOffset);
+                    Encoding.ASCII.GetBytes(value, 0, fieldLength, data, squad.ByteOffset);
                 }
             }
         }

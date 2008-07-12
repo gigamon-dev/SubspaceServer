@@ -209,15 +209,42 @@ namespace SS.Core
     /// <summary>
     /// this encapsulates a bunch of the typical position information about players in standard clients.
     /// </summary>
-    public struct PlayerPosition
+    public class PlayerPosition
     {
-        public int x;           /**< x coordinate of current position in pixels */
-        public int y;           /**< y coordinate of current position in pixels */
-        public int xspeed;      /**< velocity in positive x direction (pixels/second) */
-        public int yspeed;      /**< velocity in positive y direction (pixels/second) */
-        public int rotation;    /**< rotation value (0-63) */
-        public uint bounty;     /**< current bounty */
-        public PlayerPositionStatus status;     /**< status bitfield */
+        /// <summary>
+        /// x coordinate of current position in pixels
+        /// </summary>
+        public int x;
+
+        /// <summary>
+        /// y coordinate of current position in pixels
+        /// </summary>
+        public int y;
+
+        /// <summary>
+        /// velocity in positive x direction (pixels/second)
+        /// </summary>
+        public int xspeed;
+
+        /// <summary>
+        /// velocity in positive y direction (pixels/second)
+        /// </summary>
+        public int yspeed;
+
+        /// <summary>
+        /// rotation value (0-63)
+        /// </summary>
+        public int rotation;
+
+        /// <summary>
+        /// current bounty
+        /// </summary>
+        public uint bounty;
+
+        /// <summary>
+        /// status bitfield
+        /// </summary>
+        public PlayerPositionStatus status;
     };
 
     public class Player
@@ -303,7 +330,7 @@ namespace SS.Core
         /// <summary>
         /// contains some recent information about the player's position
         /// </summary>
-        public PlayerPosition Position;
+        public PlayerPosition Position = new PlayerPosition();
 
         /// <summary>
         /// the player's machine id, for standard clients

@@ -152,6 +152,20 @@ namespace SS.Core
             /// </summary>
             public const string SeeAllStaff = "seeallstaff";
 
+            /// <summary>
+            /// if a player can change ships even if locked
+            /// </summary>
+            public const string BypassLock = "bypasslock";
+
+            /// <summary>
+            /// if a player can see the energy of other players
+            /// </summary>
+            public const string SeeEnergy = "seenrg";
+
+            /// <summary>
+            /// if a player can see extra player data of other players
+            /// </summary>
+            public const string SeeExtraPlayerData = "seeepd";
         }
     }
 }

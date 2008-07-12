@@ -12,10 +12,38 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
-
-
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
+        private class ListenData
+        {
+            public readonly Socket GameSocket;
+            public readonly Socket PingSocket;
+
+            /// <summary>
+            /// used to determine the default arena users should be sent to
+            /// </summary>
+            public string ConnectAs;
+
+            /// <summary>
+            /// Whether VIE clients are allowed to connect
+            /// </summary>
+            public bool AllowVIE;
+
+            /// <summary>
+            /// Whether Continuum clients are allowed to connect
+            /// </summary>
+            public bool AllowContinuum;
+
+            /* dynamic population data */
+            //int total, playing;
+
+            public ListenData(Socket gameSocket, Socket pingSocket)
+            {
+                GameSocket = gameSocket;
+                PingSocket = pingSocket;
+            }
+        }
+
         private class SubspaceBuffer : DataBuffer
         {
             internal ConnData Conn;
@@ -326,6 +354,8 @@ namespace SS.Core.Modules
             public int pingrefreshtime;
         }
 
+        private Config _config = new Config();
+
         /// <summary>
         /// per player data key to ConnData
         /// </summary>
@@ -333,9 +363,7 @@ namespace SS.Core.Modules
 
         private Dictionary<EndPoint, Player> _clienthash = new Dictionary<EndPoint, Player>();
         private object _hashmtx = new object();
-
-        private Config _config = new Config();
-
+        
         /// <summary>
         /// this is a helper to group up packets to be send out together as 1 combined packet
         /// </summary>

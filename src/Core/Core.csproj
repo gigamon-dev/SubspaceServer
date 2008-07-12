@@ -63,6 +63,7 @@
   <ItemGroup>
     <Compile Include="Arena.cs" />
     <Compile Include="ComponentInterfaces\IGroupManager.cs" />
+    <Compile Include="ComponentInterfaces\ILagQuery.cs" />
     <Compile Include="ConfigFile.cs" />
     <Compile Include="ConfigHandle.cs" />
     <Compile Include="Modules\ArenaManager.cs" />
@@ -115,14 +116,12 @@
     <Compile Include="ComponentInterfaces\IServerTimer.cs" />
     <Compile Include="ComponentInterfaces\IStats.cs" />
     <Compile Include="Modules\Config.cs" />
-    <Compile Include="ConnData.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="Modules\CoreModule.cs" />
     <Compile Include="DataBuffer.cs" />
     <Compile Include="Defs.cs" />
     <Compile Include="Modules\EncryptionNull.cs" />
     <Compile Include="Modules\Game.cs" />
-    <Compile Include="ListenData.cs" />
     <Compile Include="Modules\LogConsole.cs" />
     <Compile Include="Modules\LogManager.cs" />
     <Compile Include="Modules\Mainloop.cs">
