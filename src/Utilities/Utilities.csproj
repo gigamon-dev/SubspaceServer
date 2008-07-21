@@ -66,6 +66,7 @@
     <Compile Include="DataLocation.cs" />
     <Compile Include="DataLocationBuilder.cs" />
     <Compile Include="ExtendedBitConverter.cs" />
+    <Compile Include="LittleEndianBitConverter.cs" />
     <Compile Include="MessagePassingQueue.cs" />
     <Compile Include="MultiDictionary.cs" />
     <Compile Include="Pool.cs" />

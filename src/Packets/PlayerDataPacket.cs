@@ -11,37 +11,37 @@ namespace SS.Core.Packets
         static PlayerDataPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            pktype = locationBuilder.CreateDataLocation(8);
-            ship = locationBuilder.CreateDataLocation(8);
-            acceptaudio = locationBuilder.CreateDataLocation(8);
-            name = locationBuilder.CreateDataLocation(8 * 20);
-            squad = locationBuilder.CreateDataLocation(8 * 20);
-            killpoints = locationBuilder.CreateDataLocation(32);
-            flagpoints = locationBuilder.CreateDataLocation(32);
-            pid = locationBuilder.CreateDataLocation(16);
-            freq = locationBuilder.CreateDataLocation(16);
-            wins = locationBuilder.CreateDataLocation(16);
-            losses = locationBuilder.CreateDataLocation(16);
-            attachedto = locationBuilder.CreateDataLocation(16);
-            flagscarried = locationBuilder.CreateDataLocation(16);
-            miscbits = locationBuilder.CreateDataLocation(8);
+            pktype = locationBuilder.CreateDataLocation(1);
+            ship = locationBuilder.CreateDataLocation(1);
+            acceptaudio = locationBuilder.CreateDataLocation(1);
+            name = locationBuilder.CreateDataLocation(20);
+            squad = locationBuilder.CreateDataLocation(20);
+            killpoints = locationBuilder.CreateDataLocation(4);
+            flagpoints = locationBuilder.CreateDataLocation(4);
+            pid = locationBuilder.CreateDataLocation(2);
+            freq = locationBuilder.CreateDataLocation(2);
+            wins = locationBuilder.CreateDataLocation(2);
+            losses = locationBuilder.CreateDataLocation(2);
+            attachedto = locationBuilder.CreateDataLocation(2);
+            flagscarried = locationBuilder.CreateDataLocation(2);
+            miscbits = locationBuilder.CreateDataLocation(1);
             Length = locationBuilder.NumBytes;
         }
 
-        private static readonly DataLocation pktype;
-        private static readonly DataLocation ship;
-        private static readonly DataLocation acceptaudio;
+        private static readonly ByteDataLocation pktype;
+        private static readonly SByteDataLocation ship;
+        private static readonly ByteDataLocation acceptaudio;
         private static readonly DataLocation name;
         private static readonly DataLocation squad;
-        private static readonly DataLocation killpoints;
-        private static readonly DataLocation flagpoints;
-        private static readonly DataLocation pid;
-        private static readonly DataLocation freq;
-        private static readonly DataLocation wins;
-        private static readonly DataLocation losses;
-        private static readonly DataLocation attachedto;
-        private static readonly DataLocation flagscarried;
-        private static readonly DataLocation miscbits;
+        private static readonly Int32DataLocation killpoints;
+        private static readonly Int32DataLocation flagpoints;
+        private static readonly Int16DataLocation pid;
+        private static readonly Int16DataLocation freq;
+        private static readonly Int16DataLocation wins;
+        private static readonly Int16DataLocation losses;
+        private static readonly Int16DataLocation attachedto;
+        private static readonly Int16DataLocation flagscarried;
+        private static readonly ByteDataLocation miscbits;
         public static readonly int Length;
 
         private readonly byte[] data;
@@ -58,31 +58,31 @@ namespace SS.Core.Packets
 
         public byte PkType
         {
-            get { return ExtendedBitConverter.ToByte(data, pktype.ByteOffset, pktype.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, pktype.ByteOffset, pktype.BitOffset, pktype.NumBits); }
+            get { return pktype.GetValue(data); }
+            set { pktype.SetValue(data, value); }
         }
 
         public sbyte Ship
         {
-            get { return ExtendedBitConverter.ToSByte(data, ship.ByteOffset, ship.BitOffset); }
-            set { ExtendedBitConverter.WriteSByteBits(value, data, ship.ByteOffset, ship.BitOffset, ship.NumBits); }
+            get { return ship.GetValue(data); }
+            set { ship.SetValue(data, value); }
         }
 
         public byte AcceptAudio
         {
-            get { return ExtendedBitConverter.ToByte(data, acceptaudio.ByteOffset, acceptaudio.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, acceptaudio.ByteOffset, acceptaudio.BitOffset, acceptaudio.NumBits); }
+            get { return acceptaudio.GetValue(data); }
+            set { acceptaudio.SetValue(data, value); }
         }
 
         public string Name
         {
-            get { return Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBits / 8); }
+            get { return Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBytes); }
             set
             {
                 if (string.IsNullOrEmpty(value))
                     throw new ArgumentException("cannot be null or emmpty", "value");
                 
-                int fieldLength = name.NumBits / 8;
+                int fieldLength = name.NumBytes;
                 if (value.Length < fieldLength)
                 {
                     int bytesWritten = Encoding.ASCII.GetBytes(value, 0, value.Length, data, name.ByteOffset);
@@ -101,13 +101,13 @@ namespace SS.Core.Packets
 
         public string Squad
         {
-            get { return Encoding.ASCII.GetString(data, squad.ByteOffset, squad.NumBits / 8); }
+            get { return Encoding.ASCII.GetString(data, squad.ByteOffset, squad.NumBytes); }
             set
             {
                 if (value == null)
                     value = string.Empty;
                 
-                int fieldLength = squad.NumBits / 8;
+                int fieldLength = squad.NumBytes;
                 if (value.Length < fieldLength)
                 {
                     int bytesWritten = Encoding.ASCII.GetBytes(value, 0, value.Length, data, squad.ByteOffset);
@@ -126,56 +126,56 @@ namespace SS.Core.Packets
 
         public int KillPoints
         {
-            get { return ExtendedBitConverter.ToInt32(data, killpoints.ByteOffset, killpoints.BitOffset); }
-            set { ExtendedBitConverter.WriteInt32Bits(value, data, killpoints.ByteOffset, killpoints.BitOffset, killpoints.NumBits); }
+            get { return killpoints.GetValue(data); }
+            set { killpoints.SetValue(data, value); }
         }
 
         public int FlagPoints
         {
-            get { return ExtendedBitConverter.ToInt32(data, flagpoints.ByteOffset, flagpoints.BitOffset); }
-            set { ExtendedBitConverter.WriteInt32Bits(value, data, flagpoints.ByteOffset, flagpoints.BitOffset, flagpoints.NumBits); }
+            get { return flagpoints.GetValue(data); }
+            set { flagpoints.SetValue(data, value); }
         }
 
         public short Pid
         {
-            get { return ExtendedBitConverter.ToInt16(data, pid.ByteOffset, pid.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, pid.ByteOffset, pid.BitOffset, pid.NumBits); }
+            get { return pid.GetValue(data); }
+            set { pid.SetValue(data, value); }
         }
 
         public short Freq
         {
-            get { return ExtendedBitConverter.ToInt16(data, freq.ByteOffset, freq.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, freq.ByteOffset, freq.BitOffset, freq.NumBits); }
+            get { return freq.GetValue(data); }
+            set { freq.SetValue(data, value); }
         }
 
         public short Wins
         {
-            get { return ExtendedBitConverter.ToInt16(data, wins.ByteOffset, wins.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, wins.ByteOffset, wins.BitOffset, wins.NumBits); }
+            get { return wins.GetValue(data); }
+            set { wins.SetValue(data, value); }
         }
 
         public short Losses
         {
-            get { return ExtendedBitConverter.ToInt16(data, losses.ByteOffset, losses.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, losses.ByteOffset, losses.BitOffset, losses.NumBits); }
+            get { return losses.GetValue(data); }
+            set { losses.SetValue(data, value); }
         }
 
         public short AttachedTo
         {
-            get { return ExtendedBitConverter.ToInt16(data, attachedto.ByteOffset, attachedto.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, attachedto.ByteOffset, attachedto.BitOffset, attachedto.NumBits); }
+            get { return attachedto.GetValue(data); }
+            set { attachedto.SetValue(data, value); }
         }
 
         public short FlagsCarried
         {
-            get { return ExtendedBitConverter.ToInt16(data, flagscarried.ByteOffset, flagscarried.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, flagscarried.ByteOffset, flagscarried.BitOffset, flagscarried.NumBits); }
+            get { return flagscarried.GetValue(data); }
+            set { flagscarried.SetValue(data, value); }
         }
 
         public byte MiscBits
         {
-            get { return ExtendedBitConverter.ToByte(data, miscbits.ByteOffset, miscbits.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, miscbits.ByteOffset, miscbits.BitOffset, miscbits.NumBits); }
+            get { return miscbits.GetValue(data); }
+            set { miscbits.SetValue(data, value); }
         }
     }
 }

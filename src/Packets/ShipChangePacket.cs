@@ -11,10 +11,10 @@ namespace SS.Core.Packets
         static ShipChangePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            shiptype = locationBuilder.CreateDataLocation(8);
-            pid = locationBuilder.CreateDataLocation(16);
-            freq = locationBuilder.CreateDataLocation(16);
+            type = locationBuilder.CreateDataLocation(1);
+            shiptype = locationBuilder.CreateDataLocation(1);
+            pid = locationBuilder.CreateDataLocation(2);
+            freq = locationBuilder.CreateDataLocation(2);
             Length = locationBuilder.NumBytes;
         }
 

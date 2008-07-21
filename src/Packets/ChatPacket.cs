@@ -11,18 +11,18 @@ namespace SS.Core.Packets
         static ChatPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            pktype = locationBuilder.CreateDataLocation(8);
-            type = locationBuilder.CreateDataLocation(8);
-            sound = locationBuilder.CreateDataLocation(8);
-            pid = locationBuilder.CreateDataLocation(16);
+            pktype = locationBuilder.CreateDataLocation(1);
+            type = locationBuilder.CreateDataLocation(1);
+            sound = locationBuilder.CreateDataLocation(1);
+            pid = locationBuilder.CreateDataLocation(2);
             HeaderLength = locationBuilder.NumBytes;
-            text = locationBuilder.CreateDataLocation(32);
+            text = locationBuilder.CreateDataLocation(4);
         }
 
-        private static readonly DataLocation pktype;
-        private static readonly DataLocation type;
-        private static readonly DataLocation sound;
-        private static readonly DataLocation pid;
+        private static readonly ByteDataLocation pktype;
+        private static readonly ByteDataLocation type;
+        private static readonly ByteDataLocation sound;
+        private static readonly Int16DataLocation pid;
         public static readonly int HeaderLength;
         private static readonly DataLocation text; // NumBits is variable for this location, do not use
 
@@ -42,26 +42,26 @@ namespace SS.Core.Packets
 
         public byte PkType
         {
-            get { return ExtendedBitConverter.ToByte(data, pktype.ByteOffset, pktype.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, pktype.ByteOffset, pktype.BitOffset, pktype.NumBits); }
+            get { return pktype.GetValue(data); }
+            set { pktype.SetValue(data, value); }
         }
 
         public byte Type
         {
-            get { return ExtendedBitConverter.ToByte(data, type.ByteOffset, type.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, type.ByteOffset, type.BitOffset, type.NumBits); }
+            get { return type.GetValue(data); }
+            set { type.SetValue(data, value); }
         }
 
         public byte Sound
         {
-            get { return ExtendedBitConverter.ToByte(data, sound.ByteOffset, sound.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, sound.ByteOffset, sound.BitOffset, sound.NumBits); }
+            get { return sound.GetValue(data); }
+            set { sound.SetValue(data, value); }
         }
 
         public short Pid
         {
-            get { return ExtendedBitConverter.ToInt16(data, pid.ByteOffset, pid.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, pid.ByteOffset, pid.BitOffset, pid.NumBits); }
+            get { return pid.GetValue(data); }
+            set { pid.SetValue(data, value); }
         }
 
         /// <summary>

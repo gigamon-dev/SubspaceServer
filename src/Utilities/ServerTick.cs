@@ -6,11 +6,11 @@ using System.Text;
 namespace SS.Utilities
 {
     /// <summary>
-    /// represents a time, either absolute or relative.
-    /// ticks are 31 bits in size. the value is stored in the lower 31 bits
+    /// Represents a time, either absolute or relative.
+    /// Ticks are 31 bits in size. the value is stored in the lower 31 bits
     /// of an unsigned int. 
     /// 
-    /// don't do arithmatic on these directly, use this class' methods
+    /// Don't do arithmatic on these directly, use this struct's methods.
     /// 
     /// TickCount with a graularity in 1/100ths of a second.
     /// Note: Parts of the SS protocol report in 1/100ths of a second.
@@ -19,7 +19,7 @@ namespace SS.Utilities
     /// 
     /// 100% Equivalent to ASSS' ticks_t
     /// </summary>
-    public struct ServerTick
+    public struct ServerTick : IEquatable<ServerTick>, IComparable<ServerTick>
     {
         private uint tickcount;
 
@@ -61,9 +61,40 @@ namespace SS.Utilities
             return (uint)((a) & 0x7fffffff);
         }
 
+        public override bool Equals(object obj)
+        {
+            if (obj is ServerTick)
+                return Equals((ServerTick)obj);
+            else
+                return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return (int)tickcount;
+        }
+
         public override string ToString()
         {
             return tickcount.ToString();
         }
+
+        #region IEquatable<ServerTick> Members
+
+        public bool Equals(ServerTick other)
+        {
+            return tickcount == other.tickcount;
+        }
+
+        #endregion
+
+        #region IComparable<ServerTick> Members
+
+        public int CompareTo(ServerTick other)
+        {
+            return this - other;
+        }
+
+        #endregion
     }
 }

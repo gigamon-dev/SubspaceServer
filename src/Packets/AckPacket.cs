@@ -12,17 +12,17 @@ namespace SS.Core.Packets
         static AckPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            t1 = locationBuilder.CreateDataLocation(8);
-            t2 = locationBuilder.CreateDataLocation(8);
-            seqNum = locationBuilder.CreateDataLocation(32);
-            length = locationBuilder.NumBytes;
+            t1 = locationBuilder.CreateDataLocation(1);
+            t2 = locationBuilder.CreateDataLocation(1);
+            seqNum = locationBuilder.CreateDataLocation(4);
+            Length = locationBuilder.NumBytes;
         }
 
         // static data members that tell the location of each field in the byte array of a packet
-        private static readonly DataLocation t1;
-        private static readonly DataLocation t2;
-        private static readonly DataLocation seqNum;
-        private static readonly int length;
+        private static readonly ByteDataLocation t1;
+        private static readonly ByteDataLocation t2;
+        private static readonly Int32DataLocation seqNum;
+        public static readonly int Length;
 
         // data members
         private readonly byte[] data;
@@ -34,25 +34,20 @@ namespace SS.Core.Packets
 
         public byte T1
         {
-            get { return ExtendedBitConverter.ToByte(data, t1.ByteOffset, t1.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, t1.ByteOffset, t1.BitOffset, t1.NumBits); }
+            get { return t1.GetValue(data); }
+            set { t1.SetValue(data, value); }
         }
 
         public byte T2
         {
-            get { return ExtendedBitConverter.ToByte(data, t2.ByteOffset, t2.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
+            get { return t2.GetValue(data); }
+            set { t2.SetValue(data, value); }
         }
 
         public int SeqNum
         {
-            get { return ExtendedBitConverter.ToInt32(data, seqNum.ByteOffset, seqNum.BitOffset); }
-            set { ExtendedBitConverter.WriteInt32Bits(value, data, seqNum.ByteOffset, seqNum.BitOffset, seqNum.NumBits); }
-        }
-
-        public static int Length
-        {
-            get { return length; }
+            get { return seqNum.GetValue(data); }
+            set { seqNum.SetValue(data, value); }
         }
     }
 }

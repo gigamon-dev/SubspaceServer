@@ -1,14 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Net;
-using SS.Utilities;
-using SS.Core.Packets;
 using System.Threading;
-using System.Diagnostics;
-using SS.Core.ComponentInterfaces;
+
 using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
+using SS.Core.Packets;
+using SS.Utilities;
 
 namespace SS.Core.Modules
 {
@@ -44,6 +45,9 @@ namespace SS.Core.Modules
             }
         }
 
+        /// <summary>
+        /// specialized data buffer which keeps track of what connection it is for and other useful info
+        /// </summary>
         private class SubspaceBuffer : DataBuffer
         {
             internal ConnData Conn;
@@ -55,8 +59,19 @@ namespace SS.Core.Modules
 
             public ReliableDelegate Callback;
             public object Clos;
+            //public IReliableDelegateInvoker CallbackInvoker;  // i was thinking of switching the callback info to use a generic wrapper
 
-            //public IReliableDelegateInvoker CallbackInvoker;
+            public override void Clear()
+            {
+                Conn = null;
+                Tries = 0;
+                Flags = NetSendFlags.None;
+                LastRetry = DateTime.MinValue;
+                Callback = null;
+                Clos = null;
+
+                base.Clear();
+            }
         }
         /*
         private interface IReliableDelegateInvoker
@@ -370,7 +385,6 @@ namespace SS.Core.Modules
         private struct GroupedPacket
         {
             private Network _network;
-            //private SubspaceBuffer _sb;
             private byte[] _buf;
             private ArraySegment<byte> _remainingSegment;
             private int _count;
@@ -378,7 +392,6 @@ namespace SS.Core.Modules
             public GroupedPacket(Network network, byte[] buf)
             {
                 _network = network;
-                //_sb = _network._bufferPool.Get();
                 _buf = buf;
                 _remainingSegment = new ArraySegment<byte>(_buf, 0, _buf.Length);
                 _count = 0;
@@ -419,8 +432,9 @@ namespace SS.Core.Modules
 #else
                 if (buffer.NumBytes <= 255) // 255 must be the size limit a grouped packet can store (max 1 byte can represent for the length)
                 {
-                    if (_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes))
-                        Flush(conn);
+                    if(_remainingSegment.Count < (buffer.NumBytes + 1)) // +1 is for the byte that specifies the length
+                    //if (_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes)) // i dont know why asss does the -10
+                        Flush(conn); // not enough room in the grouped packet, send it out first to start with a fresh grouped packet
 
                     _remainingSegment.Array[_remainingSegment.Offset] = (byte)buffer.NumBytes;
                     Array.Copy(buffer.Bytes, 0, _remainingSegment.Array, _remainingSegment.Offset + 1, buffer.NumBytes);
@@ -430,7 +444,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    // can't fit in group, send immediately
+                    // can't fit into a grouped packet, send immediately
                     _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
                 }
 #endif
@@ -1489,6 +1503,9 @@ namespace SS.Core.Modules
 
         private void handlePingPacketRecieved(ListenData ld)
         {
+            if (ld == null)
+                return;
+
             using (SubspaceBuffer buffer = _bufferPool.Get())
             {
                 Socket s = ld.PingSocket;
@@ -1497,32 +1514,50 @@ namespace SS.Core.Modules
                 IPEndPoint remoteEndPoint = recievedFrom as IPEndPoint;
                 if (remoteEndPoint == null)
                     return;
-                
-                // TODO: add ability handle ASSS' extended ping packets
-                if (buffer.NumBytes != 4)
-                {
-                    return;
-                }
+
+                // TODO: get stats if past threshold
 
                 // HACK: so that we can actually get something other than 0 ms :)
                 //Random random = new Random();
                 //int randomDelay = random.Next(100, 200);
                 //System.Threading.Thread.Sleep(randomDelay);
 
-                // bytes from recieve
-                buffer.Bytes[4] = buffer.Bytes[0];
-                buffer.Bytes[5] = buffer.Bytes[1];
-                buffer.Bytes[6] = buffer.Bytes[2];
-                buffer.Bytes[7] = buffer.Bytes[3];
+                if (buffer.NumBytes == 4)
+                {
+                    // bytes from recieve
+                    buffer.Bytes[4] = buffer.Bytes[0];
+                    buffer.Bytes[5] = buffer.Bytes[1];
+                    buffer.Bytes[6] = buffer.Bytes[2];
+                    buffer.Bytes[7] = buffer.Bytes[3];
 
-                // # players
-                buffer.Bytes[0] = 1;
-                buffer.Bytes[1] = 0;
-                buffer.Bytes[2] = 0;
-                buffer.Bytes[3] = 0;
+                    if (string.IsNullOrEmpty(ld.ConnectAs))
+                    {
+                        // global
+                        // TODO: # players
+                        buffer.Bytes[0] = 1;
+                        buffer.Bytes[1] = 0;
+                        buffer.Bytes[2] = 0;
+                        buffer.Bytes[3] = 0;
+                    }
+                    else
+                    {
+                        // specific arena/zone
+                        // TODO: # players
+                        buffer.Bytes[0] = 1;
+                        buffer.Bytes[1] = 0;
+                        buffer.Bytes[2] = 0;
+                        buffer.Bytes[3] = 0;
+                    }
 
-                int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
+                    int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
+                }
+                else if (buffer.NumBytes == 8)
+                {
+                    // TODO: add the ability handle ASSS' extended ping packets
+                }                
             }
+
+            _globalStats.pcountpings++;
         }
 
         private void handleClientPacketRecieved()

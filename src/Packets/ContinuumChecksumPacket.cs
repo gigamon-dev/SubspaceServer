@@ -11,15 +11,15 @@ namespace SS.Core.Packets
         static ContinuumChecksumPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            contversion = locationBuilder.CreateDataLocation(16);
-            checksum = locationBuilder.CreateDataLocation(32);
+            type = locationBuilder.CreateDataLocation(1);
+            contversion = locationBuilder.CreateDataLocation(2);
+            checksum = locationBuilder.CreateDataLocation(4);
             Length = locationBuilder.NumBytes;
         }
 
-        private static readonly DataLocation type;
-        private static readonly DataLocation contversion;
-        private static readonly DataLocation checksum;
+        private static readonly ByteDataLocation type;
+        private static readonly UInt16DataLocation contversion;
+        private static readonly UInt32DataLocation checksum;
         public static readonly int Length;
 
         private readonly byte[] data;
@@ -31,20 +31,20 @@ namespace SS.Core.Packets
 
         public byte Type
         {
-            get { return ExtendedBitConverter.ToByte(data, type.ByteOffset, type.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, type.ByteOffset, type.BitOffset, type.NumBits); }
+            get { return type.GetValue(data); }
+            set { type.SetValue(data, value); }
         }
 
         public ushort ContVersion
         {
-            get { return ExtendedBitConverter.ToUInt16(data, contversion.ByteOffset, contversion.BitOffset); }
-            set { ExtendedBitConverter.WriteUInt16Bits(value, data, contversion.ByteOffset, contversion.BitOffset, contversion.NumBits); }
+            get { return contversion.GetValue(data); }
+            set { contversion.SetValue(data, value); }
         }
 
         public uint Checksum
         {
-            get { return ExtendedBitConverter.ToUInt32(data, checksum.ByteOffset, checksum.BitOffset); }
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, checksum.ByteOffset, checksum.BitOffset, checksum.NumBits); }
+            get { return checksum.GetValue(data); }
+            set { checksum.SetValue(data, value); }
         }
     }
 }

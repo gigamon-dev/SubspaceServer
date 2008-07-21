@@ -12,18 +12,18 @@ namespace SS.Core.Packets
         static TimeSyncS2CPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            t1 = locationBuilder.CreateDataLocation(8);
-            t2 = locationBuilder.CreateDataLocation(8);
-            clienttime = locationBuilder.CreateDataLocation(32);
-            servertime = locationBuilder.CreateDataLocation(32);
+            t1 = locationBuilder.CreateDataLocation(1);
+            t2 = locationBuilder.CreateDataLocation(1);
+            clienttime = locationBuilder.CreateDataLocation(4);
+            servertime = locationBuilder.CreateDataLocation(4);
             length = locationBuilder.NumBytes;
         }
 
         // static data members that tell the location of each field in the byte array of a packet
-        private static readonly DataLocation t1;
-        private static readonly DataLocation t2;
-        private static readonly DataLocation clienttime;
-        private static readonly DataLocation servertime;
+        private static readonly ByteDataLocation t1;
+        private static readonly ByteDataLocation t2;
+        private static readonly UInt32DataLocation clienttime;
+        private static readonly UInt32DataLocation servertime;
         private static readonly int length;
 
         // data members
@@ -42,26 +42,22 @@ namespace SS.Core.Packets
 
         public byte T1
         {
-            //get { return ExtendedBitConverter.ToByte(data, t1.ByteOffset, t1.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, t1.ByteOffset, t1.BitOffset, t1.NumBits); }
+            set { t1.SetValue(data, value); }
         }
 
         public byte T2
         {
-            //get { return ExtendedBitConverter.ToByte(data, t2.ByteOffset, t2.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
+            set { t2.SetValue(data, value); }
         }
 
         public uint ClientTime
         {
-            //get { return ExtendedBitConverter.ToInt32(data, clienttime.ByteOffset, clienttime.BitOffset); }
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, clienttime.ByteOffset, clienttime.BitOffset, clienttime.NumBits); }
+            set { clienttime.SetValue(data, value); }
         }
 
         public uint ServerTime
         {
-            //get { return ExtendedBitConverter.ToInt32(data, servertime.ByteOffset, servertime.BitOffset); }
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, servertime.ByteOffset, servertime.BitOffset, servertime.NumBits); }
+            set { servertime.SetValue(data, value); }
         }
 
         public static int Length

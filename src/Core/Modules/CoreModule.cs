@@ -506,14 +506,27 @@ namespace SS.Core.Modules
                 pdata.lplen = len;
 
                 // name must be nul-terminated, also set name length limit at 19 characters
+                string name = lp.Name.Trim();
+                if (name.Length > 19)
+                    name = name.Substring(0, 19); // TODO: asss cuts at 19 b/c of null termination, but i think we could potentially do 20
 
                 // only allow printable characters in names, excluding colon.
                 // while we're at it, remove leading, trailing, and series of spaces
-
+                name = name.Replace(":", string.Empty);
 
                 // if nothing could be salvaged from their name, disconnect them
+                if (name == string.Empty)
+                {
+                    failLoginWith(p, AuthCode.BadName, "Your player name contains no valid characters", "all invalid chars");
+                    return;
+                }
 
                 // must start with number or letter
+                if (!char.IsLetterOrDigit(name[0]))
+                {
+                    failLoginWith(p, AuthCode.BadName, "Your player name must start with a letter or number", "name doesn't start with alphanumeric");
+                    return;
+                }
 
                 // pass must be nul-terminated
 
@@ -793,8 +806,8 @@ namespace SS.Core.Modules
             auth.authenticated = false;
 
             string name = lp.Name;
-            auth.name = name.Length > 23 ? name.Substring(0, 23) + '\0' : name; // TODO: figure out if this is really needs to be null terminated
-            auth.sendname = name.Length > 19 ? name.Substring(0, 19) + +'\0' : name;
+            auth.name = name.Length > 23 ? name.Substring(0, 23) : name;
+            auth.sendname = name.Length > 19 ? name.Substring(0, 19) : name;
             auth.squad = null;
 
             done(p, auth);

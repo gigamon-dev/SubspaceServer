@@ -5,76 +5,37 @@ using System.Text;
 
 namespace SS.Utilities
 {
-    public struct DataOffset
-    {
-        public readonly int ByteOffset;
-        public readonly int BitOffset;
-
-        public DataOffset(int byteOffset) : this(byteOffset, 0)
-        {
-        }
-
-        public DataOffset(int byteOffset, int bitOffset)
-        {
-            ByteOffset = byteOffset;
-            BitOffset = bitOffset;
-        }
-
-        public static DataOffset operator +(DataOffset offset1, DataOffset offset2)
-        {
-            int byteOffset = offset1.ByteOffset + offset2.ByteOffset;
-            int bitOffset = offset1.BitOffset + offset2.BitOffset;
-            byteOffset += (bitOffset / 8);
-            bitOffset %= 8;
-
-            return new DataOffset(byteOffset, bitOffset);
-        }
-    }
-
     public struct DataLocation
     {
-        public readonly DataOffset Offset;
+        public readonly int ByteOffset;
+        public readonly int NumBytes;
 
-        public int ByteOffset
+        public DataLocation(int byteOffset, int numBytes)
         {
-            get { return Offset.ByteOffset; }
-        }
-
-        public int BitOffset
-        {
-            get { return Offset.BitOffset; }
-        }
-
-        public readonly int NumBits;
-
-        public DataLocation(int byteOffset, int bitOffset, int numBits)
-        {
-            Offset = new DataOffset(byteOffset, bitOffset);
-            NumBits = numBits;
+            ByteOffset = byteOffset;
+            NumBytes = numBytes;
         }
 
         #region byte
 
         public byte GetByte(byte[] data)
         {
-            return ExtendedBitConverter.ToByte(data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToByte(data, ByteOffset);
         }
 
-        public byte GetByte(byte[] data, DataOffset additionalOffset)
+        public byte GetByte(byte[] data, int additionalOffset)
         {
-            additionalOffset += Offset;
-            return ExtendedBitConverter.ToByte(data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToByte(data, ByteOffset + additionalOffset);
         }
 
         public void SetByte(byte[] data, byte value)
         {
-            ExtendedBitConverter.WriteByteBits(value, data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteByteBits(value, data, ByteOffset);
         }
 
-        public void SetByte(byte[] data, byte value, DataOffset additionalOffset)
+        public void SetByte(byte[] data, byte value, int additionalOffset)
         {
-            additionalOffset += Offset;
-            ExtendedBitConverter.WriteByteBits(value, data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteByteBits(value, data, ByteOffset + additionalOffset);
         }
 
         public static implicit operator ByteDataLocation(DataLocation dataLocation)
@@ -88,24 +49,22 @@ namespace SS.Utilities
 
         public sbyte GetSByte(byte[] data)
         {
-            return ExtendedBitConverter.ToSByte(data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToSByte(data, ByteOffset);
         }
 
-        public sbyte GetSByte(byte[] data, DataOffset additionalOffset)
+        public sbyte GetSByte(byte[] data, int additionalOffset)
         {
-            additionalOffset += Offset;
-            return ExtendedBitConverter.ToSByte(data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToSByte(data, ByteOffset + additionalOffset);
         }
 
         public void SetSByte(byte[] data, sbyte value)
         {
-            ExtendedBitConverter.WriteSByteBits(value, data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteSByteBits(value, data, ByteOffset);
         }
 
-        public void SetSByte(byte[] data, sbyte value, DataOffset additionalOffset)
+        public void SetSByte(byte[] data, sbyte value, int additionalOffset)
         {
-            additionalOffset += Offset;
-            ExtendedBitConverter.WriteSByteBits(value, data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteSByteBits(value, data, ByteOffset + additionalOffset);
         }
 
         public static implicit operator SByteDataLocation(DataLocation dataLocation)
@@ -119,24 +78,22 @@ namespace SS.Utilities
 
         public ushort GetUInt16(byte[] data)
         {
-            return ExtendedBitConverter.ToUInt16(data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToUInt16(data, ByteOffset);
         }
 
-        public ushort GetUInt16(byte[] data, DataOffset additionalOffset)
+        public ushort GetUInt16(byte[] data, int additionalOffset)
         {
-            additionalOffset += Offset;
-            return ExtendedBitConverter.ToUInt16(data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToUInt16(data, ByteOffset + additionalOffset);
         }
 
         public void SetUInt16(byte[] data, ushort value)
         {
-            ExtendedBitConverter.WriteUInt16Bits(value, data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteUInt16Bits(value, data, ByteOffset);
         }
 
-        public void SetUInt16(byte[] data, ushort value, DataOffset additionalOffset)
+        public void SetUInt16(byte[] data, ushort value, int additionalOffset)
         {
-            additionalOffset += Offset;
-            ExtendedBitConverter.WriteUInt16Bits(value, data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteUInt16Bits(value, data, ByteOffset + additionalOffset);
         }
 
         public static implicit operator UInt16DataLocation(DataLocation dataLocation)
@@ -150,24 +107,22 @@ namespace SS.Utilities
 
         public short GetInt16(byte[] data)
         {
-            return ExtendedBitConverter.ToInt16(data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToInt16(data, ByteOffset);
         }
 
-        public short GetInt16(byte[] data, DataOffset additionalOffset)
+        public short GetInt16(byte[] data, int additionalOffset)
         {
-            additionalOffset += Offset;
-            return ExtendedBitConverter.ToInt16(data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToInt16(data, ByteOffset + additionalOffset);
         }
 
         public void SetInt16(byte[] data, short value)
         {
-            ExtendedBitConverter.WriteInt16Bits(value, data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteInt16Bits(value, data, ByteOffset);
         }
 
-        public void SetInt16(byte[] data, short value, DataOffset additionalOffset)
+        public void SetInt16(byte[] data, short value, int additionalOffset)
         {
-            additionalOffset += Offset;
-            ExtendedBitConverter.WriteInt16Bits(value, data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteInt16Bits(value, data, ByteOffset + additionalOffset);
         }
 
         public static implicit operator Int16DataLocation(DataLocation dataLocation)
@@ -181,24 +136,22 @@ namespace SS.Utilities
 
         public uint GetUInt32(byte[] data)
         {
-            return ExtendedBitConverter.ToUInt32(data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToUInt32(data, ByteOffset);
         }
 
-        public uint GetUInt32(byte[] data, DataOffset additionalOffset)
+        public uint GetUInt32(byte[] data, int additionalOffset)
         {
-            additionalOffset += Offset;
-            return ExtendedBitConverter.ToUInt32(data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToUInt32(data, ByteOffset + additionalOffset);
         }
 
         public void SetUInt32(byte[] data, uint value)
         {
-            ExtendedBitConverter.WriteUInt32Bits(value, data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteUInt32Bits(value, data, ByteOffset);
         }
 
-        public void SetUInt32(byte[] data, uint value, DataOffset additionalOffset)
+        public void SetUInt32(byte[] data, uint value, int additionalOffset)
         {
-            additionalOffset += Offset;
-            ExtendedBitConverter.WriteUInt32Bits(value, data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteUInt32Bits(value, data, ByteOffset + additionalOffset);
         }
 
         public static implicit operator UInt32DataLocation(DataLocation dataLocation)
@@ -212,24 +165,22 @@ namespace SS.Utilities
 
         public int GetInt32(byte[] data)
         {
-            return ExtendedBitConverter.ToInt32(data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToInt32(data, ByteOffset);
         }
 
-        public int GetInt32(byte[] data, DataOffset additionalOffset)
+        public int GetInt32(byte[] data, int additionalOffset)
         {
-            additionalOffset += Offset;
-            return ExtendedBitConverter.ToInt32(data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            return LittleEndianBitConverter.ToInt32(data, ByteOffset + additionalOffset);
         }
 
         public void SetInt32(byte[] data, int value)
         {
-            ExtendedBitConverter.WriteInt32Bits(value, data, Offset.ByteOffset, Offset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteInt32Bits(value, data, ByteOffset);
         }
 
-        public void SetInt32(byte[] data, int value, DataOffset additionalOffset)
+        public void SetInt32(byte[] data, int value, int additionalOffset)
         {
-            additionalOffset += Offset;
-            ExtendedBitConverter.WriteInt32Bits(value, data, additionalOffset.ByteOffset, additionalOffset.BitOffset, NumBits);
+            LittleEndianBitConverter.WriteInt32Bits(value, data, ByteOffset + additionalOffset);
         }
 
         public static implicit operator Int32DataLocation(DataLocation dataLocation)
@@ -249,9 +200,9 @@ namespace SS.Utilities
             get { return _dataLocation.ByteOffset; }
         }
 
-        public int BitOffset
+        public int NumBytes
         {
-            get { return _dataLocation.BitOffset; }
+            get { return _dataLocation.NumBytes; }
         }
 
         public ByteDataLocation(DataLocation dataLocation)
@@ -264,7 +215,7 @@ namespace SS.Utilities
             return _dataLocation.GetByte(data);
         }
 
-        public byte GetValue(byte[] data, DataOffset additionalOffset)
+        public byte GetValue(byte[] data, int additionalOffset)
         {
             return _dataLocation.GetByte(data, additionalOffset);
         }
@@ -274,7 +225,7 @@ namespace SS.Utilities
             _dataLocation.SetByte(data, value);
         }
 
-        public void SetValue(byte[] data, byte value, DataOffset additionalOffset)
+        public void SetValue(byte[] data, byte value, int additionalOffset)
         {
             _dataLocation.SetByte(data, value, additionalOffset);
         }
@@ -289,9 +240,9 @@ namespace SS.Utilities
             get { return _dataLocation.ByteOffset; }
         }
 
-        public int BitOffset
+        public int NumBytes
         {
-            get { return _dataLocation.BitOffset; }
+            get { return _dataLocation.NumBytes; }
         }
 
         public SByteDataLocation(DataLocation dataLocation)
@@ -304,7 +255,7 @@ namespace SS.Utilities
             return _dataLocation.GetSByte(data);
         }
 
-        public sbyte GetValue(byte[] data, DataOffset additionalOffset)
+        public sbyte GetValue(byte[] data, int additionalOffset)
         {
             return _dataLocation.GetSByte(data, additionalOffset);
         }
@@ -314,7 +265,7 @@ namespace SS.Utilities
             _dataLocation.SetSByte(data, value);
         }
 
-        public void SetValue(byte[] data, sbyte value, DataOffset additionalOffset)
+        public void SetValue(byte[] data, sbyte value, int additionalOffset)
         {
             _dataLocation.SetSByte(data, value, additionalOffset);
         }
@@ -329,9 +280,9 @@ namespace SS.Utilities
             get { return _dataLocation.ByteOffset; }
         }
 
-        public int BitOffset
+        public int NumBytes
         {
-            get { return _dataLocation.BitOffset; }
+            get { return _dataLocation.NumBytes; }
         }
 
         public UInt16DataLocation(DataLocation dataLocation)
@@ -344,7 +295,7 @@ namespace SS.Utilities
             return _dataLocation.GetUInt16(data);
         }
 
-        public ushort GetValue(byte[] data, DataOffset additionalOffset)
+        public ushort GetValue(byte[] data, int additionalOffset)
         {
             return _dataLocation.GetUInt16(data, additionalOffset);
         }
@@ -354,7 +305,7 @@ namespace SS.Utilities
             _dataLocation.SetUInt16(data, value);
         }
 
-        public void SetValue(byte[] data, ushort value, DataOffset additionalOffset)
+        public void SetValue(byte[] data, ushort value, int additionalOffset)
         {
             _dataLocation.SetUInt16(data, value, additionalOffset);
         }
@@ -369,9 +320,9 @@ namespace SS.Utilities
             get { return _dataLocation.ByteOffset; }
         }
 
-        public int BitOffset
+        public int NumBytes
         {
-            get { return _dataLocation.BitOffset; }
+            get { return _dataLocation.NumBytes; }
         }
 
         public Int16DataLocation(DataLocation dataLocation)
@@ -384,7 +335,7 @@ namespace SS.Utilities
             return _dataLocation.GetInt16(data);
         }
 
-        public short GetValue(byte[] data, DataOffset additionalOffset)
+        public short GetValue(byte[] data, int additionalOffset)
         {
             return _dataLocation.GetInt16(data, additionalOffset);
         }
@@ -394,7 +345,7 @@ namespace SS.Utilities
             _dataLocation.SetInt16(data, value);
         }
 
-        public void SetValue(byte[] data, short value, DataOffset additionalOffset)
+        public void SetValue(byte[] data, short value, int additionalOffset)
         {
             _dataLocation.SetInt16(data, value, additionalOffset);
         }
@@ -409,9 +360,9 @@ namespace SS.Utilities
             get { return _dataLocation.ByteOffset; }
         }
 
-        public int BitOffset
+        public int NumBytes
         {
-            get { return _dataLocation.BitOffset; }
+            get { return _dataLocation.NumBytes; }
         }
 
         public UInt32DataLocation(DataLocation dataLocation)
@@ -424,7 +375,7 @@ namespace SS.Utilities
             return _dataLocation.GetUInt32(data);
         }
 
-        public uint GetValue(byte[] data, DataOffset additionalOffset)
+        public uint GetValue(byte[] data, int additionalOffset)
         {
             return _dataLocation.GetUInt32(data, additionalOffset);
         }
@@ -434,7 +385,7 @@ namespace SS.Utilities
             _dataLocation.SetUInt32(data, value);
         }
 
-        public void SetValue(byte[] data, uint value, DataOffset additionalOffset)
+        public void SetValue(byte[] data, uint value, int additionalOffset)
         {
             _dataLocation.SetUInt32(data, value, additionalOffset);
         }
@@ -449,9 +400,9 @@ namespace SS.Utilities
             get { return _dataLocation.ByteOffset; }
         }
 
-        public int BitOffset
+        public int NumBytes
         {
-            get { return _dataLocation.BitOffset; }
+            get { return _dataLocation.NumBytes; }
         }
 
         public Int32DataLocation(DataLocation dataLocation)
@@ -464,7 +415,7 @@ namespace SS.Utilities
             return _dataLocation.GetInt32(data);
         }
 
-        public int GetValue(byte[] data, DataOffset additionalOffset)
+        public int GetValue(byte[] data, int additionalOffset)
         {
             return _dataLocation.GetInt32(data, additionalOffset);
         }
@@ -474,7 +425,7 @@ namespace SS.Utilities
             _dataLocation.SetInt32(data, value);
         }
 
-        public void SetValue(byte[] data, int value, DataOffset additionalOffset)
+        public void SetValue(byte[] data, int value, int additionalOffset)
         {
             _dataLocation.SetInt32(data, value, additionalOffset);
         }

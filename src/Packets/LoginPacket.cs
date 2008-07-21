@@ -14,21 +14,21 @@ namespace SS.Core.Packets
         static LoginPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            flags = locationBuilder.CreateDataLocation(8);
-            name = locationBuilder.CreateDataLocation(8 * 32);
-            password = locationBuilder.CreateDataLocation(8 * 32);
-            macid = locationBuilder.CreateDataLocation(32);
-            blah = locationBuilder.CreateDataLocation(8);
-            timezonebias = locationBuilder.CreateDataLocation(16);
-            unk1 = locationBuilder.CreateDataLocation(16);
-            cversion = locationBuilder.CreateDataLocation(16);
-            field444 = locationBuilder.CreateDataLocation(32);
-            field555 = locationBuilder.CreateDataLocation(32);
-            d2 = locationBuilder.CreateDataLocation(32);
-            blah2 = locationBuilder.CreateDataLocation(8 * 12);
+            type = locationBuilder.CreateDataLocation(1);
+            flags = locationBuilder.CreateDataLocation(1);
+            name = locationBuilder.CreateDataLocation(32);
+            password = locationBuilder.CreateDataLocation(32);
+            macid = locationBuilder.CreateDataLocation(4);
+            blah = locationBuilder.CreateDataLocation(1);
+            timezonebias = locationBuilder.CreateDataLocation(2);
+            unk1 = locationBuilder.CreateDataLocation(2);
+            cversion = locationBuilder.CreateDataLocation(2);
+            field444 = locationBuilder.CreateDataLocation(4);
+            field555 = locationBuilder.CreateDataLocation(4);
+            d2 = locationBuilder.CreateDataLocation(4);
+            blah2 = locationBuilder.CreateDataLocation(12);
             LengthVIE = locationBuilder.NumBytes;
-            contid = locationBuilder.CreateDataLocation(8 * 64);
+            contid = locationBuilder.CreateDataLocation(64);
             LengthContinuum = locationBuilder.NumBytes;
         }
 
@@ -36,14 +36,14 @@ namespace SS.Core.Packets
         private static readonly DataLocation flags;
         private static readonly DataLocation name;
         private static readonly DataLocation password;
-        private static readonly DataLocation macid;
+        private static readonly UInt32DataLocation macid;
         private static readonly DataLocation blah;
         private static readonly DataLocation timezonebias;
         private static readonly DataLocation unk1;
-        private static readonly DataLocation cversion;
+        private static readonly Int16DataLocation cversion;
         private static readonly DataLocation field444;
         private static readonly DataLocation field555;
-        private static readonly DataLocation d2;
+        private static readonly UInt32DataLocation d2;
         private static readonly DataLocation blah2;
         private static readonly DataLocation contid; // cont only
         public static readonly int LengthVIE;
@@ -60,7 +60,7 @@ namespace SS.Core.Packets
         {
             get
             {
-                string str = Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBits / 8);
+                string str = Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBytes);
                 int index = str.IndexOf('\0');
                 if (index != -1)
                 {
@@ -72,17 +72,17 @@ namespace SS.Core.Packets
 
         public uint MacId
         {
-            get { return ExtendedBitConverter.ToUInt32(data, macid.ByteOffset, macid.BitOffset); }
+            get { return macid.GetValue(data); }
         }
 
         public short CVersion
         {
-            get { return ExtendedBitConverter.ToInt16(data, cversion.ByteOffset, cversion.BitOffset); }
+            get { return cversion.GetValue(data); }            
         }
 
         public uint D2
         {
-            get { return ExtendedBitConverter.ToUInt32(data, d2.ByteOffset, d2.BitOffset); }
+            get { return d2.GetValue(data); }
         }
 
         public static int Copy(LoginPacket sourcePacket, LoginPacket destinationPacket)

@@ -15,7 +15,7 @@ namespace SS.Core
         {
         }
 
-        public void Clear()
+        public virtual void Clear()
         {
             for (int x = 0; x < Bytes.Length; x++)
             {

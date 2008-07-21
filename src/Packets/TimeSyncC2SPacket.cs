@@ -12,20 +12,20 @@ namespace SS.Core.Packets
         static TimeSyncC2SPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            t1 = locationBuilder.CreateDataLocation(8);
-            t2 = locationBuilder.CreateDataLocation(8);
-            time = locationBuilder.CreateDataLocation(32);
-            pktsent = locationBuilder.CreateDataLocation(32);
-            pktrecvd = locationBuilder.CreateDataLocation(32);
+            t1 = locationBuilder.CreateDataLocation(1);
+            t2 = locationBuilder.CreateDataLocation(1);
+            time = locationBuilder.CreateDataLocation(4);
+            pktsent = locationBuilder.CreateDataLocation(4);
+            pktrecvd = locationBuilder.CreateDataLocation(4);
             length = locationBuilder.NumBytes;
         }
 
         // static data members that tell the location of each field in the byte array of a packet
-        private static readonly DataLocation t1;
-        private static readonly DataLocation t2;
-        private static readonly DataLocation time;
-        private static readonly DataLocation pktsent;
-        private static readonly DataLocation pktrecvd;
+        private static readonly ByteDataLocation t1;
+        private static readonly ByteDataLocation t2;
+        private static readonly UInt32DataLocation time;
+        private static readonly UInt32DataLocation pktsent;
+        private static readonly UInt32DataLocation pktrecvd;
         private static readonly int length;
 
         // data members
@@ -38,32 +38,27 @@ namespace SS.Core.Packets
 
         public byte T1
         {
-            get { return ExtendedBitConverter.ToByte(data, t1.ByteOffset, t1.BitOffset); }
-            //set { ExtendedBitConverter.WriteByteBits(value, data, t1.ByteOffset, t1.BitOffset, t1.NumBits); }
+            get { return t1.GetValue(data); }
         }
 
         public byte T2
         {
-            get { return ExtendedBitConverter.ToByte(data, t2.ByteOffset, t2.BitOffset); }
-            //set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
+            get { return t2.GetValue(data); }
         }
 
         public uint Time
         {
-            get { return ExtendedBitConverter.ToUInt32(data, time.ByteOffset, time.BitOffset); }
-            //set { ExtendedBitConverter.WriteInt32Bits(value, data, time.ByteOffset, time.BitOffset, time.NumBits); }
+            get { return time.GetValue(data); }
         }
 
         public uint PktSent
         {
-            get { return ExtendedBitConverter.ToUInt32(data, pktsent.ByteOffset, pktsent.BitOffset); }
-            //set { ExtendedBitConverter.WriteInt32Bits(value, data, pktsent.ByteOffset, pktsent.BitOffset, pktsent.NumBits); }
+            get { return pktsent.GetValue(data); }
         }
 
         public uint PktRecvd
         {
-            get { return ExtendedBitConverter.ToUInt32(data, pktrecvd.ByteOffset, pktrecvd.BitOffset); }
-            //set { ExtendedBitConverter.WriteInt32Bits(value, data, pktrecvd.ByteOffset, pktrecvd.BitOffset, pktrecvd.NumBits); }
+            get { return pktrecvd.GetValue(data); }
         }
 
         public static int Length

@@ -11,30 +11,30 @@ namespace SS.Core.Packets
         static LoginResponsePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            code = locationBuilder.CreateDataLocation(8);
-            serverversion = locationBuilder.CreateDataLocation(32);
-            isvip = locationBuilder.CreateDataLocation(8);
-            blah = locationBuilder.CreateDataLocation(8 * 3);
-            exechecksum = locationBuilder.CreateDataLocation(32);
-            blah2 = locationBuilder.CreateDataLocation(8 * 5);
-            demodata = locationBuilder.CreateDataLocation(8);
-            codechecksum = locationBuilder.CreateDataLocation(32);
-            newschecksum = locationBuilder.CreateDataLocation(32);
-            blah4 = locationBuilder.CreateDataLocation(8 * 8);
+            type = locationBuilder.CreateDataLocation(1);
+            code = locationBuilder.CreateDataLocation(1);
+            serverversion = locationBuilder.CreateDataLocation(4);
+            isvip = locationBuilder.CreateDataLocation(1);
+            blah = locationBuilder.CreateDataLocation(3);
+            exechecksum = locationBuilder.CreateDataLocation(4);
+            blah2 = locationBuilder.CreateDataLocation(5);
+            demodata = locationBuilder.CreateDataLocation(1);
+            codechecksum = locationBuilder.CreateDataLocation(4);
+            newschecksum = locationBuilder.CreateDataLocation(4);
+            blah4 = locationBuilder.CreateDataLocation(8);
             Length = locationBuilder.NumBytes;
         }
 
-        private static readonly DataLocation type;
-        private static readonly DataLocation code;
-        private static readonly DataLocation serverversion;
-        private static readonly DataLocation isvip;
+        private static readonly ByteDataLocation type;
+        private static readonly ByteDataLocation code;
+        private static readonly UInt32DataLocation serverversion;
+        private static readonly ByteDataLocation isvip;
         private static readonly DataLocation blah;
-        private static readonly DataLocation exechecksum;
+        private static readonly UInt32DataLocation exechecksum;
         private static readonly DataLocation blah2;
-        private static readonly DataLocation demodata;
-        private static readonly DataLocation codechecksum;
-        private static readonly DataLocation newschecksum;
+        private static readonly ByteDataLocation demodata;
+        private static readonly UInt32DataLocation codechecksum;
+        private static readonly UInt32DataLocation newschecksum;
         private static readonly DataLocation blah4;
         public static readonly int Length;
 
@@ -52,10 +52,10 @@ namespace SS.Core.Packets
             ServerVersion = 134;
             IsVip = 0;
 
-            for (int x = 0; x < (blah.NumBits / 8); x++)
+            for (int x = 0; x < (blah.NumBytes); x++)
                 data[blah.ByteOffset + x] = 0;
 
-            for (int x = 0; x < (blah2.NumBits / 8); x++)
+            for (int x = 0; x < (blah2.NumBytes); x++)
                 data[blah2.ByteOffset + x] = 0;
 
             ExeChecksum = 0;
@@ -63,52 +63,49 @@ namespace SS.Core.Packets
             CodeChecksum = 0;
             NewsChecksum = 0;
 
-            for (int x = 0; x < (blah4.NumBits / 8); x++)
+            for (int x = 0; x < (blah4.NumBytes); x++)
                 data[blah4.ByteOffset + x] = 0;
         }
 
         public byte Type
         {
-            //get { return ExtendedBitConverter.ToByte(data, type.ByteOffset, type.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, type.ByteOffset, type.BitOffset, type.NumBits); }
+            set { type.SetValue(data, value); }
         }
 
         public byte Code
         {
-            get { return ExtendedBitConverter.ToByte(data, code.ByteOffset, code.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, code.ByteOffset, code.BitOffset, code.NumBits); }
+            get { return code.GetValue(data); }
+            set { code.SetValue(data, value); }
         }
         
         public uint ServerVersion
         {
-            //get { return ExtendedBitConverter.ToUInt32(data, serverversion.ByteOffset, serverversion.BitOffset); }
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, serverversion.ByteOffset, serverversion.BitOffset, serverversion.NumBits); }
+            set { serverversion.SetValue(data, value); }
         }
 
         public byte IsVip
         {
-            //get { return ExtendedBitConverter.ToByte(data, isvip.ByteOffset, isvip.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, isvip.ByteOffset, isvip.BitOffset, isvip.NumBits); }
+            set { isvip.SetValue(data, value); }
         }
 
         public uint ExeChecksum
         {
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, exechecksum.ByteOffset, exechecksum.BitOffset, exechecksum.NumBits); }
+            set { exechecksum.SetValue(data, value); }
         }
 
         public byte DemoData
         {
-            set { ExtendedBitConverter.WriteByteBits(value, data, demodata.ByteOffset, demodata.BitOffset, demodata.NumBits); }
+            set { demodata.SetValue(data, value); }
         }
 
         public uint CodeChecksum
         {
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, codechecksum.ByteOffset, codechecksum.BitOffset, codechecksum.NumBits); }
+            set { codechecksum.SetValue(data, value); }
         }
 
         public uint NewsChecksum
         {
-            set { ExtendedBitConverter.WriteUInt32Bits(value, data, newschecksum.ByteOffset, newschecksum.BitOffset, newschecksum.NumBits); }
+            set { newschecksum.SetValue(data, value); }
         }
     }
 }

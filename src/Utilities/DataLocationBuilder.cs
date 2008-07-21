@@ -8,31 +8,25 @@ namespace SS.Utilities
     public class DataLocationBuilder
     {
         private int _nextByte = 0;
-        private int _nextBit = 0;
 
-        public DataLocation CreateDataLocation(int numBits)
+        public DataLocation CreateDataLocation(int numBytes)
         {
-            if (numBits < 1)
-                throw new ArgumentOutOfRangeException("must be >= 1", "numBits");
+            if(numBytes < 1)
+                throw new ArgumentOutOfRangeException("must be >= 1", "numBytes");
 
             try
             {
-                return new DataLocation(_nextByte, _nextBit, numBits);
+                return new DataLocation(_nextByte, numBytes);
             }
             finally
             {
-                _nextBit += numBits;
-                _nextByte += (int)(_nextBit / 8);
-                _nextBit %= 8;
+                _nextByte += numBytes;
             }
         }
 
         public int NumBytes
         {
-            get
-            {
-                return (_nextBit > 0) ? _nextByte + 1 : _nextByte;
-            }
+            get { return _nextByte; }
         }
     }
 }

@@ -11,22 +11,22 @@ namespace SS.Core.Packets
         static SimplePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            d1 = locationBuilder.CreateDataLocation(16);
-            d2 = locationBuilder.CreateDataLocation(16);
-            d3 = locationBuilder.CreateDataLocation(16);
-            d4 = locationBuilder.CreateDataLocation(16);
-            d5 = locationBuilder.CreateDataLocation(16);
+            type = locationBuilder.CreateDataLocation(1);
+            d1 = locationBuilder.CreateDataLocation(2);
+            d2 = locationBuilder.CreateDataLocation(2);
+            d3 = locationBuilder.CreateDataLocation(2);
+            d4 = locationBuilder.CreateDataLocation(2);
+            d5 = locationBuilder.CreateDataLocation(2);
             NumBytes = locationBuilder.NumBytes;
         }
 
         // static data members that tell the location of each field in the byte array of a packet
-        private static readonly DataLocation type;
-        private static readonly DataLocation d1;
-        private static readonly DataLocation d2;
-        private static readonly DataLocation d3;
-        private static readonly DataLocation d4;
-        private static readonly DataLocation d5;
+        private static readonly ByteDataLocation type;
+        private static readonly Int16DataLocation d1;
+        private static readonly Int16DataLocation d2;
+        private static readonly Int16DataLocation d3;
+        private static readonly Int16DataLocation d4;
+        private static readonly Int16DataLocation d5;
         public static readonly int NumBytes;
 
         // data members
@@ -39,38 +39,38 @@ namespace SS.Core.Packets
 
         public byte Type
         {
-            get { return ExtendedBitConverter.ToByte(data, type.ByteOffset, type.BitOffset); }
-            set { ExtendedBitConverter.WriteByteBits(value, data, type.ByteOffset, type.BitOffset, type.NumBits); }
+            get { return type.GetValue(data); }
+            set { type.SetValue(data, value); }
         }
 
         public short D1
         {
-            get { return ExtendedBitConverter.ToInt16(data, d1.ByteOffset, d1.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, d1.ByteOffset, d1.BitOffset, d1.NumBits); }
+            get { return d1.GetValue(data); }
+            set { d1.SetValue(data, value); }
         }
 
         public short D2
         {
-            get { return ExtendedBitConverter.ToInt16(data, d2.ByteOffset, d2.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, d2.ByteOffset, d2.BitOffset, d2.NumBits); }
+            get { return d2.GetValue(data); }
+            set { d2.SetValue(data, value); }
         }
 
         public short D3
         {
-            get { return ExtendedBitConverter.ToInt16(data, d3.ByteOffset, d3.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, d3.ByteOffset, d3.BitOffset, d3.NumBits); }
+            get { return d3.GetValue(data); }
+            set { d3.SetValue(data, value); }
         }
 
         public short D4
         {
-            get { return ExtendedBitConverter.ToInt16(data, d4.ByteOffset, d4.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, d4.ByteOffset, d4.BitOffset, d4.NumBits); }
+            get { return d4.GetValue(data); }
+            set { d4.SetValue(data, value); }
         }
 
         public short D5
         {
-            get { return ExtendedBitConverter.ToInt16(data, d5.ByteOffset, d5.BitOffset); }
-            set { ExtendedBitConverter.WriteInt16Bits(value, data, d5.ByteOffset, d5.BitOffset, d5.NumBits); }
+            get { return d5.GetValue(data); }
+            set { d5.SetValue(data, value); }
         }
     }
 

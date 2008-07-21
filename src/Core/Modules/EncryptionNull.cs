@@ -20,15 +20,15 @@ namespace SS.Core.Modules
             static ConnectionInitResponsePacket()
             {
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                t1 = locationBuilder.CreateDataLocation(8);
-                t2 = locationBuilder.CreateDataLocation(8);
-                key = locationBuilder.CreateDataLocation(32);
+                t1 = locationBuilder.CreateDataLocation(1);
+                t2 = locationBuilder.CreateDataLocation(1);
+                key = locationBuilder.CreateDataLocation(4);
             }
 
             // static data members that tell the location of each field in the byte array of a packet
-            private static readonly DataLocation t1;
-            private static readonly DataLocation t2;
-            private static readonly DataLocation key;
+            private static readonly ByteDataLocation t1;
+            private static readonly ByteDataLocation t2;
+            private static readonly Int32DataLocation key;
 
             // data members
             private readonly byte[] data;
@@ -40,19 +40,22 @@ namespace SS.Core.Modules
 
             public byte T1
             {
+                set { t1.SetValue(data, value); }
                 //get { return ExtendedBitConverter.ToByte(data, t1.ByteOffset, t1.BitOffset); }
-                set { ExtendedBitConverter.WriteByteBits(value, data, t1.ByteOffset, t1.BitOffset, t1.NumBits); }
+                //set { ExtendedBitConverter.WriteByteBits(value, data, t1.ByteOffset, t1.BitOffset, t1.NumBits); }
             }
 
             public byte T2
             {
+                set { t2.SetValue(data, value); }
                 //get { return ExtendedBitConverter.ToByte(data, t2.ByteOffset, t2.BitOffset); }
-                set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
+                //set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
             }
 
             public int Key
             {
-                set { ExtendedBitConverter.WriteInt32Bits(value, data, key.ByteOffset, key.BitOffset, key.NumBits); }
+                set { key.SetValue(data, value); }
+                //set { ExtendedBitConverter.WriteInt32Bits(value, data, key.ByteOffset, key.BitOffset, key.NumBits); }
             }
         }
 
@@ -125,7 +128,7 @@ namespace SS.Core.Modules
             }
 
             //int key = BitConverter.ToInt32(buffer, 2);
-            int key = ExtendedBitConverter.ToInt32(buffer, 2, 0);
+            int key = LittleEndianBitConverter.ToInt32(buffer, 2);
 
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
             // note: reusing the buffer (asss creates a new buffer on the stack)

@@ -67,6 +67,7 @@ namespace SS.Core.Packets
     {
         static Weapons()
         {
+            // TODO: maybe split this into 2 separate bitfields, might be slightly faster
             BitFieldBuilder builder = new BitFieldBuilder(16);
             type = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
             level = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
@@ -97,8 +98,8 @@ namespace SS.Core.Packets
 
         private ushort BitField
         {
-            get { return ExtendedBitConverter.ToUInt16(data, byteOffset, 0, 16); }
-            set { ExtendedBitConverter.WriteUInt16Bits(value, data, byteOffset, 0, 16); }
+            get { return LittleEndianBitConverter.ToUInt16(data, byteOffset); }
+            set { LittleEndianBitConverter.WriteUInt16Bits(value, data, byteOffset); }
         }
 
         public WeaponCodes Type
@@ -148,10 +149,10 @@ namespace SS.Core.Packets
         static ExtraPositionData()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            energy = locationBuilder.CreateDataLocation(16);
-            s2cPing = locationBuilder.CreateDataLocation(16);
-            timer = locationBuilder.CreateDataLocation(16);
-            bitField = locationBuilder.CreateDataLocation(32);
+            energy = locationBuilder.CreateDataLocation(2);
+            s2cPing = locationBuilder.CreateDataLocation(2);
+            timer = locationBuilder.CreateDataLocation(2);
+            bitField = locationBuilder.CreateDataLocation(4);
             Length = locationBuilder.NumBytes;
 
             BitFieldBuilder builder = new BitFieldBuilder(32);
@@ -183,36 +184,36 @@ namespace SS.Core.Packets
         public static readonly int Length;
 
         private byte[] data;
-        private DataOffset offset;
+        private readonly int byteOffset;
 
         public ExtraPositionData(byte[] data, int byteOffset)
         {
             this.data = data;
-            this.offset = new DataOffset(byteOffset);
+            this.byteOffset = byteOffset;
         }
 
         public ushort Energy
         {
-            get { return energy.GetValue(data, offset); }
-            set { energy.SetValue(data, value, offset); }
+            get { return energy.GetValue(data, byteOffset); }
+            set { energy.SetValue(data, value, byteOffset); }
         }
 
         public ushort S2CPing
         {
-            get { return s2cPing.GetValue(data, offset); }
-            set { s2cPing.SetValue(data, value, offset); }
+            get { return s2cPing.GetValue(data, byteOffset); }
+            set { s2cPing.SetValue(data, value, byteOffset); }
         }
 
         private uint BitField
         {
-            get { return bitField.GetValue(data, offset); }
-            set { bitField.SetValue(data, value, offset); }
+            get { return bitField.GetValue(data, byteOffset); }
+            set { bitField.SetValue(data, value, byteOffset); }
         }
 
         public ushort Timer
         {
-            get { return timer.GetValue(data, offset); }
-            set { timer.SetValue(data, value, offset); }
+            get { return timer.GetValue(data, byteOffset); }
+            set { timer.SetValue(data, value, byteOffset); }
         }
 
         public bool Shields
@@ -271,7 +272,7 @@ namespace SS.Core.Packets
 
         public void CopyTo(ExtraPositionData dest)
         {
-            Array.Copy(data, offset.ByteOffset, dest.data, dest.offset.ByteOffset, Length);
+            Array.Copy(data, byteOffset, dest.data, dest.byteOffset, Length);
         }
     }
 
@@ -280,21 +281,21 @@ namespace SS.Core.Packets
         static S2CWeaponsPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            rotation = locationBuilder.CreateDataLocation(8);
-            time = locationBuilder.CreateDataLocation(16);
-            x = locationBuilder.CreateDataLocation(16);
-            ySpeed = locationBuilder.CreateDataLocation(16);
-            playerId = locationBuilder.CreateDataLocation(16);
-            xSpeed = locationBuilder.CreateDataLocation(16);
-            checksum = locationBuilder.CreateDataLocation(8);
-            status = locationBuilder.CreateDataLocation(8);
-            c2sLatency = locationBuilder.CreateDataLocation(8);
-            y = locationBuilder.CreateDataLocation(16);
-            bounty = locationBuilder.CreateDataLocation(16);
-            weapon = locationBuilder.CreateDataLocation(8 * 2); // 2 bytes
+            type = locationBuilder.CreateDataLocation(1);
+            rotation = locationBuilder.CreateDataLocation(1);
+            time = locationBuilder.CreateDataLocation(2);
+            x = locationBuilder.CreateDataLocation(2);
+            ySpeed = locationBuilder.CreateDataLocation(2);
+            playerId = locationBuilder.CreateDataLocation(2);
+            xSpeed = locationBuilder.CreateDataLocation(2);
+            checksum = locationBuilder.CreateDataLocation(1);
+            status = locationBuilder.CreateDataLocation(1);
+            c2sLatency = locationBuilder.CreateDataLocation(1);
+            y = locationBuilder.CreateDataLocation(2);
+            bounty = locationBuilder.CreateDataLocation(2);
+            weapon = locationBuilder.CreateDataLocation(2); // 2 bytes
             Length = locationBuilder.NumBytes;
-            extra = locationBuilder.CreateDataLocation(8 * 10); // 10 bytes
+            extra = locationBuilder.CreateDataLocation(10); // 10 bytes
             LengthWithExtra = locationBuilder.NumBytes;
         }
 
@@ -420,19 +421,19 @@ namespace SS.Core.Packets
         static S2CPositionPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            rotation = locationBuilder.CreateDataLocation(8);
-            time = locationBuilder.CreateDataLocation(16);
-            x = locationBuilder.CreateDataLocation(16);
-            c2sLatency = locationBuilder.CreateDataLocation(8);
-            bounty = locationBuilder.CreateDataLocation(8);
-            playerId = locationBuilder.CreateDataLocation(8);
-            status = locationBuilder.CreateDataLocation(8);
-            ySpeed = locationBuilder.CreateDataLocation(16);
-            y = locationBuilder.CreateDataLocation(16);
-            xSpeed = locationBuilder.CreateDataLocation(16);
+            type = locationBuilder.CreateDataLocation(1);
+            rotation = locationBuilder.CreateDataLocation(1);
+            time = locationBuilder.CreateDataLocation(2);
+            x = locationBuilder.CreateDataLocation(2);
+            c2sLatency = locationBuilder.CreateDataLocation(1);
+            bounty = locationBuilder.CreateDataLocation(1);
+            playerId = locationBuilder.CreateDataLocation(1);
+            status = locationBuilder.CreateDataLocation(1);
+            ySpeed = locationBuilder.CreateDataLocation(2);
+            y = locationBuilder.CreateDataLocation(2);
+            xSpeed = locationBuilder.CreateDataLocation(2);
             Length = locationBuilder.NumBytes;
-            extra = locationBuilder.CreateDataLocation(8 * 10); // 10 bytes
+            extra = locationBuilder.CreateDataLocation(10); // 10 bytes
             LengthWithExtra = locationBuilder.NumBytes;
         }
 
@@ -536,20 +537,20 @@ namespace SS.Core.Packets
         static C2SPositionPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(8);
-            rotation = locationBuilder.CreateDataLocation(8);
-            time = locationBuilder.CreateDataLocation(32);
-            xSpeed = locationBuilder.CreateDataLocation(16);
-            y = locationBuilder.CreateDataLocation(16);
-            checksum = locationBuilder.CreateDataLocation(8);
-            status = locationBuilder.CreateDataLocation(8);
-            x = locationBuilder.CreateDataLocation(16);
-            ySpeed = locationBuilder.CreateDataLocation(16);
-            bounty = locationBuilder.CreateDataLocation(16);
-            energy = locationBuilder.CreateDataLocation(16);
-            weapon = locationBuilder.CreateDataLocation(8 * 2); // 2 bytes
+            type = locationBuilder.CreateDataLocation(1);
+            rotation = locationBuilder.CreateDataLocation(1);
+            time = locationBuilder.CreateDataLocation(4);
+            xSpeed = locationBuilder.CreateDataLocation(2);
+            y = locationBuilder.CreateDataLocation(2);
+            checksum = locationBuilder.CreateDataLocation(1);
+            status = locationBuilder.CreateDataLocation(1);
+            x = locationBuilder.CreateDataLocation(2);
+            ySpeed = locationBuilder.CreateDataLocation(2);
+            bounty = locationBuilder.CreateDataLocation(2);
+            energy = locationBuilder.CreateDataLocation(2);
+            weapon = locationBuilder.CreateDataLocation(2); // 2 bytes
             Length = locationBuilder.NumBytes;
-            extra = locationBuilder.CreateDataLocation(8 * 10); // 10 bytes
+            extra = locationBuilder.CreateDataLocation(10); // 10 bytes
             LengthWithExtra = locationBuilder.NumBytes;
         }
 

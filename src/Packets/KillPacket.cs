@@ -11,12 +11,12 @@ namespace SS.Core.Packets
         static KillPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = (ByteDataLocation)locationBuilder.CreateDataLocation(8);
-            green = (ByteDataLocation)locationBuilder.CreateDataLocation(8);
-            killer = (Int16DataLocation)locationBuilder.CreateDataLocation(16);
-            killed = (Int16DataLocation)locationBuilder.CreateDataLocation(16);
-            bounty = (Int16DataLocation)locationBuilder.CreateDataLocation(16);
-            flags = (Int16DataLocation)locationBuilder.CreateDataLocation(16);
+            type = (ByteDataLocation)locationBuilder.CreateDataLocation(1);
+            green = (ByteDataLocation)locationBuilder.CreateDataLocation(1);
+            killer = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
+            killed = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
+            bounty = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
+            flags = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
             Length = locationBuilder.NumBytes;
         }
 
