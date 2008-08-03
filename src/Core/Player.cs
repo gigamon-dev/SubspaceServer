@@ -247,7 +247,7 @@ namespace SS.Core
         public PlayerPositionStatus status;
     };
 
-    public class Player
+    public class Player : IPlayerTarget
     {
         public PlayerDataPacket pkt = new PlayerDataPacket(new byte[PlayerDataPacket.Length]);
 
@@ -521,5 +521,23 @@ namespace SS.Core
         {
             _playerExtraData.Clear();
         }
+
+        #region IPlayerTarget Members
+
+        Player IPlayerTarget.Player
+        {
+            get { return this; }
+        }
+
+        #endregion
+
+        #region ITarget Members
+
+        TargetType ITarget.Type
+        {
+            get { return TargetType.Player; }
+        }
+
+        #endregion
     }
 }

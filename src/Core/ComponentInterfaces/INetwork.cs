@@ -69,15 +69,68 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flags">flags specifying options for the send</param>
         void SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags);
 
+        /// <summary>
+        /// To send data to a target of players
+        /// </summary>
+        /// <param name="target">target describing what players to send data to</param>
+        /// <param name="data">array containing the data</param>
+        /// <param name="len">the length of the data</param>
+        /// <param name="flags">flags specifying options for the send</param>
+        void SendToTarget(ITarget target, byte[] data, int len, NetSendFlags flags);
+
+        /// <summary>
+        /// To send data to a player and recieve a callback after the data has been sent.
+        /// </summary>
+        /// <param name="p">player sending data to</param>
+        /// <param name="data">array conaining the data</param>
+        /// <param name="len">number of bytes to send</param>
+        /// <param name="callback">the callback which will be called after the data has been sent</param>
+        /// <param name="clos">argument to use when calling the callback</param>
         void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object clos);
 
-        //void SendToTarget(Target target, byte[] data, int len, NetSendFlags flags);
-        //void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object obj);
+        /// <summary>
+        /// To send sized data to a player.
+        /// <remarks>used for sending files to players such as map/news</remarks>
+        /// </summary>
+        /// <typeparam name="T">type of the argument used in the callback to retrieve data to send</typeparam>
+        /// <param name="p">player sending data to</param>
+        /// <param name="clos">argument to use when calling the callback</param>
+        /// <param name="len">total number of bytes to send in the transfer</param>
+        /// <param name="requestCallback">callback that is used to retrieve data for each piece of the transfer</param>
+        /// <returns></returns>
         bool SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback);
 
+        /// <summary>
+        /// To add a handler for a packet of a certain type.
+        /// <remarks>
+        /// This is usually used to register handlers for game packets.
+        /// Note, this can also be used to register a handler for 'core' network level packets.  
+        /// However, registering 'core' handlers doesn't appear to be used in asss.</remarks>
+        /// </summary>
+        /// <param name="pktype">type of packet</param>
+        /// <param name="func">the handler to call when a packet is recieved</param>
         void AddPacket(int pktype, PacketDelegate func);
+
+        /// <summary>
+        /// To unregister a handler for a given packet type.
+        /// </summary>
+        /// <param name="pktype"></param>
+        /// <param name="func"></param>
         void RemovePacket(int pktype, PacketDelegate func);
+
+        /// <summary>
+        /// To add a handler for a sized packet recieved from a client.
+        /// <remarks>This is used for recieving file uploads.  Includes voices (wave messages in macros).</remarks>
+        /// </summary>
+        /// <param name="pktype"></param>
+        /// <param name="func"></param>
         void AddSizedPacket(int pktype, SizedPacketDelegate func);
+
+        /// <summary>
+        /// To unregister a handler for a sized packet.
+        /// </summary>
+        /// <param name="pktype"></param>
+        /// <param name="func"></param>
         void RemoveSizedPacket(int pktype, SizedPacketDelegate func);
     }
 }

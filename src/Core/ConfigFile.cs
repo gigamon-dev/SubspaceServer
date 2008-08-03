@@ -27,7 +27,7 @@ namespace SS.Core
         {
             // TODO: when i figure out what goes in each list and dictionary
             Handles = new LinkedList<ConfigHandle>();
-            _table = new Dictionary<string, string>();
+            _table = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             //strings = new
             //dirty = new
 

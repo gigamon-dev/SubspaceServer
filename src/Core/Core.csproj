@@ -115,6 +115,7 @@
     <Compile Include="ComponentInterfaces\IPlayerData.cs" />
     <Compile Include="ComponentInterfaces\IServerTimer.cs" />
     <Compile Include="ComponentInterfaces\IStats.cs" />
+    <Compile Include="Modules\CommandManager.cs" />
     <Compile Include="Modules\Config.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="Modules\CoreModule.cs" />
@@ -130,6 +131,7 @@
     <Compile Include="Modules\ModuleLoader.cs" />
     <Compile Include="ModuleManager.cs">
     </Compile>
+    <Compile Include="Modules\PlayerCommand.cs" />
     <Compile Include="NetStats.cs" />
     <Compile Include="Modules\Network.cs" />
     <Compile Include="PathUtil.cs" />

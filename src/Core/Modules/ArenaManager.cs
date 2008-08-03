@@ -18,7 +18,7 @@ namespace SS.Core.Modules
         /// </summary>
         private ReaderWriterLock _arenaLock = new ReaderWriterLock();
 
-        private Dictionary<string, Arena> _arenaDictionary = new Dictionary<string, Arena>();
+        private Dictionary<string, Arena> _arenaDictionary = new Dictionary<string, Arena>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Key = module Type

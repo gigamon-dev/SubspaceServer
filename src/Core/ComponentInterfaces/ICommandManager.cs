@@ -12,7 +12,7 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="parameters">the stuff that the player typed after the command name</param>
     /// <param name="p">the player issuing the command</param>
     /// <param name="target">describes how the command was issued (public, private, etc..</param>
-    public delegate void CommandDelegate(string command, string parameters, Player p, Target target);
+    public delegate void CommandDelegate(string command, string parameters, Player p, ITarget target);
 
     /// <summary>
     /// the command manager; deals with registering and dispatching commands.
@@ -69,7 +69,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="commandName"></param>
         /// <param name="handler"></param>
         /// <param name="arena"></param>
-        void RemoveCOmmand(string commandName, CommandDelegate handler, Arena arena);
+        void RemoveCommand(string commandName, CommandDelegate handler, Arena arena);
 
         /// <summary>
         /// Dispatches an incoming command.
@@ -82,7 +82,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="p">the player who issued the command</param>
         /// <param name="target">how the command was issued</param>
         /// <param name="sound">the sound from the chat packet that this command came from</param>
-        void Command(string typedLine, Player p, Target target, ChatSound sound);
+        void Command(string typedLine, Player p, ITarget target, ChatSound sound);
 
         /// <summary>
         /// To get the help text of a command that was added.

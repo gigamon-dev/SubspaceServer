@@ -16,7 +16,7 @@ namespace SS.Core.Packets
             sound = locationBuilder.CreateDataLocation(1);
             pid = locationBuilder.CreateDataLocation(2);
             HeaderLength = locationBuilder.NumBytes;
-            text = locationBuilder.CreateDataLocation(4);
+            text = locationBuilder.CreateDataLocation(1);
         }
 
         private static readonly ByteDataLocation pktype;
@@ -24,7 +24,7 @@ namespace SS.Core.Packets
         private static readonly ByteDataLocation sound;
         private static readonly Int16DataLocation pid;
         public static readonly int HeaderLength;
-        private static readonly DataLocation text; // NumBits is variable for this location, do not use
+        private static readonly DataLocation text; // NumBytes is variable for this location, do not use
 
         // used for finding the end of the text
         private static Predicate<byte> _nullCharPredicate =

@@ -74,7 +74,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="target">the target to convert</param>
         /// <param name="set">the list to add players to</param>
-        void TargetToSet(Target target, out LinkedList<Player> set);
+        void TargetToSet(ITarget target, out LinkedList<Player> set);
 
         // per player data
         int AllocatePlayerData<T>() where T : new();

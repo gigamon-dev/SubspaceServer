@@ -294,8 +294,11 @@ namespace SS.Core.Modules
             setFreqAndShip(p, ship, freq);
         }
 
-        void IGame.WarpTo(Target target, short x, short y)
+        void IGame.WarpTo(ITarget target, short x, short y)
         {
+            if(target == null)
+                throw new ArgumentNullException("target");
+
             using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
             {
                 SimplePacket sp = new SimplePacket(buffer.Bytes);
@@ -303,12 +306,15 @@ namespace SS.Core.Modules
                 sp.D1 = x;
                 sp.D2 = y;
 
-                //_net.SendToTarget(
+                _net.SendToTarget(target, buffer.Bytes, 5, NetSendFlags.Reliable | NetSendFlags.Urgent);
             }
         }
 
-        void IGame.GivePrize(Target target, Prize prizeType, short count)
+        void IGame.GivePrize(ITarget target, Prize prizeType, short count)
         {
+            if(target == null)
+                throw new ArgumentNullException("target");
+
             using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
             {
                 SimplePacket sp = new SimplePacket(buffer.Bytes);
@@ -316,16 +322,16 @@ namespace SS.Core.Modules
                 sp.D1 = count;
                 sp.D2 = (short)prizeType;
 
-                //_net.SendToTarget(
+                _net.SendToTarget(target, buffer.Bytes, 5, NetSendFlags.Reliable);
             }
         }
 
-        void IGame.Lock(Target target, bool notify, bool spec, int timeout)
+        void IGame.Lock(ITarget target, bool notify, bool spec, int timeout)
         {
             lockWork(target, true, notify, spec, timeout);
         }
 
-        void IGame.Unlock(Target target, bool notify)
+        void IGame.Unlock(ITarget target, bool notify)
         {
             lockWork(target, false, notify, false, 0);
         }
@@ -364,9 +370,12 @@ namespace SS.Core.Modules
             pd.ignoreWeapons = (int)((float)Constants.RandMax * proportion);
         }
 
-        void IGame.ShipReset(Target target)
+        void IGame.ShipReset(ITarget target)
         {
-            //_net.SendToTarget(target, _shipResetBytes, _shipResetBytes.Length, NetSendFlags.Reliable);
+            if (target == null)
+                throw new ArgumentNullException("target");
+
+            _net.SendToTarget(target, _shipResetBytes, _shipResetBytes.Length, NetSendFlags.Reliable);
         }
 
         #endregion
@@ -1688,7 +1697,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void lockWork(Target target, bool p, bool notify, bool spec, int timeout)
+        private void lockWork(ITarget target, bool p, bool notify, bool spec, int timeout)
         {
 
         }

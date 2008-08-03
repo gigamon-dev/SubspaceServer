@@ -98,7 +98,7 @@ namespace SS.Core
             this.err = err;
             this.arena = arena; // can be null
             processing = true;
-            defs = new Dictionary<string, string>();
+            defs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             depth = 0;
         }
 

@@ -1,18 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using System.IO;
 using System.Threading;
 
-using SS.Utilities;
 using SS.Core.ComponentInterfaces;
-using System.Diagnostics;
+using SS.Utilities;
 
 namespace SS.Core.Modules
 {
     public class ConfigManager : IModule, IModuleLoaderAware, IConfigManager
     {
-        private readonly Dictionary<string, ConfigFile> _opened = new Dictionary<string, ConfigFile>();
+        private readonly Dictionary<string, ConfigFile> _opened = new Dictionary<string, ConfigFile>(StringComparer.OrdinalIgnoreCase);
         private readonly LinkedList<ConfigFile> _files = new LinkedList<ConfigFile>();
         private readonly object cfgmtx = new object(); // protects _opened and _files
 
@@ -267,7 +267,4 @@ namespace SS.Core.Modules
 
         #endregion
     }
-
-    
-    
 }

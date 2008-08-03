@@ -309,11 +309,14 @@ namespace SS.Core.Modules
             }
         }
 
-        void IPlayerData.TargetToSet(Target target, out LinkedList<Player> list)
+        void IPlayerData.TargetToSet(ITarget target, out LinkedList<Player> list)
         {
+            if (target == null)
+                throw new ArgumentNullException("target");
+
             if (target.Type == TargetType.List)
             {
-                list = new LinkedList<Player>(target.List);
+                list = new LinkedList<Player>(((IListTarget)target).List);
                 return;
             }
 
@@ -322,7 +325,7 @@ namespace SS.Core.Modules
             switch (target.Type)
             {
                 case TargetType.Player:
-                    list.AddLast(target.Player);
+                    list.AddLast(((IPlayerTarget)target).Player);
                     return;
 
                 case TargetType.Arena:
@@ -416,15 +419,16 @@ namespace SS.Core.Modules
         #endregion
 
         // this is is inlined in asss, the compiler should do it for us automatically if it is a good candidate
-        private static bool matches(Target t, Player p)
+        private static bool matches(ITarget t, Player p)
         {
             switch (t.Type)
             {
                 case TargetType.Arena:
-                    return p.Arena == t.Arena;
+                    return p.Arena == ((IArenaTarget)t).Arena;
 
                 case TargetType.Freq:
-                    return (p.Arena == t.Arena) && (p.Freq == t.Freq);
+                    ITeamTarget teamTarget = (ITeamTarget)t;
+                    return (p.Arena == teamTarget.Arena) && (p.Freq == teamTarget.Freq);
 
                 case TargetType.Zone:
                     return true;

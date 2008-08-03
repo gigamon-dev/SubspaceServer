@@ -101,7 +101,7 @@ namespace SS.Core
         PostDestroy
     };
 
-    public class Arena : ComponentBroker
+    public class Arena : ComponentBroker, IArenaTarget
     {
         private ModuleManager _mm;
 
@@ -257,6 +257,24 @@ namespace SS.Core
         {
             base.DoCallback<T1, T2, T3, T4, T5, T6, T7>(callbackIdentifier, t1, t2, t3, t4, t5, t6, t7);
             _mm.DoCallback<T1, T2, T3, T4, T5, T6, T7>(callbackIdentifier, t1, t2, t3, t4, t5, t6, t7);
+        }
+
+        #endregion
+
+        #region IArenaTarget Members
+
+        Arena IArenaTarget.Arena
+        {
+            get { return this; }
+        }
+
+        #endregion
+
+        #region ITarget Members
+
+        TargetType ITarget.Type
+        {
+            get { return TargetType.Arena; }
         }
 
         #endregion

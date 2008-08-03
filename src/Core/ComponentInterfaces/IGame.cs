@@ -41,7 +41,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">the players to warp</param>
         /// <param name="x">the destination of the warp in tiles, x coordinate</param>
         /// <param name="y">the destination of the warp in tiles, y coordinate</param>
-        void WarpTo(Target target, short x, short y);
+        void WarpTo(ITarget target, short x, short y);
 
         /// <summary>
         /// Gives out prizes to a set of players.
@@ -49,7 +49,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">the players to give prizes to</param>
         /// <param name="prizeType">the type of the prizes to give, or 0 for random</param>
         /// <param name="count">the number of prizes to give</param>
-        void GivePrize(Target target, Prize prizeType, short count);
+        void GivePrize(ITarget target, Prize prizeType, short count);
 
         /// <summary>
         /// Locks a set of players to their ship and freq.
@@ -61,7 +61,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="notify">whether to notify the affected players (with an arena message) if their lock status has changed</param>
         /// <param name="spec">whether to spec them before locking them to their ship/freq</param>
         /// <param name="timeout">the number of seconds the lock should be effective for, or zero for indefinite.</param>
-        void Lock(Target target, bool notify, bool spec, int timeout);
+        void Lock(ITarget target, bool notify, bool spec, int timeout);
 
         /// <summary>
         /// Undoes the effect of Lock, allowing players to change ship and freq again.
@@ -69,7 +69,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="target">the players to unlock</param>
         /// <param name="notify">whether to notify the affected players if their lock status changed</param>
-        void Unlock(Target target, bool notify);
+        void Unlock(ITarget target, bool notify);
 
         /// <summary>
         /// Locks all players in the arena to spectator mode, or to their current ships.
@@ -110,7 +110,7 @@ namespace SS.Core.ComponentInterfaces
         /// Resets the target's ship(s).
         /// </summary>
         /// <param name="target">the players to shipreset</param>
-        void ShipReset(Target target);
+        void ShipReset(ITarget target);
 
         // TODO: more
     }

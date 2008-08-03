@@ -107,7 +107,8 @@ namespace SS.Core.Modules
             if (pd == null)
                 return false;
 
-            return !string.IsNullOrEmpty(_configManager.GetStr(_groupDefConfHandle, pd.Group, capability));
+            //return !string.IsNullOrEmpty(_configManager.GetStr(_groupDefConfHandle, pd.Group, capability));
+            return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
         }
 
         bool ICapabilityManager.HasCapability(string name, string capability)

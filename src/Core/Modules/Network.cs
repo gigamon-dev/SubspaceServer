@@ -453,10 +453,16 @@ namespace SS.Core.Modules
 
         private delegate void oohandler(SubspaceBuffer buffer);
 
+        /// <summary>
+        /// handlers for 'core' packets (ss protocol's network/transport layer)
+        /// </summary>
         private oohandler[] _oohandlers;
 
         private const int MAXTYPES = 64;
 
+        /// <summary>
+        /// handlers for 'game' packets
+        /// </summary>
         public Dictionary<int, PacketDelegate> _handlers = new Dictionary<int, PacketDelegate>(MAXTYPES);
         public Dictionary<int, PacketDelegate> _nethandlers = new Dictionary<int, PacketDelegate>(20);
         public Dictionary<int, SizedPacketDelegate> _sizedhandlers = new Dictionary<int, SizedPacketDelegate>(MAXTYPES);
@@ -2728,6 +2734,13 @@ namespace SS.Core.Modules
             {
                 bufferPacket(conn, data, len, NetSendFlags.Reliable, callback, clos);
             }
+        }
+
+        void INetwork.SendToTarget(ITarget target, byte[] data, int len, NetSendFlags flags)
+        {
+            LinkedList<Player> set;
+            _playerData.TargetToSet(target, out set);
+            sendToSet(set, data, len, flags);
         }
 
         bool INetwork.SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback)

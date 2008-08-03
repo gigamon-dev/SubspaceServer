@@ -79,7 +79,7 @@ namespace SS.Core.Modules
                     typeof(IConfigManager), 
                     typeof(ILogManager), 
                     typeof(IArenaManagerCore), 
-                    //typeof(ICommandManager), 
+                    typeof(ICommandManager), 
                     typeof(ICapabilityManager), 
                     //typeof(IPersist), 
                     //typeof(IObscene), 
@@ -96,7 +96,7 @@ namespace SS.Core.Modules
             _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
             _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            //_commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
+            _commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
             _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
             //_persist = interfaceDependencies[typeof(IPersist)] as IPersist;
             //_obscene = interfaceDependencies[typeof(IObscene)] as IObscene;
@@ -545,7 +545,7 @@ namespace SS.Core.Modules
                     type = ChatMessageType.SysopWarning;
 
                 ChatPacket cp = new ChatPacket(buf.Bytes);
-                cp.PkType = (byte)C2SPacketType.Chat;
+                cp.PkType = (byte)S2CPacketType.Chat;
                 cp.Type = (byte)type;
                 cp.Sound = (byte)sound;
                 cp.Pid = from != null ? (short)from.Id : (short)-1;
@@ -598,8 +598,12 @@ namespace SS.Core.Modules
             {
                 if (ok(p, ChatMessageType.Command))
                 {
-                    Target target;
-                    // TODO
+                    Player d = _playerData.FindPlayer(dest);
+                    if (d != null && d.Status == PlayerState.Playing)
+                    {
+                        ITarget target = d;
+                        runCommands(message, p, target, sound);
+                    }
                 }
             }
             else if (ok(p, ChatMessageType.RemotePrivate))
@@ -638,8 +642,8 @@ namespace SS.Core.Modules
             {
                 if (ok(p, ChatMessageType.Command))
                 {
-                    Target target;
-                    // TODO
+                    ITarget target = dst;
+                    runCommands(text, p, target, sound);
                 }
             }
             else if (ok(p, ChatMessageType.Private))
@@ -682,8 +686,8 @@ namespace SS.Core.Modules
             {
                 if (ok(p, ChatMessageType.Command))
                 {
-                    Target target;
-                    // TODO
+                    ITarget target = Target.TeamTarget(p.Arena, p.Freq);
+                    runCommands(text, p, target, sound);
                 }
             }
             else if(ok(p, type))
@@ -767,8 +771,8 @@ namespace SS.Core.Modules
             {
                 if (ok(p, ChatMessageType.Command))
                 {
-                    Target target;
-                    // TODO
+                    ITarget target = arena;
+                    runCommands(msg, p, target, sound);
                 }
             }
             else
@@ -785,6 +789,53 @@ namespace SS.Core.Modules
                 }
             }
 
+        }
+
+        private void runCommands(string msg, Player p, ITarget target, ChatSound sound)
+        {
+            if (msg == null)
+                throw new ArgumentNullException("msg");
+            
+            if (msg == string.Empty)
+                return;
+
+            if (target == null)
+                throw new ArgumentNullException("target");
+
+            // skip initial ? or *
+            char initial = '\0';
+            if (isCommandChar(msg[0]))
+            {
+                initial = msg[0];
+                msg = msg.Remove(0, 1);
+
+                if(msg == string.Empty)
+                    return;
+            }
+
+            bool multi = msg[0] == MultiChar;
+
+            if (multi)
+            {
+                string[] tokens = msg.Split(new char[] { MultiChar }, StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (string token in tokens)
+                {
+                    // give modules a chance to rewrite the command
+                    // TODO:
+
+                    // run the command
+                    _commandManager.Command(token, p, target, sound);
+                }
+            }
+            else
+            {
+                // give modules a chance to rewrite the command
+                // TODO:
+
+                // run the command
+                _commandManager.Command(msg, p, target, sound);
+            }
         }
 
         private void sendReply(LinkedList<Player> set, ChatMessageType type, ChatSound sound, Player p, int fromPid, string msg, int chatNetOffset)
