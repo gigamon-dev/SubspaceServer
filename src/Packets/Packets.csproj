@@ -59,6 +59,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AckPacket.cs" />
+    <Compile Include="BrickPacket.cs" />
     <Compile Include="ChatPacket.cs" />
     <Compile Include="ClientSettingsPacket.cs" />
     <Compile Include="ContinuumChecksumPacket.cs" />

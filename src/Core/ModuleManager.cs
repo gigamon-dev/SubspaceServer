@@ -7,6 +7,10 @@ namespace SS.Core
 {
     public interface IModule
     {
+        /// <summary>
+        /// IComponentInterfaces that are required by the Module to load properly.
+        /// *** DO NOT INCLUDE OPTIONAL INTERFACES HERE ***
+        /// </summary>
         Type[] InterfaceDependencies
         {
             get;

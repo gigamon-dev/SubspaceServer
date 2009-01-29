@@ -31,6 +31,24 @@ namespace SS.Core.ComponentInterfaces
         public uint s_time, c_time;
     }
 
+    public class TimeSyncHistory
+    {
+        private const int TimeSyncSamples = 10;
+
+        public uint[] ServerTime = new uint[TimeSyncSamples];
+        public uint[] ClientTime = new uint[TimeSyncSamples];
+        private int next;
+        public int drift;
+
+        public void Update(ref TimeSyncData data)
+        {
+            int sampleIndex = next;
+            ServerTime[sampleIndex] = data.s_time;
+            ClientTime[sampleIndex] = data.c_time;
+            next = (sampleIndex + 1) % TimeSyncHistory.TimeSyncSamples;
+        }
+    }
+
     public interface ILagCollect : IComponentInterface
     {
         void Position(Player p, int ms, int clipping, uint wpnSent);

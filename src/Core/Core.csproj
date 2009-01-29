@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
+    <ProductVersion>9.0.30729</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{ADE34A70-E6EF-41B2-B5E0-15F1A9505E80}</ProjectGuid>
     <OutputType>Library</OutputType>
@@ -66,6 +66,17 @@
     <Compile Include="ComponentInterfaces\ILagQuery.cs" />
     <Compile Include="ConfigFile.cs" />
     <Compile Include="ConfigHandle.cs" />
+    <Compile Include="Map\BitmapHeader.cs" />
+    <Compile Include="Map\ChunkHeader.cs" />
+    <Compile Include="Map\ExtendedLvl.cs" />
+    <Compile Include="Map\MapCoordinate.cs" />
+    <Compile Include="Map\MapMetadataChunkType.cs" />
+    <Compile Include="Map\MapTile.cs" />
+    <Compile Include="Map\MapTileCollection.cs" />
+    <Compile Include="Map\MapTileData.cs" />
+    <Compile Include="Map\MetadataHeader.cs" />
+    <Compile Include="Map\MapRegion.cs" />
+    <Compile Include="Map\MetadataReader.cs" />
     <Compile Include="Modules\ArenaManager.cs" />
     <Compile Include="Modules\ArenaPlaceMultiPub.cs" />
     <Compile Include="Modules\BandwidthLimit.cs" />
@@ -123,10 +134,12 @@
     <Compile Include="Defs.cs" />
     <Compile Include="Modules\EncryptionNull.cs" />
     <Compile Include="Modules\Game.cs" />
+    <Compile Include="Modules\LagData.cs" />
     <Compile Include="Modules\LogConsole.cs" />
     <Compile Include="Modules\LogManager.cs" />
     <Compile Include="Modules\Mainloop.cs">
     </Compile>
+    <Compile Include="Modules\MapData.cs" />
     <Compile Include="Modules\MapNewsDownload.cs" />
     <Compile Include="Modules\ModuleLoader.cs" />
     <Compile Include="ModuleManager.cs">

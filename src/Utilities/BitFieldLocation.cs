@@ -60,6 +60,11 @@ namespace SS.Utilities
         {
             return new SByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
         }
+
+        public static explicit operator UInt32BitFieldLocation(BitFieldLocation location)
+        {
+            return new UInt32BitFieldLocation(location.LowestOrderBit, location.NumBits);
+        }
     }
 
     public struct BoolBitFieldLocation
@@ -160,7 +165,7 @@ namespace SS.Utilities
         public SByteBitFieldLocation(byte lowestOrderBit, byte numBits)
         {
             if (numBits <= 0 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
+                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
 
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
@@ -194,6 +199,51 @@ namespace SS.Utilities
         public uint SetValue(sbyte value, uint source)
         {
             return LittleEndianBitConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+        }
+    }
+
+    public struct UInt32BitFieldLocation
+    {
+        public readonly byte LowestOrderBit;
+        public readonly byte NumBits;
+
+        public UInt32BitFieldLocation(byte lowestOrderBit, byte numBits)
+        {
+            if (numBits <= 0 || numBits > 16)
+                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
+
+            LowestOrderBit = lowestOrderBit;
+            NumBits = numBits;
+        }
+
+        public uint GetValue(byte source)
+        {
+            return LittleEndianBitConverter.GetUInt32(source, LowestOrderBit, NumBits);
+        }
+
+        public uint GetValue(ushort source)
+        {
+            return LittleEndianBitConverter.GetUInt32(source, LowestOrderBit, NumBits);
+        }
+
+        public uint GetValue(uint source)
+        {
+            return LittleEndianBitConverter.GetUInt32(source, LowestOrderBit, NumBits);
+        }
+
+        public uint SetValue(uint value, byte source)
+        {
+            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
+        }
+
+        public uint SetValue(uint value, ushort source)
+        {
+            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
+        }
+
+        public uint SetValue(uint value, uint source)
+        {
+            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
         }
     }
 }

@@ -24,6 +24,12 @@ namespace SS.Core.Modules
         }
     }
 
+    /// <summary>
+    /// this module handles player login process
+    /// and transitioning the player object through its various states
+    /// 
+    /// that is, the entire lifetime of a player from getting authenticated by server, entering/leaving arenas, all the way to leaving the zone
+    /// </summary>
     public class CoreModule : IModule, IAuth
     {
         private static readonly byte[] _keepAlive = new byte[1] { (byte)Packets.S2CPacketType.KeepAlive };
@@ -113,8 +119,9 @@ namespace SS.Core.Modules
                     typeof(ILogManager), 
                     typeof(IConfigManager), 
                     typeof(IServerTimer), 
+                    typeof(IMapNewsDownload), 
                     typeof(IArenaManagerCore), 
-                    typeof(ICapabilityManager)
+                    typeof(ICapabilityManager), 
                 };
             }
         }
@@ -128,6 +135,7 @@ namespace SS.Core.Modules
             _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
             _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
             _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
+            _map = interfaceDependencies[typeof(IMapNewsDownload)] as IMapNewsDownload;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
             _capabiltyManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
 
@@ -724,7 +732,7 @@ namespace SS.Core.Modules
                     lr.Initialize();
                     lr.Code = (byte)auth.code;
                     lr.DemoData = auth.demodata ? (byte)1 : (byte)0;
-                    lr.NewsChecksum = 0;// _map.GetNewsChecksum();
+                    lr.NewsChecksum = _map.GetNewsChecksum();
 
                     if (player.Type == ClientType.Continuum)
                     {

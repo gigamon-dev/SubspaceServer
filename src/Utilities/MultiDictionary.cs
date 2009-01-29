@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-#if false
+
 namespace SS.Utilities
 {
     /// <summary>
@@ -105,11 +105,58 @@ namespace SS.Utilities
             return wasRemoved;
         }
 
-        public bool TryGetValues(TKey key, out LinkedList<TValue> bucketList)
+        /// <summary>
+        /// Gets all of the items that match the specified key
+        /// </summary>
+        /// <param name="key">the key of the values to get</param>
+        /// <param name="values">an enumerable collection of items stored for the specified key</param>
+        /// <returns>true if items are found, otherwise false</returns>
+        public bool TryGetValues(TKey key, out IEnumerable<TValue> values)
         {
-            return _dictionary.TryGetValue(key, out bucketList);
+            LinkedList<TValue> bucketList;
+            if (_dictionary.TryGetValue(key, out bucketList))
+            {
+                values = bucketList;
+                return true;
+            }
+            else
+            {
+                values = null;
+                return false;
+            }
         }
+        
+        /// <summary>
+        /// Gets all of the items that match the specified key and adds them to the end of an existing list.
+        /// </summary>
+        /// <param name="key">the key of the values to get</param>
+        /// <param name="appendToList">an existing list to add matching items to</param>
+        /// <returns>whether items were found and added to the list</returns>
+        public bool TryGetAppendValues(TKey key, LinkedList<TValue> appendToList)
+        {
+            if (appendToList == null)
+                throw new ArgumentNullException("appendToList");
 
+            LinkedList<TValue> bucketList;
+            if (_dictionary.TryGetValue(key, out bucketList))
+            {
+                foreach (TValue v in bucketList)
+                    appendToList.AddLast(v);
+
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Gets the first value assocated with the specified key.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <param name="firstValue"></param>
+        /// <returns></returns>
         public bool TryGetFirstValue(TKey key, out TValue firstValue)
         {
             LinkedList<TValue> bucketList;
@@ -119,7 +166,7 @@ namespace SS.Utilities
                 return false;
             }
 
-            if(bucketList.Count == 0)
+            if(bucketList.Count == 0) // this should never come back as true if this class is implemented correctly, putting this here to be defensive...
             {
                 firstValue = default(TValue);
                 return false;
@@ -129,26 +176,12 @@ namespace SS.Utilities
             return true;
         }
 
-        public bool TryGetFirstValue(TKey key, out LinkedListNode<TValue> firstNode)
-        {
-            LinkedList<TValue> bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList) == false)
-            {
-                firstNode = null;
-                return false;
-            }
-
-            if (bucketList.Count == 0)
-            {
-                firstNode = null;
-                return false;
-            }
-
-            firstNode = bucketList.First;
-            return true;
-        }
-
-        public LinkedList<TValue> this[TKey key]
+        /// <summary>
+        /// Get or set all of the items in a bucket.  Note: setting will remove any items that are currently in the bucket.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        public IEnumerable<TValue> this[TKey key]
         {
             get
             {
@@ -157,10 +190,6 @@ namespace SS.Utilities
             }
             set
             {
-                // current implementation is faster than (less bucket lookups)
-                //foreach (TValue tval in value)
-                    //AddLast(key, tval);
-
                 // try to find the bucket
                 LinkedList<TValue> bucketList;
                 if (_dictionary.TryGetValue(key, out bucketList) == false)
@@ -169,12 +198,24 @@ namespace SS.Utilities
                     bucketList = new LinkedList<TValue>();
                     _dictionary[key] = bucketList;
                 }
+                else
+                {
+                    // bucket already exists, remove anything already in it
+                    _count -= bucketList.Count;
+                    bucketList.Clear();
+                }
 
                 // add each value into the bucket
                 foreach (TValue tval in value)
                 {
                     bucketList.AddLast(tval);
                     _count++;
+                }
+
+                if (bucketList.Count == 0)
+                {
+                    // no items in the bucket, which means the bucket shouldn't exist
+                    _dictionary.Remove(key);
                 }
             }
         }
@@ -272,6 +313,7 @@ namespace SS.Utilities
         public void Clear()
         {
             _dictionary.Clear();
+            _count = 0;
         }
 
         bool ICollection<KeyValuePair<TKey, TValue>>.Contains(KeyValuePair<TKey, TValue> item)
@@ -320,4 +362,3 @@ namespace SS.Utilities
         #endregion
     }
 }
-#endif

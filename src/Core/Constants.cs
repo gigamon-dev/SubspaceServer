@@ -10,9 +10,19 @@ namespace SS.Core
     public static class Constants
     {
         /// <summary>
-        /// the search path for config files
+        /// the search paths for config files (colon delimited with placeholders)
         /// </summary>
         public const string CFG_CONFIG_SEARCH_PATH = "arenas/%b/%n:conf/%n:%n:arenas/(default)/%n";
+
+        /// <summary>
+        /// the search paths for lvl files (colon delimited with placeholders)
+        /// </summary>
+        public const string CFG_LVL_SEARCH_PATH = "arenas/%b/%m:maps/%m:%m:arenas/%b/%b.lvl:maps/%b.lvl:arenas/(default)/%m";
+
+        /// <summary>
+        /// the search paths for lvz files (colon delimited with placeholders)
+        /// </summary>
+        public const string CFG_LVZ_SEARCH_PATH = "arenas/%b/%m:maps/%m:%m:arenas/(default)/%m";
 
         /// <summary>
         /// how many incoming rel packets to buffer for a client

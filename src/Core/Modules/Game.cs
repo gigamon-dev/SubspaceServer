@@ -21,7 +21,7 @@ namespace SS.Core.Modules
         private IArenaManagerCore _arenaManager;
         private ICapabilityManager _capabilityManager;
         //private IMapData _mapData;
-        //private ILagCollect _lagCollect;
+        private ILagCollect _lagCollect;
         private IChat _chat;
         //private ICommandManager _commandManager;
         //private IPersist _persist;
@@ -159,7 +159,7 @@ namespace SS.Core.Modules
                     typeof(IArenaManagerCore),
                     typeof(ICapabilityManager),
                     //typeof(IMapData),
-                    //typeof(ILagCollect),
+                    typeof(ILagCollect),
                     typeof(IChat),
                     //typeof(ICommandManager),
                     //typeof(IPersist)
@@ -179,7 +179,7 @@ namespace SS.Core.Modules
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
             _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
             //_mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
-            //_lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
+            _lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
             _chat = interfaceDependencies[typeof(IChat)] as IChat;
             //_commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
             //_persist = interfaceDependencies[typeof(IPersist)] as IPersist;
@@ -962,8 +962,14 @@ namespace SS.Core.Modules
             }
 
             // lag data
-            //if(_lagCollect != null && !isFake)
-                //_lagCollect.
+            if (_lagCollect != null && !isFake)
+            {
+                _lagCollect.Position(
+                    p, 
+                    (ServerTick.Now - pos.Time) * 10,
+                    len >= 26 ? pos.Extra.S2CPing * 10 : -1,
+                    pd.wpnSent);
+            }
 
             // only copy if the new one is later
             if (isNewer || isFake)
@@ -1019,7 +1025,7 @@ namespace SS.Core.Modules
 
         private void firePlayerActionEvent(Player p, PlayerAction action, Arena arena)
         {
-            if(p == null)
+            if (p == null)
                 return;
 
             if (arena != null)

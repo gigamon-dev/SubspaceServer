@@ -115,7 +115,7 @@ namespace SS.Core.Modules
                     typeof(IConfigManager), 
                     typeof(IServerTimer), 
                     typeof(IArenaManagerCore), 
-                    //typeof(IMapData), 
+                    typeof(IMapData), 
                 };
             }
         }
@@ -129,7 +129,7 @@ namespace SS.Core.Modules
             _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
             _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            //_mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
+            _mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
 
             _dlKey = _arenaManager.AllocateArenaData<LinkedList<MapDownloadData>>();
 
@@ -217,6 +217,7 @@ namespace SS.Core.Modules
 
         public uint GetNewsChecksum()
         {
+            // TODO: 
             return 0;
         }
 
@@ -253,10 +254,14 @@ namespace SS.Core.Modules
 
                 MapDownloadData data = null;
 
-                // TODO: get data from _mapData
-                //if(_mapData.GetMapFilename(arena, out filename, null))
-                string filename = @"maps\smallmap.lvl";
-                data = compressMap(filename, true);
+                string filename = _mapData.GetMapFilename(arena, null);
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    data = compressMap(filename, true);
+                }
+
+                //string filename = @"maps\smallmap.lvl";
+                //data = compressMap(filename, true);
 
                 if (data == null)
                 {

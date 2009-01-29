@@ -193,12 +193,12 @@ namespace SS.Core.Modules
             /// <summary>
             /// # of packets sent
             /// </summary>
-            public ulong pktSent;
+            public uint pktSent;
 
             /// <summary>
             /// # of packets recieved
             /// </summary>
-            public ulong pktRecieved;
+            public uint pktRecieved;
 
             /// <summary>
             /// # of bytes sent
@@ -213,12 +213,12 @@ namespace SS.Core.Modules
             /// <summary>
             /// # of duplicate reliable packets
             /// </summary>
-            public ulong relDups;
+            public uint relDups;
 
             /// <summary>
             /// # of reliable retries
             /// </summary>
-            public ulong retries;
+            public uint retries;
 
             /// <summary>
             /// # of dropped packets
@@ -342,6 +342,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IServerTimer _serverTimer;
         private IBandwidthLimit _bandwithLimit;
+        private ILagCollect _lagCollect;
 
         private class Config
         {
@@ -1105,14 +1106,22 @@ namespace SS.Core.Modules
 
         private void submitRelStats(Player p)
         {
+            if (p == null)
+                return;
+
+            if (_lagCollect == null)
+                return;
+
             ConnData conn = p[_connKey] as ConnData;
             if (conn == null)
                 return;
 
-            //if (_lagc)
-            //{
-            // TODO:
-            //}
+            ReliableLagData rld = new ReliableLagData();
+            rld.reldups = conn.relDups;
+            rld.c2sn = (uint)conn.c2sn;
+            rld.retries = conn.retries;
+            rld.s2cn = (uint)conn.s2cn;
+            _lagCollect.RelStats(p, ref rld);
         }
 
         private void sendRaw(ConnData conn, ArraySegment<byte> data)
@@ -1915,8 +1924,8 @@ namespace SS.Core.Modules
                         conn.rttdev = (conn.rttdev * 3 + dev) / 4;
                         conn.avgrtt = (conn.avgrtt * 7 + rtt) / 8;
 
-                        //if (_lagc != null && conn.p != null)
-                        //_lagc.RelDelay(conn->p, rtt);
+                        if (_lagCollect != null && conn.p != null)
+                            _lagCollect.RelDelay(conn.p, rtt);
                     }
 
                     // handle limit adjustment
@@ -1953,8 +1962,10 @@ namespace SS.Core.Modules
                     ts.Initialize();
                     //ts.T1 = 0x00;
                     //ts.T2 = 0x06;
-                    ts.ClientTime = cts.Time;
-                    ts.ServerTime = ServerTick.Now; // asss does this one in the lock, but i rather lock as short as possbile
+                    uint clientTime = cts.Time;
+                    uint serverTime = ServerTick.Now; // asss does this one in the lock, but i rather lock as short as possbile
+                    ts.ClientTime = clientTime;
+                    ts.ServerTime = serverTime;
 
                     lock (conn.olmtx)
                     {
@@ -1962,17 +1973,17 @@ namespace SS.Core.Modules
                         sendRaw(conn, b.Bytes, TimeSyncS2CPacket.Length);
 
                         // submit data to lagdata
-                        /*if (_lagc != null && conn.p != null)
+                        if (_lagCollect != null && conn.p != null)
 	                    {
-		                    struct TimeSyncData data;
-		                    data.s_pktrcvd = conn->pktrecvd;
-		                    data.s_pktsent = conn->pktsent;
-		                    data.c_pktrcvd = cts->pktrecvd;
-		                    data.c_pktsent = cts->pktsent;
-		                    data.s_time = ts.servertime;
-		                    data.c_time = ts.clienttime;
-		                    lagc->TimeSync(conn->p, &data);
-	                    }*/
+		                    TimeSyncData data;
+		                    data.s_pktrcvd = conn.pktRecieved;
+		                    data.s_pktsent = conn.pktSent;
+		                    data.c_pktrcvd = cts.PktRecvd;
+		                    data.c_pktsent = cts.PktSent;
+		                    data.s_time = serverTime;
+                            data.c_time = clientTime;
+                            _lagCollect.TimeSync(conn.p, ref data);
+	                    }
                     }
                 }
             }
@@ -2355,7 +2366,7 @@ namespace SS.Core.Modules
                     typeof(ILogManager), 
                     typeof(IServerTimer), 
                     typeof(IBandwidthLimit), 
-                    //typeof(ILagCollect), 
+                    typeof(ILagCollect), 
                 };
             }
         }
@@ -2368,13 +2379,15 @@ namespace SS.Core.Modules
             _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
             _serverTimer = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
             _bandwithLimit = interfaceDependencies[typeof(IBandwidthLimit)] as IBandwidthLimit;
+            _lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
 
             if (_mm == null ||
                 _playerData == null ||
                 _configManager == null ||
                 _logManager == null ||
                 _serverTimer == null ||
-                _bandwithLimit == null)
+                _bandwithLimit == null ||
+                _lagCollect == null)
             {
                 return false;
             }
