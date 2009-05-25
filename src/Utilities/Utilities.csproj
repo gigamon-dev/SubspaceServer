@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
+    <ProductVersion>9.0.30729</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{DFADC365-5E17-4C2D-AEC1-4F217DF4A6BF}</ProjectGuid>
     <OutputType>Library</OutputType>
@@ -59,6 +59,7 @@
   <ItemGroup>
     <Compile Include="BitField32.cs" />
     <Compile Include="BitFieldBuilder.cs" />
+    <Compile Include="BitFieldConverter.cs" />
     <Compile Include="BitFieldLocation.cs" />
     <Compile Include="BufferPool.cs" />
     <Compile Include="CRC32.cs" />

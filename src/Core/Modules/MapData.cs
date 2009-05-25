@@ -9,6 +9,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Utilities;
+using System.Drawing;
 
 namespace SS.Core.Modules
 {
@@ -150,6 +151,32 @@ namespace SS.Core.Modules
             else
                 return null;
         }
+/*
+        private struct FindEmptyTileContext
+        {
+            public enum Direction { up, right, down, left };
+            public Direction dir;
+            public int upto, remaining;
+            public int x, y;
+        }
+*/
+        bool IMapData.FindEmptyTileNear(Arena arena, ref short x, ref short y)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
+
+            MapTile tile;
+            if (!lvl.TryGetTile(new MapCoordinate(x, y), out tile))
+                return true;
+
+            // TODO
+
+            return false;
+        }
 
         uint IMapData.GetChecksum(Arena arena, uint key)
         {
@@ -184,6 +211,42 @@ namespace SS.Core.Modules
             }
 
             return key;
+        }
+
+        MapRegion IMapData.FindRegionByName(Arena arena, string name)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
+
+            return lvl.FindRegionByName(name);
+        }
+
+        IEnumerable<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
+
+            return lvl.RegionsAtCoord(coord.X, coord.Y);
+        }
+
+        IEnumerable<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
+
+            return lvl.RegionsAtCoord(x, y);
         }
 
         #endregion
@@ -226,13 +289,21 @@ namespace SS.Core.Modules
                         if (!string.IsNullOrEmpty(mapname) &&
                             lvl.LoadFromFile(mapname))
                         {
-                            _logManager.LogA(LogLevel.Info, "MapData", arena, "successfully processed map file '{0}' with {1} tiles, {2} flags, {3} errors", mapname, lvl.TileCount, lvl.FlagCount, lvl.ErrorCount);
+                            _logManager.LogA(LogLevel.Info, "MapData", arena, "successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", mapname, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.ErrorCount);
+
+                            /*
+                            // useful check to see that we are in fact loading correctly
+                            using (Bitmap bmp = lvl.ToBitmap())
+                            {
+                                bmp.Save("C:\\mapimage.bmp");
+                            }
+                            */
                         }
                         else
                         {
-                            // fall back to emergency. this matches the compressed map in MapNewsDownload.cs
-                            _logManager.LogA(LogLevel.Warn, "MapData", arena, "error finding or reading level file");
+                            _logManager.LogA(LogLevel.Warn, "MapData", arena, "error finding or reading map file '{0}'", mapname);
 
+                            // fall back to emergency. this matches the compressed map in MapNewsDownload.cs
                             lvl.SetAsEmergencyMap();
                         }
                     }

@@ -47,5 +47,15 @@ namespace SS.Core.Map
         {
             get { return size.GetValue(data, offset); }
         }
+
+        public ArraySegment<byte> Data
+        {
+            get { return new ArraySegment<byte>(data, offset + Length, (int)Size); }
+        }
+
+        public ArraySegment<byte> DataWithHeader
+        {
+            get { return new ArraySegment<byte>(data, offset, Length + (int)Size); }
+        }
     }
 }

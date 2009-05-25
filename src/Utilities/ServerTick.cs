@@ -10,7 +10,7 @@ namespace SS.Utilities
     /// Ticks are 31 bits in size. the value is stored in the lower 31 bits
     /// of an unsigned int. 
     /// 
-    /// Don't do arithmatic on these directly, use this struct's methods.
+    /// Don't do arithmetic on these directly, use this struct's methods.
     /// 
     /// TickCount with a graularity in 1/100ths of a second.
     /// Note: Parts of the SS protocol report in 1/100ths of a second.
@@ -21,7 +21,7 @@ namespace SS.Utilities
     /// </summary>
     public struct ServerTick : IEquatable<ServerTick>, IComparable<ServerTick>
     {
-        private uint tickcount;
+        private readonly uint tickcount;
 
         public ServerTick(uint tickcount)
         {
@@ -49,6 +49,16 @@ namespace SS.Utilities
         public static int operator -(ServerTick a, ServerTick b)
         {
             return ((int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1);
+        }
+
+        public static bool operator ==(ServerTick a, ServerTick b)
+        {
+            return a.Equals(b);
+        }
+
+        public static bool operator !=(ServerTick a, ServerTick b)
+        {
+            return !(a == b);
         }
 
         public static implicit operator uint(ServerTick a)

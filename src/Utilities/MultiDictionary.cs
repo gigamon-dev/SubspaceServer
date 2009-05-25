@@ -105,6 +105,28 @@ namespace SS.Utilities
             return wasRemoved;
         }
 
+        public bool TryGetValues(TKey key, out TValue[] values)
+        {
+            LinkedList<TValue> bucketList;
+            if (_dictionary.TryGetValue(key, out bucketList))
+            {
+                values = new TValue[bucketList.Count];
+                LinkedListNode<TValue> node = bucketList.First;
+                int index = 0;
+                while ((node != null) && (++index < values.Length))
+                {
+                    values[index] = node.Value;
+                    node = node.Next;
+                }
+                return true;
+            }
+            else
+            {
+                values = null;
+                return false;
+            }
+        }
+
         /// <summary>
         /// Gets all of the items that match the specified key
         /// </summary>

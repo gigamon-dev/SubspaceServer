@@ -54,6 +54,7 @@
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
     <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Xml" />
     <Reference Include="zlib.net, Version=1.0.3.0, Culture=neutral, PublicKeyToken=47d7877cb3620160">
       <SpecificVersion>False</SpecificVersion>
@@ -66,8 +67,10 @@
     <Compile Include="ComponentInterfaces\ILagQuery.cs" />
     <Compile Include="ConfigFile.cs" />
     <Compile Include="ConfigHandle.cs" />
+    <Compile Include="Map\BasicLvl.cs" />
     <Compile Include="Map\BitmapHeader.cs" />
     <Compile Include="Map\ChunkHeader.cs" />
+    <Compile Include="Map\ChunkHelper.cs" />
     <Compile Include="Map\ExtendedLvl.cs" />
     <Compile Include="Map\MapCoordinate.cs" />
     <Compile Include="Map\MapMetadataChunkType.cs" />

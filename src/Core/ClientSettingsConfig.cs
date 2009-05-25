@@ -379,7 +379,7 @@ namespace SS.Core
 	"Unused:Unused1"
         };
 
-        public static readonly string[] PrizeweightNames = 
+        public static readonly string[] PrizeWeightNames = 
         {
             /* cfghelp: PrizeWeight:QuickCharge, arena, int
 	 * Likelihood of 'Recharge' prize appearing */
@@ -466,6 +466,94 @@ namespace SS.Core
 	 * Likelihood of 'Portal' prize appearing */
 	"PrizeWeight:Portal"
         };
+
+        public static readonly string[] DeathPrizeWeightNames = 
+        {
+	/* cfghelp: DPrizeWeight:QuickCharge, arena, int
+	 * Likelihood of 'Recharge' prize appearing */
+	"DPrizeWeight:QuickCharge",
+	/* cfghelp: DPrizeWeight:Energy, arena, int
+	 * Likelihood of 'Energy Upgrade' prize appearing */
+	"DPrizeWeight:Energy",
+	/* cfghelp: DPrizeWeight:Rotation, arena, int
+	 * Likelihood of 'Rotation' prize appearing */
+	"DPrizeWeight:Rotation",
+	/* cfghelp: DPrizeWeight:Stealth, arena, int
+	 * Likelihood of 'Stealth' prize appearing */
+	"DPrizeWeight:Stealth",
+	/* cfghelp: DPrizeWeight:Cloak, arena, int
+	 * Likelihood of 'Cloak' prize appearing */
+	"DPrizeWeight:Cloak",
+	/* cfghelp: DPrizeWeight:XRadar, arena, int
+	 * Likelihood of 'XRadar' prize appearing */
+	"DPrizeWeight:XRadar",
+	/* cfghelp: DPrizeWeight:Warp, arena, int
+	 * Likelihood of 'Warp' prize appearing */
+	"DPrizeWeight:Warp",
+	/* cfghelp: DPrizeWeight:Gun, arena, int
+	 * Likelihood of 'Gun Upgrade' prize appearing */
+	"DPrizeWeight:Gun",
+	/* cfghelp: DPrizeWeight:Bomb, arena, int
+	 * Likelihood of 'Bomb Upgrade' prize appearing */
+	"DPrizeWeight:Bomb",
+	/* cfghelp: DPrizeWeight:BouncingBullets, arena, int
+	 * Likelihood of 'Bouncing Bullets' prize appearing */
+	"DPrizeWeight:BouncingBullets",
+	/* cfghelp: DPrizeWeight:Thruster, arena, int
+	 * Likelihood of 'Thruster' prize appearing */
+	"DPrizeWeight:Thruster",
+	/* cfghelp: DPrizeWeight:TopSpeed, arena, int
+	 * Likelihood of 'Speed' prize appearing */
+	"DPrizeWeight:TopSpeed",
+	/* cfghelp: DPrizeWeight:Recharge, arena, int
+	 * Likelihood of 'Full Charge' prize appearing (not 'Recharge') */
+	"DPrizeWeight:Recharge",
+	/* cfghelp: DPrizeWeight:Glue, arena, int
+	 * Likelihood of 'Engine Shutdown' prize appearing */
+	"DPrizeWeight:Glue",
+	/* cfghelp: DPrizeWeight:MultiFire, arena, int
+	 * Likelihood of 'MultiFire' prize appearing */
+	"DPrizeWeight:MultiFire",
+	/* cfghelp: DPrizeWeight:Proximity, arena, int
+	 * Likelihood of 'Proximity Bomb' prize appearing */
+	"DPrizeWeight:Proximity",
+	/* cfghelp: DPrizeWeight:AllWeapons, arena, int
+	 * Likelihood of 'Super!' prize appearing */
+	"DPrizeWeight:AllWeapons",
+	/* cfghelp: DPrizeWeight:Shields, arena, int
+	 * Likelihood of 'Shields' prize appearing */
+	"DPrizeWeight:Shields",
+	/* cfghelp: DPrizeWeight:Shrapnel, arena, int
+	 * Likelihood of 'Shrapnel Upgrade' prize appearing */
+	"DPrizeWeight:Shrapnel",
+	/* cfghelp: DPrizeWeight:AntiWarp, arena, int
+	 * Likelihood of 'AntiWarp' prize appearing */
+	"DPrizeWeight:AntiWarp",
+	/* cfghelp: DPrizeWeight:Repel, arena, int
+	 * Likelihood of 'Repel' prize appearing */
+	"DPrizeWeight:Repel",
+	/* cfghelp: DPrizeWeight:Burst, arena, int
+	 * Likelihood of 'Burst' prize appearing */
+	"DPrizeWeight:Burst",
+	/* cfghelp: DPrizeWeight:Decoy, arena, int
+	 * Likelihood of 'Decoy' prize appearing */
+	"DPrizeWeight:Decoy",
+	/* cfghelp: DPrizeWeight:Thor, arena, int
+	 * Likelihood of 'Thor' prize appearing */
+	"DPrizeWeight:Thor",
+	/* cfghelp: DPrizeWeight:MultiPrize, arena, int
+	 * Likelihood of 'Multi-Prize' prize appearing */
+	"DPrizeWeight:MultiPrize",
+	/* cfghelp: DPrizeWeight:Brick, arena, int
+	 * Likelihood of 'Brick' prize appearing */
+	"DPrizeWeight:Brick",
+	/* cfghelp: DPrizeWeight:Rocket, arena, int
+	 * Likelihood of 'Rocket' prize appearing */
+	"DPrizeWeight:Rocket",
+	/* cfghelp: DPrizeWeight:Portal, arena, int
+	 * Likelihood of 'Portal' prize appearing */
+	"DPrizeWeight:Portal"
+};
 
         /* the following names are only key names, not key+section names */
 

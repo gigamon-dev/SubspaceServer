@@ -578,17 +578,17 @@ namespace SS.Core.Packets
 
             public ushort X
             {
-                set { BitField = LittleEndianBitConverter.SetUInt16(value, BitField, x.LowestOrderBit, x.NumBits); }
+                set { BitField = BitFieldConverter.SetUInt16(value, BitField, x.LowestOrderBit, x.NumBits); }
             }
 
             public ushort Y
             {
-                set { BitField = LittleEndianBitConverter.SetUInt16(value, BitField, y.LowestOrderBit, y.NumBits); }
+                set { BitField = BitFieldConverter.SetUInt16(value, BitField, y.LowestOrderBit, y.NumBits); }
             }
 
             public ushort R
             {
-                set { BitField = LittleEndianBitConverter.SetUInt16(value, BitField, r.LowestOrderBit, r.NumBits); }
+                set { BitField = BitFieldConverter.SetUInt16(value, BitField, r.LowestOrderBit, r.NumBits); }
             }
         }
     }

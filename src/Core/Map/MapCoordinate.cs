@@ -37,7 +37,7 @@ namespace SS.Core.Map
 
         public override int GetHashCode()
         {
-            return (int)((((uint)_xCoord) << 10) | ((uint)_yCoord));
+            return (((ushort)_xCoord) << 10) | ((ushort)_yCoord);
         }
 
         public override bool Equals(object obj)

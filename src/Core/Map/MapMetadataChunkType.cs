@@ -26,7 +26,7 @@ namespace SS.Core.Map
         /// "PROGRAM" - the name of the program that was used to create this level
         /// file
         /// </summary>
-        internal static uint ATTR = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("ATTR"), 0);
+        internal static readonly uint ATTR = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("ATTR"), 0);
 
         /// <summary>
         /// these chunks define regions. to recap, a region is a set of tiles,
@@ -53,7 +53,7 @@ namespace SS.Core.Map
         /// "rAWP" - auto-warp
         /// "rPYC" - code to be executed when a player enters or leaves this region
         /// </summary>
-        internal static uint REGN = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("REGN"), 0);
+        internal static readonly uint REGN = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("REGN"), 0);
 
         /// <summary>
         /// the format of a "TSET" chunk is a windows format bitmap, _without_ the
@@ -64,14 +64,14 @@ namespace SS.Core.Map
         /// compression.
         /// <remarks>for future use when ELVL format is standard and backwards compatability is no longer required</remarks>
         /// </summary>
-        internal static uint TSET = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("TSET"), 0);
+        internal static readonly uint TSET = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("TSET"), 0);
 
         /// <summary>
         /// the format of a "TILE" chunk is just tile data, in the same format it's
         /// always been in
         /// <remarks>for future use when ELVL format is standard and backwards compatability is no longer required</remarks>
         /// </summary>
-        internal static uint TILE = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("TILE"), 0);
+        internal static readonly uint TILE = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("TILE"), 0);
 
         /// <summary>
         /// other chunk types used specially for regions
@@ -83,13 +83,49 @@ namespace SS.Core.Map
             /// this is just a plain ascii string, not null terminated. every chunk
             /// should have exactly one of these.
             /// </summary>
-            internal static uint rNAM = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rNAM"), 0);
+            internal static readonly uint Name = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rNAM"), 0);
 
             /// <summary>
             /// this subchunk describes the tiles that make up the region. it's stored
             /// in a compact rle-ish representation.
             /// </summary>
-            internal static uint rTIL = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rTIL"), 0);
+            internal static readonly uint TileData = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rTIL"), 0);
+
+            /// <summary>
+            /// this is a 0-byte chunk. its presence signifies that this region should be considered a "base".
+            /// </summary>
+            internal static readonly uint IsBase = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rBSE"), 0);
+
+            /// <summary>
+            /// this is a 0-byte chunk. if present, antiwarp should be disabled for
+            /// ships in this region. currently, this disabling happens on the server,
+            /// and players whose antiwarp is being disabled aren't necessarily aware of
+            /// it. it would be nice if in the future continuum understood this feature
+            /// so that it could inform the player that antiwarp is unavailable in this
+            /// location.
+            /// </summary>
+            internal static readonly uint NoAntiwarp = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rNAW"), 0);
+
+            /// <summary>
+            /// this is a 0-byte chunk. if present, all weapons are non-functional in
+            /// this region. the same notes apply to this feature as to the no antiwarp
+            /// feature.
+            /// </summary>
+            internal static readonly uint NoWeapons = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rNWP"), 0);
+
+            /// <summary>
+            /// this is a 0-byte chunk. if present, any flags dropped in this region are
+            /// respawned as neutral flags in the center of the map (or wherever the
+            /// settings indicate they should be spawned).
+            /// </summary>
+            internal static readonly uint NoFlagDrops = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rNFL"), 0);
+
+            /// <summary>
+            /// this chunk, if present, turns on the auto-warping feature. any player
+            /// entering this region will be immediately warped to the specified
+            /// destination.
+            /// </summary>
+            internal static readonly uint Autowarp = LittleEndianBitConverter.ToUInt32(Encoding.ASCII.GetBytes("rAWP"), 0);
         }
     }
 }

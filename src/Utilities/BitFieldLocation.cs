@@ -12,38 +12,41 @@ namespace SS.Utilities
 
         public BitFieldLocation(byte lowestOrderBit, byte numBits)
         {
+            if (numBits <= 0)
+                throw new ArgumentOutOfRangeException("numBits", "must be > 0");
+
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
         }
 
         public byte GetByte(uint source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits);
         }
 
         public byte SetByte(byte value, byte source)
         {
-            return LittleEndianBitConverter.SetByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
         }
 
         public ushort SetByte(byte value, ushort source)
         {
-            return LittleEndianBitConverter.SetByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetByte(byte value, uint source)
         {
-            return LittleEndianBitConverter.SetByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetUInt16(ushort value, uint source)
         {
-            return LittleEndianBitConverter.SetUInt16(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetUInt16(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetUInt32(uint value, uint source)
         {
-            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
         }
 
         public static explicit operator BoolBitFieldLocation(BitFieldLocation location)
@@ -83,32 +86,32 @@ namespace SS.Utilities
 
         public bool GetValue(byte source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
         }
 
         public bool GetValue(ushort source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
         }
 
         public bool GetValue(uint source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
         }
 
         public byte SetValue(bool value, byte source)
         {
-            return LittleEndianBitConverter.SetByte(value ? (byte)1 : (byte)0, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value ? (byte)1 : (byte)0, source, LowestOrderBit, NumBits);
         }
 
         public ushort SetValue(bool value, ushort source)
         {
-            return LittleEndianBitConverter.SetByte(value ? (byte)1 : (byte)0, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value ? (byte)1 : (byte)0, source, LowestOrderBit, NumBits);
         }
 
         public uint SetValue(bool value, uint source)
         {
-            return LittleEndianBitConverter.SetByte(value ? (byte)1 : (byte)0, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value ? (byte)1 : (byte)0, source, LowestOrderBit, NumBits);
         }
     }
 
@@ -128,32 +131,32 @@ namespace SS.Utilities
 
         public byte GetValue(byte source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits);
         }
 
         public byte GetValue(ushort source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits);
         }
 
         public byte GetValue(uint source)
         {
-            return LittleEndianBitConverter.GetByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits);
         }
 
         public byte SetValue(byte value, byte source)
         {
-            return LittleEndianBitConverter.SetByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
         }
 
         public ushort SetValue(byte value, ushort source)
         {
-            return LittleEndianBitConverter.SetByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetValue(byte value, uint source)
         {
-            return LittleEndianBitConverter.SetByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
         }
     }
 
@@ -173,32 +176,32 @@ namespace SS.Utilities
 
         public sbyte GetValue(byte source)
         {
-            return LittleEndianBitConverter.GetSByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
         }
 
         public sbyte GetValue(ushort source)
         {
-            return LittleEndianBitConverter.GetSByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
         }
 
         public sbyte GetValue(uint source)
         {
-            return LittleEndianBitConverter.GetSByte(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
         }
 
         public byte SetValue(sbyte value, byte source)
         {
-            return LittleEndianBitConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
         }
 
         public ushort SetValue(sbyte value, ushort source)
         {
-            return LittleEndianBitConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetValue(sbyte value, uint source)
         {
-            return LittleEndianBitConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
         }
     }
 
@@ -218,32 +221,32 @@ namespace SS.Utilities
 
         public uint GetValue(byte source)
         {
-            return LittleEndianBitConverter.GetUInt32(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetUInt32(source, LowestOrderBit, NumBits);
         }
 
         public uint GetValue(ushort source)
         {
-            return LittleEndianBitConverter.GetUInt32(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetUInt32(source, LowestOrderBit, NumBits);
         }
 
         public uint GetValue(uint source)
         {
-            return LittleEndianBitConverter.GetUInt32(source, LowestOrderBit, NumBits);
+            return BitFieldConverter.GetUInt32(source, LowestOrderBit, NumBits);
         }
 
         public uint SetValue(uint value, byte source)
         {
-            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetValue(uint value, ushort source)
         {
-            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
         }
 
         public uint SetValue(uint value, uint source)
         {
-            return LittleEndianBitConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
+            return BitFieldConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
         }
     }
 }

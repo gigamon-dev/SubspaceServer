@@ -43,6 +43,8 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>the tile, null for no tile</returns>
         MapTile? GetTile(Arena arena, MapCoordinate coord);
 
+        bool FindEmptyTileNear(Arena arena, ref short x, ref short y);
+
         /// <summary>
         /// Get the map checksum
         /// <remarks>Used by Recording module to make sure the recording plays on the same map that is was recorded on.</remarks>
@@ -51,5 +53,24 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="key"></param>
         /// <returns></returns>
         uint GetChecksum(Arena arena, uint key);
+
+        MapRegion FindRegionByName(Arena arena, string name);
+
+        /// <summary>
+        /// To get the regions that are at a specific coordinate.
+        /// </summary>
+        /// <param name="arena"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
+        IEnumerable<MapRegion> RegionsAt(Arena arena, short x, short y);
+
+        /// <summary>
+        /// To get the regions that are at a specific coordinate.
+        /// </summary>
+        /// <param name="arena"></param>
+        /// <param name="coord"></param>
+        /// <returns></returns>
+        IEnumerable<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
     }
 }

@@ -74,8 +74,19 @@ namespace SS
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            
+
             Application.Run(new Form1());
+
+            /*
+            ServerTick t1 = ServerTick.Now;
+            //System.Threading.Thread.Sleep(1000);
+            ServerTick t2 = ServerTick.Now;
+
+            if (t1 == t2)
+                Console.WriteLine("ticks are equal");
+            else
+                Console.WriteLine("ticks are NOT equal");
+            */
 
             //uint test = uint.MaxValue;
             //byte val = ExtendedBitConverter.GetByte(test, 24, 8);

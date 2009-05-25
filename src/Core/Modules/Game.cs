@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
-using SS.Core.ComponentCallbacks;
+using SS.Core.Map;
 
 namespace SS.Core.Modules
 {
@@ -20,7 +21,7 @@ namespace SS.Core.Modules
         //private IChatNet _chatnet;
         private IArenaManagerCore _arenaManager;
         private ICapabilityManager _capabilityManager;
-        //private IMapData _mapData;
+        private IMapData _mapData;
         private ILagCollect _lagCollect;
         private IChat _chat;
         //private ICommandManager _commandManager;
@@ -158,7 +159,7 @@ namespace SS.Core.Modules
                     //typeof(IChatNet),
                     typeof(IArenaManagerCore),
                     typeof(ICapabilityManager),
-                    //typeof(IMapData),
+                    typeof(IMapData),
                     typeof(ILagCollect),
                     typeof(IChat),
                     //typeof(ICommandManager),
@@ -178,7 +179,7 @@ namespace SS.Core.Modules
             //_chatnet = interfaceDependencies[typeof(IChatNet)] as IChatNet;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
             _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
-            //_mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
+            _mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
             _lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
             _chat = interfaceDependencies[typeof(IChat)] as IChat;
             //_commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
@@ -1036,7 +1037,25 @@ namespace SS.Core.Modules
 
         private void updateRegions(Player p, int x, int y)
         {
-            
+            if (p == null)
+                return;
+
+            PlayerData pd = p[_pdkey] as PlayerData;
+            if (pd == null)
+                return;
+
+            Arena arena = p.Arena;
+
+            foreach(MapRegion region in _mapData.RegionsAt(p.Arena, (short)x, (short)y))
+            {
+                if (region.NoAntiwarp)
+                    pd.rgnnoanti = true;
+
+                if (region.NoWeapons)
+                    pd.rgnnoweapons = true;
+            }
+
+            // TODO: region enter and leave callbacks
         }
 
         private void recievedSpecRequestPacket(Player p, byte[] data, int len)
@@ -1440,11 +1459,35 @@ namespace SS.Core.Modules
 
             short flagCount = p.pkt.FlagsCarried;
 
+            Prize green;
+
+            if ((p.Freq == killer.Freq) && (_configManager.GetInt(arena.Cfg, "Prize", "UseTeamkillPrize", 0) != 0))
+            {
+                green = (Prize)_configManager.GetInt(arena.Cfg, "Prize", "TeamkillPrize", 0);
+            }
+            else
+            {
+                IClientSettings cset = arena.GetInterface<IClientSettings>();
+                if (cset != null)
+                {
+                    try
+                    {
+                        green = cset.GetRandomPrize(arena);
+                    }
+                    finally
+                    {
+                        arena.ReleaseInterface<IClientSettings>();
+                    }
+                }
+                else
+                {
+                    green = 0;
+                }
+            }
+
             // this will figure out how many points to send in the packet
             // NOTE: asss uses the event to set the points and green, i think it's best to keep it split between an interface call and event
             short pts = 0;
-            Prize? green = null;
-
             IKillPoints kp = arena.GetInterface<IKillPoints>();
             if (kp != null)
             {
@@ -1466,31 +1509,17 @@ namespace SS.Core.Modules
                 IStats stats = _mm.GetInterface<IStats>();
                 if (stats != null)
                 {
+                    // TODO: 
                     //stats.IncrementStats(killer, 
                     _mm.ReleaseInterface<IStats>();
                 }
             }
 
-            // pick a random green, if no one else has set one
-            if (green == null)
-            {
-                IClientSettings cset = arena.GetInterface<IClientSettings>();
-                if (cset != null)
-                {
-                    green = cset.GetRandomPrize(arena);
-                    arena.ReleaseInterface<IClientSettings>();
-                }
-                else
-                {
-                    green = 0;
-                }
-            }
+            fireKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
-            fireKillEvent(arena, killer, p, bty, flagCount, pts, green.Value);
+            notifyKill(killer, p, pts, flagCount, green);
 
-            notifyKill(killer, p, pts, flagCount, green.Value);
-
-            firePostKillEvent(arena, killer, p, bty, flagCount, pts, green.Value);
+            firePostKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
             _logManager.LogA(LogLevel.Drivel, "Game", arena, "{0} killed by {1} (bty={2},flags={3},pts={4}", p.Name, killer.Name, bty, flagCount, pts);
 
