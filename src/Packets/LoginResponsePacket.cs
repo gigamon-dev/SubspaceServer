@@ -11,16 +11,16 @@ namespace SS.Core.Packets
         static LoginResponsePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            code = locationBuilder.CreateDataLocation(1);
-            serverversion = locationBuilder.CreateDataLocation(4);
-            isvip = locationBuilder.CreateDataLocation(1);
+            type = locationBuilder.CreateByteDataLocation();
+            code = locationBuilder.CreateByteDataLocation();
+            serverversion = locationBuilder.CreateUInt32DataLocation();
+            isvip = locationBuilder.CreateByteDataLocation();
             blah = locationBuilder.CreateDataLocation(3);
-            exechecksum = locationBuilder.CreateDataLocation(4);
+            exechecksum = locationBuilder.CreateUInt32DataLocation();
             blah2 = locationBuilder.CreateDataLocation(5);
-            demodata = locationBuilder.CreateDataLocation(1);
-            codechecksum = locationBuilder.CreateDataLocation(4);
-            newschecksum = locationBuilder.CreateDataLocation(4);
+            demodata = locationBuilder.CreateByteDataLocation();
+            codechecksum = locationBuilder.CreateUInt32DataLocation();
+            newschecksum = locationBuilder.CreateUInt32DataLocation();
             blah4 = locationBuilder.CreateDataLocation(8);
             Length = locationBuilder.NumBytes;
         }

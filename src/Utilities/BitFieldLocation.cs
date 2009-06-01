@@ -18,7 +18,7 @@ namespace SS.Utilities
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
         }
-
+        /*
         public byte GetByte(uint source)
         {
             return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits);
@@ -48,26 +48,7 @@ namespace SS.Utilities
         {
             return BitFieldConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
         }
-
-        public static explicit operator BoolBitFieldLocation(BitFieldLocation location)
-        {
-            return new BoolBitFieldLocation(location.LowestOrderBit, location.NumBits);
-        }
-
-        public static explicit operator ByteBitFieldLocation(BitFieldLocation location)
-        {
-            return new ByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
-        }
-
-        public static explicit operator SByteBitFieldLocation(BitFieldLocation location)
-        {
-            return new SByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
-        }
-
-        public static explicit operator UInt32BitFieldLocation(BitFieldLocation location)
-        {
-            return new UInt32BitFieldLocation(location.LowestOrderBit, location.NumBits);
-        }
+        */
     }
 
     public struct BoolBitFieldLocation
@@ -84,6 +65,11 @@ namespace SS.Utilities
             NumBits = numBits;
         }
 
+        public static explicit operator BoolBitFieldLocation(BitFieldLocation location)
+        {
+            return new BoolBitFieldLocation(location.LowestOrderBit, location.NumBits);
+        }
+
         public bool GetValue(byte source)
         {
             return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
@@ -91,12 +77,20 @@ namespace SS.Utilities
 
         public bool GetValue(ushort source)
         {
-            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            if (NumBits <= 8)
+                return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            else
+                return BitFieldConverter.GetUInt16(source, LowestOrderBit, NumBits) != 0;
         }
 
         public bool GetValue(uint source)
         {
-            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            if (NumBits <= 8)
+                return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits) != 0;
+            else if (NumBits <= 16)
+                return BitFieldConverter.GetUInt16(source, LowestOrderBit, NumBits) != 0;
+            else
+                return BitFieldConverter.GetUInt32(source, LowestOrderBit, NumBits) != 0;
         }
 
         public byte SetValue(bool value, byte source)
@@ -127,6 +121,11 @@ namespace SS.Utilities
 
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
+        }
+
+        public static explicit operator ByteBitFieldLocation(BitFieldLocation location)
+        {
+            return new ByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
         }
 
         public byte GetValue(byte source)
@@ -168,10 +167,15 @@ namespace SS.Utilities
         public SByteBitFieldLocation(byte lowestOrderBit, byte numBits)
         {
             if (numBits <= 0 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
+                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
 
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
+        }
+
+        public static explicit operator SByteBitFieldLocation(BitFieldLocation location)
+        {
+            return new SByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
         }
 
         public sbyte GetValue(byte source)
@@ -212,11 +216,16 @@ namespace SS.Utilities
 
         public UInt32BitFieldLocation(byte lowestOrderBit, byte numBits)
         {
-            if (numBits <= 0 || numBits > 16)
+            if (numBits <= 0 || numBits > 32)
                 throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
 
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
+        }
+
+        public static explicit operator UInt32BitFieldLocation(BitFieldLocation location)
+        {
+            return new UInt32BitFieldLocation(location.LowestOrderBit, location.NumBits);
         }
 
         public uint GetValue(byte source)

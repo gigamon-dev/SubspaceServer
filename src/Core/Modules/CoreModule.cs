@@ -520,6 +520,7 @@ namespace SS.Core.Modules
 
                 // only allow printable characters in names, excluding colon.
                 // while we're at it, remove leading, trailing, and series of spaces
+                // TODO:
                 name = name.Replace(":", string.Empty);
 
                 // if nothing could be salvaged from their name, disconnect them

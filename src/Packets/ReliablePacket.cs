@@ -12,9 +12,9 @@ namespace SS.Core.Packets
         static ReliablePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            t1 = locationBuilder.CreateDataLocation(1);
-            t2 = locationBuilder.CreateDataLocation(1);
-            seqNum = locationBuilder.CreateDataLocation(4);
+            t1 = locationBuilder.CreateByteDataLocation();
+            t2 = locationBuilder.CreateByteDataLocation();
+            seqNum = locationBuilder.CreateInt32DataLocation();
             dataStartIndex = locationBuilder.CreateDataLocation(1).ByteOffset;
         }
 

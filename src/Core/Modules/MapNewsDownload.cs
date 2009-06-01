@@ -285,6 +285,17 @@ namespace SS.Core.Modules
             }
         }
 
+        /*
+        private static class Zlib
+        {
+            [System.Runtime.InteropServices.DllImport("zlib.dll")]
+            public static extern int compress(byte[] dest, ref uint destLen, byte[] source, uint sourceLen);
+
+            [System.Runtime.InteropServices.DllImport("zlib.dll")]
+            public static extern uint crc32(uint crc, byte[] buf, uint len);
+        }
+        */
+
         private MapDownloadData compressMap(string filename, bool docomp)
         {
             try

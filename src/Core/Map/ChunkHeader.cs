@@ -15,8 +15,8 @@ namespace SS.Core.Map
         static ChunkHeader()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(4);
-            size = locationBuilder.CreateDataLocation(4);
+            type = locationBuilder.CreateUInt32DataLocation();
+            size = locationBuilder.CreateUInt32DataLocation();
             Length = locationBuilder.NumBytes;
         }
 

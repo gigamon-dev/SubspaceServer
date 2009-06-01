@@ -15,7 +15,7 @@ namespace SS.Core.Map
         static MapTileData()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            bitfield = locationBuilder.CreateDataLocation(4);
+            bitfield = locationBuilder.CreateUInt32DataLocation();
             Length = locationBuilder.NumBytes;
 
             BitFieldBuilder builder = new BitFieldBuilder(32);

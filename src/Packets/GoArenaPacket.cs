@@ -11,16 +11,16 @@ namespace SS.Core.Packets
         static GoArenaPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            shipType = locationBuilder.CreateDataLocation(1);
-            obscenityFilter = locationBuilder.CreateDataLocation(1);
-            wavMsg = locationBuilder.CreateDataLocation(1);
-            xRes = locationBuilder.CreateDataLocation(2);
-            yRes = locationBuilder.CreateDataLocation(2);
-            arenaType = locationBuilder.CreateDataLocation(2);
+            type = locationBuilder.CreateByteDataLocation();
+            shipType = locationBuilder.CreateByteDataLocation();
+            obscenityFilter = locationBuilder.CreateSByteDataLocation();
+            wavMsg = locationBuilder.CreateSByteDataLocation();
+            xRes = locationBuilder.CreateInt16DataLocation();
+            yRes = locationBuilder.CreateInt16DataLocation();
+            arenaType = locationBuilder.CreateInt16DataLocation();
             arenaName = locationBuilder.CreateDataLocation(16);
             LengthVIE = locationBuilder.NumBytes;
-            optionalGraphics = locationBuilder.CreateDataLocation(1);
+            optionalGraphics = locationBuilder.CreateByteDataLocation();
             LengthContinuum = locationBuilder.NumBytes;
         }
 

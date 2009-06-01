@@ -43,13 +43,13 @@ namespace SS.Core.Packets
         static GreenPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            time = locationBuilder.CreateDataLocation(4);
-            x = locationBuilder.CreateDataLocation(2);
-            y = locationBuilder.CreateDataLocation(2);
-            green = locationBuilder.CreateDataLocation(2);
+            type = locationBuilder.CreateByteDataLocation();
+            time = locationBuilder.CreateUInt32DataLocation();
+            x = locationBuilder.CreateInt16DataLocation();
+            y = locationBuilder.CreateInt16DataLocation();
+            green = locationBuilder.CreateInt16DataLocation();
             C2SLength = locationBuilder.NumBytes;
-            pid = locationBuilder.CreateDataLocation(2);
+            pid = locationBuilder.CreateInt16DataLocation();
             S2CLength = locationBuilder.NumBytes;
         }
 

@@ -63,6 +63,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Arena.cs" />
+    <Compile Include="ComponentCallbacks\MapRegionCallback.cs" />
     <Compile Include="ComponentInterfaces\IGroupManager.cs" />
     <Compile Include="ComponentInterfaces\ILagQuery.cs" />
     <Compile Include="ConfigFile.cs" />
@@ -82,6 +83,7 @@
     <Compile Include="Map\MetadataReader.cs" />
     <Compile Include="Modules\ArenaManager.cs" />
     <Compile Include="Modules\ArenaPlaceMultiPub.cs" />
+    <Compile Include="Modules\AutoWarpModule.cs" />
     <Compile Include="Modules\BandwidthLimit.cs" />
     <Compile Include="Modules\CapabilityManager.cs" />
     <Compile Include="Modules\Chat.cs" />

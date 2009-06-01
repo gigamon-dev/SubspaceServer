@@ -20,9 +20,9 @@ namespace SS.Core.Modules
             static ConnectionInitResponsePacket()
             {
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                t1 = locationBuilder.CreateDataLocation(1);
-                t2 = locationBuilder.CreateDataLocation(1);
-                key = locationBuilder.CreateDataLocation(4);
+                t1 = locationBuilder.CreateByteDataLocation();
+                t2 = locationBuilder.CreateByteDataLocation();
+                key = locationBuilder.CreateInt32DataLocation();
             }
 
             // static data members that tell the location of each field in the byte array of a packet

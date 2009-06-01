@@ -24,7 +24,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private ILagCollect _lagCollect;
         private IChat _chat;
-        //private ICommandManager _commandManager;
+        private ICommandManager _commandManager;
         //private IPersist _persist;
 
         private int _pdkey;
@@ -54,35 +54,30 @@ namespace SS.Core.Modules
             Brick = 4, 
         }
 
-        private enum SeeEnergy
-        {
-            /// <summary>
-            /// Nobody can see energy
-            /// </summary>
-            None,
-
-            /// <summary>
-            /// everyone can see everyone's
-            /// </summary>
-            All, 
-
-            /// <summary>
-            /// you can see only energy for teammates
-            /// </summary>
-            Team, 
-
-            /// <summary>
-            /// can see energy/extra data only for who you are speccing
-            /// </summary>
-            Spec, 
-        }
-
         private class PlayerData
         {
             public C2SPositionPacket pos = new C2SPositionPacket(new byte[C2SPositionPacket.LengthWithExtra]);
+
+            /// <summary>
+            /// who the player is spectating, null means not spectating
+            /// </summary>
             public Player speccing;
+
+            /// <summary>
+            /// # of weapon packets
+            /// </summary>
             public uint wpnSent;
-            public int ignoreWeapons, deathWithoutFiring;
+
+            /// <summary>
+            /// used for determining which weapon packets to ignore for the player, if any
+            /// e.g. if the player is lagging badly, it can be set to handicap against the player
+            /// </summary>
+            public int ignoreWeapons;
+
+            /// <summary>
+            /// # of deaths the player has had without firing, used to check if the player should be sent to spec
+            /// </summary>
+            public int deathWithoutFiring;
 
             public struct ShipChangeTracking
             {
@@ -109,9 +104,20 @@ namespace SS.Core.Modules
 
             public struct PlExtraPositionData
             {
+                /// <summary>
+                /// whose energy levels the player can see
+                /// </summary>
                 public SeeEnergy seeNrg;
+
+                /// <summary>
+                /// whose energy levels the player can see when in spectator mode
+                /// </summary>
                 public SeeEnergy seeNrgSpec;
-                public SeeEnergy seePd;
+
+                /// <summary>
+                /// whether the player can see extra position data
+                /// </summary>
+                public bool seeEpd;
             }
             public PlExtraPositionData pl_epd;
 
@@ -129,14 +135,27 @@ namespace SS.Core.Modules
             /// </summary>
             public DateTime lastRgnCheck;
 
-            public LinkedList<object> lastrgnset = new LinkedList<object>();
+            public Dictionary<MapRegion, bool> LastRegionSet = new Dictionary<MapRegion, bool>();
+            //public LinkedList<object> lastrgnset = new LinkedList<object>();
         }
 
         private class ArenaData
         {
+            /// <summary>
+            /// whether spectators in the arena can see extra data for the person they're spectating
+            /// </summary>
             public bool spec_epd;
+
+            /// <summary>
+            /// whose energy levels spectators can see
+            /// </summary>
             public SeeEnergy specNrg;
+
+            /// <summary>
+            /// whose energy levels everyone can see
+            /// </summary>
             public SeeEnergy allNrg;
+
             public PersonalGreen personalGreen;
             public bool initLockship;
             public bool initSpec;
@@ -162,7 +181,7 @@ namespace SS.Core.Modules
                     typeof(IMapData),
                     typeof(ILagCollect),
                     typeof(IChat),
-                    //typeof(ICommandManager),
+                    typeof(ICommandManager),
                     //typeof(IPersist)
                 };
             }
@@ -182,7 +201,7 @@ namespace SS.Core.Modules
             _mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
             _lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
             _chat = interfaceDependencies[typeof(IChat)] as IChat;
-            //_commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
+            _commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
             //_persist = interfaceDependencies[typeof(IPersist)] as IPersist;
 
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -231,10 +250,11 @@ namespace SS.Core.Modules
             //if(_chatnet != null)
                 //_chatnet.
 
-            //if (_commandManager != null)
-            //{
-                //_commandManager.
-            //}
+            if (_commandManager != null)
+            {
+                _commandManager.AddCommand("spec", command_spec, null, commandSpecHelpText);
+                _commandManager.AddCommand("energy", command_energy, null, commandEnergyHelpText);
+            }
 
             _mm.RegisterInterface<IGame>(this);
 
@@ -247,7 +267,11 @@ namespace SS.Core.Modules
 
             //if(_chatnet != null)
 
-            //if(_commandManager != null)
+            if (_commandManager != null)
+            {
+                _commandManager.RemoveCommand("spec", command_spec, null);
+                _commandManager.RemoveCommand("energy", command_energy, null);
+            }
 
             _net.RemovePacket((int)C2SPacketType.Position, new PacketDelegate(recievedPositionPacket));
             _net.RemovePacket((int)C2SPacketType.SpecRequest, new PacketDelegate(recievedSpecRequestPacket));
@@ -339,12 +363,33 @@ namespace SS.Core.Modules
 
         void IGame.LockArena(Arena arena, bool notify, bool onlyArenaState, bool initial, bool spec)
         {
-            
+            ArenaData ad = arena[_adkey] as ArenaData;
+            if (ad == null)
+                return;
+
+            ad.initLockship = true;
+            if (!initial)
+                ad.initSpec = true;
+
+            if (!onlyArenaState)
+            {
+                lockWork(Target.ArenaTarget(arena), true, notify, spec, 0);
+            }
         }
 
         void IGame.UnlockArena(Arena arena, bool notify, bool onlyArenaState)
         {
-            
+            ArenaData ad = arena[_adkey] as ArenaData;
+            if (ad == null)
+                return;
+
+            ad.initLockship = false;
+            ad.initSpec = false;
+
+            if (!onlyArenaState)
+            {
+                lockWork(Target.ArenaTarget(arena), false, notify, false, 0);
+            }
         }
 
         float IGame.GetIgnoreWeapons(Player p)
@@ -377,6 +422,94 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException("target");
 
             _net.SendToTarget(target, _shipResetBytes, _shipResetBytes.Length, NetSendFlags.Reliable);
+        }
+
+        void IGame.IncrementWeaponPacketCount(Player p, int packets)
+        {
+            if (p == null)
+                return;
+
+            PlayerData pd = p[_pdkey] as PlayerData;
+            if (pd == null)
+                return;
+
+            pd.wpnSent = (uint)(pd.wpnSent + packets);
+        }
+
+        void IGame.SetPlayerEnergyViewing(Player p, SeeEnergy value)
+        {
+            if (p == null)
+                return;
+
+            PlayerData pd = p[_pdkey] as PlayerData;
+            if (pd == null)
+                return;
+
+            pd.pl_epd.seeNrg = value;
+        }
+
+        void IGame.SetSpectatorEnergyViewing(Player p, SeeEnergy value)
+        {
+            if (p == null)
+                return;
+
+            PlayerData pd = p[_pdkey] as PlayerData;
+            if (pd == null)
+                return;
+
+            pd.pl_epd.seeNrgSpec = value;
+        }
+
+        void IGame.ResetPlayerEnergyViewing(Player p)
+        {
+            if (p == null)
+                return;
+
+            PlayerData pd = p[_pdkey] as PlayerData;
+            if (pd == null)
+                return;
+
+            ArenaData ad = p.Arena[_adkey] as ArenaData;
+            if (ad == null)
+                return;
+
+            SeeEnergy seeNrg = SeeEnergy.None;
+            if (ad.allNrg != SeeEnergy.None)
+                seeNrg = ad.allNrg;
+
+            if (_capabilityManager != null &&
+                _capabilityManager.HasCapability(p, Constants.Capabilities.SeeEnergy))
+            {
+                seeNrg = SeeEnergy.All;
+            }
+
+            pd.pl_epd.seeNrg = seeNrg;
+        }
+
+        void IGame.ResetSpectatorEnergyViewing(Player p)
+        {
+            if (p == null)
+                return;
+
+            PlayerData pd = p[_pdkey] as PlayerData;
+            if (pd == null)
+                return;
+
+            ArenaData ad = p.Arena[_adkey] as ArenaData;
+            if (ad == null)
+                return;
+
+            SeeEnergy seeNrgSpec = SeeEnergy.None;
+            if (ad.specNrg != SeeEnergy.None)
+                seeNrgSpec = ad.specNrg;
+
+            if (_capabilityManager != null &&
+                _capabilityManager.HasCapability(p, Constants.Capabilities.SeeEnergy))
+            {
+                seeNrgSpec = SeeEnergy.All;
+            }
+
+            pd.pl_epd.seeNrgSpec = seeNrgSpec;
         }
 
         #endregion
@@ -450,6 +583,8 @@ namespace SS.Core.Modules
                 pd.pos.Time = ServerTick.Now;
                 pd.lastRgnCheck = pd.changes.lastCheck = DateTime.Now;
 
+                pd.LastRegionSet = new Dictionary<MapRegion, bool>(_mapData.GetRegionCount(arena));
+
                 pd.lockship = ad.initLockship;
                 if (ad.initSpec)
                 {
@@ -463,7 +598,7 @@ namespace SS.Core.Modules
             {
                 SeeEnergy seeNrg = SeeEnergy.None;
                 SeeEnergy seeNrgSpec = SeeEnergy.None;
-                SeeEnergy seePd = SeeEnergy.None;
+                bool seeEpd = false;
 
                 if (ad.allNrg != SeeEnergy.None)
                     seeNrg = ad.allNrg;
@@ -472,7 +607,7 @@ namespace SS.Core.Modules
                     seeNrgSpec = ad.specNrg;
 
                 if (ad.spec_epd)
-                    seePd = SeeEnergy.All;
+                    seeEpd = true;
 
                 if(_capabilityManager != null)
                 {
@@ -480,12 +615,12 @@ namespace SS.Core.Modules
                         seeNrg = seeNrgSpec = SeeEnergy.All;
 
                     if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeExtraPlayerData))
-                        seePd = SeeEnergy.All;
+                        seeEpd = true;
                 }
 
                 pd.pl_epd.seeNrg = seeNrg;
                 pd.pl_epd.seeNrgSpec = seeNrgSpec;
-                pd.pl_epd.seePd = seePd;
+                pd.pl_epd.seeEpd = seeEpd;
                 pd.epdQueries = 0;
 
                 pd.wpnSent = 0;
@@ -520,7 +655,8 @@ namespace SS.Core.Modules
                     clearSpeccing(pd);
                 }
 
-                pd.lastrgnset.Clear();
+                pd.LastRegionSet.Clear();
+                //pd.lastrgnset.Clear();
             }
         }
 
@@ -569,7 +705,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (data.pl_epd.seePd != SeeEnergy.None)
+                    if (data.pl_epd.seeEpd)
                     {
                         PlayerData odata = data.speccing[_pdkey] as PlayerData;
                         if (odata == null)
@@ -596,7 +732,7 @@ namespace SS.Core.Modules
             {
                 data.speccing = t;
 
-                if (data.pl_epd.seePd != SeeEnergy.None)
+                if (data.pl_epd.seeEpd)
                 {
                     PlayerData tdata = t[_pdkey] as PlayerData;
                     if (tdata == null)
@@ -688,7 +824,7 @@ namespace SS.Core.Modules
                 if (isNewer && !isFake &&
                     (now - pd.lastRgnCheck).TotalMilliseconds >= ad.regionCheckTime)
                 {
-                    updateRegions(p, x1 >> 4, y1 >> 4);
+                    updateRegions(p, (short)(x1 >> 4), (short)(y1 >> 4));
                     pd.lastRgnCheck = now;
                 }
 
@@ -747,7 +883,7 @@ namespace SS.Core.Modules
 
                 // send safe zone enters to everyone, reliably
                 if (((pos.Status & PlayerPositionStatus.Safezone) != 0) &&
-                    ((p.Position.status & PlayerPositionStatus.Safezone) != 0))
+                    ((p.Position.Status & PlayerPositionStatus.Safezone) != 0))
                 {
                     sendToAll = true;
                     nflags = NetSendFlags.Reliable;
@@ -826,7 +962,7 @@ namespace SS.Core.Modules
 
                                         if (i.Ship == ShipType.Spec)
                                         {
-                                            if ((idata.pl_epd.seePd != SeeEnergy.None) && (idata.speccing == p))
+                                            if ((idata.pl_epd.seeEpd) && (idata.speccing == p))
                                             {
                                                 if (len >= 32)
                                                     _net.SendToOne(i, buffer.Bytes, epdLen, nflags);
@@ -923,7 +1059,7 @@ namespace SS.Core.Modules
 
                                         if (i.Ship == ShipType.Spec)
                                         {
-                                            if (!(idata.pl_epd.seePd != SeeEnergy.None) && idata.speccing == p)
+                                            if (!(idata.pl_epd.seeEpd) && idata.speccing == p)
                                             {
                                                 if(len >= 32)
                                                     _net.SendToOne(i, buffer.Bytes, epdLen, nflags);
@@ -989,14 +1125,14 @@ namespace SS.Core.Modules
                 // non-zero position.
                 if (pos.X != 0 || pos.Y != 0)
                 {
-                    p.Position.x = pos.X;
-                    p.Position.y = pos.Y;
+                    p.Position.X = pos.X;
+                    p.Position.Y = pos.Y;
                 }
-                p.Position.xspeed = pos.XSpeed;
-                p.Position.yspeed = pos.YSpeed;
-                p.Position.rotation = pos.Rotation;
-                p.Position.bounty = pos.Bounty;
-                p.Position.status = pos.Status;
+                p.Position.XSpeed = pos.XSpeed;
+                p.Position.YSpeed = pos.YSpeed;
+                p.Position.Rotation = pos.Rotation;
+                p.Position.Bounty = pos.Bounty;
+                p.Position.Status = pos.Status;
             }
 
             if (p.Flags.SentPositionPacket == false && !isFake)
@@ -1035,7 +1171,7 @@ namespace SS.Core.Modules
                 PlayerActionCallback.Fire(_mm, p, action, arena);
         }
 
-        private void updateRegions(Player p, int x, int y)
+        private void updateRegions(Player p, short x, short y)
         {
             if (p == null)
                 return;
@@ -1045,16 +1181,41 @@ namespace SS.Core.Modules
                 return;
 
             Arena arena = p.Arena;
-
-            foreach(MapRegion region in _mapData.RegionsAt(p.Arena, (short)x, (short)y))
+            /*
+            foreach (MapRegion region in pd.LastRegionSet.Keys)
+            {
+                pd.LastRegionSet[region] = false;
+            }
+            */
+            foreach(MapRegion region in _mapData.RegionsAt(p.Arena, x, y))
             {
                 if (region.NoAntiwarp)
                     pd.rgnnoanti = true;
 
                 if (region.NoWeapons)
                     pd.rgnnoweapons = true;
+
+                //if (!pd.LastRegionSet.ContainsKey(region))
+                //{
+                    MapRegionCallback.Fire(arena, p, region, x, y, true);
+                    //pd.LastRegionSet.Add(region, true);
+                //}
+                //else
+                //{
+                    //pd.LastRegionSet[region] = true;
+                //}
             }
 
+            //pd.LastRegionSet.Except(
+            //_mapData.RegionsAt(p.Arena, (short)x, (short)y)
+
+            // asss does a merge join to figure out the differences
+            //TODO: handle the callbacks properly, this is just for testing autowarp...
+            //foreach (KeyValuePair<MapRegion, bool> kvp in pd.LastRegionSet)
+            //{
+                //if (kvp.Value == false)
+                    //MapRegionCallback.Fire(arena, p, kvp.Key, x, y, false);
+            //}
             // TODO: region enter and leave callbacks
         }
 
@@ -1732,9 +1893,153 @@ namespace SS.Core.Modules
             }
         }
 
-        private void lockWork(ITarget target, bool p, bool notify, bool spec, int timeout)
+        private void lockWork(ITarget target, bool nval, bool notify, bool spec, int timeout)
         {
+            LinkedList<Player> set;
+            _playerData.TargetToSet(target, out set);
+            if (set == null)
+                return;
 
+            foreach (Player p in set)
+            {
+                PlayerData pd = p[_pdkey] as PlayerData;
+                if (pd == null)
+                    continue;
+
+                if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
+                    setFreqAndShip(p, ShipType.Spec, p.Arena.SpecFreq);
+
+                if (notify && (pd.lockship != nval) && (_chat != null))
+                {
+                    _chat.SendMessage(p, nval ?
+                        (p.Ship == ShipType.Spec ?
+                        "You have been locked to spectator mode." :
+                        "You have been locked to your ship.") :
+                        "Your ship has been unlocked.");
+                }
+
+                pd.lockship = nval;
+                if(nval == false || timeout == 0)
+                    pd.expires = null;
+                else
+                    pd.expires =  DateTime.Now.AddSeconds(timeout);
+            }
+        }
+
+        private string commandSpecHelpText = @"Targets: any
+Args: none
+Displays players spectating you. When private, displays players
+spectating the target.";
+
+        private void command_spec(string command, string parameters, Player p, ITarget target)
+        {
+            Player targetPlayer = null;
+            
+            if(target.Type == TargetType.Player)
+                targetPlayer = (target as IPlayerTarget).Player;
+
+            if (targetPlayer == null)
+                targetPlayer = p;
+
+            int specCount = 0;
+            StringBuilder sb = new StringBuilder();
+
+            _playerData.Lock();
+            try
+            {
+                foreach(Player playerToCheck in _playerData.PlayerList)
+                {
+                    PlayerData pd = playerToCheck[_pdkey] as PlayerData;
+                    if (pd != null)
+                        continue;
+
+                    if ((pd.speccing == targetPlayer) &&
+                        (!_capabilityManager.HasCapability(playerToCheck, Constants.Capabilities.InvisibleSpectator) ||
+                        _capabilityManager.HigherThan(p, playerToCheck)))
+                    {
+                        specCount++;
+
+                        if (sb.Length > 0)
+                            sb.Append(", ");
+
+                        sb.Append(targetPlayer.Name);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            if (specCount > 1)
+            {
+                _chat.SendMessage(p, "{0} spectators: ", specCount);
+                _chat.SendWrappedText(p, sb.ToString());
+            }
+            else if (specCount == 1)
+            {
+                _chat.SendMessage(p, "1 spectator: {0}", sb.ToString());
+            }
+            else if (p == targetPlayer)
+            {
+                _chat.SendMessage(p, "No players spectating you.");
+            }
+            else
+            {
+                _chat.SendMessage(p, "No players spectating {0}.", targetPlayer.Name);
+            }
+        }
+
+        private string commandEnergyHelpText = @"Targets: arena or player
+Args: [-t] [-n] [-s]
+If sent as a priv message, turns energy viewing on for that player.
+If sent as a pub message, turns energy viewing on for the whole arena
+(note that this will only affect new players entering the arena).
+If {-t} is given, turns energy viewing on for teammates only.
+If {-n} is given, turns energy viewing off.
+If {-s} is given, turns energy viewing on/off for spectator mode.";
+
+        private void command_energy(string command, string parameters, Player p, ITarget target)
+        {
+            Player targetPlayer = null;
+
+            if (target.Type == TargetType.Player)
+                targetPlayer = (target as IPlayerTarget).Player;
+
+            SeeEnergy nval = SeeEnergy.All;
+            bool spec = false;
+
+            if(!string.IsNullOrEmpty(parameters) && parameters.Contains("-t"))
+                nval = SeeEnergy.Team;
+
+            if(!string.IsNullOrEmpty(parameters) && parameters.Contains("-n"))
+                nval = SeeEnergy.None;
+
+            if(!string.IsNullOrEmpty(parameters) && parameters.Contains("-s"))
+                spec = true;
+
+            if (targetPlayer != null)
+            {
+                PlayerData pd = targetPlayer[_pdkey] as PlayerData;
+                if (pd != null)
+                    return;
+
+                if (spec)
+                    pd.pl_epd.seeNrgSpec = nval;
+                else
+                    pd.pl_epd.seeNrg = nval;
+            }
+            else
+            {
+                ArenaData ad = p.Arena[_adkey] as ArenaData;
+                if (ad == null)
+                    return;
+
+                if (spec)
+                    ad.specNrg = nval;
+                else
+                    ad.specNrg = nval;
+            }
         }
     }
 }

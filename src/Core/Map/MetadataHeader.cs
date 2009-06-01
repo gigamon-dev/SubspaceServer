@@ -15,9 +15,9 @@ namespace SS.Core.Map
         static MetadataHeader()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            magic = locationBuilder.CreateDataLocation(4);
-            totalsize = locationBuilder.CreateDataLocation(4);
-            res1 = locationBuilder.CreateDataLocation(4);
+            magic = locationBuilder.CreateUInt32DataLocation();
+            totalsize = locationBuilder.CreateUInt32DataLocation();
+            res1 = locationBuilder.CreateUInt32DataLocation();
             Length = locationBuilder.NumBytes;
         }
 

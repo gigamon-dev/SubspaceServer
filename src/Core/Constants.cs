@@ -67,6 +67,7 @@ namespace SS.Core
             public const string Kill = "kill";
             public const string PostKill = "postkill";
             public const string Attach = "attach";
+            public const string MapRegion = "mapregion";
 
             /// <summary>
             /// this callback is called whenever a Player is allocated or

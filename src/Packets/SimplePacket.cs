@@ -11,12 +11,12 @@ namespace SS.Core.Packets
         static SimplePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            d1 = locationBuilder.CreateDataLocation(2);
-            d2 = locationBuilder.CreateDataLocation(2);
-            d3 = locationBuilder.CreateDataLocation(2);
-            d4 = locationBuilder.CreateDataLocation(2);
-            d5 = locationBuilder.CreateDataLocation(2);
+            type = locationBuilder.CreateByteDataLocation();
+            d1 = locationBuilder.CreateInt16DataLocation();
+            d2 = locationBuilder.CreateInt16DataLocation();
+            d3 = locationBuilder.CreateInt16DataLocation();
+            d4 = locationBuilder.CreateInt16DataLocation();
+            d5 = locationBuilder.CreateInt16DataLocation();
             NumBytes = locationBuilder.NumBytes;
         }
 

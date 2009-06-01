@@ -214,37 +214,42 @@ namespace SS.Core
         /// <summary>
         /// x coordinate of current position in pixels
         /// </summary>
-        public int x;
+        public int X;
 
         /// <summary>
         /// y coordinate of current position in pixels
         /// </summary>
-        public int y;
+        public int Y;
 
         /// <summary>
         /// velocity in positive x direction (pixels/second)
         /// </summary>
-        public int xspeed;
+        public int XSpeed;
 
         /// <summary>
         /// velocity in positive y direction (pixels/second)
         /// </summary>
-        public int yspeed;
+        public int YSpeed;
 
         /// <summary>
         /// rotation value (0-63)
         /// </summary>
-        public int rotation;
+        public int Rotation;
 
         /// <summary>
         /// current bounty
         /// </summary>
-        public uint bounty;
+        public uint Bounty;
 
         /// <summary>
         /// status bitfield
         /// </summary>
-        public PlayerPositionStatus status;
+        public PlayerPositionStatus Status;
+
+        /// <summary>
+        /// current energy
+        /// </summary>
+        public int Energy;
     };
 
     public class Player : IPlayerTarget

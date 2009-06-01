@@ -7,8 +7,55 @@ using System.Diagnostics;
 
 namespace SS.Core.Map
 {
+    /*
+    /// <summary>
+    /// TODO: consider exposing map region as an interface used by the IMapData inferface.
+    /// That way only readonly operations are exposed?  Currently, the MapRegion class is specialized for reading only.
+    /// </summary>
+    public interface IMapDataRegion
+    {
+        string Name
+        {
+            get;
+        }
+
+        IEnumerable<ArraySegment<byte>> ChunkData(uint chunkType);
+
+        int TileCount
+        {
+            get;
+        }
+
+        bool NoAntiwarp
+        {
+            get;
+        }
+
+        bool NoWeapons
+        {
+            get;
+        }
+
+        IEnumerable<MapCoordinate> Coords
+        {
+            get;
+        }
+
+        bool ContainsCoordinate(short x, short y);
+        bool ContainsCoordinate(MapCoordinate coordinate);
+        void FindRandomPoint(out short x, out short y);
+    }
+    */
+
+    /// <summary>
+    /// In asss, the region struct knows about the lvl that contains it and keeps track of what region sets it belongs to.
+    /// In this implementation, it doesn't know anything about the lvl.  The ExtendedLvl class keeps track of region sets, etc...
+    /// </summary>
     public class MapRegion
     {
+        /// <summary>
+        /// Name of the region.
+        /// </summary>
         public string Name
         {
             get;
@@ -16,20 +63,47 @@ namespace SS.Core.Map
         }
 
         public readonly MultiDictionary<uint, ArraySegment<byte>> Chunks = new MultiDictionary<uint, ArraySegment<byte>>();
-        //public readonly uint[] SetMap = new uint[8]; // out of 256 sets of regions, which set(s) it belongs to
 
+        /// <summary>
+        /// To get chunk data for the region.
+        /// Note: only the payload of the chunk is included.  The chunk header is stripped out for you.
+        /// <remarks>Similar to asss' Imapdata.RegionChunk, except this will allow you enumerate over all matching chunks instead of just one.</remarks>
+        /// </summary>
+        /// <param name="chunkType">type of chunk to look for</param>
+        /// <returns></returns>
+        public IEnumerable<ArraySegment<byte>> ChunkData(uint chunkType)
+        {
+            IEnumerable<ArraySegment<byte>> matches;
+            if (!Chunks.TryGetValues(chunkType, out matches))
+                yield break;
+
+            foreach (ArraySegment<byte> chunkWithHeader in matches)
+            {
+                yield return new ArraySegment<byte>(chunkWithHeader.Array, chunkWithHeader.Offset + 8, chunkWithHeader.Count - 8);
+            }
+        }
+
+        /// <summary>
+        /// # of tiles this region contains.
+        /// </summary>
         public int TileCount
         {
             get;
             private set;
         }
 
+        /// <summary>
+        /// Whether antiwarp should be disabled for ships in the region.
+        /// </summary>
         public bool NoAntiwarp
         {
             get;
             private set;
         }
 
+        /// <summary>
+        /// Whether all weapons should be disabled for ships in the region.
+        /// </summary>
         public bool NoWeapons
         {
             get;
@@ -60,22 +134,10 @@ namespace SS.Core.Map
 
             ChunkHelper.ProcessChunks<MapRegion>(Chunks, processRegionChunk, this);
         }
-        /*
-        public System.Collections.IEnumerator Coordinates()
-        {
-            LinkedListNode<RleEntry> node = _rleData.First;
-            while (node != null)
-            {
-                RleEntry entry = node.Value;
 
-                for (short x = entry.X; x < (entry.X + entry.Width); x++)
-                    for (short y = entry.Y; y < (entry.Y + entry.Height); y++)
-                        yield return new MapCoordinate(x, y);
-
-                node = node.Next;
-            }
-        }
-        */
+        /// <summary>
+        /// To enumerate on all the coordinates contained in the map region.
+        /// </summary>
         public IEnumerable<MapCoordinate> Coords
         {
             get
@@ -94,6 +156,12 @@ namespace SS.Core.Map
             }
         }
 
+        /// <summary>
+        /// To check if a coordinate is in the region.
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
         public bool ContainsCoordinate(short x, short y)
         {
             LinkedListNode<RleEntry> node = _rleData.First;
@@ -109,6 +177,22 @@ namespace SS.Core.Map
             return false;
         }
 
+        /// <summary>
+        /// To check if a coordinate is in the region.
+        /// </summary>
+        /// <param name="coordinate"></param>
+        /// <returns></returns>
+        public bool ContainsCoordinate(MapCoordinate coordinate)
+        {
+            return ContainsCoordinate(coordinate.X, coordinate.Y);
+        }
+
+        /// <summary>
+        /// To find a random point in the region.
+        /// If a point cannot be determined, x and y will be set to -1.
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
         public void FindRandomPoint(out short x, out short y)
         {
             if (TileCount <= 0)
@@ -186,7 +270,6 @@ namespace SS.Core.Map
             return false;
         }
 
-        // this might belong in the MapRegion class
         private bool readRunLengthEncodedTileData(MapRegion region, ArraySegment<byte> source)
         {
             if (region == null)
@@ -224,7 +307,7 @@ namespace SS.Core.Map
                     if (i >= source.Count)
                         return false; // ran out of data to read
 
-                    n = (short)(((b & 3 << 8) | source.Array[source.Offset + i++]) + 1);
+                    n = (short)((((b & 3) << 8) | source.Array[source.Offset + i++]) + 1);
                 }
 
                 switch (op)

@@ -6,6 +6,29 @@ using SS.Core.Packets;
 
 namespace SS.Core.ComponentInterfaces
 {
+    public enum SeeEnergy
+    {
+        /// <summary>
+        /// Nobody can see energy
+        /// </summary>
+        None,
+
+        /// <summary>
+        /// everyone can see everyone's
+        /// </summary>
+        All,
+
+        /// <summary>
+        /// you can see only energy for teammates
+        /// </summary>
+        Team,
+
+        /// <summary>
+        /// can see energy/extra data only for who you are speccing
+        /// </summary>
+        Spec,
+    }
+
     public interface IGame : IComponentInterface
     {
         /// <summary>
@@ -112,6 +135,15 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">the players to shipreset</param>
         void ShipReset(ITarget target);
 
+        void IncrementWeaponPacketCount(Player p, int packets);
+
+        void SetPlayerEnergyViewing(Player p, SeeEnergy value);
+        void SetSpectatorEnergyViewing(Player p, SeeEnergy value);
+        void ResetPlayerEnergyViewing(Player p);
+        void ResetSpectatorEnergyViewing(Player p);
+
         // TODO: more
+        //IncrementWeaponPacketCount
+        //DoWeaponChecksum
     }
 }

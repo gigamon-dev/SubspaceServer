@@ -14,35 +14,35 @@ namespace SS.Core.Packets
         static LoginPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            flags = locationBuilder.CreateDataLocation(1);
+            type = locationBuilder.CreateByteDataLocation();
+            flags = locationBuilder.CreateByteDataLocation();
             name = locationBuilder.CreateDataLocation(32);
             password = locationBuilder.CreateDataLocation(32);
-            macid = locationBuilder.CreateDataLocation(4);
-            blah = locationBuilder.CreateDataLocation(1);
-            timezonebias = locationBuilder.CreateDataLocation(2);
-            unk1 = locationBuilder.CreateDataLocation(2);
-            cversion = locationBuilder.CreateDataLocation(2);
-            field444 = locationBuilder.CreateDataLocation(4);
-            field555 = locationBuilder.CreateDataLocation(4);
-            d2 = locationBuilder.CreateDataLocation(4);
+            macid = locationBuilder.CreateUInt32DataLocation();
+            blah = locationBuilder.CreateByteDataLocation();
+            timezonebias = locationBuilder.CreateUInt16DataLocation();
+            unk1 = locationBuilder.CreateUInt16DataLocation();
+            cversion = locationBuilder.CreateInt16DataLocation();
+            field444 = locationBuilder.CreateInt32DataLocation();
+            field555 = locationBuilder.CreateInt32DataLocation();
+            d2 = locationBuilder.CreateUInt32DataLocation();
             blah2 = locationBuilder.CreateDataLocation(12);
             LengthVIE = locationBuilder.NumBytes;
             contid = locationBuilder.CreateDataLocation(64);
             LengthContinuum = locationBuilder.NumBytes;
         }
 
-        private static readonly DataLocation type;
-        private static readonly DataLocation flags;
+        private static readonly ByteDataLocation type;
+        private static readonly ByteDataLocation flags;
         private static readonly DataLocation name;
         private static readonly DataLocation password;
         private static readonly UInt32DataLocation macid;
-        private static readonly DataLocation blah;
-        private static readonly DataLocation timezonebias;
-        private static readonly DataLocation unk1;
+        private static readonly ByteDataLocation blah;
+        private static readonly UInt16DataLocation timezonebias;
+        private static readonly UInt16DataLocation unk1;
         private static readonly Int16DataLocation cversion;
-        private static readonly DataLocation field444;
-        private static readonly DataLocation field555;
+        private static readonly Int32DataLocation field444;
+        private static readonly Int32DataLocation field555;
         private static readonly UInt32DataLocation d2;
         private static readonly DataLocation blah2;
         private static readonly DataLocation contid; // cont only
@@ -60,6 +60,9 @@ namespace SS.Core.Packets
         {
             get
             {
+                // Encoding.ASCII only supports 7 bit, which is exactly what is needed.
+                // asss allows all printable characters except for colon
+                // considering: Encoding.GetEncoding("us-ascii", new EncoderReplacementFallback(string.Empty), new DecoderReplacementFallback(string.Empty);
                 string str = Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBytes);
                 int index = str.IndexOf('\0');
                 if (index != -1)

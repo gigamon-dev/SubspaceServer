@@ -11,14 +11,14 @@ namespace SS.Core.Packets
         static BrickPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            x1 = locationBuilder.CreateDataLocation(2);
-            y1 = locationBuilder.CreateDataLocation(2);
-            x2 = locationBuilder.CreateDataLocation(2);
-            y2 = locationBuilder.CreateDataLocation(2);
-            freq = locationBuilder.CreateDataLocation(2);
-            brickid = locationBuilder.CreateDataLocation(2);
-            starttime = locationBuilder.CreateDataLocation(4);
+            type = locationBuilder.CreateByteDataLocation();
+            x1 = locationBuilder.CreateInt16DataLocation();
+            y1 = locationBuilder.CreateInt16DataLocation();
+            x2 = locationBuilder.CreateInt16DataLocation();
+            y2 = locationBuilder.CreateInt16DataLocation();
+            freq = locationBuilder.CreateInt16DataLocation();
+            brickid = locationBuilder.CreateUInt16DataLocation();
+            starttime = locationBuilder.CreateUInt32DataLocation();
             Length = locationBuilder.NumBytes;
         }
 

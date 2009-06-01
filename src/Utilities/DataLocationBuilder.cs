@@ -24,6 +24,36 @@ namespace SS.Utilities
             }
         }
 
+        public ByteDataLocation CreateByteDataLocation()
+        {
+            return (ByteDataLocation)CreateDataLocation(1);
+        }
+
+        public SByteDataLocation CreateSByteDataLocation()
+        {
+            return (SByteDataLocation)CreateDataLocation(1);
+        }
+
+        public UInt16DataLocation CreateUInt16DataLocation()
+        {
+            return (UInt16DataLocation)CreateDataLocation(2);
+        }
+
+        public Int16DataLocation CreateInt16DataLocation()
+        {
+            return (Int16DataLocation)CreateDataLocation(2);
+        }
+
+        public UInt32DataLocation CreateUInt32DataLocation()
+        {
+            return (UInt32DataLocation)CreateDataLocation(4);
+        }
+
+        public Int32DataLocation CreateInt32DataLocation()
+        {
+            return (Int32DataLocation)CreateDataLocation(4);
+        }
+
         public int NumBytes
         {
             get { return _nextByte; }

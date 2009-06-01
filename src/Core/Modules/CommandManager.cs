@@ -371,9 +371,6 @@ namespace SS.Core.Modules
                     break;
             }
 
-            if (target.Type == TargetType.Arena)
-                sb.Append("(arena)");
-
             if (!string.IsNullOrEmpty(parameters))
                 _logManager.LogP(LogLevel.Info, "CommandManager", p, "command {0}: {1} {2}", sb.ToString(), cmd, parameters);
             else

@@ -11,9 +11,9 @@ namespace SS.Core.Packets
         static ContinuumChecksumPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
-            contversion = locationBuilder.CreateDataLocation(2);
-            checksum = locationBuilder.CreateDataLocation(4);
+            type = locationBuilder.CreateByteDataLocation();
+            contversion = locationBuilder.CreateUInt16DataLocation();
+            checksum = locationBuilder.CreateUInt32DataLocation();
             Length = locationBuilder.NumBytes;
         }
 

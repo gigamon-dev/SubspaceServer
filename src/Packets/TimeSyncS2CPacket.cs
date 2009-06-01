@@ -12,10 +12,10 @@ namespace SS.Core.Packets
         static TimeSyncS2CPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            t1 = locationBuilder.CreateDataLocation(1);
-            t2 = locationBuilder.CreateDataLocation(1);
-            clienttime = locationBuilder.CreateDataLocation(4);
-            servertime = locationBuilder.CreateDataLocation(4);
+            t1 = locationBuilder.CreateByteDataLocation();
+            t2 = locationBuilder.CreateByteDataLocation();
+            clienttime = locationBuilder.CreateUInt32DataLocation();
+            servertime = locationBuilder.CreateUInt32DataLocation();
             length = locationBuilder.NumBytes;
         }
 

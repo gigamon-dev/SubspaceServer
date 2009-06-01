@@ -16,6 +16,14 @@ namespace SS.Utilities
             NumBytes = numBytes;
         }
 
+        public ArraySegment<byte> ToArraySegment(byte[] array)
+        {
+            if (array == null)
+                throw new ArgumentNullException("array");
+
+            return new ArraySegment<byte>(array, ByteOffset, NumBytes);
+        }
+
         #region byte
 
         public byte GetByte(byte[] data)
@@ -36,11 +44,6 @@ namespace SS.Utilities
         public void SetByte(byte[] data, byte value, int additionalOffset)
         {
             LittleEndianBitConverter.WriteByteBits(value, data, ByteOffset + additionalOffset);
-        }
-
-        public static implicit operator ByteDataLocation(DataLocation dataLocation)
-        {
-            return new ByteDataLocation(dataLocation);
         }
 
         #endregion
@@ -67,11 +70,6 @@ namespace SS.Utilities
             LittleEndianBitConverter.WriteSByteBits(value, data, ByteOffset + additionalOffset);
         }
 
-        public static implicit operator SByteDataLocation(DataLocation dataLocation)
-        {
-            return new SByteDataLocation(dataLocation);
-        }
-
         #endregion
 
         #region uint16
@@ -94,11 +92,6 @@ namespace SS.Utilities
         public void SetUInt16(byte[] data, ushort value, int additionalOffset)
         {
             LittleEndianBitConverter.WriteUInt16Bits(value, data, ByteOffset + additionalOffset);
-        }
-
-        public static implicit operator UInt16DataLocation(DataLocation dataLocation)
-        {
-            return new UInt16DataLocation(dataLocation);
         }
 
         #endregion
@@ -125,11 +118,6 @@ namespace SS.Utilities
             LittleEndianBitConverter.WriteInt16Bits(value, data, ByteOffset + additionalOffset);
         }
 
-        public static implicit operator Int16DataLocation(DataLocation dataLocation)
-        {
-            return new Int16DataLocation(dataLocation);
-        }
-
         #endregion
 
         #region uint32
@@ -152,11 +140,6 @@ namespace SS.Utilities
         public void SetUInt32(byte[] data, uint value, int additionalOffset)
         {
             LittleEndianBitConverter.WriteUInt32Bits(value, data, ByteOffset + additionalOffset);
-        }
-
-        public static implicit operator UInt32DataLocation(DataLocation dataLocation)
-        {
-            return new UInt32DataLocation(dataLocation);
         }
 
         #endregion
@@ -183,11 +166,6 @@ namespace SS.Utilities
             LittleEndianBitConverter.WriteInt32Bits(value, data, ByteOffset + additionalOffset);
         }
 
-        public static implicit operator Int32DataLocation(DataLocation dataLocation)
-        {
-            return new Int32DataLocation(dataLocation);
-        }
-
         #endregion
     }
 
@@ -207,7 +185,20 @@ namespace SS.Utilities
 
         public ByteDataLocation(DataLocation dataLocation)
         {
+            if (dataLocation.NumBytes != 1)
+                throw new ArgumentOutOfRangeException("dataLocation", "must represent 1 byte");
+
             _dataLocation = dataLocation;
+        }
+
+        public static explicit operator ByteDataLocation(DataLocation dataLocation)
+        {
+            return new ByteDataLocation(dataLocation);
+        }
+
+        public static implicit operator DataLocation(ByteDataLocation byteDataLocation)
+        {
+            return byteDataLocation._dataLocation;
         }
 
         public byte GetValue(byte[] data)
@@ -247,7 +238,20 @@ namespace SS.Utilities
 
         public SByteDataLocation(DataLocation dataLocation)
         {
+            if (dataLocation.NumBytes != 1)
+                throw new ArgumentOutOfRangeException("dataLocation", "must represent 1 byte");
+
             _dataLocation = dataLocation;
+        }
+
+        public static explicit operator SByteDataLocation(DataLocation dataLocation)
+        {
+            return new SByteDataLocation(dataLocation);
+        }
+
+        public static implicit operator DataLocation(SByteDataLocation sbyteDataLocation)
+        {
+            return sbyteDataLocation._dataLocation;
         }
 
         public sbyte GetValue(byte[] data)
@@ -287,7 +291,20 @@ namespace SS.Utilities
 
         public UInt16DataLocation(DataLocation dataLocation)
         {
+            if (dataLocation.NumBytes != 2)
+                throw new ArgumentOutOfRangeException("dataLocation", "must represent 2 bytes");
+
             _dataLocation = dataLocation;
+        }
+
+        public static explicit operator UInt16DataLocation(DataLocation dataLocation)
+        {
+            return new UInt16DataLocation(dataLocation);
+        }
+
+        public static implicit operator DataLocation(UInt16DataLocation uint16DataLocation)
+        {
+            return uint16DataLocation._dataLocation;
         }
 
         public ushort GetValue(byte[] data)
@@ -327,7 +344,20 @@ namespace SS.Utilities
 
         public Int16DataLocation(DataLocation dataLocation)
         {
+            if (dataLocation.NumBytes != 2)
+                throw new ArgumentOutOfRangeException("dataLocation", "must represent 2 bytes");
+
             _dataLocation = dataLocation;
+        }
+
+        public static explicit operator Int16DataLocation(DataLocation dataLocation)
+        {
+            return new Int16DataLocation(dataLocation);
+        }
+
+        public static implicit operator DataLocation(Int16DataLocation int16DataLocation)
+        {
+            return int16DataLocation._dataLocation;
         }
 
         public short GetValue(byte[] data)
@@ -367,7 +397,20 @@ namespace SS.Utilities
 
         public UInt32DataLocation(DataLocation dataLocation)
         {
+            if (dataLocation.NumBytes != 4)
+                throw new ArgumentOutOfRangeException("dataLocation", "must represent 4 bytes");
+
             _dataLocation = dataLocation;
+        }
+
+        public static explicit operator UInt32DataLocation(DataLocation dataLocation)
+        {
+            return new UInt32DataLocation(dataLocation);
+        }
+
+        public static implicit operator DataLocation(UInt32DataLocation uint32DataLocation)
+        {
+            return uint32DataLocation._dataLocation;
         }
 
         public uint GetValue(byte[] data)
@@ -407,7 +450,20 @@ namespace SS.Utilities
 
         public Int32DataLocation(DataLocation dataLocation)
         {
+            if (dataLocation.NumBytes != 4)
+                throw new ArgumentOutOfRangeException("dataLocation", "must represent 4 bytes");
+
             _dataLocation = dataLocation;
+        }
+
+        public static explicit operator Int32DataLocation(DataLocation dataLocation)
+        {
+            return new Int32DataLocation(dataLocation);
+        }
+
+        public static implicit operator DataLocation(Int32DataLocation int32DataLocation)
+        {
+            return int32DataLocation._dataLocation;
         }
 
         public int GetValue(byte[] data)

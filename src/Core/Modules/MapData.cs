@@ -213,6 +213,18 @@ namespace SS.Core.Modules
             return key;
         }
 
+        int IMapData.GetRegionCount(Arena arena)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
+
+            return lvl.RegionCount;
+        }
+
         MapRegion IMapData.FindRegionByName(Arena arena, string name)
         {
             if (arena == null)

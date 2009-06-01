@@ -15,10 +15,10 @@ namespace SS.Core.Map
         static BitmapHeader()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            bm = locationBuilder.CreateDataLocation(2);
-            fsize = locationBuilder.CreateDataLocation(4);
-            res1 = locationBuilder.CreateDataLocation(4);
-            offbits = locationBuilder.CreateDataLocation(4);
+            bm = locationBuilder.CreateUInt16DataLocation();
+            fsize = locationBuilder.CreateUInt32DataLocation();
+            res1 = locationBuilder.CreateUInt32DataLocation();
+            offbits = locationBuilder.CreateUInt32DataLocation();
             Length = locationBuilder.NumBytes;
         }
 

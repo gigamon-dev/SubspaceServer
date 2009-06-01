@@ -13,7 +13,7 @@ namespace SS.Core.Packets
         private int _bitOffset;
         private Int32DataLocation[] _dataLocations;
 
-        public Int32Array(byte[] data, int byteOffset, int bitOffset, DataLocation[] dataLocations)
+        public Int32Array(byte[] data, int byteOffset, int bitOffset, Int32DataLocation[] dataLocations)
         {
             if (data == null)
                 throw new ArgumentNullException("data");
@@ -30,7 +30,7 @@ namespace SS.Core.Packets
                 _dataLocations[x] = dataLocations[x];
         }
 
-        public Int32Array(byte[] data, DataLocation[] dataLocations)
+        public Int32Array(byte[] data, Int32DataLocation[] dataLocations)
             : this(data, 0, 0, dataLocations)
         {
         }
@@ -54,7 +54,7 @@ namespace SS.Core.Packets
         private int _bitOffset;
         private Int16DataLocation[] _dataLocations;
 
-        public Int16Array(byte[] data, int byteOffset, int bitOffset, DataLocation[] dataLocations)
+        public Int16Array(byte[] data, int byteOffset, int bitOffset, Int16DataLocation[] dataLocations)
         {
             if (data == null)
                 throw new ArgumentNullException("data");
@@ -71,7 +71,7 @@ namespace SS.Core.Packets
                 _dataLocations[x] = dataLocations[x];
         }
 
-        public Int16Array(byte[] data, DataLocation[] dataLocations)
+        public Int16Array(byte[] data, Int16DataLocation[] dataLocations)
             : this(data, 0, 0, dataLocations)
         {
         }
@@ -95,7 +95,7 @@ namespace SS.Core.Packets
         private int _bitOffset;
         private ByteDataLocation[] _dataLocations;
 
-        public ByteArray(byte[] data, int byteOffset, int bitOffset, DataLocation[] dataLocations)
+        public ByteArray(byte[] data, int byteOffset, int bitOffset, ByteDataLocation[] dataLocations)
         {
             if (data == null)
                 throw new ArgumentNullException("data");
@@ -112,7 +112,7 @@ namespace SS.Core.Packets
                 _dataLocations[x] = dataLocations[x];
         }
 
-        public ByteArray(byte[] data, DataLocation[] dataLocations)
+        public ByteArray(byte[] data, ByteDataLocation[] dataLocations)
             : this(data, 0, 0, dataLocations)
         {
         }
@@ -129,13 +129,12 @@ namespace SS.Core.Packets
         }
     }
 
-    // note to self, luckily each part of the packet is padded to byte boundary.  otherwise i wouldn't be able to use ArraySegment<byte>
     public class ClientSettingsPacket
     {
         static ClientSettingsPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateDataLocation(1);
+            type = locationBuilder.CreateByteDataLocation();
             bitset = locationBuilder.CreateDataLocation(3);
 
             ships = new DataLocation[8];
@@ -144,10 +143,10 @@ namespace SS.Core.Packets
                 ships[x] = locationBuilder.CreateDataLocation(144);
             }
             
-            longSet = new DataLocation[20];
+            longSet = new Int32DataLocation[20];
             for (int x = 0; x < longSet.Length; x++)
             {
-                longSet[x] = locationBuilder.CreateDataLocation(4);
+                longSet[x] = locationBuilder.CreateInt32DataLocation();
             }
 
             spawnPos = new DataLocation[4];
@@ -156,22 +155,22 @@ namespace SS.Core.Packets
                 spawnPos[x] = locationBuilder.CreateDataLocation(4);
             }
 
-            shortSet = new DataLocation[58];
+            shortSet = new Int16DataLocation[58];
             for (int x = 0; x < shortSet.Length; x++)
             {
-                shortSet[x] = locationBuilder.CreateDataLocation(2);
+                shortSet[x] = locationBuilder.CreateInt16DataLocation();
             }
 
-            byteSet = new DataLocation[32];
+            byteSet = new ByteDataLocation[32];
             for (int x = 0; x < byteSet.Length; x++)
             {
-                byteSet[x] = locationBuilder.CreateDataLocation(1);
+                byteSet[x] = locationBuilder.CreateByteDataLocation();
             }
 
-            prizeWeightSet = new DataLocation[28];
+            prizeWeightSet = new ByteDataLocation[28];
             for (int x = 0; x < prizeWeightSet.Length; x++)
             {
-                prizeWeightSet[x] = locationBuilder.CreateDataLocation(1);
+                prizeWeightSet[x] = locationBuilder.CreateByteDataLocation();
             }
 
             Length = locationBuilder.NumBytes;
@@ -180,11 +179,11 @@ namespace SS.Core.Packets
         private static readonly ByteDataLocation type;
         private static DataLocation bitset;
         private static DataLocation[] ships;
-        private static DataLocation[] longSet;
+        private static Int32DataLocation[] longSet;
         private static DataLocation[] spawnPos;
-        private static DataLocation[] shortSet;
-        private static DataLocation[] byteSet;
-        private static DataLocation[] prizeWeightSet;
+        private static Int16DataLocation[] shortSet;
+        private static ByteDataLocation[] byteSet;
+        private static ByteDataLocation[] prizeWeightSet;
         public static int Length;
 
         private readonly byte[] data;
@@ -247,8 +246,8 @@ namespace SS.Core.Packets
                 // instead i have type separate and split the bit field into 2 separate bit fields (first is a byte, second is a ushort)
 
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                bitField1 = locationBuilder.CreateDataLocation(1);
-                bitField2 = locationBuilder.CreateDataLocation(2);
+                bitField1 = locationBuilder.CreateByteDataLocation();
+                bitField2 = locationBuilder.CreateUInt16DataLocation();
 
                 BitFieldBuilder builder = new BitFieldBuilder((byte)(bitField1.NumBytes * 8));
                 exactDamage = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
@@ -343,24 +342,24 @@ namespace SS.Core.Packets
             {
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
                 
-                longSet = new DataLocation[2];
+                longSet = new Int32DataLocation[2];
                 for (int x = 0; x < longSet.Length; x++)
-                    longSet[x] = locationBuilder.CreateDataLocation(4);
+                    longSet[x] = locationBuilder.CreateInt32DataLocation();
 
-                shortSet = new DataLocation[49];
+                shortSet = new Int16DataLocation[49];
                 for (int x = 0; x < shortSet.Length; x++)
-                    shortSet[x] = locationBuilder.CreateDataLocation(2);
+                    shortSet[x] = locationBuilder.CreateInt16DataLocation();
 
-                byteSet = new DataLocation[18];
+                byteSet = new ByteDataLocation[18];
                 for (int x = 0; x < byteSet.Length; x++)
-                    byteSet[x] = locationBuilder.CreateDataLocation(1);
+                    byteSet[x] = locationBuilder.CreateByteDataLocation();
 
                 weaponBits = locationBuilder.CreateDataLocation(4);
             }
 
-            private static readonly DataLocation[] longSet;
-            private static readonly DataLocation[] shortSet;
-            private static readonly DataLocation[] byteSet;
+            private static readonly Int32DataLocation[] longSet;
+            private static readonly Int16DataLocation[] shortSet;
+            private static readonly ByteDataLocation[] byteSet;
             private static readonly DataLocation weaponBits;
 
             private readonly ArraySegment<byte> segment;
@@ -378,7 +377,7 @@ namespace SS.Core.Packets
                 ShortSet = new Int16Array(segment.Array, segment.Offset, 0, shortSet);
                 ByteSet = new ByteArray(segment.Array, segment.Offset, 0, byteSet);
                 Weapons = new WeaponBits(new ArraySegment<byte>(segment.Array, segment.Offset + weaponBits.ByteOffset, weaponBits.NumBytes));
-                MiscBits = new MiscBitField(segment.Array, new DataLocation(segment.Offset + shortSet[10].ByteOffset, 2));
+                MiscBits = new MiscBitField(segment.Array, (UInt16DataLocation)new DataLocation(segment.Offset + shortSet[10].ByteOffset, 2));
             }
 
             public struct WeaponBits
@@ -513,7 +512,7 @@ namespace SS.Core.Packets
                 private byte[] _data;
                 private UInt16DataLocation _dataLocation;
 
-                public MiscBitField(byte[] data, DataLocation dataLocation)
+                public MiscBitField(byte[] data, UInt16DataLocation dataLocation)
                 {
                     if (data == null)
                         throw new ArgumentException("data");
@@ -550,7 +549,7 @@ namespace SS.Core.Packets
             static SpawnPos()
             {
                 DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                bitField = locationBuilder.CreateDataLocation(4);
+                bitField = locationBuilder.CreateUInt32DataLocation();
 
                 BitFieldBuilder builder = new BitFieldBuilder(32);
                 x = builder.CreateBitFieldLocation(10);

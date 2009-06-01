@@ -5,7 +5,7 @@ using System.Text;
 
 namespace SS.Utilities
 {
-    public class PooledObject : IDisposable
+    public abstract class PooledObject : IDisposable
     {
         internal readonly LinkedListNode<PooledObject> Node;
         internal IPool Pool;
@@ -24,6 +24,10 @@ namespace SS.Utilities
 
         #endregion
 
+        /// <summary>
+        /// Derived classes overriding this method should remember to call down to the base class method so that the object is returned to the pool it originated from.
+        /// </summary>
+        /// <param name="isDisposing"></param>
         protected virtual void Dispose(bool isDisposing)
         {
             if (isDisposing)

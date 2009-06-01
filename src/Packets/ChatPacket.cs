@@ -11,10 +11,10 @@ namespace SS.Core.Packets
         static ChatPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            pktype = locationBuilder.CreateDataLocation(1);
-            type = locationBuilder.CreateDataLocation(1);
-            sound = locationBuilder.CreateDataLocation(1);
-            pid = locationBuilder.CreateDataLocation(2);
+            pktype = locationBuilder.CreateByteDataLocation();
+            type = locationBuilder.CreateByteDataLocation();
+            sound = locationBuilder.CreateByteDataLocation();
+            pid = locationBuilder.CreateInt16DataLocation();
             HeaderLength = locationBuilder.NumBytes;
             text = locationBuilder.CreateDataLocation(1);
         }

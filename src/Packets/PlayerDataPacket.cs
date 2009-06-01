@@ -11,20 +11,20 @@ namespace SS.Core.Packets
         static PlayerDataPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            pktype = locationBuilder.CreateDataLocation(1);
-            ship = locationBuilder.CreateDataLocation(1);
-            acceptaudio = locationBuilder.CreateDataLocation(1);
+            pktype = locationBuilder.CreateByteDataLocation();
+            ship = locationBuilder.CreateSByteDataLocation();
+            acceptaudio = locationBuilder.CreateByteDataLocation();
             name = locationBuilder.CreateDataLocation(20);
             squad = locationBuilder.CreateDataLocation(20);
-            killpoints = locationBuilder.CreateDataLocation(4);
-            flagpoints = locationBuilder.CreateDataLocation(4);
-            pid = locationBuilder.CreateDataLocation(2);
-            freq = locationBuilder.CreateDataLocation(2);
-            wins = locationBuilder.CreateDataLocation(2);
-            losses = locationBuilder.CreateDataLocation(2);
-            attachedto = locationBuilder.CreateDataLocation(2);
-            flagscarried = locationBuilder.CreateDataLocation(2);
-            miscbits = locationBuilder.CreateDataLocation(1);
+            killpoints = locationBuilder.CreateInt32DataLocation();
+            flagpoints = locationBuilder.CreateInt32DataLocation();
+            pid = locationBuilder.CreateInt16DataLocation();
+            freq = locationBuilder.CreateInt16DataLocation();
+            wins = locationBuilder.CreateInt16DataLocation();
+            losses = locationBuilder.CreateInt16DataLocation();
+            attachedto = locationBuilder.CreateInt16DataLocation();
+            flagscarried = locationBuilder.CreateInt16DataLocation();
+            miscbits = locationBuilder.CreateByteDataLocation();
             Length = locationBuilder.NumBytes;
         }
 

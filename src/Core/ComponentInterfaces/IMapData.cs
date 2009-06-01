@@ -54,10 +54,13 @@ namespace SS.Core.ComponentInterfaces
         /// <returns></returns>
         uint GetChecksum(Arena arena, uint key);
 
+        int GetRegionCount(Arena arena);
+
         MapRegion FindRegionByName(Arena arena, string name);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
+        /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a calback.</remarks>
         /// </summary>
         /// <param name="arena"></param>
         /// <param name="x"></param>
@@ -67,6 +70,7 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
+        /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a calback.</remarks>
         /// </summary>
         /// <param name="arena"></param>
         /// <param name="coord"></param>

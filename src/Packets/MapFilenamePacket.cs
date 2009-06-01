@@ -14,7 +14,7 @@ namespace SS.Core.Packets
         static MapFilenamePacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            typeLocation = locationBuilder.CreateDataLocation(1);
+            typeLocation = locationBuilder.CreateByteDataLocation();
 
             filenameLocation = new DataLocation[MaxFiles];
             checksumLocation = new UInt32DataLocation[MaxFiles];
@@ -23,8 +23,8 @@ namespace SS.Core.Packets
             for (int x = 0; x < MaxFiles; x++)
             {
                 filenameLocation[x] = locationBuilder.CreateDataLocation(16);
-                checksumLocation[x] = locationBuilder.CreateDataLocation(4);
-                sizeLocation[x] = locationBuilder.CreateDataLocation(4); // cont only
+                checksumLocation[x] = locationBuilder.CreateUInt32DataLocation();
+                sizeLocation[x] = locationBuilder.CreateUInt32DataLocation(); // cont only
             }
         }
 
