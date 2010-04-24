@@ -90,7 +90,7 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// To send sized data to a player.
-        /// <remarks>used for sending files to players such as map/news</remarks>
+        /// <remarks>used for sending files to players such as map/news/updates</remarks>
         /// </summary>
         /// <typeparam name="T">type of the argument used in the callback to retrieve data to send</typeparam>
         /// <param name="p">player sending data to</param>

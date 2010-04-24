@@ -15,6 +15,7 @@ namespace SS.Core.Packets
             t1 = locationBuilder.CreateByteDataLocation();
             t2 = locationBuilder.CreateByteDataLocation();
             seqNum = locationBuilder.CreateInt32DataLocation();
+            HeaderLength = locationBuilder.NumBytes;
             dataStartIndex = locationBuilder.CreateDataLocation(1).ByteOffset;
         }
 
@@ -23,6 +24,7 @@ namespace SS.Core.Packets
         private static readonly ByteDataLocation t2;
         private static readonly Int32DataLocation seqNum;
         private static readonly int dataStartIndex;
+        public static readonly int HeaderLength;
 
         // data members
         private readonly byte[] data;

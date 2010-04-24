@@ -1,14 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Core.ComponentInterfaces;
-using SS.Utilities;
-using SS.Core.Packets;
 using System.Diagnostics;
-using System.Threading;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using SS.Core.ComponentInterfaces;
 using SS.Core.ComponentCallbacks;
+using SS.Core.Packets;
+using SS.Utilities;
 
 namespace SS.Core.Modules
 {
@@ -25,9 +26,6 @@ namespace SS.Core.Modules
 
         private int _dlKey;
 
-        private MapDownloadData _newsDownloadData = null;
-        private ReaderWriterLock _newsLock = new ReaderWriterLock();
-
         private byte[] _emergencyMap = new byte[]
         {
             0x2a, 0x74, 0x69, 0x6e, 0x79, 0x6d, 0x61, 0x70,
@@ -35,6 +33,15 @@ namespace SS.Core.Modules
             0x00, 0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x04,
             0x00, 0x00, 0x05, 0x00, 0x02
         };
+
+        private static class ZlibNativeMethods
+        {
+            [DllImport("zlib1.dll", EntryPoint = "compress", CallingConvention = CallingConvention.Cdecl)]
+            public static extern int Compress(byte[] dest, ref uint destLen, byte[] source, uint sourceLen);
+
+            [DllImport("zlib1.dll", EntryPoint = "crc32", CallingConvention = CallingConvention.Cdecl)]
+            public static extern uint Crc32(uint crc, byte[] buf, uint len);
+        }
 
         private class MapDownloadData
         {
@@ -102,6 +109,108 @@ namespace SS.Core.Modules
             }
         }
 
+        private class NewsManager : IDisposable
+        {
+            private string _newsFilename;
+            private byte[] _compressedNewsData; // includes packet header
+            private uint _newsChecksum;
+            private FileSystemWatcher _fileWatcher;
+            private ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
+
+            public NewsManager(string filename)
+            {
+                if (string.IsNullOrEmpty(filename))
+                    throw new ArgumentNullException("filename");
+
+                _newsFilename = filename;
+
+                _fileWatcher = new FileSystemWatcher(".", _newsFilename);
+                _fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
+                _fileWatcher.Changed += new FileSystemEventHandler(_fileWatcher_Changed);
+                _fileWatcher.EnableRaisingEvents = true;
+
+                processNewsFile();
+            }
+
+            private void _fileWatcher_Changed(object sender, FileSystemEventArgs e)
+            {
+                processNewsFile();
+            }
+
+            private void processNewsFile()
+            {
+                byte[] fileData = File.ReadAllBytes(_newsFilename);
+
+                // calculate the checksum
+                CRC32 crc32 = new CRC32();
+                uint checksum;
+                using (MemoryStream ms = new MemoryStream(fileData))
+                {
+                    checksum = crc32.GetCrc32(ms);
+                }
+
+                // compress the data
+                byte[] compressedData = new byte[(int)(1.0011 * fileData.Length + 35)];
+                uint destLen = (uint)compressedData.Length;
+                ZlibNativeMethods.Compress(compressedData, ref destLen, fileData, (uint)fileData.Length);
+                fileData = new byte[destLen + 17]; // 17 is the size of the header
+                fileData[0] = (byte)S2CPacketType.IncomingFile;
+                // intentionally leaving 16 bytes of 0 for the name
+                Array.Copy(compressedData, 0, fileData, 17, destLen);
+
+                // update the data members
+                _rwLock.EnterWriteLock();
+
+                try
+                {
+                    _compressedNewsData = fileData;
+                    _newsChecksum = checksum;
+                }
+                finally
+                {
+                    _rwLock.ExitWriteLock();
+                }
+            }
+
+            public bool TryGetNews(out byte[] data, out uint checksum)
+            {
+                _rwLock.EnterReadLock();
+
+                try
+                {
+                    if (_compressedNewsData != null)
+                    {
+                        data = _compressedNewsData;
+                        checksum = _newsChecksum;
+                        return true;
+                    }
+                }
+                finally
+                {
+                    _rwLock.ExitReadLock();
+                }
+
+                data = null;
+                checksum = 0;
+                return false;
+            }
+
+            #region IDisposable Members
+
+            public void Dispose()
+            {
+                _fileWatcher.Dispose();
+                _fileWatcher = null;
+            }
+
+            #endregion
+        }
+
+        /// <summary>
+        /// manages news.txt
+        /// </summary>
+        private NewsManager _newsManager;
+
         #region IModule Members
 
         public Type[] InterfaceDependencies
@@ -139,6 +248,12 @@ namespace SS.Core.Modules
 
             ArenaActionCallback.Register(_mm, arenaAction);
 
+            string newsFilename = _configManager.GetStr(_configManager.Global, "General", "NewsFile");
+            if (string.IsNullOrEmpty(newsFilename))
+                newsFilename = "news.txt";
+
+            _newsManager = new NewsManager(newsFilename);
+
             mm.RegisterInterface<IMapNewsDownload>(this);
             return true;
         }
@@ -146,6 +261,8 @@ namespace SS.Core.Modules
         public bool Unload(ModuleManager mm)
         {
             mm.UnregisterInterface<IMapNewsDownload>();
+
+            _newsManager.Dispose();
 
             _net.RemovePacket((int)Packets.C2SPacketType.UpdateRequest, packetUpdateRequest);
             _net.RemovePacket((int)Packets.C2SPacketType.MapRequest, packetMapNewsRequest);
@@ -217,7 +334,11 @@ namespace SS.Core.Modules
 
         public uint GetNewsChecksum()
         {
-            // TODO: 
+            byte[] data;
+            uint checksum;
+            if (_newsManager.TryGetNews(out data, out checksum))
+                return checksum;
+
             return 0;
         }
 
@@ -260,9 +381,6 @@ namespace SS.Core.Modules
                     data = compressMap(filename, true);
                 }
 
-                //string filename = @"maps\smallmap.lvl";
-                //data = compressMap(filename, true);
-
                 if (data == null)
                 {
                     _logManager.LogA(LogLevel.Warn, "MapNewsDownload", arena, "can't load level file, falling back to tinymap.lvl");
@@ -277,24 +395,24 @@ namespace SS.Core.Modules
                 dls.AddLast(data);
 
                 // now look for lvzs
-                //_mapData.EnumLVZFiles(arena, 
+                foreach(LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
+                {
+                    if (string.IsNullOrEmpty(lvzInfo.Filename))
+                        continue;
+
+                    data = compressMap(lvzInfo.Filename, false);
+                    if (data != null)
+                    {
+                        data.optional = lvzInfo.IsOptional;
+                        dls.AddLast(data);
+                    }
+                }
             }
             finally
             {
                 _arenaManager.UnholdArena(arena);
             }
         }
-
-        /*
-        private static class Zlib
-        {
-            [System.Runtime.InteropServices.DllImport("zlib.dll")]
-            public static extern int compress(byte[] dest, ref uint destLen, byte[] source, uint sourceLen);
-
-            [System.Runtime.InteropServices.DllImport("zlib.dll")]
-            public static extern uint crc32(uint crc, byte[] buf, uint len);
-        }
-        */
 
         private MapDownloadData compressMap(string filename, bool docomp)
         {
@@ -317,8 +435,8 @@ namespace SS.Core.Modules
                     inputStream.Position = 0;
 
                     int csize = (docomp) ?
-                        csize = (int)(1.0011 * inputStream.Length + 35) :
-                        csize = (int)inputStream.Length + 17;
+                        (int)(1.0011 * inputStream.Length + 35) :
+                        (int)inputStream.Length + 17;
 
                     mdd.cmpmap = new byte[csize];
 
@@ -328,20 +446,46 @@ namespace SS.Core.Modules
 
                     if (docomp)
                     {
-                        using (MemoryStream outputStream = new MemoryStream(mdd.cmpmap, 17, mdd.cmpmap.Length - 17))
-                        //using (MemoryStream outputStream = new MemoryStream())
-                        using (zlib.ZOutputStream outZStream = new zlib.ZOutputStream(outputStream, zlib.zlibConst.Z_DEFAULT_COMPRESSION))
+                        // using the zlib dll directly via pinvoke
+                        byte[] test = new byte[csize];
+                        byte[] src = File.ReadAllBytes(filename);
+                        uint testsize = (uint)csize;
+                        try
                         {
-                            byte[] buffer = new byte[4096];
-                            int len;
-                            while ((len = inputStream.Read(buffer, 0, buffer.Length)) > 0)
-                            {
-                                outZStream.Write(buffer, 0, len);
-                            }
-
-                            outZStream.Flush();
-                            //csize = (int)outZStream.TotalOut;
+                            int ret = ZlibNativeMethods.Compress(test, ref testsize, src, (uint)src.Length);
                         }
+                        catch (Exception ex)
+                        {
+                        }
+                        csize = (int)testsize + 17;
+                        mdd.cmpmap = new byte[csize];
+                        mdd.cmpmap[0] = (byte)S2CPacketType.MapData;
+                        Encoding.ASCII.GetBytes(mapname, 0, (mapname.Length <= 16) ? mapname.Length : 16, mdd.cmpmap, 1);
+                        Array.Copy(test, 0, mdd.cmpmap, 17, csize-17);
+                        
+                        
+                        /*
+                        // seems to compress, but i'm unable to figure out the resulting size...
+                        using (MemoryStream outputStream = new MemoryStream(mdd.cmpmap, 17, mdd.cmpmap.Length - 17))
+                        {
+                            //using (MemoryStream outputStream = new MemoryStream())
+                            using (zlib.ZOutputStream outZStream = new zlib.ZOutputStream(outputStream, zlib.zlibConst.Z_DEFAULT_COMPRESSION))
+                            {
+                                byte[] buffer = new byte[4096];
+                                int len;
+                                while ((len = inputStream.Read(buffer, 0, buffer.Length)) > 0)
+                                {
+                                    outZStream.Write(buffer, 0, len);
+                                }
+
+                                outZStream.Flush();
+                                //outZStream.Length; // always 0
+                                //csize = (int)outZStream.TotalOut + 17;
+                                //csize = (int)outputStream.Length + 17;   
+                                //outputStream.ToArray()
+                            }
+                        }
+                        */
                     }
                     else
                     {
@@ -385,6 +529,24 @@ namespace SS.Core.Modules
             }
 
             _logManager.LogP(LogLevel.Drivel, "MapNewsDownload", p, "UpdateRequest");
+
+            // TODO: implement file transfer module and use it here
+            IFileTransfer fileTransfer = _mm.GetInterface<IFileTransfer>();
+            if (fileTransfer != null)
+            {
+                try
+                {
+                    if (!fileTransfer.SendFile(p, "clients/update.exe", string.Empty, false))
+                    {
+                        _logManager.Log(LogLevel.Warn, "<MapNewsDownload> update request, but error setting up to be sent");
+                    }
+                }
+                finally
+                {
+                    _mm.ReleaseInterface<IFileTransfer>();
+                }
+            }
+
         }
 
         private void packetMapNewsRequest(Player p, byte[] pkt, int len)
@@ -395,8 +557,6 @@ namespace SS.Core.Modules
             if (pkt == null)
                 return;
 
-            bool wantOpt = p.Flags.WantAllLvz;
-            
             if (pkt[0] == (byte)C2SPacketType.MapRequest)
             {
                 if (len != 1 && len != 3)
@@ -413,6 +573,7 @@ namespace SS.Core.Modules
                 }
 
                 ushort lvznum = (len == 3) ? (ushort)(pkt[1] | pkt[2] << 8) : (ushort)0;
+                bool wantOpt = p.Flags.WantAllLvz;
 
                 MapDownloadData mdd = getMap(arena, lvznum, wantOpt);
 
@@ -432,12 +593,18 @@ namespace SS.Core.Modules
                 // and team directly, we need to go through the in-game procedures
                 if (p.IsStandard && (p.Ship != ShipType.Spec || p.Freq != arena.SpecFreq))
                 {
-                    //IGame game = _mm.GetInterface<IGame>();
-                    //if(game != null)
-                    //{
-                    //  game.SetFreqAndShip(p, ShipType.Spec, arena.SpecFreq);
-                    //  _mm.ReleaseInterface<IGame>();
-                    //}
+                    IGame game = _mm.GetInterface<IGame>();
+                    if (game != null)
+                    {
+                        try
+                        {
+                            game.SetFreqAndShip(p, ShipType.Spec, arena.SpecFreq);
+                        }
+                        finally
+                        {
+                            _mm.ReleaseInterface<IGame>();
+                        }
+                    }
                 }
             }
             else if (pkt[0] == (byte)C2SPacketType.NewsRequest)
@@ -448,7 +615,17 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                // TODO: 
+                byte[] compressedNewsData;
+                uint checksum;
+                if (_newsManager.TryGetNews(out compressedNewsData, out checksum))
+                {
+                    _net.SendSized<byte[]>(p, compressedNewsData, compressedNewsData.Length, getNews);
+                    _logManager.LogP(LogLevel.Drivel, "MapNewsDownload", p, "sending news.txt ({0} bytes)", compressedNewsData.Length);
+                }
+                else
+                {
+                    _logManager.Log(LogLevel.Warn, "<MapNewsDownload> news request, but compressed news doesn't exist");
+                }
             }
         }
 
@@ -473,33 +650,36 @@ namespace SS.Core.Modules
             return null;
         }
 
+        private void getNews(byte[] newsData, int offset, byte[] buf, int bufStartIndex, int bytesNeeded)
+        {
+            if (bytesNeeded == 0)
+            {
+                _logManager.Log(LogLevel.Drivel, "<mapnewsdl> finished news download");
+                return;
+            }
+
+            if (newsData != null)
+            {
+                Array.Copy(newsData, offset, buf, bufStartIndex, bytesNeeded);
+                return;
+            }
+
+            // getting to here is bad...
+            for (int x = 0; x < bytesNeeded; x++)
+            {
+                buf[offset + x] = 0;
+            }
+        }
+
         private void getData(DataLocator dl, int offset, byte[] buf, int bufStartIndex, int bytesNeeded)
         {
             if (bytesNeeded == 0)
             {
-                _logManager.Log(LogLevel.Drivel, "<mapnewsdl> finished map/news download (transfer {0})", dl);
+                _logManager.Log(LogLevel.Drivel, "<mapnewsdl> finished map/lvz download (transfer {0})", dl);
                 return;
             }
-            
-            if(dl.Arena == null)
-            {
-                // news
-                _newsLock.AcquireReaderLock(Timeout.Infinite);
 
-                try
-                {
-                    if ((_newsDownloadData != null) && (dl.Len == _newsDownloadData.cmplen))
-                    {
-                        Array.Copy(_newsDownloadData.cmpmap, offset, buf, bufStartIndex, bytesNeeded);
-                        return;
-                    }
-                }
-                finally
-                {
-                    _newsLock.ReleaseReaderLock();
-                }
-            }
-            else
+            if(dl.Arena != null)
             {
                 // map or lvz
                 MapDownloadData mdd = getMap(dl.Arena, dl.LvzNum, dl.WantOpt);

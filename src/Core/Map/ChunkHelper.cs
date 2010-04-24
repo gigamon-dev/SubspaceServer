@@ -6,6 +6,9 @@ using SS.Utilities;
 
 namespace SS.Core.Map
 {
+    /// <summary>
+    /// Helper methods used to read and process metadata chunk data.
+    /// </summary>
     public static class ChunkHelper
     {
         /// <summary>
@@ -14,9 +17,9 @@ namespace SS.Core.Map
         private const int MaxChunkSize = 128 * 1024;
 
         /// <summary>
-        /// to read raw metadata chunks
+        /// To read raw metadata chunks.
         /// </summary>
-        /// <param name="chunkLookup">place to store chunks that are read</param>
+        /// <param name="chunkLookup">Place to store chunks that are read.  Note: full chunk data is stored, including the header.</param>
         /// <param name="arraySegment">byte array to read chunks from</param>
         /// <returns>true if the entire chunk data was read, otherwise false</returns>
         public static bool ReadChunks(MultiDictionary<uint, ArraySegment<byte>> chunkLookup, ArraySegment<byte> source)

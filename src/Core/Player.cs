@@ -161,8 +161,10 @@ namespace SS.Core
         /// </summary>
         ArenaRespAndCBS, 
 
-        /** player is playing in an arena. typically the longest state */
-        /* transitions to: leaving_arena */
+        /// <summary>
+        /// player is playing in an arena. typically the longest state
+        /// transitions to: leaving_arena
+        /// </summary>
         Playing, 
 
         /// <summary>
@@ -519,11 +521,44 @@ namespace SS.Core
 
         internal void RemovePerPlayerData(int key)
         {
-            _playerExtraData.Remove(key);
+            object ppd;
+            if (_playerExtraData.TryGetValue(key, out ppd))
+            {
+                _playerExtraData.Remove(key);
+
+                IDisposable disposable = ppd as IDisposable;
+                if (disposable != null)
+                {
+                    try
+                    {
+                        disposable.Dispose();
+                    }
+                    catch
+                    {
+                        // ignore any exceptions
+                    }
+                }
+            }
         }
 
         internal void RemoveAllPerPlayerData()
         {
+            foreach (object ppd in _playerExtraData.Values)
+            {
+                IDisposable disposable = ppd as IDisposable;
+                if (disposable != null)
+                {
+                    try
+                    {
+                        disposable.Dispose();
+                    }
+                    catch
+                    {
+                        // ignore any exceptions
+                    }
+                }
+            }
+
             _playerExtraData.Clear();
         }
 

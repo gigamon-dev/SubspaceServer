@@ -62,7 +62,7 @@ namespace SS.Core.Map
             private set;
         }
 
-        public readonly MultiDictionary<uint, ArraySegment<byte>> Chunks = new MultiDictionary<uint, ArraySegment<byte>>();
+        private readonly MultiDictionary<uint, ArraySegment<byte>> _chunks = new MultiDictionary<uint, ArraySegment<byte>>();
 
         /// <summary>
         /// To get chunk data for the region.
@@ -74,12 +74,12 @@ namespace SS.Core.Map
         public IEnumerable<ArraySegment<byte>> ChunkData(uint chunkType)
         {
             IEnumerable<ArraySegment<byte>> matches;
-            if (!Chunks.TryGetValues(chunkType, out matches))
+            if (!_chunks.TryGetValues(chunkType, out matches))
                 yield break;
 
             foreach (ArraySegment<byte> chunkWithHeader in matches)
             {
-                yield return new ArraySegment<byte>(chunkWithHeader.Array, chunkWithHeader.Offset + 8, chunkWithHeader.Count - 8);
+                yield return new ArraySegment<byte>(chunkWithHeader.Array, chunkWithHeader.Offset + ChunkHeader.Length, chunkWithHeader.Count - ChunkHeader.Length);
             }
         }
 
@@ -127,12 +127,12 @@ namespace SS.Core.Map
 
         public MapRegion(ArraySegment<byte> regionChunkData)
         {
-            if (!ChunkHelper.ReadChunks(Chunks, regionChunkData))
+            if (!ChunkHelper.ReadChunks(_chunks, regionChunkData))
             {
                 Debug.WriteLine("warning: did not read all chunk data");
             }
 
-            ChunkHelper.ProcessChunks<MapRegion>(Chunks, processRegionChunk, this);
+            ChunkHelper.ProcessChunks<MapRegion>(_chunks, processRegionChunk, this);
         }
 
         /// <summary>

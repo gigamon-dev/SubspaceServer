@@ -13,6 +13,9 @@ using SS.Utilities;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// TODO: revisit this module, it is basically 95% a direct port from asss
+    /// </summary>
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
         private class ListenData
@@ -331,8 +334,6 @@ namespace SS.Core.Modules
             public ClientConnection(IClientConn i, IClientEncrypt enc)
                 : base(i, enc)
             {
-                this.i = i;
-                this.enc = enc;
             }
         }
 

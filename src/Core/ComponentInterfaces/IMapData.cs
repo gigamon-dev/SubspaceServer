@@ -7,6 +7,18 @@ using SS.Core.Map;
 
 namespace SS.Core.ComponentInterfaces
 {
+    public struct LvzFileInfo
+    {
+        public string Filename;
+        public bool IsOptional;
+
+        public LvzFileInfo(string filename, bool isOptional)
+        {
+            Filename = filename;
+            IsOptional = isOptional;
+        }
+    }
+
     public interface IMapData : IComponentInterface
     {
         /// <summary>
@@ -19,6 +31,10 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="mapname">null if you're looking for an lvl, or the name of an lvz file.</param>
         /// <returns>true if it could find a lvl or lvz file, buf will contain the result. false if it failed.</returns>
         string GetMapFilename(Arena arena, string mapname);
+
+        IEnumerable<ArraySegment<byte>> ChunkData(Arena arena, uint chunkType);
+
+        IEnumerable<LvzFileInfo> LvzFilenames(Arena arena);
 
         /// <summary>
         /// gets the named attribute for the arena's map.
@@ -44,6 +60,8 @@ namespace SS.Core.ComponentInterfaces
         MapTile? GetTile(Arena arena, MapCoordinate coord);
 
         bool FindEmptyTileNear(Arena arena, ref short x, ref short y);
+
+        bool FindEmptyTileInRegion(Arena arena, MapRegion region);
 
         /// <summary>
         /// Get the map checksum
@@ -76,5 +94,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="coord"></param>
         /// <returns></returns>
         IEnumerable<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
+
+        //RegionSet GetRegionSetAt(Arena arena, short x, short y);
+
+        //void DiffRegionSet(Arena arena, RegionSet oldSet, RegionSet newSet, out IEnumerable<MapRegion> enteredRegions, out IEnumerable<MapRegion> leftRegions);
     }
 }

@@ -112,26 +112,49 @@ namespace SS.Core
 
         public const int DEFAULT_SPEC_FREQ = 8025;
 
-        /** what state the arena is in. @see ARENA_DO_INIT, etc. */
+        /// <summary>
+        /// what state the arena is in. @see ARENA_DO_INIT, etc.
+        /// </summary>
 	    public ArenaState Status;
-	    /** the full name of the arena */
+	    
+        /// <summary>
+        /// the full name of the arena
+        /// </summary>
 	    public readonly string Name;
-	    /** the name of the arena, minus any trailing digits.
-	     * the basename is used in many places to allow easy sharing of
-	     * settings and things among copies of one basic arena. */
+
+	    /// <summary>
+	    /// the name of the arena, minus any trailing digits.
+        /// the basename is used in many places to allow easy sharing of
+        /// settings and things among copies of one basic arena.
+	    /// </summary>
         public readonly string BaseName;
-	    /** a handle to the main config file for this arena */
+
+	    /// <summary>
+        /// a handle to the main config file for this arena
+	    /// </summary>
 	    public ConfigHandle Cfg;
-	    /** the frequency for spectators in this arena.
-	     * this setting is so commonly used, it deserves a spot here. */
+
+        /// <summary>
+        /// the frequency for spectators in this arena.
+        /// this setting is so commonly used, it deserves a spot here.
+        /// </summary>
 	    public short SpecFreq;
-	    /** how many players are in ships in this arena.
-	     * call GetPopulationSummary to update this. */
+
+	    /// <summary>
+	    /// how many players are in ships in this arena.
+        /// call GetPopulationSummary to update this.
+	    /// </summary>
 	    public int Playing;
-	    /** how many players total are in this arena.
-	     * call GetPopulationSummary to update this. */
+
+	    /// <summary>
+	    /// how many players total are in this arena.
+        /// call GetPopulationSummary to update this.
+	    /// </summary>
 	    public int Total;
-	    /** space for private data associated with this arena */
+	    
+        /// <summary>
+        /// space for private data associated with this arena
+        /// </summary>
         Dictionary<int, object> _arenaExtraData = new Dictionary<int,object>();
 
         public Arena(ModuleManager mm, string name)
@@ -168,7 +191,24 @@ namespace SS.Core
 
         public void RemovePerArenaData(int key)
         {
-            _arenaExtraData.Remove(key);
+            object pad;
+            if (_arenaExtraData.TryGetValue(key, out pad))
+            {
+                _arenaExtraData.Remove(key);
+
+                IDisposable disposable = pad as IDisposable;
+                if (disposable != null)
+                {
+                    try
+                    {
+                        disposable.Dispose();
+                    }
+                    catch
+                    {
+                        // ignore any errors
+                    }
+                }
+            }
         }
 
         #region Overriden ComponentBroker Methods

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,7 +10,6 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Utilities;
-using System.Drawing;
 
 namespace SS.Core.Modules
 {
@@ -108,6 +108,34 @@ namespace SS.Core.Modules
             return null;
         }
 
+        IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            string lvz = _configManager.GetStr(arena.Cfg, "General", "LevelFiles");
+            if(string.IsNullOrEmpty(lvz))
+                lvz = _configManager.GetStr(arena.Cfg, "Misc", "LevelFiles");
+
+            if(string.IsNullOrEmpty(lvz))
+                yield break;
+
+            int count = 0;
+            string[] lvzNameArray = lvz.Split(",: ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            foreach (string lvzName in lvzNameArray)
+            {
+                string real = lvzName[0] == '+' ? lvzName.Substring(1) : lvzName;
+                string fname = getMapFilename(arena, real);
+                if (string.IsNullOrEmpty(fname))
+                    continue;
+
+                if (++count > Constants.MaxLvzFiles) // asss counts all filenames listed, instead we cound only the files we can actually find
+                    break;
+
+                yield return new LvzFileInfo(fname, (lvzName[0] == '+'));
+            }
+        }
+
         string IMapData.GetAttribute(Arena arena, string key)
         {
             if (arena == null)
@@ -122,6 +150,18 @@ namespace SS.Core.Modules
                 return attributeValue;
             else
                 return null;
+        }
+
+        IEnumerable<ArraySegment<byte>> IMapData.ChunkData(Arena arena, uint chunkType)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
+
+            return lvl.ChunkData(chunkType);
         }
 
         int IMapData.GetFlagCount(Arena arena)
@@ -172,6 +212,23 @@ namespace SS.Core.Modules
             MapTile tile;
             if (!lvl.TryGetTile(new MapCoordinate(x, y), out tile))
                 return true;
+
+            // TODO
+
+            return false;
+        }
+
+        bool IMapData.FindEmptyTileInRegion(Arena arena, MapRegion region)
+        {
+            if (arena == null)
+                throw new ArgumentNullException("arena");
+
+            if (region == null)
+                throw new ArgumentNullException("region");
+
+            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
+            if (lvl == null)
+                throw new Exception("missing lvl data");
 
             // TODO
 

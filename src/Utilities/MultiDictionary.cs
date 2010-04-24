@@ -366,9 +366,20 @@ namespace SS.Utilities
             }
         }
 
+        /// <summary>
+        /// The number of values in the collection.
+        /// </summary>
         public int Count
         {
             get { return _count; }
+        }
+
+        /// <summary>
+        /// The number of buckets in the collection.
+        /// </summary>
+        public int BucketCount
+        {
+            get { return _dictionary.Count; }
         }
 
         bool ICollection<KeyValuePair<TKey, TValue>>.IsReadOnly

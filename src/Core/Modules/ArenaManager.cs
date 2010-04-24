@@ -666,7 +666,6 @@ namespace SS.Core.Modules
 
         void IArenaManagerCore.FreeArenaData(int key)
         {
-            
             Lock();
             try
             {
@@ -679,7 +678,6 @@ namespace SS.Core.Modules
             {
                 Unlock();
             }
-
 
             _perArenaDataLock.AcquireWriterLock(Timeout.Infinite);
             try
@@ -969,6 +967,7 @@ namespace SS.Core.Modules
                                 {
                                     foreach (KeyValuePair<int, Type> kvp in _perArenaDataKeys)
                                     {
+                                        arena.RemovePerArenaData(kvp.Key);
                                         arena[kvp.Key] = Activator.CreateInstance(kvp.Value);
                                     }
                                 }

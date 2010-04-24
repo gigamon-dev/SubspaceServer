@@ -31,6 +31,8 @@ namespace SS.Core
 
         public const int MaxPacket = 512;
 
+        public const int MaxLvzFiles = 16;
+
         /// <summary>
         /// maximum size of a "big packet" allowed to recieve
         /// </summary>
@@ -39,7 +41,7 @@ namespace SS.Core
 
         /// <summary>
         /// how many bytes to 'chunk' data into when sending "big packets"
-        /// (this includes sized send data (eg, map/news/lvz downloads)
+        /// (this includes sized send data (eg, map/news/lvz downloads))
         /// </summary>
         public const int ChunkSize = 480;
 
