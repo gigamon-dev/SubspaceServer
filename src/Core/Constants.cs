@@ -16,11 +16,15 @@ namespace SS.Core
 
         /// <summary>
         /// the search paths for lvl files (colon delimited with placeholders)
+        /// %b = base arena name (no trailing number)
+        /// %m = map file name
         /// </summary>
         public const string CFG_LVL_SEARCH_PATH = "arenas/%b/%m:maps/%m:%m:arenas/%b/%b.lvl:maps/%b.lvl:arenas/(default)/%m";
 
         /// <summary>
         /// the search paths for lvz files (colon delimited with placeholders)
+        /// %b = base arena name (no trailing number)
+        /// %m = lvz file name
         /// </summary>
         public const string CFG_LVZ_SEARCH_PATH = "arenas/%b/%m:maps/%m:%m:arenas/(default)/%m";
 

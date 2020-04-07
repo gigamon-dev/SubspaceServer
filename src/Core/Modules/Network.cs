@@ -18,6 +18,17 @@ namespace SS.Core.Modules
     /// </summary>
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
+        /// <summary>
+        /// Information about a pair of listening sockets.
+        /// Typically, a "Zone" is represented by a single ListenData pair.
+        /// However, the server can be set up listen on multiple ListenData pairs, 
+        /// with each pair representing a particular "Arena" within the "Zone".
+        /// 
+        /// The <see cref="GameSocket"/> is the UDP socket used to send and recieve game data over the "subspace" game protocol.
+        /// 
+        /// The <see cref="PingSocket"/> is the UDP socket used to check if a server is up and tell how many players there are.
+        /// The port of the ping socket is the game socket + 1.
+        /// </summary>
         private class ListenData
         {
             public readonly Socket GameSocket;
@@ -43,6 +54,12 @@ namespace SS.Core.Modules
 
             public ListenData(Socket gameSocket, Socket pingSocket)
             {
+                if (gameSocket == null)
+                    throw new ArgumentNullException("gameSocket");
+
+                if (pingSocket == null)
+                    throw new ArgumentNullException("pingSocket");
+
                 GameSocket = gameSocket;
                 PingSocket = pingSocket;
             }
@@ -371,7 +388,7 @@ namespace SS.Core.Modules
             public int pingrefreshtime;
         }
 
-        private Config _config = new Config();
+        private readonly Config _config = new Config();
 
         /// <summary>
         /// per player data key to ConnData
@@ -619,7 +636,7 @@ namespace SS.Core.Modules
 
         private bool initializeSockets()
         {
-            for(int x=0 ; x<10 ; x++)
+            for (int x = 0; x < 10; x++)
             {
                 ListenData listenData = createListenDataSockets(x);
                 if (listenData == null)
@@ -659,7 +676,7 @@ namespace SS.Core.Modules
 
             foreach (ListenData ld in _listenDataList)
             {
-                if(ld.GameSocket != null)
+                if (ld.GameSocket != null)
                 {
                     socketList.Add(ld.GameSocket);
                     gameEndpointLookup.Add(ld.GameSocket.LocalEndPoint, ld);

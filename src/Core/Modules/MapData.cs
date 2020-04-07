@@ -129,7 +129,7 @@ namespace SS.Core.Modules
                 if (string.IsNullOrEmpty(fname))
                     continue;
 
-                if (++count > Constants.MaxLvzFiles) // asss counts all filenames listed, instead we cound only the files we can actually find
+                if (++count > Constants.MaxLvzFiles) // asss counts all filenames listed, instead we count only the files we can actually find
                     break;
 
                 yield return new LvzFileInfo(fname, (lvzName[0] == '+'));

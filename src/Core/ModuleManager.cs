@@ -24,6 +24,12 @@ namespace SS.Core
         //void Detach(Arena arena);
     }
 
+    /// <summary>
+    /// A "Module" can implement this interface if it needs to do work 
+    /// after being loaded (<see cref="PostLoad(ModuleManager)"/>) 
+    /// or 
+    /// before being unloaded (<see cref="PreUnload(ModuleManager)"/>).
+    /// </summary>
     public interface IModuleLoaderAware
     {
         bool PostLoad(ModuleManager mm);
@@ -62,7 +68,7 @@ namespace SS.Core
     /// Note to self: I am thinking that dependencies are actually on the interfaces and callbacks, not directly on other modules?
     /// But with interfaces and callbacks, some are somewhat static (registered on load) and some are somewhat dynamic (registered later on)
     /// 
-    /// Another issue I will have to make a decision os is if the ModuleManager should know anything about the Arena class.  That is, 
+    /// Another issue I will have to make a decision on is if the ModuleManager should know anything about the Arena class.  That is, 
     /// whether an Arena object contains the methods to register interfaces and callbacks to itself.
     /// </summary>
     public sealed class ModuleManager : ComponentBroker

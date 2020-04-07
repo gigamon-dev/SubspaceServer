@@ -5,7 +5,7 @@ using System.Text;
 namespace SS.Core
 {
     /// <summary>
-    /// modules that are capable of attaching to a module implement this interface
+    /// Modules that are capable of attaching to an arena implement this interface.
     /// </summary>
     public interface IArenaAttachableModule
     {

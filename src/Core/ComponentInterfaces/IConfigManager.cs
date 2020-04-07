@@ -15,7 +15,7 @@ namespace SS.Core.ComponentInterfaces
     /// but this can be customized with the search path.
     /// 
     /// the main global configuration file is maintained internally to this
-    /// moudule and you don't have to open or close it. just use GLOBAL as
+    /// module and you don't have to open or close it. just use GLOBAL as
     /// your ConfigHandle. arena configuration files are also maintained for
     /// you as arena->cfg. so typically you will only need to call GetStr and
     /// GetInt.
