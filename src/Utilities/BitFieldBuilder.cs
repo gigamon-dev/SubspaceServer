@@ -23,7 +23,7 @@ namespace SS.Utilities
             if(numBits <=0)
                 throw new ArgumentOutOfRangeException("numBits");
 
-            if((_nextBit + numBits) > 32)
+            if((_nextBit + numBits) > _totalBits)
                 throw new ArgumentOutOfRangeException("not enough space left in the BitField");
 
             try
