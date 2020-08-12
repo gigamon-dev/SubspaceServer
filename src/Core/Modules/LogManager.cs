@@ -159,7 +159,11 @@ namespace SS.Core.Modules
                 {
                     int endIndex = line.IndexOf('>', startIndex + 1);
                     if (endIndex != -1)
-                        origin = line.Substring(startIndex + 1, endIndex - startIndex);
+                    {
+                        int originLength = endIndex - startIndex - 1;
+                        if (originLength > 0)
+                            origin = line.Substring(startIndex + 1, originLength);
+                    }
                 }
 
                 if (string.IsNullOrEmpty(origin))
