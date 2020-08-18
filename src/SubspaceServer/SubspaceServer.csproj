@@ -155,9 +155,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <None Include="zlib1.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <Content Include="Zone\clients\continuum.exe" />
     <Content Include="Zone\doc\extended-lvl-format.txt" />
     <Content Include="Zone\doc\new-biller-prot.txt" />

@@ -10,6 +10,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Core.ComponentCallbacks;
 using SS.Core.Packets;
 using SS.Utilities;
+using Ionic.Zlib;
 
 namespace SS.Core.Modules
 {
@@ -26,6 +27,12 @@ namespace SS.Core.Modules
 
         private int _dlKey;
 
+        /// <summary>
+        /// Map that's used if the configured one cannot be read.
+        /// </summary>
+        /// <remarks>
+        /// This includes the header (0x2A, with filename "tinymap.lvl") and data (last 12 bytes).
+        /// </remarks>
         private byte[] _emergencyMap = new byte[]
         {
             0x2a, 0x74, 0x69, 0x6e, 0x79, 0x6d, 0x61, 0x70,
@@ -33,15 +40,6 @@ namespace SS.Core.Modules
             0x00, 0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x04,
             0x00, 0x00, 0x05, 0x00, 0x02
         };
-
-        private static class ZlibNativeMethods
-        {
-            [DllImport("zlib1.dll", EntryPoint = "compress", CallingConvention = CallingConvention.Cdecl)]
-            public static extern int Compress(byte[] dest, ref uint destLen, byte[] source, uint sourceLen);
-
-            [DllImport("zlib1.dll", EntryPoint = "crc32", CallingConvention = CallingConvention.Cdecl)]
-            public static extern uint Crc32(uint crc, byte[] buf, uint len);
-        }
 
         private class MapDownloadData
         {
@@ -126,7 +124,7 @@ namespace SS.Core.Modules
 
                 _fileWatcher = new FileSystemWatcher(".", _newsFilename);
                 _fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
-                _fileWatcher.Changed += new FileSystemEventHandler(_fileWatcher_Changed);
+                _fileWatcher.Changed += _fileWatcher_Changed;
                 _fileWatcher.EnableRaisingEvents = true;
 
                 processNewsFile();
@@ -139,24 +137,37 @@ namespace SS.Core.Modules
 
             private void processNewsFile()
             {
-                byte[] fileData = File.ReadAllBytes(_newsFilename);
-
-                // calculate the checksum
-                CRC32 crc32 = new CRC32();
                 uint checksum;
-                using (MemoryStream ms = new MemoryStream(fileData))
+                byte[] compressedData;
+
+                using(FileStream newsStream = File.OpenRead(_newsFilename))
                 {
-                    checksum = crc32.GetCrc32(ms);
+                    // calculate the checksum
+                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                    checksum = (uint)crc32.GetCrc32(newsStream);
+
+                    newsStream.Position = 0;
+
+                    // compress using zlib
+                    using (MemoryStream compressedStream = new MemoryStream())
+                    {
+                        using (ZlibStream zlibStream = new ZlibStream(
+                            compressedStream,
+                            CompressionMode.Compress,
+                            CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                        {
+                            newsStream.CopyTo(zlibStream);
+                        }
+
+                        compressedData = compressedStream.ToArray();
+                    }
                 }
 
-                // compress the data
-                byte[] compressedData = new byte[(int)(1.0011 * fileData.Length + 35)];
-                uint destLen = (uint)compressedData.Length;
-                ZlibNativeMethods.Compress(compressedData, ref destLen, fileData, (uint)fileData.Length);
-                fileData = new byte[destLen + 17]; // 17 is the size of the header
+                // prepare the file packet
+                byte[] fileData = new byte[17 + compressedData.Length]; // 17 is the size of the header
                 fileData[0] = (byte)S2CPacketType.IncomingFile;
                 // intentionally leaving 16 bytes of 0 for the name
-                Array.Copy(compressedData, 0, fileData, 17, destLen);
+                Array.Copy(compressedData, 0, fileData, 17, compressedData.Length);
 
                 // update the data members
                 _rwLock.EnterWriteLock();
@@ -199,6 +210,7 @@ namespace SS.Core.Modules
 
             public void Dispose()
             {
+                _fileWatcher.Changed -= _fileWatcher_Changed;
                 _fileWatcher.Dispose();
                 _fileWatcher = null;
             }
@@ -422,91 +434,63 @@ namespace SS.Core.Modules
 
                 string mapname = Path.GetFileName(filename);
                 if (mapname.Length > 20)
-                    mapname = mapname.Substring(0, 20);
+                    mapname = mapname.Substring(0, 20); // TODO: ASSS uses 20 as the max in MapDownloadData, but MapFilenamePacket has a limit of 16?
 
                 mdd.filename = mapname;
 
-                using (FileStream inputStream = new FileStream(filename, FileMode.Open, FileAccess.Read))
+                byte[] mapData;
+
+                using (FileStream inputStream = File.OpenRead(filename))
                 {
-                    CRC32 crc32 = new CRC32();
-
-                    mdd.checksum = crc32.GetCrc32(inputStream);
                     mdd.uncmplen = (uint)inputStream.Length;
+
+                    // calculate CRC
+                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                    mdd.checksum = (uint)crc32.GetCrc32(inputStream);
+
                     inputStream.Position = 0;
-
-                    int csize = (docomp) ?
-                        (int)(1.0011 * inputStream.Length + 35) :
-                        (int)inputStream.Length + 17;
-
-                    mdd.cmpmap = new byte[csize];
-
-                    // set up the packet header
-                    mdd.cmpmap[0] = (byte)S2CPacketType.MapData;
-                    Encoding.ASCII.GetBytes(mapname, 0, (mapname.Length <= 16) ? mapname.Length : 16, mdd.cmpmap, 1);
 
                     if (docomp)
                     {
-                        // using the zlib dll directly via pinvoke
-                        byte[] test = new byte[csize];
-                        byte[] src = File.ReadAllBytes(filename);
-                        uint testsize = (uint)csize;
-                        try
+                        // compress using zlib
+                        using (MemoryStream compressedStream = new MemoryStream())
                         {
-                            int ret = ZlibNativeMethods.Compress(test, ref testsize, src, (uint)src.Length);
-                        }
-                        catch (Exception ex)
-                        {
-                        }
-                        csize = (int)testsize + 17;
-                        mdd.cmpmap = new byte[csize];
-                        mdd.cmpmap[0] = (byte)S2CPacketType.MapData;
-                        Encoding.ASCII.GetBytes(mapname, 0, (mapname.Length <= 16) ? mapname.Length : 16, mdd.cmpmap, 1);
-                        Array.Copy(test, 0, mdd.cmpmap, 17, csize-17);
-                        
-                        
-                        /*
-                        // seems to compress, but i'm unable to figure out the resulting size...
-                        using (MemoryStream outputStream = new MemoryStream(mdd.cmpmap, 17, mdd.cmpmap.Length - 17))
-                        {
-                            //using (MemoryStream outputStream = new MemoryStream())
-                            using (zlib.ZOutputStream outZStream = new zlib.ZOutputStream(outputStream, zlib.zlibConst.Z_DEFAULT_COMPRESSION))
+                            using (ZlibStream zlibStream = new ZlibStream(
+                                compressedStream,
+                                CompressionMode.Compress,
+                                CompressionLevel.Default))
                             {
-                                byte[] buffer = new byte[4096];
-                                int len;
-                                while ((len = inputStream.Read(buffer, 0, buffer.Length)) > 0)
-                                {
-                                    outZStream.Write(buffer, 0, len);
-                                }
-
-                                outZStream.Flush();
-                                //outZStream.Length; // always 0
-                                //csize = (int)outZStream.TotalOut + 17;
-                                //csize = (int)outputStream.Length + 17;   
-                                //outputStream.ToArray()
+                                inputStream.CopyTo(zlibStream);
                             }
+
+                            mapData = compressedStream.ToArray();
                         }
-                        */
                     }
                     else
                     {
-                        using (MemoryStream outputStream = new MemoryStream(mdd.cmpmap, 17, mdd.cmpmap.Length - 17))
+                        // read data into a byte array
+                        using (MemoryStream ms = new MemoryStream((int)inputStream.Length))
                         {
-                            byte[] buffer = new byte[4096];
-                            int len;
-                            while ((len = inputStream.Read(buffer, 0, buffer.Length)) > 0)
-                            {
-                                outputStream.Write(buffer, 0, len);
-                            }
+                            inputStream.CopyTo(ms);
+                            mapData = ms.ToArray();
                         }
                     }
-
-                    mdd.cmplen = (uint)csize;
-
-                    if (csize > 256 * 1024)
-                        _logManager.Log(LogLevel.Warn, "<MapNewsDownload> compressed map/lvz is bigger than 256k: {0}", filename);
-
-                    return mdd;
                 }
+
+                mdd.cmpmap = new byte[17 + mapData.Length];
+
+                // set up the packet header
+                mdd.cmpmap[0] = (byte)S2CPacketType.MapData;
+                Encoding.ASCII.GetBytes(mapname, 0, (mapname.Length <= 16) ? mapname.Length : 16, mdd.cmpmap, 1);
+
+                // and the data
+                Array.Copy(mapData, 0, mdd.cmpmap, 17, mapData.Length);
+                mdd.cmplen = (uint)mdd.cmpmap.Length;
+
+                if (mdd.cmpmap.Length > 256 * 1024)
+                    _logManager.Log(LogLevel.Warn, "<MapNewsDownload> compressed map/lvz is bigger than 256k: {0}", filename);
+
+                return mdd;
             }
             catch
             {

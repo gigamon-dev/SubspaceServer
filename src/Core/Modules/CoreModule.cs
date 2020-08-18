@@ -77,8 +77,8 @@ namespace SS.Core.Modules
             {
                 using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
                 {
-                    CRC32 crc32 = new CRC32();
-                    return crc32.GetCrc32(fs);
+                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                    return (uint)crc32.GetCrc32(fs);
                 }
             }
             catch (Exception ex)
