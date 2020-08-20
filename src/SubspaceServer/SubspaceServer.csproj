@@ -156,11 +156,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Zone\clients\continuum.exe" />
-    <Content Include="Zone\doc\extended-lvl-format.txt" />
-    <Content Include="Zone\doc\new-biller-prot.txt" />
-    <Content Include="Zone\doc\ping.txt" />
-    <Content Include="Zone\doc\simple-chat.txt" />
-    <Content Include="Zone\doc\tutorial.txt" />
     <Content Include="Zone\news.txt" />
   </ItemGroup>
   <ItemGroup>
