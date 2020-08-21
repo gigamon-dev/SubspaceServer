@@ -171,12 +171,12 @@ namespace SS.Core
         #region Callback Methods
 
         /// <summary>
-        /// to protect the _callbackLookup & the delegates that it contains
-        /// read lock when doing callbacks, 
-        /// write lock when registering/unregistering with a callback
+        /// Protects access to the <see cref="_callbackLookup"/>.
+        /// Read lock to lookup callbacks, 
+        /// write lock when registering/unregistering a callback
         /// </summary>
-        private ReaderWriterLock _callbackRwLock = new ReaderWriterLock();
-        private Dictionary<string, Delegate> _callbackLookup = new Dictionary<string, Delegate>();
+        private ReaderWriterLockSlim _callbackRwLock = new ReaderWriterLockSlim();
+        private Dictionary<string, Delegate> _callbackLookup = new Dictionary<string, Delegate>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// it is recommended to use generic RegisterCallback methods instead, keeping this exposed just in case it's needed
@@ -184,7 +184,7 @@ namespace SS.Core
         /// <typeparam name="TDelegate"></typeparam>
         /// <param name="callbackIdentifier"></param>
         /// <param name="handler"></param>
-        public void RegisterRawCallback<TDelegate>(string callbackIdentifier, TDelegate handler) where TDelegate : class
+        public void RegisterCallback(string callbackIdentifier, Delegate handler)
         {
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
@@ -192,28 +192,24 @@ namespace SS.Core
             if (handler == null)
                 throw new ArgumentNullException("handler");
 
-            Delegate dToAdd = handler as Delegate;
-            if (dToAdd == null)
-                throw new ArgumentException("must be a Delegate", "handler");
-
             Delegate d;
-
-            _callbackRwLock.AcquireWriterLock(Timeout.Infinite);
+            
+            _callbackRwLock.EnterWriteLock();
 
             try
             {
                 if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
                 {
-                    _callbackLookup.Add(callbackIdentifier, dToAdd);
+                    _callbackLookup.Add(callbackIdentifier, handler);
                 }
                 else
                 {
-                    _callbackLookup[callbackIdentifier] = Delegate.Combine(d, dToAdd);
+                    _callbackLookup[callbackIdentifier] = Delegate.Combine(d, handler);
                 }
             }
             finally
             {
-                _callbackRwLock.ReleaseWriterLock();
+                _callbackRwLock.ExitWriteLock();
             }
         }
 
@@ -232,7 +228,7 @@ namespace SS.Core
 
             Delegate d;
 
-            _callbackRwLock.AcquireWriterLock(Timeout.Infinite);
+            _callbackRwLock.EnterWriteLock();
 
             try
             {
@@ -251,135 +247,111 @@ namespace SS.Core
             }
             finally
             {
-                _callbackRwLock.ReleaseWriterLock();
+                _callbackRwLock.ExitWriteLock();
             }
         }
 
         /// <summary>
-        /// To invoke all of the registered callbacks
+        /// Gets a callback by ID.
         /// </summary>
-        /// <param name="callbackIdentifier">unique identifier of the callback</param>
-        /// <param name="args">arguments to pass (be aware that value types are boxed)</param>
-        public virtual void DoCallbacks(string callbackIdentifier, params object[] args)
+        /// <typeparam name="TDelegate">The type of delegate to get.</typeparam>
+        /// <param name="callbackIdentifier">The unique identifier of the callback to get.</param>
+        /// <param name="callbacks">When this method returns, contains the delegate associated with the <paramref name="callbackIdentifier"/>, if found and the associated delegate type matched.  Otherwise, returns null.</param>
+        /// <returns><see cref="true"/> if the there was a callback associated to the <paramref name="callbackIdentifier"/>.  Otherwise <see cref="false"/>.</returns>
+        protected virtual bool LookupCallback<TDelegate>(string callbackIdentifier, out TDelegate callbacks) where TDelegate : Delegate
         {
-            if (callbackIdentifier == null) // allowing empty string
-                throw new ArgumentNullException("callbackIdentifier");
-
-            Delegate d;
-
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            _callbackRwLock.EnterReadLock();
 
             try
             {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
+                if (!_callbackLookup.TryGetValue(callbackIdentifier, out Delegate d))
                 {
-#if DEBUG
-                    Console.WriteLine("attempt to invoke a callback that has no handlers [{0}]", callbackIdentifier);
-#endif
-                    return;
+                    callbacks = null;
+                    return false;
+                    
                 }
 
-                d.DynamicInvoke(args);
+                callbacks = d as TDelegate;
+                return true;
             }
             finally
             {
-                _callbackRwLock.ReleaseReaderLock();
+                _callbackRwLock.ExitReadLock();
             }
         }
-        /*
-                /// <summary>
-                /// Retrieves a callback by ID
-                /// </summary>
-                /// <typeparam name="TDelegate">the type of delegate looking for</typeparam>
-                /// <param name="callbackIdentifier">unique identifier of the callback</param>
-                /// <returns>the multicast delegate, null if not found or type does not match</returns>
-                protected virtual TDelegate LookupCallback<TDelegate>(string callbackIdentifier) where TDelegate : class
-                {
-                    Delegate d;
 
-                    lock (_callbackLockObj)
-                    {
-                        if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                        {
-                            return null;
-                        }
-                    }
-
-                    return d as TDelegate;
-                }
-        */
         #endregion
 
         #region Generic Callback Methods
 
         public void RegisterCallback<T1>(string callbackIdentifier, ComponentCallbackDelegate<T1> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void RegisterCallback<T1, T2>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1, T2>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void RegisterCallback<T1, T2, T3>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1, T2, T3>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void RegisterCallback<T1, T2, T3, T4>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1, T2, T3, T4>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void RegisterCallback<T1, T2, T3, T4, T5>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4, T5> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1, T2, T3, T4, T5>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void RegisterCallback<T1, T2, T3, T4, T5, T6>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void RegisterCallback<T1, T2, T3, T4, T5, T6, T7>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7> handler)
         {
-            RegisterRawCallback<ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7>>(callbackIdentifier, handler);
+            RegisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1>(string callbackIdentifier, ComponentCallbackDelegate<T1> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1, T2>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1, T2, T3>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1, T2, T3, T4>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1, T2, T3, T4, T5>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4, T5> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1, T2, T3, T4, T5, T6>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public void UnRegisterCallback<T1, T2, T3, T4, T5, T6, T7>(string callbackIdentifier, ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7> handler)
         {
-            UnregisterCallback(callbackIdentifier, handler);
+            UnregisterCallback(callbackIdentifier, (Delegate)handler);
         }
 
         public virtual void DoCallback<T1>(string callbackIdentifier, T1 t1)
@@ -387,27 +359,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1>>(callbackIdentifier, out ComponentCallbackDelegate<T1> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
 
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1> ccd = d as ComponentCallbackDelegate<T1>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            callbacks(t1);
         }
 
         public virtual void DoCallback<T1, T2>(string callbackIdentifier, T1 t1, T2 t2)
@@ -415,27 +373,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1, T2>>(callbackIdentifier, out ComponentCallbackDelegate<T1, T2> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
 
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1, T2> ccd = d as ComponentCallbackDelegate<T1, T2>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1, t2);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            callbacks(t1, t2);
         }
 
         public virtual void DoCallback<T1, T2, T3>(string callbackIdentifier, T1 t1, T2 t2, T3 t3)
@@ -443,27 +387,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1, T2, T3>>(callbackIdentifier, out ComponentCallbackDelegate<T1, T2, T3> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
 
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1, T2, T3> ccd = d as ComponentCallbackDelegate<T1, T2, T3>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1, t2, t3);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            callbacks(t1, t2, t3);
         }
 
         public virtual void DoCallback<T1, T2, T3, T4>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4)
@@ -471,27 +401,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1, T2, T3, T4>>(callbackIdentifier, out ComponentCallbackDelegate<T1, T2, T3, T4> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
-
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1, T2, T3, T4> ccd = d as ComponentCallbackDelegate<T1, T2, T3, T4>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1, t2, t3, t4);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
+            
+            callbacks(t1, t2, t3, t4);
         }
 
         public virtual void DoCallback<T1, T2, T3, T4, T5>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5)
@@ -499,27 +415,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1, T2, T3, T4, T5>>(callbackIdentifier, out ComponentCallbackDelegate<T1, T2, T3, T4, T5> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
 
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1, T2, T3, T4, T5> ccd = d as ComponentCallbackDelegate<T1, T2, T3, T4, T5>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1, t2, t3, t4, t5);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            callbacks(t1, t2, t3, t4, t5);
         }
 
         public virtual void DoCallback<T1, T2, T3, T4, T5, T6>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6)
@@ -527,27 +429,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6>>(callbackIdentifier, out ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
 
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6> ccd = d as ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1, t2, t3, t4, t5, t6);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            callbacks(t1, t2, t3, t4, t5, t6);
         }
 
         public virtual void DoCallback<T1, T2, T3, T4, T5, T6, T7>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6, T7 t7)
@@ -555,27 +443,13 @@ namespace SS.Core
             if (callbackIdentifier == null) // allowing empty string
                 throw new ArgumentNullException("callbackIdentifier");
 
-            Delegate d;
+            if (!LookupCallback<ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7>>(callbackIdentifier, out ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7> callbacks))
+                return;
 
-            _callbackRwLock.AcquireReaderLock(Timeout.Infinite);
+            if (callbacks == null)
+                throw new Exception("Callbacks found, but delegate type did not match.");
 
-            try
-            {
-                if (_callbackLookup.TryGetValue(callbackIdentifier, out d) == false)
-                {
-                    return;
-                }
-
-                ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7> ccd = d as ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7>;
-                if (ccd == null)
-                    throw new Exception("callback delegate type does not match");
-
-                ccd(t1, t2, t3, t4, t5, t6, t7);
-            }
-            finally
-            {
-                _callbackRwLock.ReleaseReaderLock();
-            }
+            callbacks(t1, t2, t3, t4, t5, t6, t7);
         }
 
         #endregion

@@ -15,7 +15,7 @@ namespace SS.Core.Modules
         private IChat _chat;
         private ICommandManager _commandManager;
         //private ILogManager _logManager;
-        //private ICapabilityManager _capabilityManager;
+        private ICapabilityManager _capabilityManager;
         //private IConfigManager _configManager;
 
         private DateTime _startedAt;
@@ -28,7 +28,8 @@ namespace SS.Core.Modules
                 return new Type[] {
                     typeof(IPlayerData), 
                     typeof(IChat), 
-                    typeof(ICommandManager)
+                    typeof(ICommandManager),
+                    typeof(ICapabilityManager)
                 };
             }
         }
@@ -40,6 +41,7 @@ namespace SS.Core.Modules
             _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
             _chat = interfaceDependencies[typeof(IChat)] as IChat;
             _commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
+            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
 
             _startedAt = DateTime.Now;
 
@@ -75,10 +77,28 @@ Displays version information about the server. It might also print out some info
 
         private void command_version(string command, string parameters, Player p, ITarget target)
         {
-            Assembly assembly = Assembly.GetEntryAssembly();
+            _chat.SendMessage(p, $"Subspace Server .NET");
 
-            _chat.SendMessage(p, "Subspace Server .NET {0}, .NET Framework {1}", assembly.GetName().Version, Environment.Version);
-            _chat.SendMessage(p, "running on {0}, host:{1}", Environment.OSVersion, System.Net.Dns.GetHostName());
+            if (_capabilityManager.HasCapability(p, Constants.Capabilities.IsStaff))
+            {
+                _chat.SendMessage(p, $"{System.Runtime.InteropServices.RuntimeInformation.OSDescription} " +
+                    $"{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture} " +
+                    $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (!parameters.Contains("v")
+                        && (assembly.FullName.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
+                            || assembly.FullName.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase)
+                            || assembly.FullName.StartsWith("netstandard,", StringComparison.OrdinalIgnoreCase)
+                        ))
+                    {
+                        continue;
+                    }
+
+                    _chat.SendMessage(p, $"{assembly.FullName}");
+                }
+            }
         }
 
         private void command_sheep(string command, string parameters, Player p, ITarget target)

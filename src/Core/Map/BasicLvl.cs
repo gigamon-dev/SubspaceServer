@@ -125,6 +125,7 @@ namespace SS.Core.Map
             _flagCoordinateList.Sort();
         }
 
+#if  NETFRAMEWORK || NETCOREAPP3_0
         /// <summary>
         /// Get a bitmap object representing the map tiles.
         /// Note: remember to Dispose() the bitmap.
@@ -139,5 +140,6 @@ namespace SS.Core.Map
             }
             return bitmap;
         }
+#endif
     }
 }

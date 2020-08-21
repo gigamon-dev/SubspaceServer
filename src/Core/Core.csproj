@@ -1,220 +1,23 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="12.0">
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.30729</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{ADE34A70-E6EF-41B2-B5E0-15F1A9505E80}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SS.Core</RootNamespace>
+    <TargetFrameworks>netstandard2.0;netcoreapp3.0;net461</TargetFrameworks>
     <AssemblyName>SS.Core</AssemblyName>
-    <FileUpgradeFlags>
-    </FileUpgradeFlags>
-    <OldToolsVersion>3.5</OldToolsVersion>
-    <UpgradeBackupLocation>
-    </UpgradeBackupLocation>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
-    <IsWebBootstrapper>false</IsWebBootstrapper>
-    <PublishUrl>publish\</PublishUrl>
-    <Install>true</Install>
-    <InstallFrom>Disk</InstallFrom>
-    <UpdateEnabled>false</UpdateEnabled>
-    <UpdateMode>Foreground</UpdateMode>
-    <UpdateInterval>7</UpdateInterval>
-    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
-    <UpdatePeriodically>false</UpdatePeriodically>
-    <UpdateRequired>false</UpdateRequired>
-    <MapFileExtensions>true</MapFileExtensions>
-    <ApplicationRevision>0</ApplicationRevision>
-    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <UseApplicationTrust>false</UseApplicationTrust>
-    <BootstrapperEnabled>true</BootstrapperEnabled>
-    <TargetFrameworkProfile />
+    <RootNamespace>SS.Core</RootNamespace>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;CFG_DUMP_RAW_PACKETS CFG_LOG_STUPID_STUFF</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>TRACE;CFG_DUMP_RAW_PACKETS CFG_LOG_STUPID_STUFF</DefineConstants>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Data" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Xml" />
-    <Reference Include="Zlib.Portable, Version=1.11.0.0, Culture=neutral, PublicKeyToken=431cba815f6a8b5b, processorArchitecture=MSIL">
-      <HintPath>..\packages\Zlib.Portable.Signed.1.11.0\lib\portable-net4+sl5+wp8+win8+wpa81+MonoTouch+MonoAndroid\Zlib.Portable.dll</HintPath>
-    </Reference>
+    <PackageReference Include="Iconic.Zlib.Netstandard" Version="1.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="4.7.0" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="Arena.cs" />
-    <Compile Include="ComponentCallbacks\MapRegionCallback.cs" />
-    <Compile Include="ComponentInterfaces\IFileTransfer.cs" />
-    <Compile Include="ComponentInterfaces\IGroupManager.cs" />
-    <Compile Include="ComponentInterfaces\ILagQuery.cs" />
-    <Compile Include="ConfigFile.cs" />
-    <Compile Include="ConfigHandle.cs" />
-    <Compile Include="Map\BasicLvl.cs" />
-    <Compile Include="Map\BitmapHeader.cs" />
-    <Compile Include="Map\ChunkHeader.cs" />
-    <Compile Include="Map\ChunkHelper.cs" />
-    <Compile Include="Map\ExtendedLvl.cs" />
-    <Compile Include="Map\MapCoordinate.cs" />
-    <Compile Include="Map\MapMetadataChunkType.cs" />
-    <Compile Include="Map\MapTile.cs" />
-    <Compile Include="Map\MapTileCollection.cs" />
-    <Compile Include="Map\MapTileData.cs" />
-    <Compile Include="Map\MetadataHeader.cs" />
-    <Compile Include="Map\MapRegion.cs" />
-    <Compile Include="Map\MetadataReader.cs" />
-    <Compile Include="Modules\ArenaManager.cs" />
-    <Compile Include="Modules\ArenaPlaceMultiPub.cs" />
-    <Compile Include="Modules\AutoWarpModule.cs" />
-    <Compile Include="Modules\BandwidthLimit.cs" />
-    <Compile Include="Modules\CapabilityManager.cs" />
-    <Compile Include="Modules\Chat.cs" />
-    <Compile Include="ClientSettingsConfig.cs" />
-    <Compile Include="ClientConnection.cs" />
-    <Compile Include="Modules\ClientSettings.cs" />
-    <Compile Include="ComponentBroker.cs" />
-    <Compile Include="ComponentCallbacks\ArenaActionCallback.cs" />
-    <Compile Include="ComponentCallbacks\AttachCallback.cs" />
-    <Compile Include="ComponentCallbacks\ChatMessageCallback.cs" />
-    <Compile Include="ComponentCallbacks\ConnectionInitCallback.cs" />
-    <Compile Include="ComponentCallbacks\FreqChangeCallback.cs" />
-    <Compile Include="ComponentCallbacks\GreenCallback.cs" />
-    <Compile Include="ComponentCallbacks\KillCallback.cs" />
-    <Compile Include="ComponentCallbacks\LogCallback.cs" />
-    <Compile Include="ComponentCallbacks\NewPlayerCallback.cs" />
-    <Compile Include="ComponentCallbacks\PlayerActionCallback.cs" />
-    <Compile Include="ComponentCallbacks\SafeZoneCallback.cs" />
-    <Compile Include="ComponentCallbacks\ShipChangeCallback.cs" />
-    <Compile Include="ComponentInterfaces\IArenaManagerCore.cs" />
-    <Compile Include="ComponentInterfaces\IArenaPlace.cs" />
-    <Compile Include="ComponentInterfaces\IAuth.cs" />
-    <Compile Include="ComponentInterfaces\IBandwidthLimit.cs" />
-    <Compile Include="ComponentInterfaces\ICapabilityManager.cs" />
-    <Compile Include="ComponentInterfaces\IChat.cs" />
-    <Compile Include="ComponentInterfaces\IChatNet.cs" />
-    <Compile Include="ComponentInterfaces\IClientSettings.cs" />
-    <Compile Include="ComponentInterfaces\ICommandManager.cs" />
-    <Compile Include="ComponentInterfaces\IConfigManager.cs" />
-    <Compile Include="ComponentInterfaces\IFreqManager.cs" />
-    <Compile Include="ComponentInterfaces\IGame.cs" />
-    <Compile Include="ComponentInterfaces\IKillPoints.cs" />
-    <Compile Include="ComponentInterfaces\ILagCollect.cs" />
-    <Compile Include="ComponentInterfaces\ILogManager.cs" />
-    <Compile Include="ComponentInterfaces\IMainloop.cs" />
-    <Compile Include="ComponentInterfaces\IMainloopController.cs" />
-    <Compile Include="ComponentInterfaces\IMapData.cs" />
-    <Compile Include="ComponentInterfaces\IMapNewsDownload.cs" />
-    <Compile Include="ComponentInterfaces\IModuleLoader.cs" />
-    <Compile Include="ComponentInterfaces\INetwork.cs" />
-    <Compile Include="ComponentInterfaces\INetworkClient.cs" />
-    <Compile Include="ComponentInterfaces\INetworkEncryption.cs" />
-    <Compile Include="ComponentInterfaces\IObscene.cs" />
-    <Compile Include="ComponentInterfaces\IPersist.cs" />
-    <Compile Include="ComponentInterfaces\IPlayerData.cs" />
-    <Compile Include="ComponentInterfaces\IServerTimer.cs" />
-    <Compile Include="ComponentInterfaces\IStats.cs" />
-    <Compile Include="Modules\CommandManager.cs" />
-    <Compile Include="Modules\Config.cs" />
-    <Compile Include="Constants.cs" />
-    <Compile Include="Modules\CoreModule.cs" />
-    <Compile Include="DataBuffer.cs" />
-    <Compile Include="Defs.cs" />
-    <Compile Include="Modules\EncryptionNull.cs" />
-    <Compile Include="Modules\FileTransferModule.cs" />
-    <Compile Include="Modules\Game.cs" />
-    <Compile Include="Modules\LagData.cs" />
-    <Compile Include="Modules\LogConsole.cs" />
-    <Compile Include="Modules\LogManager.cs" />
-    <Compile Include="Modules\Mainloop.cs">
-    </Compile>
-    <Compile Include="Modules\MapData.cs" />
-    <Compile Include="Modules\MapNewsDownload.cs" />
-    <Compile Include="Modules\ModuleLoader.cs" />
-    <Compile Include="ModuleManager.cs">
-    </Compile>
-    <Compile Include="Modules\PlayerCommand.cs" />
-    <Compile Include="NetStats.cs" />
-    <Compile Include="Modules\Network.cs" />
-    <Compile Include="PathUtil.cs" />
-    <Compile Include="Modules\Persist.cs" />
-    <Compile Include="Player.cs" />
-    <Compile Include="Modules\PlayerData.cs" />
-    <Compile Include="Preprocessor.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Server.cs" />
-    <Compile Include="SubspaceBuffer.cs" />
-    <Compile Include="Target.cs" />
+    <ProjectReference Include="..\Packets\Packets.csproj" />
+    <ProjectReference Include="..\Utilities\Utilities.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Packets\Packets.csproj">
-      <Project>{96DC1A38-ACB9-494F-B41D-629D97CF7A1F}</Project>
-      <Name>Packets</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Utilities\Utilities.csproj">
-      <Project>{DFADC365-5E17-4C2D-AEC1-4F217DF4A6BF}</Project>
-      <Name>Utilities</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.2.0">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 2.0 %28x86%29</ProductName>
-      <Install>true</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.3.0">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.0 %28x86%29</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+
 </Project>

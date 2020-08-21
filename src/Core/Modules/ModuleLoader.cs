@@ -66,12 +66,12 @@ namespace SS.Core.Modules
                     Assembly assembly = null;
                     if (assemblyAttribute != null)
                     {
-                        string assemblyFilename = assemblyAttribute.Value;
-                        if(string.IsNullOrEmpty(assemblyFilename) == false)
+                        string assemblyString = assemblyAttribute.Value;
+                        if(string.IsNullOrEmpty(assemblyString) == false)
                         {
                             try
                             {
-                                assembly = Assembly.LoadFile(Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), assemblyFilename));
+                                assembly = Assembly.Load(assemblyString);
                             }
                             catch
                             {
@@ -112,13 +112,11 @@ namespace SS.Core.Modules
             if (type.IsClass == false)
                 return null;
 
-            Type moduleInterfaceType = typeof(IModule);
-            foreach (Type interfaceType in type.GetInterfaces())
+            if (typeof(IModule).IsAssignableFrom(type))
             {
-                if (interfaceType == moduleInterfaceType)
+                IModule module = Activator.CreateInstance(type) as IModule;
+                if (module != null)
                 {
-                    IModule module = Activator.CreateInstance(type) as IModule;
-                    _mm.AddModule(module);
                     return module;
                 }
             }

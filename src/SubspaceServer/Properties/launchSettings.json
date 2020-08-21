@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SubspaceServer": {
+      "commandName": "Project",
+      "workingDirectory": "$(ProjectDir)\\Zone"
+    }
+  }
+}

@@ -247,16 +247,7 @@ namespace SS.Core
 
             return moduleInterface;
         }
-
-        public override void DoCallbacks(string callbackIdentifier, params object[] args)
-        {
-            // call this arena's callbacks
-            base.DoCallbacks(callbackIdentifier, args);
-
-            // call the global callbacks
-            _mm.DoCallbacks(callbackIdentifier, args);
-        }
-
+        
         public override void DoCallback<T1>(string callbackIdentifier, T1 t1)
         {
             base.DoCallback<T1>(callbackIdentifier, t1);
