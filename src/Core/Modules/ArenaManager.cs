@@ -501,7 +501,7 @@ namespace SS.Core.Modules
             {
                 if (x == 0 && sb[x] == '#')
                     continue;
-                else if(char.IsLetterOrDigit(sb[x]))
+                else if(!char.IsLetterOrDigit(sb[x]))
                     sb[x] = 'x';
                 else if(char.IsUpper(sb[x]))
                     sb[x] = char.ToLower(sb[x]);
