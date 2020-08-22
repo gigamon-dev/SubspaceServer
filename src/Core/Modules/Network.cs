@@ -540,14 +540,15 @@ namespace SS.Core.Modules
 
         private Socket createSocket(int port, IPAddress bindAddress)
         {
-            const int SIO_UDP_CONNRESET = -1744830452;  // since IOControl() takes int instead of uint
-
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
+#if NETFRAMEWORK
             // to prevent the exception "An existing connection was forcibly closed by the remote host"
             // http://support.microsoft.com/kb/263823
+            const int SIO_UDP_CONNRESET = -1744830452;  // since IOControl() takes int instead of uint
             byte[] optionInValue = new byte[] { 0, 0, 0, 0 };
             socket.IOControl(SIO_UDP_CONNRESET, optionInValue, null);
+#endif
 
             try
             {
@@ -664,7 +665,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #endregion
+#endregion
 
         private void recieveThread()
         {
@@ -1786,7 +1787,7 @@ namespace SS.Core.Modules
             return buf;
         }
 
-        #region oohandlers (network layer header handling)
+#region oohandlers (network layer header handling)
 
         private void processKeyResponse(SubspaceBuffer buffer)
         {
@@ -2370,9 +2371,9 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+#endregion
 
-        #region IModule Members
+#region IModule Members
 
         Type[] IModule.InterfaceDependencies
         {
@@ -2495,9 +2496,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #endregion
+#endregion
 
-        #region IModuleLoaderAware Members
+#region IModuleLoaderAware Members
 
         bool IModuleLoaderAware.PostLoad(ModuleManager mm)
         {
@@ -2511,9 +2512,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #endregion
+#endregion
 
-        #region INetworkEncryption Members
+#region INetworkEncryption Members
 
         void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, object v)
         {
@@ -2620,9 +2621,9 @@ namespace SS.Core.Modules
             return p;
         }
 
-        #endregion
+#endregion
 
-        #region INetwork Members
+#region INetwork Members
 
         void INetwork.SendToOne(Player p, byte[] data, int len, NetSendFlags flags)
         {
@@ -2882,9 +2883,9 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+#endregion
 
-        #region INetworkClient Members
+#region INetworkClient Members
 
         BaseClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConn icc, IClientEncrypt ice)
         {
@@ -2907,7 +2908,7 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+#endregion
 
         private void dropConnection(ClientConnection cc)
         {
