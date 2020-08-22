@@ -28,7 +28,7 @@ namespace SS.Core
 
         public void Start()
         {
-            loadModuleFile("conf/Modules.Config");
+            loadModuleFile("conf/Modules.config");
 
             IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
             if (loader == null)
