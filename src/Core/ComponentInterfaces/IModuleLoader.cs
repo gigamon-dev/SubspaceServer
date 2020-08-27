@@ -8,7 +8,7 @@ namespace SS.Core.ComponentInterfaces
     public interface IModuleLoader : IComponentInterface
     {
         bool LoadModulesFromConfig(string moduleConfigFilename);
-        bool AddModule(string assemblyPath, string moduleName);
+        bool AddModule(string assemblyString, string moduleName);
         void DoPostLoadStage();
         void DoPreUnloadStage();
     }

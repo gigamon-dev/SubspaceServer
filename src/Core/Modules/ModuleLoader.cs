@@ -124,11 +124,11 @@ namespace SS.Core.Modules
             return null;
         }
 
-        bool IModuleLoader.AddModule(string assemblyPath, string moduleFullName)
+        bool IModuleLoader.AddModule(string assemblyString, string moduleFullName)
         {
             try
             {
-                Assembly assembly = Assembly.LoadFile(assemblyPath);
+                Assembly assembly = Assembly.Load(assemblyString);
 
                 IModule module = createModuleObject(assembly, moduleFullName);
                 return (module != null);
