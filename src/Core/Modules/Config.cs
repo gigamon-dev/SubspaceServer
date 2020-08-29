@@ -242,6 +242,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ModuleManager mm)
         {
+            mm.UnregisterInterface<IConfigManager>();
             return true;
         }
 
