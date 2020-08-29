@@ -2,7 +2,6 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Timers;
 
 namespace SS.Core.Modules
 {
@@ -36,8 +35,8 @@ namespace SS.Core.Modules
             public MainloopTimer(
                 Mainloop owner,
                 TimerDelegate callback,
-                double initialDelay,
-                double interval,
+                int initialDelay,
+                int interval,
                 object key)
                 : base(owner, initialDelay, interval, key)
             {
@@ -62,8 +61,8 @@ namespace SS.Core.Modules
             public MainloopTimer(
                 Mainloop owner,
                 TimerDelegate<TState> callback,
-                double initialDelay,
-                double interval,
+                int initialDelay,
+                int interval,
                 TState state,
                 object key)
                 : base(owner, initialDelay, interval, key)
@@ -83,9 +82,10 @@ namespace SS.Core.Modules
         /// </summary>
         private abstract class AbstractTimer : ITimer
         {
-            private readonly System.Timers.Timer _timer;
+            private readonly Timer _timer;
             private readonly Mainloop _owner;
-            private readonly double _interval;
+            private readonly int _initialDelay;
+            private readonly int _interval;
             public object Key { get; }
 
             // for synchronization
@@ -95,29 +95,29 @@ namespace SS.Core.Modules
             private bool _disposed = false;
 
             public AbstractTimer(
-                Mainloop owner, 
-                double initialDelay, 
-                double interval,
+                Mainloop owner,
+                int initialDelay,
+                int interval,
                 object key)
             {
                 if (initialDelay <= 0)
                     throw new ArgumentOutOfRangeException("initialDelay", "must be > 0");
 
-                if (interval < 0)
-                    throw new ArgumentOutOfRangeException("interval", "must be >= 0");
+                if (interval <= 0 && interval != Timeout.Infinite)
+                    throw new ArgumentOutOfRangeException("interval", "must be > 0 or Timeout.Infinite");
 
                 _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+                _initialDelay = initialDelay;
                 _interval = interval;
                 Key = key;
 
-                _timer = new System.Timers.Timer(initialDelay);
-                _timer.AutoReset = false;
-                _timer.Elapsed += TimerElapsed;
+                // Creating the timer, but not starting it yet.
+                _timer = new Timer(TimerElapsed, null, Timeout.Infinite, Timeout.Infinite);
             }
 
             protected abstract bool Execute();
 
-            private void TimerElapsed(object sender, ElapsedEventArgs e)
+            private void TimerElapsed(object state)
             {
                 bool isContinuing = false;
 
@@ -143,8 +143,7 @@ namespace SS.Core.Modules
                                 return;
                             }
 
-                            _timer.Interval = _interval;
-                            _timer.Enabled = true;
+                            _timer.Change(_interval, Timeout.Infinite);
                             isContinuing = true;
                         }
                     }
@@ -172,7 +171,7 @@ namespace SS.Core.Modules
 
             public void Start()
             {
-                _timer.Enabled = true;
+                _timer.Change(_initialDelay, Timeout.Infinite);
             }
 
             public void Stop()
@@ -184,7 +183,7 @@ namespace SS.Core.Modules
             {
                 lock (_lockObj)
                 {
-                    _timer.Enabled = false;
+                    _timer.Change(Timeout.Infinite, Timeout.Infinite);
                     _stop = true;
                 }
 
@@ -213,7 +212,6 @@ namespace SS.Core.Modules
                 {
                     Stop(true);
                     _timer.Dispose();
-                    _timer.Elapsed -= TimerElapsed;
                 }
 
                 _disposed = true;
