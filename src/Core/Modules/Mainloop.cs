@@ -1,9 +1,8 @@
+using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Timers;
 using System.Threading;
-using SS.Core.ComponentInterfaces;
+using System.Timers;
 
 namespace SS.Core.Modules
 {
@@ -20,67 +19,105 @@ namespace SS.Core.Modules
     /// </summary>
     public class Mainloop : IModule, IServerTimer, IMainloop, IMainloopController
     {
+        #region Private Helpers
+
         private interface ITimer : IDisposable
         {
+            void Stop();
         }
 
-        private class MainloopTimer<TArg> : ITimer
+        /// <summary>
+        /// Encapsulates a timer for a delegate that takes no parameters.
+        /// </summary>
+        private class MainloopTimer : AbstractTimer
         {
-            System.Timers.Timer _timer;
-            private Mainloop _owner;
-            private TimerDelegate<TArg> _callback;
-            private TArg _state;
-            private object _key;
-            private double _interval;
-
-            // for synchronization
-            private object _lockObj = new object();
-            private bool _stop = false;
-            private ManualResetEvent _timerExecuting = new ManualResetEvent(true);
+            public TimerDelegate Callback { get; }
 
             public MainloopTimer(
+                Mainloop owner,
+                TimerDelegate callback,
+                double initialDelay,
+                double interval,
+                object key)
+                : base(owner, initialDelay, interval, key)
+            {
+                Callback = callback;
+            }
+
+            protected override bool Execute()
+            {
+                return Callback();
+            }
+        }
+
+        /// <summary>
+        /// Encapsulates a timer for a delegate that takes a single "state" parameter.
+        /// </summary>
+        /// <typeparam name="TState">The type of the delegate's state parameter.</typeparam>
+        private class MainloopTimer<TState> : AbstractTimer
+        {
+            public TimerDelegate<TState> Callback { get; }
+            public TState State { get; }
+
+            public MainloopTimer(
+                Mainloop owner,
+                TimerDelegate<TState> callback,
+                double initialDelay,
+                double interval,
+                TState state,
+                object key)
+                : base(owner, initialDelay, interval, key)
+            {
+                Callback = callback;
+                State = state;
+            }
+
+            protected override bool Execute()
+            {
+                return Callback(State);
+            }
+        }
+
+        /// <summary>
+        /// Base class for encapsulating timer logic.
+        /// </summary>
+        private abstract class AbstractTimer : ITimer
+        {
+            private readonly System.Timers.Timer _timer;
+            private readonly Mainloop _owner;
+            private readonly double _interval;
+            public object Key { get; }
+
+            // for synchronization
+            private readonly object _lockObj = new object();
+            private bool _stop = false;
+            private readonly ManualResetEvent _timerExecuting = new ManualResetEvent(true);
+            private bool _disposed = false;
+
+            public AbstractTimer(
                 Mainloop owner, 
-                TimerDelegate<TArg> callback,
                 double initialDelay, 
                 double interval,
-                TArg state,
                 object key)
             {
                 if (initialDelay <= 0)
                     throw new ArgumentOutOfRangeException("initialDelay", "must be > 0");
 
                 if (interval < 0)
-                {
                     throw new ArgumentOutOfRangeException("interval", "must be >= 0");
-                }
 
-                _owner = owner;
-                _callback = callback;
-                _state = state;
-                _key = key;
+                _owner = owner ?? throw new ArgumentNullException(nameof(owner));
                 _interval = interval;
+                Key = key;
 
                 _timer = new System.Timers.Timer(initialDelay);
                 _timer.AutoReset = false;
-                _timer.Elapsed += new ElapsedEventHandler(_timer_Elapsed);
+                _timer.Elapsed += TimerElapsed;
             }
 
-            public TimerDelegate<TArg> Callback
-            {
-                get { return _callback; }
-            }
+            protected abstract bool Execute();
 
-            public TArg State
-            {
-                get { return _state; }
-            }
-
-            public object Key
-            {
-                get { return _key; }
-            }
-
-            private void _timer_Elapsed(object sender, ElapsedEventArgs e)
+            private void TimerElapsed(object sender, ElapsedEventArgs e)
             {
                 bool isContinuing = false;
 
@@ -97,7 +134,7 @@ namespace SS.Core.Modules
                     try
                     {
                         // execute the callback
-                        bool wantsToKeepRunning = _callback(_state);
+                        bool wantsToKeepRunning = Execute();
 
                         lock (_lockObj)
                         {
@@ -128,7 +165,7 @@ namespace SS.Core.Modules
                     if (isContinuing == false)
                     {
                         // make sure that this timer object is removed from the timer list (it may have been removed already)
-                        _owner.removeTimer(this);
+                        _owner.RemoveTimer(this);
                     }
                 }
             }
@@ -138,7 +175,12 @@ namespace SS.Core.Modules
                 _timer.Enabled = true;
             }
 
-            private void stop(bool waitIfExecuting)
+            public void Stop()
+            {
+                Stop(false);
+            }
+
+            private void Stop(bool waitIfExecuting)
             {
                 lock (_lockObj)
                 {
@@ -156,43 +198,44 @@ namespace SS.Core.Modules
                 }
             }
 
-            protected virtual void Dispose(bool disposing)
-            {
-                if (disposing)
-                {
-                    _timer.Dispose();
-                }
-            }
-
             #region IDisposable Members
 
-            public void Dispose()
+            public void Dispose() => Dispose(true);
+
+            protected virtual void Dispose(bool disposing)
             {
-                stop(true);
-                Dispose(true);
+                if (_disposed)
+                {
+                    return;
+                }
+
+                if (disposing)
+                {
+                    Stop(true);
+                    _timer.Dispose();
+                    _timer.Elapsed -= TimerElapsed;
+                }
+
+                _disposed = true;
             }
 
             #endregion
-
-            public void Stop()
-            {
-                stop(false);
-            }
         }
 
-        private List<ITimer> _timerList = new List<ITimer>();
-        private object _lockObj = new object();
+        #endregion
 
-        public Mainloop()
-        {
-        }
+        private readonly List<ITimer> _timerList = new List<ITimer>();
+        private readonly object _lockObj = new object();
 
         /// <summary>
-        /// used by the MainloopTimer class to remove itself
+        /// Used by <see cref="AbstractTimer"/> to remove itself.
         /// </summary>
         /// <param name="timerToRemove"></param>
-        private void removeTimer(ITimer timerToRemove)
+        private void RemoveTimer(ITimer timerToRemove)
         {
+            if (timerToRemove == null)
+                throw new ArgumentNullException(nameof(timerToRemove));
+
             bool itemRemoved;
 
             lock (_lockObj)
@@ -223,8 +266,22 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ModuleManager mm)
         {
-            // TODO: make sure all timers are stopped
-            // technically, if all modules were written correctly all the timers would already be stopped by now
+            // Make sure all timers are stopped.
+            // There shouldn't be any left if all modules were correctly written to stop their timers when unloading.
+            lock (_lockObj)
+            {
+                foreach (var timer in _timerList)
+                {
+                    timer.Stop();
+                }
+
+                foreach (var timer in _timerList)
+                {
+                    timer.Dispose();
+                }
+
+                _timerList.Clear();
+            }
 
             mm.UnregisterInterface<IMainloopController>();
             mm.UnregisterInterface<IMainloop>();
@@ -236,14 +293,41 @@ namespace SS.Core.Modules
 
         #region IServerTimer Members
 
-        void IServerTimer.SetTimer<TArg>(
-            TimerDelegate<TArg> callback, 
-            int initialDelay, 
-            int interval, 
-            TArg state, 
+        void IServerTimer.SetTimer(
+            TimerDelegate callback,
+            int initialDelay,
+            int interval,
             object key)
         {
-            MainloopTimer<TArg> timer = new MainloopTimer<TArg>(
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            MainloopTimer timer = new MainloopTimer(
+                this,
+                callback,
+                initialDelay,
+                interval,
+                key);
+
+            lock (_lockObj)
+            {
+                _timerList.Add(timer);
+            }
+
+            timer.Start();
+        }
+
+        void IServerTimer.SetTimer<TState>(
+            TimerDelegate<TState> callback, 
+            int initialDelay, 
+            int interval, 
+            TState state, 
+            object key)
+        {
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            MainloopTimer<TState> timer = new MainloopTimer<TState>(
                 this,
                 callback,
                 initialDelay,
@@ -259,62 +343,112 @@ namespace SS.Core.Modules
             timer.Start();
         }
 
-        void IServerTimer.ClearTimer<TArg>(TimerDelegate<TArg> callback, object key)
-        {
-            IServerTimer st = this;
-            st.ClearTimer<TArg>(callback, key, null);
-        }
-
-        void IServerTimer.ClearTimer<TArg>(
-            TimerDelegate<TArg> callback,
-            object key,
-            TimerCleanupDelegate<TArg> cleanupCallback)
+        void IServerTimer.ClearTimer(
+            TimerDelegate callback,
+            object key)
         {
             if (callback == null)
-                return;
+                throw new ArgumentNullException(nameof(callback));
 
-            List<MainloopTimer<TArg>> timersToDispose = new List<MainloopTimer<TArg>>();
+            LinkedList<MainloopTimer> timersToDispose = null;
 
             lock (_lockObj)
             {
                 for (int x = _timerList.Count - 1; x >= 0; x--)
                 {
-                    MainloopTimer<TArg> timer = _timerList[x] as MainloopTimer<TArg>;
-                    if(timer == null)
+                    if (!(_timerList[x] is MainloopTimer timer))
                         continue;
 
-                    if ((timer.Callback == callback) &&
-                        ((key == null) || (timer.Key.Equals(key))))
+                    if ((timer.Callback == callback)
+                        && ((key == null) || (key == timer.Key)))
                     {
                         timer.Stop();
 
                         _timerList.RemoveAt(x);
-                        timersToDispose.Add(timer);
+
+                        if (timersToDispose == null)
+                            timersToDispose = new LinkedList<MainloopTimer>();
+
+                        timersToDispose.AddLast(timer);
                     }
                 }
             }
 
-            while (timersToDispose.Count > 0)
+            if (timersToDispose != null)
             {
-                MainloopTimer<TArg> timer = timersToDispose[0];
-                TArg state = timer.State;
-
-                timer.Dispose();
-                timersToDispose.RemoveAt(0);
-
-                if (cleanupCallback != null)
+                foreach (var timer in timersToDispose)
                 {
-                    cleanupCallback(state);
+                    timer.Dispose();
                 }
+
+                timersToDispose.Clear();
+            }
+        }
+
+        void IServerTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object key)
+        {
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            IServerTimer st = this;
+            st.ClearTimer(callback, key, null);
+        }
+
+        void IServerTimer.ClearTimer<TState>(
+            TimerDelegate<TState> callback,
+            object key,
+            TimerCleanupDelegate<TState> cleanupCallback)
+        {
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            LinkedList<MainloopTimer<TState>> timersToDispose = null;
+
+            lock (_lockObj)
+            {
+                for (int x = _timerList.Count - 1; x >= 0; x--)
+                {
+                    if (!(_timerList[x] is MainloopTimer<TState> timer))
+                        continue;
+
+                    if ((timer.Callback == callback)
+                        && ((key == null) || (key == timer.Key)))
+                    {
+                        timer.Stop();
+
+                        _timerList.RemoveAt(x);
+
+                        if (timersToDispose == null)
+                            timersToDispose = new LinkedList<MainloopTimer<TState>>();
+
+                        timersToDispose.AddLast(timer);
+                    }
+                }
+            }
+
+            if (timersToDispose != null)
+            {
+                foreach (var timer in timersToDispose)
+                {
+                    timer.Dispose();
+                }
+
+                foreach (var timer in timersToDispose)
+                {
+                    cleanupCallback?.Invoke(timer.State);
+                }
+
+                timersToDispose.Clear();
             }
         }
 
         bool IServerTimer.RunInThread<TParam>(WorkerDelegate<TParam> func, TParam param)
         {
-            return ThreadPool.QueueUserWorkItem(delegate(object state)
-            {
-                func(param); // avoids the cast
-            });
+            return ThreadPool.QueueUserWorkItem(
+                delegate
+                {
+                    func(param);
+                });
         }
 
         #endregion

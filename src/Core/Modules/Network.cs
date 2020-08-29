@@ -880,7 +880,7 @@ namespace SS.Core.Modules
         private byte[] _queueDataHeader = new byte[6] { 0x00, 0x0A, 0, 0, 0, 0 }; // size of a presized data packet header
 
         // NOTE: this is optimized slightly more than asss in the sense that it doesn't copy the array to another buffer just to send it off to bufferPacket()
-        private bool queueMoreData(object dummy)
+        private bool queueMoreData()
         {
             int requestAtOnce = _config.queue_packets * Constants.ChunkSize;
 
@@ -2444,7 +2444,7 @@ namespace SS.Core.Modules
             _threadList.Add(thread);
 
             // queue more data thread (sends sized data)
-            _serverTimer.SetTimer<object>(queueMoreData, 200, 110, null, null); // TODO: maybe change it to be in its own thread?
+            _serverTimer.SetTimer(queueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
             
             mm.RegisterInterface<INetwork>(this);
             mm.RegisterInterface<INetworkClient>(this);
@@ -2458,7 +2458,7 @@ namespace SS.Core.Modules
             mm.UnregisterInterface<INetworkClient>();
             mm.UnregisterInterface<INetworkEncryption>();
 
-            _serverTimer.ClearTimer<object>(queueMoreData, null);
+            _serverTimer.ClearTimer(queueMoreData, null);
 
             // stop threads
             _stopThreads = true;

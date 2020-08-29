@@ -151,13 +151,13 @@ namespace SS.Core.Modules
             //if(_chatnet != null)
                 //_chatnet.AddHandler("LOGIN", chatLogin);
 
-            _mainLoop.SetTimer<object>(new TimerDelegate<object>(processPlayerStates), 100, 100, null, null);
+            _mainLoop.SetTimer(processPlayerStates, 100, 100, null);
 
             // register default interfaces which may be replaced later
             mm.RegisterInterface<IAuth>(this);
 
             // set up periodic events
-            _mainLoop.SetTimer<object>(sendKeepAlive, 5000, 5000, null, null); // every 5 seconds
+            _mainLoop.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             return true;
         }
@@ -166,8 +166,9 @@ namespace SS.Core.Modules
         {
             if (_mm.UnregisterInterface<IAuth>() != 0)
                 return false;
-            _mainLoop.ClearTimer<object>(sendKeepAlive, null);
-            _mainLoop.ClearTimer<object>(processPlayerStates, null);
+
+            _mainLoop.ClearTimer(sendKeepAlive, null);
+            _mainLoop.ClearTimer(processPlayerStates, null);
             
             if (_net != null)
             {
@@ -190,7 +191,7 @@ namespace SS.Core.Modules
             public PlayerState OldStatus;
         }
 
-        private bool processPlayerStates(object v)
+        private bool processPlayerStates()
         {
             // put pending actions here while processing the player list
             LinkedList<PlayerStateChange> actions = null; // only allocate if we need to
@@ -822,7 +823,7 @@ namespace SS.Core.Modules
             done(p, auth);
         }
 
-        private bool sendKeepAlive(object g)
+        private bool sendKeepAlive()
         {
             if (_net != null)
             {

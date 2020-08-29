@@ -852,7 +852,7 @@ namespace SS.Core.Modules
                 ArenaActionCallback.Fire(_mm, arena, action);
         }
 
-        private bool processArenaStates(object dummy)
+        private bool processArenaStates()
         {
             writeLock();
             try
@@ -1030,7 +1030,7 @@ namespace SS.Core.Modules
             return arena;
         }
 
-        private bool reapArenas(object dummy)
+        private bool reapArenas()
         {
             Lock();
             try
@@ -1135,8 +1135,8 @@ namespace SS.Core.Modules
             //{
             //}
 
-            _mainLoop.SetTimer<object>(new TimerDelegate<object>(processArenaStates), 100, 100, null, null);
-            _mainLoop.SetTimer<object>(new TimerDelegate<object>(reapArenas), 1700, 1700, null, null);
+            _mainLoop.SetTimer(processArenaStates, 100, 100, null);
+            _mainLoop.SetTimer(reapArenas, 1700, 1700, null);
 
             _mm.RegisterInterface<IArenaManagerCore>(this);
 
@@ -1173,8 +1173,8 @@ namespace SS.Core.Modules
             //{
             //}
 
-            _mainLoop.ClearTimer<object>(new TimerDelegate<object>(processArenaStates), null);
-            _mainLoop.ClearTimer<object>(new TimerDelegate<object>(reapArenas), null);
+            _mainLoop.ClearTimer(processArenaStates, null);
+            _mainLoop.ClearTimer(reapArenas, null);
 
             _playerData.FreePlayerData(_spawnkey);
 

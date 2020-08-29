@@ -6,58 +6,107 @@ using System.Text;
 namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
-    /// 
+    /// Represents a method that handles calls from timer.
     /// </summary>
-    /// <typeparam name="TArg"></typeparam>
-    /// <param name="arg"></param>
+    /// <returns></returns>
+    public delegate bool TimerDelegate();
+
+    /// <summary>
+    /// Represents a method that handles calls from timer.  The method has a single input parameter for passing "state".
+    /// </summary>
+    /// <typeparam name="TState">Type of the state parameter of the method that this delegate encapsulates.</typeparam>
+    /// <param name="state">An object that represents the context of the timer.</param>
     /// <returns>true to continue timer events</returns>
-    public delegate bool TimerDelegate<TArg>(TArg state);
+    public delegate bool TimerDelegate<in TState>(TState state);
 
-    public delegate void TimerCleanupDelegate<TArg>(TArg state);
+    /// <summary>
+    /// Represents a method to be called back when a timer is stopped/removed.
+    /// </summary>
+    /// <typeparam name="TState">Type of the state parameter of the method that this delegate encapsulates.</typeparam>
+    /// <param name="state">An object that represents the context of the timer.</param>
+    public delegate void TimerCleanupDelegate<in TState>(TState state);
 
-    public delegate void WorkerDelegate<TParam>(TParam param);
+    /// <summary>
+    /// Represents a method that contains work to be done.
+    /// </summary>
+    /// <typeparam name="TState">Type of the state parameter of the method that this delegate encapsulates.</typeparam>
+    /// <param name="state">An object that represents the context.</param>
+    public delegate void WorkerDelegate<in TState>(TState state);
 
     public interface IServerTimer : IComponentInterface
     {
         /// <summary>
-        /// Starts a timer
+        /// Starts a timer.
         /// </summary>
-        /// <typeparam name="TArg">type of the parameter the callback accepts</typeparam>
-        /// <param name="callback">the method to call</param>
-        /// <param name="initialDelay">how long to wait for the first call (in milliseconds)</param>
-        /// <param name="interval">how long to wait between calls (in milliseconds)</param>
-        /// <param name="parameter">a closure argument that will get passed to the timer callback</param>
-        /// <param name="key">a key that can be used to selectively cancel timers</param>
-        void SetTimer<TArg>(
-            TimerDelegate<TArg> callback,
+        /// <param name="callback">The delegate that the timer should invoke.</param>
+        /// <param name="initialDelay">How long to wait for the first call (in milliseconds).</param>
+        /// <param name="interval">How long to wait between calls (in milliseconds).</param>
+        /// <param name="key">A key that can be used to selectively cancel timers.</param>
+        void SetTimer(
+            TimerDelegate callback,
             int initialDelay,
             int interval,
-            TArg parameter,
             object key);
 
         /// <summary>
-        /// Stops and removes a timer
+        /// Starts a timer.
         /// </summary>
-        /// <typeparam name="TArg">type of the parameter the callback accepts</typeparam>
-        /// <param name="callback">the timer method you want to clear</param>
-        /// <param name="key">timers that match this key will be removed. 
-        /// using NULL means to clear all timers with the given function, regardless of key</param>
-        void ClearTimer<TArg>(
-            TimerDelegate<TArg> callback,
+        /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
+        /// <param name="callback">The delegate that the timer should invoke.</param>
+        /// <param name="initialDelay">How long to wait for the first call (in milliseconds).</param>
+        /// <param name="interval">How long to wait between calls (in milliseconds).</param>
+        /// <param name="parameter">A closure argument that will get passed to the timer <paramref name="callback"/>.</param>
+        /// <param name="key">A key that can be used to selectively cancel timers.</param>
+        void SetTimer<TState>(
+            TimerDelegate<TState> callback,
+            int initialDelay,
+            int interval,
+            TState parameter,
             object key);
 
         /// <summary>
-        /// Stops and removes a timer.  The cleanupCallback will be called for each timer that was stopped, with the state object from that timer.
+        /// Stops and removes a timer.
         /// </summary>
-        /// <typeparam name="TArg">type of the parameter the callback accepts</typeparam>
-        /// <param name="callback">the timer method you want to clear</param>
-        /// <param name="key">timers that match this key will be removed. 
-        /// using NULL means to clear all timers with the given function, regardless of key</param>
-        /// <param name="cleanupCallback">cleanup a CleanupFunc to call once for each timer being cancelled</param>
-        void ClearTimer<TArg>(
-            TimerDelegate<TArg> callback,
+        /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
+        /// <param name="callback">The delegate to clear timer(s) for.</param>
+        /// <param name="key">
+        /// Timers that match this key will be removed. 
+        /// Use <see langword="null"/> to clear all timers associated with <paramref name="callback"/>, regardless of key.
+        /// </param>
+        void ClearTimer(
+            TimerDelegate callback,
+            object key);
+
+        /// <summary>
+        /// Stops and removes a timer.
+        /// </summary>
+        /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
+        /// <param name="callback">The delegate to clear timer(s) for.</param>
+        /// <param name="key">
+        /// Timers that match this key will be removed. 
+        /// Use <see langword="null"/> to clear all timers associated with <paramref name="callback"/>, regardless of key.
+        /// </param>
+        void ClearTimer<TState>(
+            TimerDelegate<TState> callback,
+            object key);
+
+        /// <summary>
+        /// Stops and removes a timer, with a <paramref name="cleanupCallback"/> to be invoked for each timer that is stopped.
+        /// </summary>
+        /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
+        /// <param name="callback">The delegate to clear timer(s) for.</param>
+        /// <param name="key">
+        /// Timers that match this key will be removed. 
+        /// Use <see langword="null"/> to clear all timers associated with <paramref name="callback"/>, regardless of key.
+        /// </param>
+        /// <param name="cleanupCallback">
+        /// A <see cref="TimerCleanupDelegate{TState}"/> to call once for each timer that is stopped.
+        /// It will be called with the <c>parameter</c> that was provided when the timer was started.
+        /// </param>
+        void ClearTimer<TState>(
+            TimerDelegate<TState> callback,
             object key,
-            TimerCleanupDelegate<TArg> cleanupCallback);
+            TimerCleanupDelegate<TState> cleanupCallback);
 
         /// <summary>
         /// Calls a delegate to run on a thread from the thread pool.
