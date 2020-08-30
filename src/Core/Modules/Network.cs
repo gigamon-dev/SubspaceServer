@@ -435,9 +435,9 @@ namespace SS.Core.Modules
         /// <summary>
         /// handlers for 'game' packets
         /// </summary>
-        public Dictionary<int, PacketDelegate> _handlers = new Dictionary<int, PacketDelegate>(MAXTYPES);
-        public Dictionary<int, PacketDelegate> _nethandlers = new Dictionary<int, PacketDelegate>(20);
-        public Dictionary<int, SizedPacketDelegate> _sizedhandlers = new Dictionary<int, SizedPacketDelegate>(MAXTYPES);
+        private PacketDelegate[] _handlers = new PacketDelegate[MAXTYPES];
+        private PacketDelegate[] _nethandlers = new PacketDelegate[0x14];
+        private SizedPacketDelegate[] _sizedhandlers = new SizedPacketDelegate[MAXTYPES];
 
         private const int SELECT_TIMEOUT_MS = 1000;
 
@@ -1446,8 +1446,9 @@ namespace SS.Core.Modules
                     if (conn.p != null)
                     {
                         // player connection
-                        PacketDelegate packetDelegate;
-                        if (_handlers.TryGetValue(rp.T1, out packetDelegate) == true)
+                        PacketDelegate packetDelegate = _handlers[rp.T1];
+
+                        if (packetDelegate != null)
                             packetDelegate(conn.p, buffer.Bytes, buffer.NumBytes);
                         else
                             _logManager.Log(LogLevel.Drivel, "<net> no handler for packet T1 [0x{0:X2}]", rp.T1);
@@ -2063,11 +2064,7 @@ namespace SS.Core.Modules
                     {
                         if (conn.p != null)
                         {
-                            PacketDelegate pd;
-                            if (_handlers.TryGetValue(newbuf[0], out pd) == true)
-                            {
-                                pd(conn.p, newbuf, newsize);
-                            }
+                            _handlers[newbuf[0]]?.Invoke(conn.p, newbuf, newsize);
                         }
                         else
                             conn.cc.i.HandlePacket(newbuf, newsize);
@@ -2141,11 +2138,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        SizedPacketDelegate spd;
-                        if (_sizedhandlers.TryGetValue(conn.sizedrecv.type, out spd) == true)
-                        {
-                            spd(conn.p, rpData, conn.sizedrecv.offset, size);
-                        }
+                        _sizedhandlers[conn.sizedrecv.type]?.Invoke(conn.p, rpData, conn.sizedrecv.offset, size);
 
                         conn.sizedrecv.offset += rpData.Count;
 
@@ -2247,11 +2240,7 @@ namespace SS.Core.Modules
                 // tell listeners that they're cancelled
                 if (type < MAXTYPES)
                 {
-                    SizedPacketDelegate spd;
-                    if (_sizedhandlers.TryGetValue(type, out spd) == true)
-                    {
-                        spd(p, null, arg, arg);
-                    }
+                    _sizedhandlers[type]?.Invoke(p, null, arg, arg);
                 }
 
                 conn.sizedrecv.type = 0;
@@ -2304,19 +2293,12 @@ namespace SS.Core.Modules
 
             try
             {
-                ConnData conn = buffer.Conn;
-                if (conn == null)
-                    return;
-
-                if (conn.p == null)
+                Player p = buffer.Conn?.p;
+                if (p == null)
                     return;
 
                 ReliablePacket rp = new ReliablePacket(buffer.Bytes);
-                PacketDelegate pd;
-                if (_nethandlers.TryGetValue(rp.T2, out pd) == true)
-                {
-                    pd(conn.p, buffer.Bytes, buffer.NumBytes);
-                }
+                _nethandlers[rp.T2]?.Invoke(p, buffer.Bytes, buffer.NumBytes);
             }
             finally
             {
@@ -2433,8 +2415,9 @@ namespace SS.Core.Modules
             _threadList.Clear();
             _reliableThreads.Clear();
 
-            _handlers.Clear();
-            _sizedhandlers.Clear();
+            Array.Clear(_handlers, 0, _handlers.Length);
+            Array.Clear(_nethandlers, 0, _nethandlers.Length); // for some reason ASSS doesn't clear this?
+            Array.Clear(_sizedhandlers, 0, _sizedhandlers.Length);
             _relqueue.Clear();
 
             // close all sockets
@@ -2758,24 +2741,16 @@ namespace SS.Core.Modules
         {
             if (pktype >= 0 && pktype < MAXTYPES)
             {
-                PacketDelegate d;
-                if (_handlers.TryGetValue(pktype, out d) == false)
-                {
-                    _handlers.Add(pktype, func);
-                }
-                else
-                {
-                    d += func;
-                    _handlers[pktype] = d;
-                }
+                PacketDelegate d = _handlers[pktype];
+                _handlers[pktype] = (d == null) ? func : (d += func);
             }
             else if((pktype & 0xFF) == 0)
             {
                 int b2 = pktype >> 8;
 
-                if (b2 >= 0 && !_nethandlers.ContainsKey(b2))
+                if (b2 >= 0 && b2 < _nethandlers.Length && _nethandlers[b2] == null)
                 {
-                    _nethandlers.Add(b2, func);
+                    _nethandlers[b2] = func;
                 }
             }
         }
@@ -2784,24 +2759,19 @@ namespace SS.Core.Modules
         {
             if (pktype >= 0 && pktype < MAXTYPES)
             {
-                PacketDelegate d;
-                if (_handlers.TryGetValue(pktype, out d))
+                PacketDelegate d = _handlers[pktype];
+                if (d != null)
                 {
-                    d -= func;
-
-                    if (d == null)
-                        _handlers.Remove(pktype);
-                    else
-                        _handlers[pktype] = d;
+                    _handlers[pktype] = (d -= func);
                 }
             }
             else if ((pktype & 0xFF) == 0)
             {
                 int b2 = pktype >> 8;
 
-                if (b2 >= 0 && _nethandlers.ContainsKey(b2))
+                if (b2 >= 0 && b2 < _nethandlers.Length && _nethandlers[b2] == func)
                 {
-                    _nethandlers.Remove(b2);
+                    _nethandlers[b2] = null;
                 }
             }
         }
@@ -2810,16 +2780,8 @@ namespace SS.Core.Modules
         {
             if (pktype >= 0 && pktype < MAXTYPES)
             {
-                SizedPacketDelegate d;
-                if (_sizedhandlers.TryGetValue(pktype, out d) == false)
-                {
-                    _sizedhandlers.Add(pktype, func);
-                }
-                else
-                {
-                    d += func;
-                    _sizedhandlers[pktype] = d;
-                }
+                SizedPacketDelegate d = _sizedhandlers[pktype];
+                _sizedhandlers[pktype] = (d == null) ? func : (d += func);
             }
         }
 
@@ -2827,15 +2789,10 @@ namespace SS.Core.Modules
         {
             if (pktype >= 0 && pktype < MAXTYPES)
             {
-                SizedPacketDelegate d;
-                if (_sizedhandlers.TryGetValue(pktype, out d))
+                SizedPacketDelegate d = _sizedhandlers[pktype];
+                if (d != null)
                 {
-                    d -= func;
-
-                    if (d == null)
-                        _sizedhandlers.Remove(pktype);
-                    else
-                        _sizedhandlers[pktype] = d;
+                    _sizedhandlers[pktype] = (d -= func);
                 }
             }
         }
