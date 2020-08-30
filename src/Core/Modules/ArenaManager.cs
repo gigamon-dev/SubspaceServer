@@ -1124,11 +1124,8 @@ namespace SS.Core.Modules
             IArenaManagerCore amc = this;
             _adkey = amc.AllocateArenaData<ArenaData>();
 
-            if(_net != null)
-            {
-                _net.AddPacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);
-                _net.AddPacket((int)Packets.C2SPacketType.Leaving, packetLeaving);
-            }
+            _net.AddPacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);
+            _net.AddPacket((int)Packets.C2SPacketType.Leaving, packetLeaving);
 
             // TODO: 
             //if(_chatnet)
@@ -1163,10 +1160,8 @@ namespace SS.Core.Modules
 
             _mm.UnregisterInterface<IArenaManagerCore>();
 
-            // TODO: 
-            //if(_net)
-            //{
-            //}
+            _net.RemovePacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);
+            _net.RemovePacket((int)Packets.C2SPacketType.Leaving, packetLeaving);
 
             // TODO: 
             //if(_chatnet)
