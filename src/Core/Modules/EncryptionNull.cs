@@ -89,7 +89,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void connectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, object v)
+        private void connectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
         {
             ClientType type;
             Player p;
@@ -117,13 +117,13 @@ namespace SS.Core.Modules
             }
 
             // get connection (null means no encryption)
-            p = _net.NewConnection(type, remoteEndpoint, null, v);
+            p = _net.NewConnection(type, remoteEndpoint, null, ld);
 
             if (p == null)
             {
                 // no slots left?
                 byte[] pkt = {0x00, 0x07};
-                _net.ReallyRawSend(remoteEndpoint, pkt, pkt.Length, v);
+                _net.ReallyRawSend(remoteEndpoint, pkt, pkt.Length, ld);
                 return;
             }
 
@@ -136,7 +136,7 @@ namespace SS.Core.Modules
             rp.T1 = 0x00;
             rp.T2 = 0x02;
             rp.Key = key;
-            _net.ReallyRawSend(remoteEndpoint, buffer, 6, v);
+            _net.ReallyRawSend(remoteEndpoint, buffer, 6, ld);
         }
     }
 }

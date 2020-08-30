@@ -6,23 +6,23 @@ using System.Net;
 
 namespace SS.Core.ComponentCallbacks
 {
-    public delegate void ConnectionInitDelegate(IPEndPoint remoteEndpoint, byte[] buffer, int len, object v);
+    public delegate void ConnectionInitDelegate(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld);
 
     public static class ConnectionInitCallback
     {
         public static void Register(ComponentBroker broker, ConnectionInitDelegate handler)
         {
-            broker.RegisterCallback<IPEndPoint, byte[], int, object>(Constants.Events.ConnectionInit, new ComponentCallbackDelegate<IPEndPoint, byte[], int, object>(handler));
+            broker.RegisterCallback(Constants.Events.ConnectionInit, new ComponentCallbackDelegate<IPEndPoint, byte[], int, ListenData>(handler));
         }
 
         public static void Unregister(ComponentBroker broker, ConnectionInitDelegate handler)
         {
-            broker.UnRegisterCallback<IPEndPoint, byte[], int, object>(Constants.Events.ConnectionInit, new ComponentCallbackDelegate<IPEndPoint, byte[], int, object>(handler));
+            broker.UnRegisterCallback(Constants.Events.ConnectionInit, new ComponentCallbackDelegate<IPEndPoint, byte[], int, ListenData>(handler));
         }
 
-        public static void Fire(ComponentBroker broker, IPEndPoint remoteEndpoint, byte[] buffer, int len, object v)
+        public static void Fire(ComponentBroker broker, IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
         {
-            broker.DoCallback<IPEndPoint, byte[], int, object>(Constants.Events.ConnectionInit, remoteEndpoint, buffer, len, v);
+            broker.DoCallback(Constants.Events.ConnectionInit, remoteEndpoint, buffer, len, ld);
         }
     }
 }

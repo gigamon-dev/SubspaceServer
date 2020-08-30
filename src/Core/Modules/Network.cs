@@ -19,53 +19,6 @@ namespace SS.Core.Modules
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
         /// <summary>
-        /// Information about a pair of listening sockets.
-        /// Typically, a "Zone" is represented by a single ListenData pair.
-        /// However, the server can be set up listen on multiple ListenData pairs, 
-        /// with each pair representing a particular "Arena" within the "Zone".
-        /// 
-        /// The <see cref="GameSocket"/> is the UDP socket used to send and recieve game data over the "subspace" game protocol.
-        /// 
-        /// The <see cref="PingSocket"/> is the UDP socket used to check if a server is up and tell how many players there are.
-        /// The port of the ping socket is the game socket + 1.
-        /// </summary>
-        private class ListenData
-        {
-            public readonly Socket GameSocket;
-            public readonly Socket PingSocket;
-
-            /// <summary>
-            /// used to determine the default arena users should be sent to
-            /// </summary>
-            public string ConnectAs;
-
-            /// <summary>
-            /// Whether VIE clients are allowed to connect
-            /// </summary>
-            public bool AllowVIE;
-
-            /// <summary>
-            /// Whether Continuum clients are allowed to connect
-            /// </summary>
-            public bool AllowContinuum;
-
-            /* dynamic population data */
-            //int total, playing;
-
-            public ListenData(Socket gameSocket, Socket pingSocket)
-            {
-                if (gameSocket == null)
-                    throw new ArgumentNullException("gameSocket");
-
-                if (pingSocket == null)
-                    throw new ArgumentNullException("pingSocket");
-
-                GameSocket = gameSocket;
-                PingSocket = pingSocket;
-            }
-        }
-
-        /// <summary>
         /// specialized data buffer which keeps track of what connection it is for and other useful info
         /// </summary>
         private class SubspaceBuffer : DataBuffer
@@ -1787,7 +1740,7 @@ namespace SS.Core.Modules
             return buf;
         }
 
-#region oohandlers (network layer header handling)
+        #region oohandlers (network layer header handling)
 
         private void processKeyResponse(SubspaceBuffer buffer)
         {
@@ -2034,7 +1987,7 @@ namespace SS.Core.Modules
                 {
                     //buf->conn->cc->i->Disconnected();
                     /* FIXME: this sends an extra 0007 to the client. that should
-                     * probably go away. */
+                        * probably go away. */
                     //DropClientConnection(buf->conn->cc);
                 }
             }
@@ -2371,9 +2324,9 @@ namespace SS.Core.Modules
             }
         }
 
-#endregion
+        #endregion
 
-#region IModule Members
+        #region IModule Members
 
         Type[] IModule.InterfaceDependencies
         {
@@ -2429,19 +2382,25 @@ namespace SS.Core.Modules
 
             // recieve thread
             Thread thread = new Thread(recieveThread);
+            thread.Name = "network-recv";
             thread.Start();
             _threadList.Add(thread);
 
             // send thread
             thread = new Thread(sendThread);
+            thread.Name = "network-send";
             thread.Start();
             _threadList.Add(thread);
 
             // reliable threads
-            thread = new Thread(relThread);
-            thread.Start();
-            _reliableThreads.Add(thread);
-            _threadList.Add(thread);
+            for (int i = 0; i < reliableThreadCount; i++)
+            {
+                thread = new Thread(relThread);
+                thread.Name = "network-rel-" + i;
+                thread.Start();
+                _reliableThreads.Add(thread);
+                _threadList.Add(thread);
+            }
 
             // queue more data thread (sends sized data)
             _serverTimer.SetTimer(queueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
@@ -2496,9 +2455,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-#endregion
+        #endregion
 
-#region IModuleLoaderAware Members
+        #region IModuleLoaderAware Members
 
         bool IModuleLoaderAware.PostLoad(ModuleManager mm)
         {
@@ -2514,13 +2473,12 @@ namespace SS.Core.Modules
 
 #endregion
 
-#region INetworkEncryption Members
+        #region INetworkEncryption Members
 
-        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, object v)
+        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, ListenData ld)
         {
-            ListenData ld = v as ListenData;
             if (ld == null)
-                throw new ArgumentException("is null or not of type ListenData", "v");
+                throw new ArgumentNullException(nameof(ld));
 
 #if CFG_DUMP_RAW_PACKETS
             dumpPk(string.Format("SENDRAW: {0} bytes", len), new ArraySegment<byte>(pkt, 0, len));
@@ -2529,11 +2487,10 @@ namespace SS.Core.Modules
             ld.GameSocket.SendTo(pkt, len, SocketFlags.None, remoteEndpoint);
         }
 
-        Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, IEncrypt enc, object v)
+        Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, IEncrypt enc, ListenData ld)
         {
-            ListenData ld = v as ListenData;
             if (ld == null)
-                throw new ArgumentException("is null or not of type ListenData", "v");
+                throw new ArgumentNullException(nameof(ld));
 
             // certain ports may have restrictions on client types
             if ((clientType == ClientType.VIE && !ld.AllowVIE) ||
@@ -2546,10 +2503,10 @@ namespace SS.Core.Modules
             if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out p))
             {
                 /* we found it. if its status is S_CONNECTED, just return the
-		         * pid. it means we have to redo part of the connection init. */
+		            * pid. it means we have to redo part of the connection init. */
 
                 /* whether we return p or not, we still have to drop the
-                 * reference to enc that we were given. */
+                    * reference to enc that we were given. */
                 //_mm.ReleaseInterface<IEncrypt>(
 
                 if (p.Status <= PlayerState.Connected)
@@ -2621,9 +2578,9 @@ namespace SS.Core.Modules
             return p;
         }
 
-#endregion
+        #endregion
 
-#region INetwork Members
+        #region INetwork Members
 
         void INetwork.SendToOne(Player p, byte[] data, int len, NetSendFlags flags)
         {
@@ -2883,9 +2840,9 @@ namespace SS.Core.Modules
             }
         }
 
-#endregion
+        #endregion
 
-#region INetworkClient Members
+        #region INetworkClient Members
 
         BaseClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConn icc, IClientEncrypt ice)
         {
@@ -2908,7 +2865,7 @@ namespace SS.Core.Modules
             }
         }
 
-#endregion
+        #endregion
 
         private void dropConnection(ClientConnection cc)
         {
