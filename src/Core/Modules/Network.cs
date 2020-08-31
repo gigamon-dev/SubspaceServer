@@ -2797,6 +2797,8 @@ namespace SS.Core.Modules
             }
         }
 
+        IReadOnlyList<ListenData> INetwork.Listening => _listenDataList;
+
         #endregion
 
         #region INetworkClient Members

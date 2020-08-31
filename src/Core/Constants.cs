@@ -35,6 +35,8 @@ namespace SS.Core
 
         public const int MaxPacket = 512;
 
+        public const int MaxConnInitPacket = 2048;
+
         public const int MaxLvzFiles = 16;
 
         /// <summary>

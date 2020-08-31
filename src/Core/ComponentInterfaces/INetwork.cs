@@ -132,5 +132,12 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="pktype"></param>
         /// <param name="func"></param>
         void RemoveSizedPacket(int pktype, SizedPacketDelegate func);
+
+        /// <summary>
+        /// Collection of information about sockets that the Network module is listening on.
+        /// Do not modify data in any of these lists.
+        /// </summary>
+        /// <remarks>The network module only modifies the list when it Loads or Unloads.  So for the most part, reading should be thread-safe.</remarks>
+        IReadOnlyList<ListenData> Listening { get; }
     }
 }
