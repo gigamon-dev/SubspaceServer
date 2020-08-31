@@ -5,6 +5,7 @@ using System.Text;
 
 using SS.Core.ComponentInterfaces;
 using System.Reflection;
+using System.Xml.Schema;
 
 namespace SS.Core.Modules
 {
@@ -58,6 +59,10 @@ Args: none
 Displays version information about the server. It might also print out some information about the machine that it's running on.");
 
             _commandManager.AddCommand("sheep", command_sheep, null, null);
+            _commandManager.AddCommand("lsmod", Command_lsmod, null, null);
+            _commandManager.AddCommand("insmod", Command_insmod, null, null);
+            _commandManager.AddCommand("rmmod", Command_rmmod, null, null);
+            _commandManager.AddCommand("attmod", Command_attmod, null, null);
             return true;
         }
 
@@ -112,6 +117,118 @@ Displays version information about the server. It might also print out some info
                 _chat.SendSoundMessage(p, ChatSound.Sheep, sheepMessage);
             else
                 _chat.SendSoundMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
+        }
+
+        private void Command_lsmod(string command, string parameters, Player p, ITarget target)
+        {
+            bool filterByArena = false; // TODO: 
+            bool sort = false;
+            string substr = null;
+
+            Arena arena = null;
+
+            if (!string.IsNullOrWhiteSpace(parameters))
+            {
+                string[] args = parameters.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach(string arg in args)
+                {
+                    if (string.Equals(arg, "-a", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (target.Type == TargetType.Arena
+                            && target is IArenaTarget arenaTarget)
+                        {
+                            filterByArena = true;
+                            arena = arenaTarget.Arena;
+                        }
+                    }
+                    else if (string.Equals(arg, "-s", StringComparison.OrdinalIgnoreCase))
+                    {
+                        sort = true;
+                    }
+                    else
+                    {
+                        substr = arg;
+                    }
+                }
+            }
+
+            LinkedList<string> modulesList = new LinkedList<string>();
+
+            _mm.EnumerateModules(
+                (moduleType, _) =>
+                {
+                    string name = moduleType.FullName;
+                    if (substr == null || name.Contains(substr))
+                        modulesList.AddLast(name);
+                },
+                arena);
+
+            IEnumerable<string> modules = modulesList;
+
+            if (sort)
+            {
+                modules = from str in modules
+                          orderby str
+                          select str;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            foreach (string str in modules)
+            {
+                if (sb.Length > 0)
+                    sb.Append(", ");
+                
+                sb.Append(str);
+            }
+
+            _chat.SendWrappedText(p, sb.ToString());
+        }
+
+        private void Command_insmod(string command, string parameters, Player p, ITarget target)
+        {
+            if (_mm.LoadModule(parameters))
+                _chat.SendMessage(p, $"Module '{parameters}' loaded.");
+            else
+                _chat.SendMessage(p, $"Failed to load module '{parameters}'.");
+        }
+
+        private void Command_rmmod(string command, string parameters, Player p, ITarget target)
+        {
+            if (_mm.UnloadModule(parameters))
+                _chat.SendMessage(p, $"Module '{parameters}' unloaded.");
+            else
+                _chat.SendMessage(p, $"Failed to unload module '{parameters}'.");
+        }
+
+        private void Command_attmod(string command, string parameters, Player p, ITarget target)
+        {
+            bool detach = false;
+            string module = parameters;
+
+            if (!string.IsNullOrWhiteSpace(parameters))
+            {
+                string[] tokens = parameters.Split(new char[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (tokens.Length == 2 && string.Equals(tokens[0], "-d"))
+                {
+                    detach = true;
+                    module = tokens[1];
+                }
+            }
+
+            if (detach)
+            {
+                if(_mm.DetachModule(module, p.Arena))
+                    _chat.SendMessage(p, $"Module '{module}' detached.");
+                else
+                    _chat.SendMessage(p, $"Failed to detach module '{module}'.");
+            }
+            else
+            {
+                if (_mm.AttachModule(module, p.Arena))
+                    _chat.SendMessage(p, $"Module '{module}' attached.");
+                else
+                    _chat.SendMessage(p, $"Failed to attach module '{module}'.");
+            }
         }
     }
 }

@@ -29,5 +29,24 @@ namespace SS.Utilities
 
             return str.Substring(startIndex, endIndex-startIndex+1);
         }
+
+        public static IEnumerable<string> WrapText(this string text, int width)
+        {
+            if (text == null)
+                yield break;
+
+            StringBuilder sb = new StringBuilder(text);
+            int startIndex = 0;
+
+            while (startIndex < sb.Length)
+            {
+                if (width > sb.Length - startIndex)
+                    width = sb.Length - startIndex;
+
+                yield return sb.ToString(startIndex, width);
+
+                startIndex += width;
+            }
+        }
     }
 }

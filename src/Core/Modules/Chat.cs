@@ -353,7 +353,16 @@ namespace SS.Core.Modules
 
         void IChat.SendWrappedText(Player p, string text)
         {
-            
+            if (p == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            foreach (string str in text.Trim().WrapText(78))
+            {
+                sendMessage(p, "  {0}", str);
+            }
         }
 
         #endregion

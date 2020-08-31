@@ -1,10 +1,45 @@
+using SS.Core.ComponentInterfaces;
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using System.ComponentModel;
+using System.Linq;
+using System.Reflection;
 
 namespace SS.Core
 {
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    public class ModuleInfoAttribute : Attribute
+    {
+        public ModuleInfoAttribute(string description)
+        {
+            Description = description;
+        }
+
+        public string Description { get; }
+
+        public static bool TryGetAttribute(Type type, out ModuleInfoAttribute attribute)
+        {
+            if (type == null)
+            {
+                attribute = null;
+                return false;
+            }
+
+            attribute = Attribute.GetCustomAttribute(type, typeof(ModuleInfoAttribute)) as ModuleInfoAttribute;
+            return attribute != null;
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    internal class CoreModuleInfoAttribute : ModuleInfoAttribute
+    {
+        public CoreModuleInfoAttribute()
+            : base($"Subspace Server .NET ({Assembly.GetExecutingAssembly().GetName().Version})")
+        {
+        }
+    }
+
     public interface IModule
     {
         /// <summary>
@@ -36,28 +71,6 @@ namespace SS.Core
         bool PreUnload(ModuleManager mm);
     }
 
-    /* TODO
-    public class ModuleLoadedEventArgs : EventArgs
-    {
-        public readonly IModule Module;
-
-        public ModuleLoadedEventArgs(IModule module)
-        {
-            Module = module;
-        }
-    }
-    */
-    public class ModuleUnloadingEventArgs : CancelEventArgs
-    {
-        public readonly IModule Module;
-        public string CancelReason;
-
-        public ModuleUnloadingEventArgs(IModule module) : base(false)
-        {
-            Module = module;
-        }
-    }
-
     /// <summary>
     /// Equivalent of ASSS' module.[ch]
     /// Completely different style though...
@@ -71,278 +84,397 @@ namespace SS.Core
     /// Another issue I will have to make a decision on is if the ModuleManager should know anything about the Arena class.  That is, 
     /// whether an Arena object contains the methods to register interfaces and callbacks to itself.
     /// </summary>
-    public sealed class ModuleManager : ComponentBroker
+    public sealed class ModuleManager : ComponentBroker, IModuleManager
     {
         private class ModuleInfo
         {
-            private readonly IModule _module;
-            private bool _isLoaded = false;
-            private readonly Dictionary<Type, IComponentInterface> _interfaceDependencies;
-
             public ModuleInfo(IModule module)
             {
-                _module = module;
+                if (module == null)
+                    throw new ArgumentNullException(nameof(module));
+
+                ModuleType = module.GetType();
+
+                if (ModuleInfoAttribute.TryGetAttribute(ModuleType, out ModuleInfoAttribute attribute))
+                    Description = attribute.Description;
+
+                Module = module;
+                IsLoaded = false;
 
                 if (module.InterfaceDependencies == null)
                 {
-                    _interfaceDependencies = new Dictionary<Type, IComponentInterface>(0);
+                    InterfaceDependencies = new Dictionary<Type, IComponentInterface>(0);
                 }
                 else
                 {
-                    _interfaceDependencies = new Dictionary<Type, IComponentInterface>(module.InterfaceDependencies.Length);
+                    InterfaceDependencies = new Dictionary<Type, IComponentInterface>(module.InterfaceDependencies.Length);
                     foreach (Type interfaceType in module.InterfaceDependencies)
                     {
-                        if (interfaceType.IsInterface == true)
+                        if (interfaceType.IsInterface == true
+                            && typeof(IComponentInterface).IsAssignableFrom(interfaceType))
                         {
-                            _interfaceDependencies.Add(interfaceType, null);
+                            InterfaceDependencies.Add(interfaceType, null);
                         }
                     }
                 }
             }
 
-            public bool IsLoaded
+            public Type ModuleType
             {
-                get { return _isLoaded; }
+                get;
             }
 
             public IModule Module
             {
-                get { return _module; }
+                get;
             }
 
-            public bool LoadModule(ModuleManager mm)
+            public string Description
             {
-                if (IsLoaded)
-                    return false;
-
-                // try to get interfaces
-                bool gotAllInterfaces = true;
-                List<Type> interfaceKeyList = new List<Type>(_interfaceDependencies.Count);
-                interfaceKeyList.AddRange(_interfaceDependencies.Keys);
-
-                foreach (Type interfaceKey in interfaceKeyList)
-                {
-                    IComponentInterface moduleInterface = mm.GetInterface(interfaceKey);
-                    if (moduleInterface == null)
-                    {
-                        // unable to get an interface
-                        gotAllInterfaces = false;
-                        break;
-                    }
-                    _interfaceDependencies[interfaceKey] = moduleInterface;
-                }
-
-                if (!gotAllInterfaces)
-                {
-                    releaseInterfaces(mm);
-                    return false;
-                }
-
-                // we got all the interfaces, now we can load the module
-                if (_module.Load(mm, _interfaceDependencies) == false)
-                {
-                    // module loading failed
-                    Console.WriteLine(string.Format("[ModuleManager] failed to load module [{0}]", _module.GetType().FullName));
-
-                    // TODO: maybe we should do something more drastic than ignore and retry later?
-                    releaseInterfaces(mm);
-                    return false;
-                }
-
-                _isLoaded = true;
-                mm._loadedModules.AddLast(_module.GetType());
-                Console.WriteLine(string.Format("[ModuleManager] loaded module [{0}]", _module.GetType().FullName));
-                return true;
+                get;
             }
 
-            public bool UnloadModule(ModuleManager mm)
+            public bool IsLoaded
             {
-                if (mm.ModuleUnloading != null)
-                {
-                    ModuleUnloadingEventArgs args = new ModuleUnloadingEventArgs(_module);
-                    mm.ModuleUnloading(this, args);
-                    if (args.Cancel == true)
-                    {
-                        throw new Exception(args.CancelReason);
-                    }
-                }
-
-                if (_module.Unload(mm) == false)
-                {
-                    throw new Exception("error unloading module");
-                }
-
-                releaseInterfaces(mm);
-
-                _isLoaded = false;
-                Console.WriteLine(string.Format("[ModuleManager] unloaded module [{0}]", _module.GetType().FullName));
-                return true;
+                get;
+                set;
             }
 
-            private void releaseInterfaces(ModuleManager mm)
+            public Dictionary<Type, IComponentInterface> InterfaceDependencies
             {
-                // release the interfaces we were able to get
-                List<Type> interfaceKeyList = new List<Type>(_interfaceDependencies.Count);
-                interfaceKeyList.AddRange(_interfaceDependencies.Keys);
-
-                foreach (Type interfaceKey in interfaceKeyList)
-                {
-                    if (_interfaceDependencies[interfaceKey] != null)
-                    {
-                        mm.ReleaseInterface(interfaceKey);
-                        _interfaceDependencies[interfaceKey] = null;
-                    }
-                }
+                get;
             }
+
+            public HashSet<Arena> AttachedArenas
+            {
+                get;
+            } = new HashSet<Arena>();
         }
 
-        // all known modules
-        private object _moduleLockObj = new object();
-        private Dictionary<Type, ModuleInfo> _moduleTypeLookup = new Dictionary<Type, ModuleInfo>();
-        private LinkedList<Type> _loadedModules = new LinkedList<Type>();
-        
-
-        //TODO: public event EventHandler<ModuleLoadedEventArgs> ModuleLoaded;
-
-        /// <summary>
-        /// Occurs before a module is unloaded.
-        /// </summary>
-        public event EventHandler<ModuleUnloadingEventArgs> ModuleUnloading;
+        // for managing modules
+        private readonly object _moduleLockObj = new object();
+        private readonly Dictionary<Type, ModuleInfo> _moduleTypeLookup = new Dictionary<Type, ModuleInfo>();
+        private readonly LinkedList<Type> _loadedModules = new LinkedList<Type>();
 
         public ModuleManager()
         {
+            RegisterInterface<IModuleManager>(this);
         }
-        
-        /// <summary>
-        /// Adds a module to be loaded later.
-        /// </summary>
-        /// <param name="moduleToAdd"></param>
-        public void AddModule(IModule moduleToAdd)
+
+        public bool AttachModule(string assemblyQualifiedName, Arena arena)
         {
-            Type moduleType = moduleToAdd.GetType();
-            ModuleInfo moduleInfo = new ModuleInfo(moduleToAdd);
+            if (string.IsNullOrWhiteSpace(assemblyQualifiedName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(assemblyQualifiedName));
+
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            Type type = Type.GetType(assemblyQualifiedName);
+            if (type == null)
+            {
+                Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Unable to find module '{assemblyQualifiedName}'.");
+                return false;
+            }
+
+            if (!IsModule(type))
+            {
+                Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Found type '{assemblyQualifiedName}', but it is not a module .");
+                return false;
+            }
 
             lock (_moduleLockObj)
             {
-                if (_moduleTypeLookup.ContainsKey(moduleType) == false)
+                if (!_moduleTypeLookup.TryGetValue(type, out ModuleInfo moduleInfo))
                 {
-                    _moduleTypeLookup.Add(moduleType, moduleInfo);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Adds a module to be loaded later.
-        /// </summary>
-        /// <typeparam name="TModule"></typeparam>
-        /// <param name="moduleToAdd"></param>
-        public void AddModule<TModule>(TModule moduleToAdd) where TModule : class, IModule
-        {
-            Type moduleType = typeof(TModule); // guessing this might be faster than object.GetType() since part of it is compile time
-            ModuleInfo moduleInfo = new ModuleInfo(moduleToAdd);
-
-            lock (_moduleLockObj)
-            {
-                if (_moduleTypeLookup.ContainsKey(moduleType) == false)
-                {
-                    _moduleTypeLookup.Add(moduleType, moduleInfo);
-                }
-            }
-        }
-
-        /* if i do supply a method like this, i will probably want to reference count
-        public TModule GetModule<TModule>() where TModule : class, IModule
-        {
-            lock (_lockObj)
-            {
-                ModuleInfo moduleInfo;
-                _moduleTypeLookup.TryGetValue(typeof(TModule), out moduleInfo);
-                return moduleInfo.Module as TModule;
-            }
-        }
-        */
-
-        /// <summary>
-        /// Loads a module.
-        /// </summary>
-        /// <param name="moduleToLoad">module to load</param>
-        /// <returns>
-        /// true - module loaded successfuly
-        /// false - module did not load or module already loaded
-        /// </returns>
-        public bool LoadModule(IModule moduleToLoad)
-        {
-            Type t = moduleToLoad.GetType();
-            ModuleInfo moduleInfo;
-
-            lock (_moduleLockObj)
-            {
-                if (_moduleTypeLookup.TryGetValue(t, out moduleInfo) == false)
-                {
-                    // module wasn't previously added, do it now
-                    moduleInfo = new ModuleInfo(moduleToLoad);
-                    _moduleTypeLookup.Add(t, moduleInfo);
-                }
-
-                // TODO: handle exceptions that are thrown when loading
-                if(moduleInfo.LoadModule(this) == false)
-                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' is not registered, it needs to be loaded first.");
                     return false;
                 }
+
+                if (!moduleInfo.IsLoaded)
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' is not loaded.");
+                    return false;
+                }
+
+                if (moduleInfo.AttachedArenas.Contains(arena))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' is already attached to the arena.");
+                    return false;
+                }
+
+                if (!(moduleInfo.Module is IArenaAttachableModule arenaAttachableModule))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' does not support attaching.");
+                    return false;
+                }
+
+                if (!arenaAttachableModule.AttachModule(arena))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' failed to attach .");
+                    return false;
+                }
+
+                moduleInfo.AttachedArenas.Add(arena);
+                return true;
+            }
+        }
+
+        public bool DetachModule(string assemblyQualifiedName, Arena arena)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyQualifiedName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(assemblyQualifiedName));
+
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            Type type = Type.GetType(assemblyQualifiedName);
+            if (type == null)
+            {
+                Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} DetachModule failed: Unable to find module '{assemblyQualifiedName}'.");
+                return false;
+            }
+
+            if (!IsModule(type))
+            {
+                Console.Error.WriteLine($"E <ModuleManager> {{{arena}}}  DetachModule failed: Found type '{assemblyQualifiedName}', but it is not a module .");
+                return false;
+            }
+
+            lock (_moduleLockObj)
+            {
+                if (!_moduleTypeLookup.TryGetValue(type, out ModuleInfo moduleInfo))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} DetachModule failed: Module '{assemblyQualifiedName}' is not registered.");
+                    return false;
+                }
+
+                if (!moduleInfo.AttachedArenas.Contains(arena))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} DetachModule failed: Module '{assemblyQualifiedName}' is not attached to the arena.");
+                    return false;
+                }
+
+                if (!(moduleInfo.Module is IArenaAttachableModule arenaAttachableModule))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' does not support attaching.");
+                    return false;
+                }
+
+                if (!arenaAttachableModule.DetachModule(arena))
+                {
+                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{assemblyQualifiedName}' failed to detach .");
+                    return false;
+                }
+
+                moduleInfo.AttachedArenas.Remove(arena);
+                return true;
+            }
+        }
+
+        public bool DetachAllFromArena(Arena arena)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            bool ret = true;
+
+            lock (_moduleLockObj)
+            {
+                foreach (var moduleInfo in _moduleTypeLookup.Values)
+                {
+                    if (moduleInfo.AttachedArenas.Contains(arena))
+                    {
+                        if (!DetachModule(moduleInfo.ModuleType.AssemblyQualifiedName, arena))
+                            ret = false;
+                    }
+                }
+            }
+
+            return ret;
+        }
+
+        /// <summary>
+        /// Adds a module to be loaded later.
+        /// </summary>
+        /// <param name="assemblyQualifiedName">The assembly to load in the format of <see cref="Type.AssemblyQualifiedName"/>.</param>
+        /// <returns>True if the module was added. Otherwise, false.</returns>
+        public bool AddModule(string assemblyQualifiedName) => AddAndLoadModule(assemblyQualifiedName, false);
+
+        /// <summary>
+        /// Adds a module to be loaded later.
+        /// </summary>
+        /// <param name="module">The module to add.</param>
+        /// <returns>True if the module was added. Otherwise, false.</returns>
+        public bool AddModule(IModule module) => AddAndLoadModule(module, false);
+
+        /// <summary>
+        /// Adds a module to be loaded later.
+        /// </summary>
+        /// <typeparam name="TModule">Type of the module to add.</typeparam>
+        /// <param name="module">The module to add.</param>
+        /// <returns>True if the module was added. Otherwise, false.</returns>
+        public bool AddModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, false);
+
+        /// <summary>
+        /// Adds a module to be loaded later.
+        /// </summary>
+        /// <typeparam name="TModule">Type of the module to add.</typeparam>
+        /// <returns>True if the module was added. Otherwise, false.</returns>
+        public bool AddModule<TModule>() where TModule : class, IModule => AddAndLoadModule<TModule>(false);
+
+        /// <summary>
+        /// Adds and loads a module.
+        /// </summary>
+        /// <param name="assemblyQualifiedName">The assembly to load in the format of <see cref="Type.AssemblyQualifiedName"/>.</param>
+        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
+        public bool LoadModule(string assemblyQualifiedName) => AddAndLoadModule(assemblyQualifiedName, true);
+
+        /// <summary>
+        /// Adds and loads a module.
+        /// </summary>
+        /// <param name="module">The module to add and load.</param>
+        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
+        public bool LoadModule(IModule module) => AddAndLoadModule(module, true);
+
+        /// <summary>
+        /// Adds and loads a module.
+        /// </summary>
+        /// <typeparam name="TModule">Type of the module to add and load.</typeparam>
+        /// <param name="module">The module to add and load.</param>
+        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
+        public bool LoadModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, true);
+
+        /// <summary>
+        /// Adds and loads a module.
+        /// </summary>
+        /// <typeparam name="TModule">Type of the module to add and load.</typeparam>
+        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
+        public bool LoadModule<TModule>() where TModule : class, IModule => AddAndLoadModule<TModule>(true);
+
+        private bool AddAndLoadModule(string assemblyQualifiedName, bool load)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyQualifiedName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(assemblyQualifiedName));
+
+            Type type = Type.GetType(assemblyQualifiedName);
+            if (type == null)
+            {
+                Console.Error.WriteLine($"E <ModuleManager> Unable to find module '{assemblyQualifiedName}'.");
+                return false;
+            }
+
+            IModule module = CreateModuleObject(type);
+            if (module == null)
+                return false;
+
+            return AddAndLoadModule(type, module, load);
+        }
+
+        private bool AddAndLoadModule(IModule module, bool load)
+        {
+            if (module == null)
+                throw new ArgumentNullException(nameof(module));
+
+            Type moduleType = module.GetType();
+            return AddAndLoadModule(moduleType, module, load);
+        }
+
+        private bool AddAndLoadModule<TModule>(TModule module, bool load) where TModule : class, IModule
+        {
+            if (module == null)
+                throw new ArgumentNullException(nameof(module));
+
+            Type moduleType = typeof(TModule);
+            return AddAndLoadModule(moduleType, module, load);
+        }
+
+        private bool AddAndLoadModule<TModule>(bool load) where TModule : class, IModule
+        {
+            if (!(CreateModuleObject(typeof(TModule)) is TModule module))
+                return false;
+
+            return AddAndLoadModule(module, load);
+        }
+
+        private bool AddAndLoadModule(Type moduleType, IModule module, bool load)
+        {
+            if (moduleType == null)
+                throw new ArgumentNullException(nameof(moduleType));
+
+            if (module == null)
+                throw new ArgumentNullException(nameof(module));
+
+            lock (_moduleLockObj)
+            {
+                if (_moduleTypeLookup.ContainsKey(moduleType))
+                    return false;
+
+                ModuleInfo moduleInfo = new ModuleInfo(module);
+                _moduleTypeLookup.Add(moduleType, moduleInfo);
+
+                if (load)
+                    return LoadModule(moduleInfo);
 
                 return true;
             }
         }
-        /*
-        private bool loadModule(ModuleInfo moduleInfo)
+
+        private bool IsModule(Type type)
         {
-            lock (_lockObj)
+            if (type == null)
+                return false;
+
+            // Verify it's a class.
+            if (type.IsClass == false)
+                return false;
+
+            // Verify it implements the IModule interface.
+            if (!typeof(IModule).IsAssignableFrom(type))
+                return false;
+
+            return true;
+        }
+
+        private IModule CreateModuleObject(Type type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            if (IsModule(type) == false)
+                return null;
+
+            return Activator.CreateInstance(type) as IModule;
+        }
+
+        /// <summary>
+        /// Unloads a module.
+        /// </summary>
+        /// <param name="assemblyQualifiedName">The type to unload in the format of <see cref="Type.AssemblyQualifiedName"/>.</param>
+        /// <returns>True if the module was unloaded. Otherwise false.</returns>
+        public bool UnloadModule(string assemblyQualifiedName)
+        {
+            Type typeToRemove = Type.GetType(assemblyQualifiedName);
+            if (typeToRemove == null)
+                return false;
+
+            lock (_moduleLockObj)
             {
-                if (moduleInfo.IsLoaded)
+                if (_moduleTypeLookup.TryGetValue(typeToRemove, out ModuleInfo moduleInfo) == false)
                     return false;
 
-                //IModule module = moduleInfo.Module;
-                //if (moduleInfo.TryGetInterfaces(this) == true)
-                //{
-                    //moduleInfo.LoadModule();
-                //}
-
-                List<Type> interfacesNeeded = moduleInfo.InterfacesNeeded;
-
-                // in order to load a module, we must first have all of its dependencies
-                // try to get all of the module's depedencies
-                for (int x = interfacesNeeded.Count - 1; x >= 0; x--)
+                if (UnloadModule(moduleInfo) == false)
                 {
-                    // try to find the dependency
-                    IModuleInterface neededModuleInterface;
-                    if (_interfaceLookup.TryGetValue(interfacesNeeded[x], out neededModuleInterface) == true)
-                    {
-                        // found the dependency
-                        moduleInfo.InterfaceDependencies[interfacesNeeded[x]] = neededModuleInterface;
-                        interfacesNeeded.RemoveAt(x);
-                    }
+                    // TODO: write an error log
+                    return false; // can't unload, possibly can't unregister one of its interfaces
                 }
 
-                if (interfacesNeeded.Count == 0)
-                {
-                    // module has all of its dependencies, load it
-                    System.Console.WriteLine("[ModuleManager] loading module: " + moduleInfo.Module.GetType().ToString());
-                    if (moduleInfo.Module.Load(this, moduleInfo.InterfaceDependencies) == true)
-                    {
-                        moduleInfo.IsLoaded = true;
-                        return true;
-                    }
-                    else
-                    {
-                        Console.WriteLine("[ModuleManager] failed to load module: " + moduleInfo.Module.GetType().ToString());
-                        return false;
-                    }
-                }
-
-                return false;
+                _loadedModules.Remove(moduleInfo.ModuleType);
+                _moduleTypeLookup.Remove(moduleInfo.ModuleType);
             }
+
+            return false;
         }
-*/
+
         /// <summary>
         /// Attempts to load any modules that are pending to load.
         /// </summary>
@@ -365,7 +497,7 @@ namespace SS.Core
                         if (moduleInfo.IsLoaded)
                             continue; // already loaded
 
-                        if(moduleInfo.LoadModule(this) == true)
+                        if (LoadModule(moduleInfo) == true)
                         {
                             // loaded module
                             numModulesLoadedDuringLastPass++;
@@ -384,55 +516,6 @@ namespace SS.Core
             // anything left unloaded is missing at least one dependency
         }
 
-        public delegate void EnumerateModulesDelegate(IModule module, bool isLoaded);
-
-        public void EnumerateModules(EnumerateModulesDelegate enumerationCallback)
-        {
-            lock (_moduleLockObj)
-            {
-                foreach(ModuleInfo moduleInfo in _moduleTypeLookup.Values)
-                {
-                    enumerationCallback(moduleInfo.Module, moduleInfo.IsLoaded);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Unloads a module.
-        /// </summary>
-        /// <param name="moduleName">name of the module to unload</param>
-        /// <exception cref="System.Exception">error stating why module unloading</exception>
-        public void UnloadModule(string moduleName)
-        {
-            lock (_moduleLockObj)
-            {
-                foreach (KeyValuePair<Type, ModuleInfo> kvp in _moduleTypeLookup)
-                {
-                    if (kvp.Key.FullName == moduleName)
-                    {
-                        if (kvp.Value.UnloadModule(this) == true)
-                        {
-                            _moduleTypeLookup.Remove(kvp.Key);
-
-                            LinkedListNode<Type> node = _loadedModules.Last;
-                            while (node != null)
-                            {
-                                if (node.Value == kvp.Key)
-                                {
-                                    _loadedModules.Remove(node);
-                                    return;
-                                }
-                            }
-                            return;
-                        }
-                    }
-                }
-            }
-
-            // getting to here, means we were unsuccessful in finding the module to unload
-            throw new Exception(string.Format("unable to find module by the name of [{0}]", moduleName));
-        }
-
         public void UnloadAllModules()
         {
             lock (_moduleLockObj)
@@ -440,16 +523,158 @@ namespace SS.Core
                 LinkedListNode<Type> node = _loadedModules.Last;
                 while (node != null)
                 {
-                    ModuleInfo moduleInfo;
-                    if (_moduleTypeLookup.TryGetValue(node.Value, out moduleInfo) == true)
+                    LinkedListNode<Type> toRemove = null;
+
+                    if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleInfo moduleInfo) == true)
                     {
-                        moduleInfo.UnloadModule(this);
+                        if (UnloadModule(moduleInfo) == false)
+                        {
+                            // TODO: write error log
+                        }
+                        else
+                        {
+                            toRemove = node;
+                        }
                     }
 
                     node = node.Previous;
-                    _loadedModules.RemoveLast();
+
+                    if (toRemove != null)
+                    {
+                        _moduleTypeLookup.Remove(toRemove.Value);
+                        _loadedModules.Remove(toRemove);
+                    }
                 }
             }
         }
+
+        public void EnumerateModules(EnumerateModulesDelegate enumerationCallback, Arena arena)
+        {
+            lock (_moduleLockObj)
+            {
+                foreach (ModuleInfo moduleInfo in _moduleTypeLookup.Values)
+                {
+                    enumerationCallback(moduleInfo.ModuleType, moduleInfo.Description);
+                }
+            }
+        }
+
+        public void DoPostLoadStage()
+        {
+            lock (_moduleLockObj)
+            {
+                foreach (ModuleInfo moduleInfo in _moduleTypeLookup.Values)
+                {
+                    if (moduleInfo.IsLoaded
+                        && moduleInfo.Module is IModuleLoaderAware loaderAwareModule)
+                    {
+                        loaderAwareModule.PostLoad(this);
+                    }
+                }
+            }
+        }
+
+        public void DoPreUnloadStage()
+        {
+            lock (_moduleLockObj)
+            {
+                foreach (ModuleInfo moduleInfo in _moduleTypeLookup.Values)
+                {
+                    if (moduleInfo.IsLoaded
+                        && moduleInfo.Module is IModuleLoaderAware loaderAwareModule)
+                    {
+                        loaderAwareModule.PreUnload(this);
+                    }
+                }
+            }
+        }
+
+        #region ModuleInfo helper methods
+
+        private bool LoadModule(ModuleInfo moduleInfo)
+        {
+            if (moduleInfo == null)
+                throw new ArgumentNullException(nameof(moduleInfo));
+
+            if (moduleInfo.IsLoaded)
+                return false;
+
+            // try to get interfaces
+            bool isMissingInterface = false;
+            Type[] interfaceKeys = moduleInfo.InterfaceDependencies.Keys.ToArray();
+
+            foreach (Type interfaceKey in interfaceKeys)
+            {
+                IComponentInterface moduleInterface = GetInterface(interfaceKey);
+                if (moduleInterface == null)
+                {
+                    // unable to get an interface
+                    isMissingInterface = true;
+                    break;
+                }
+
+                moduleInfo.InterfaceDependencies[interfaceKey] = moduleInterface;
+            }
+
+            if (isMissingInterface)
+            {
+                ReleaseInterfaces(moduleInfo);
+                return false;
+            }
+
+            // we got all the interfaces, now we can load the module
+            if (moduleInfo.Module.Load(this, moduleInfo.InterfaceDependencies) == false)
+            {
+                // module loading failed
+                Console.Error.WriteLine(string.Format($"E <ModuleManager> Error loading module [{moduleInfo.ModuleType.FullName}]"));
+
+                // TODO: maybe we should do something more drastic than ignore and retry later?
+                ReleaseInterfaces(moduleInfo);
+                return false;
+            }
+
+            moduleInfo.IsLoaded = true;
+            _loadedModules.AddLast(moduleInfo.ModuleType);
+            Console.WriteLine(string.Format($"I <ModuleManager> Loaded module [{moduleInfo.ModuleType.FullName}]"));
+            return true;
+        }
+
+        private bool UnloadModule(ModuleInfo moduleInfo)
+        {
+            if (moduleInfo == null)
+                throw new ArgumentNullException(nameof(moduleInfo));
+
+            if (moduleInfo.Module.Unload(this) == false)
+            {
+                Console.Error.WriteLine($"E <ModuleManager> Error unloading module [{moduleInfo.ModuleType.FullName}]");
+                return false;
+            }
+
+            ReleaseInterfaces(moduleInfo);
+
+            moduleInfo.IsLoaded = false;
+            Console.WriteLine(string.Format($"I <ModuleManager> Unloaded module [{moduleInfo.ModuleType.FullName}]"));
+            return true;
+        }
+
+        private void ReleaseInterfaces(ModuleInfo moduleInfo)
+        {
+            if (moduleInfo == null)
+                throw new ArgumentNullException(nameof(moduleInfo));
+
+            // release the interfaces we were able to get
+            Type[] interfaceKeys = moduleInfo.InterfaceDependencies.Keys.ToArray();
+
+            foreach (Type interfaceKey in interfaceKeys)
+            {
+                if (moduleInfo.InterfaceDependencies[interfaceKey] != null)
+                {
+                    ReleaseInterface(interfaceKey);
+                    moduleInfo.InterfaceDependencies[interfaceKey] = null;
+                }
+            }
+        }
+
+        #endregion
     }
 }

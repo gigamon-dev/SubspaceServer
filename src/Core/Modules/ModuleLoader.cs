@@ -1,21 +1,15 @@
+using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Reflection;
-using System.IO;
-using System.Xml;
-using SS.Core.ComponentInterfaces;
+using System.Linq;
+using System.Xml.Linq;
 
 namespace SS.Core.Modules
 {
     public class ModuleLoader : IModule, IModuleLoader
     {
         private ModuleManager _mm;
-
-        public ModuleLoader()
-        {
-
-        }
+        private ILogManager _logManager;
 
         #region IModule Members
 
@@ -37,137 +31,65 @@ namespace SS.Core.Modules
         public bool Unload(ModuleManager mm)
         {
             _mm.UnregisterInterface<IModuleLoader>();
+
+            if (_logManager != null)
+            {
+                _mm.ReleaseInterface<ILogManager>();
+            }
+
             return true;
         }
 
         #endregion
 
+        private void WriteLog(LogLevel level, string message)
+        {
+            if (_logManager == null)
+            {
+                _logManager = _mm.GetInterface<ILogManager>();
+            }
+
+            string logText = $"<{nameof(ModuleLoader)}> {message}";
+            if (_logManager != null)
+            {
+                _logManager.Log(level, logText);
+            }
+            else
+            {
+                Console.WriteLine(logText);
+            }
+        }
+
         #region IModuleLoader Members
 
         bool IModuleLoader.LoadModulesFromConfig(string moduleConfigFilename)
         {
-            XmlDocument xmlDoc = new XmlDocument();
-
             try
             {
-                xmlDoc.Load(moduleConfigFilename);
+                // Read the xml config.
+                var doc = XDocument.Load(moduleConfigFilename);
+                IEnumerable<string> typeNames =
+                    from moduleElement in doc.Descendants("module")
+                    let name = moduleElement.Attribute("type").Value
+                    where !string.IsNullOrWhiteSpace(name)
+                    select name;
 
-                foreach (XmlNode node in xmlDoc.SelectNodes("modules/module"))
+                // Try to load each module.
+                foreach (string name in typeNames)
                 {
-                    XmlAttribute moduleNameAttribute = (XmlAttribute)node.Attributes.GetNamedItem("moduleName");
-                    if (moduleNameAttribute == null)
-                        continue; // attribute is required, ignore this node
-                    
-                    string moduleName = moduleNameAttribute.Value;
-                    if(string.IsNullOrEmpty(moduleName))
-                        continue;
-
-                    XmlAttribute assemblyAttribute = (XmlAttribute)node.Attributes.GetNamedItem("assembly");
-                    Assembly assembly = null;
-                    if (assemblyAttribute != null)
-                    {
-                        string assemblyString = assemblyAttribute.Value;
-                        if(string.IsNullOrEmpty(assemblyString) == false)
-                        {
-                            try
-                            {
-                                assembly = Assembly.Load(assemblyString);
-                            }
-                            catch
-                            {
-                                // unable to load assembly
-                                continue;
-                            }
-                        }
-                    }
-
-                    if(assembly == null)
-                    {
-                        // no assembly specified, assume the current assembly
-                        assembly = Assembly.GetExecutingAssembly();
-                    }
-                        
-                    IModule module;
-                    module = createModuleObject(assembly, moduleName);
-                    if (module == null)
-                        continue;
-
-                    _mm.LoadModule(module);
+                    _mm.AddModule(name);
                 }
+
+                // Tell the module manager to try to load everything that isn't already loaded.
+                _mm.LoadAllModules();
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                WriteLog(LogLevel.Error, $"ModuleLoader.LoadModulesFromConfig: {ex}");
+                return false;
             }
 
             return true;
-        }
-
-        private IModule createModuleObject(Assembly assembly, string moduleFullName)
-        {
-            Type type = assembly.GetType(moduleFullName);
-            if (type == null)
-                return null;
-
-            if (type.IsClass == false)
-                return null;
-
-            if (typeof(IModule).IsAssignableFrom(type))
-            {
-                IModule module = Activator.CreateInstance(type) as IModule;
-                if (module != null)
-                {
-                    return module;
-                }
-            }
-
-            return null;
-        }
-
-        bool IModuleLoader.AddModule(string assemblyString, string moduleFullName)
-        {
-            try
-            {
-                Assembly assembly = Assembly.Load(assemblyString);
-
-                IModule module = createModuleObject(assembly, moduleFullName);
-                return (module != null);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-                return false;
-            }
-        }
-
-        void IModuleLoader.DoPostLoadStage()
-        {
-            _mm.EnumerateModules(delegate(IModule module, bool isLoaded)
-            {
-                if (isLoaded == false)
-                    return;
-
-                IModuleLoaderAware loaderAwareModule = module as IModuleLoaderAware;
-                if (loaderAwareModule == null)
-                    return;
-
-                loaderAwareModule.PostLoad(_mm);
-            });
-        }
-
-        void IModuleLoader.DoPreUnloadStage()
-        {
-            _mm.EnumerateModules(delegate(IModule module, bool isLoaded)
-            {
-                if (isLoaded == false)
-                    return;
-
-                IModuleLoaderAware loaderAwareModule = module as IModuleLoaderAware;
-                if (loaderAwareModule == null)
-                    return;
-
-                loaderAwareModule.PreUnload(_mm);
-            });
         }
 
         #endregion

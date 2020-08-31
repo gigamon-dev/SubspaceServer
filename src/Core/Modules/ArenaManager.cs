@@ -74,6 +74,8 @@ namespace SS.Core.Modules
             /// whether the arena should be recreated after it is destroyed
             /// </summary>
             public bool Resurrect = false;
+
+            public bool Reap = false;
         }
 
         /// <summary>
@@ -749,35 +751,17 @@ namespace SS.Core.Modules
             }
         }
 
-        public void AttachModule(IModule moduleToAttach, Arena arenaToAttachTo)
-        {
-            // TODO: implement this, and maybe move to Arena class?
-        }
-
-        public void DetachModule(IModule moduleToDetach, Arena arenaToDetachFrom)
-        {
-            // TODO: implement this, and maybe move to Arena class?
-        }
-
-        public void DetachAllFromArena(Arena arenaToDetachFrom)
-        {
-            // TODO: implement this, and maybe move to Arena class?
-        }
-
-        private void doAttach(Arena a)
+        private void DoAttach(Arena a)
         {
             string attachMods = _configManager.GetStr(a.Cfg, "Modules", "AttachModules");
-            if (attachMods == null)
+            if (string.IsNullOrWhiteSpace(attachMods))
                 return;
 
-            string[] attachModsArray = attachMods.Split(" \t:;,".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            string[] attachModsArray = attachMods.Split("\t:;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
 
             foreach (string moduleToAttach in attachModsArray)
             {
-                //_mm.AttachModule(moduleToAttach, a);
-
-                //IArenaAttachableModule module = ;
-                //module.AttachModule(a);
+                _mm.AttachModule(moduleToAttach, a);
             }
         }
 
@@ -892,7 +876,7 @@ namespace SS.Core.Modules
                             break;
 
                         case ArenaState.DoInit1:
-                            doAttach(arena);
+                            DoAttach(arena);
                             arena.Status = ArenaState.WaitHolds1;
                             Debug.Assert(arenaData.Holds == 0);
                             OnArenaAction(arena, ArenaAction.Create);
@@ -954,37 +938,53 @@ namespace SS.Core.Modules
                             break;
 
                         case ArenaState.DoDestroy2:
-                            DetachAllFromArena(arena);
-                            _configManager.CloseConfigFile(arena.Cfg);
-                            arena.Cfg = null;
-                            OnArenaAction(arena, ArenaAction.PostDestroy);
-
-                            if (arenaData.Resurrect)
+                            if (_mm.DetachAllFromArena(arena))
                             {
-                                // clear all private data on recycle, so it looks to modules like it was just created.
-                                _perArenaDataLock.AcquireReaderLock(Timeout.Infinite);
-                                try
-                                {
-                                    foreach (KeyValuePair<int, Type> kvp in _perArenaDataKeys)
-                                    {
-                                        arena.RemovePerArenaData(kvp.Key);
-                                        arena[kvp.Key] = Activator.CreateInstance(kvp.Value);
-                                    }
-                                }
-                                finally
-                                {
-                                    _perArenaDataLock.ReleaseReaderLock();
-                                }
+                                _configManager.CloseConfigFile(arena.Cfg);
+                                arena.Cfg = null;
+                                OnArenaAction(arena, ArenaAction.PostDestroy);
 
-                                arenaData.Resurrect = false;
-                                arena.Status = ArenaState.DoInit0;
+                                if (arenaData.Resurrect)
+                                {
+                                    // clear all private data on recycle, so it looks to modules like it was just created.
+                                    _perArenaDataLock.AcquireReaderLock(Timeout.Infinite);
+                                    try
+                                    {
+                                        foreach (KeyValuePair<int, Type> kvp in _perArenaDataKeys)
+                                        {
+                                            arena.RemovePerArenaData(kvp.Key);
+                                            arena[kvp.Key] = Activator.CreateInstance(kvp.Value);
+                                        }
+                                    }
+                                    finally
+                                    {
+                                        _perArenaDataLock.ReleaseReaderLock();
+                                    }
+
+                                    arenaData.Resurrect = false;
+                                    arena.Status = ArenaState.DoInit0;
+                                }
+                                else
+                                {
+                                    _arenaDictionary.Remove(arena.Name);
+                                    return true; // kinda hacky, but we can't enumerate again if we modify the dictionary
+                                }
                             }
                             else
                             {
+                                _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "Failed to detach modules from arena, arena will not be destroyed. Check for correct interface releasing.");
                                 _arenaDictionary.Remove(arena.Name);
-                                return true; // kinda hacky, but we can't enumerate again if we modify the dictionary
-                            }
+                                _arenaDictionary.Add(Guid.NewGuid().ToString(), arena);
+                                _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "WARNING: the server is no longer in a stable state because of this error. your modules need to be fixed.");
 
+                                // TODO: flush logs
+
+                                arenaData.Resurrect = false;
+                                arenaData.Reap = false;
+                                //TODO: arena.KeepAlive = true;
+                                arena.Status = ArenaState.Running;
+
+                            }
                             break;
                     }
                 }
@@ -1107,7 +1107,6 @@ namespace SS.Core.Modules
         bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
-            _mm.ModuleUnloading += _mm_ModuleUnloading;
 
             _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
             _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
@@ -1142,22 +1141,8 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void _mm_ModuleUnloading(object sender, ModuleUnloadingEventArgs e)
-        {
-            // TODO: handle unattaching the module from whatever arenas it is attached to
-            // remember to do this in a threadsafe manner..
-            /*
-            foreach (Arena arena in _arenaDictionary.Values)
-            {
-                
-            }
-            */
-        }
-
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.ModuleUnloading -= _mm_ModuleUnloading;
-
             _mm.UnregisterInterface<IArenaManagerCore>();
 
             _net.RemovePacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);

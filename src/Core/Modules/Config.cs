@@ -252,16 +252,12 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PostLoad(ModuleManager mm)
         {
-            // TODO: get logging interface
-            Console.WriteLine("[ConfigManager] PostLoad");
             _logManager = mm.GetInterface<ILogManager>();
             return true;
         }
 
         bool IModuleLoaderAware.PreUnload(ModuleManager mm)
         {
-            // TODO: release logging interface
-            Console.WriteLine("[ConfigManager] PreUnload");
             mm.ReleaseInterface<ILogManager>();
             return true;
         }

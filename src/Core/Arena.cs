@@ -9,8 +9,8 @@ namespace SS.Core
     /// </summary>
     public interface IArenaAttachableModule
     {
-        void AttachModule(Arena arena);
-        void DetachModule(Arena arena);
+        bool AttachModule(Arena arena);
+        bool DetachModule(Arena arena);
     }
 
     // TODO: looks like the arena stuff has changed somewhat dramatically with the new version...

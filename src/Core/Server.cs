@@ -12,7 +12,6 @@ namespace SS.Core
     /// </summary>
     public class Server
     {
-        private LogManager _logManager;
         private ModuleManager _mm;
 
         public event EventHandler ServerStarted;
@@ -21,92 +20,49 @@ namespace SS.Core
         public Server(string homeDirectory)
         {
             _mm = new ModuleManager();
-            _logManager = new LogManager();
-
-            _mm.LoadModule(_logManager);
         }
 
         public void Start()
         {
-            loadModuleFile("conf/Modules.config");
+            LoadModuleFile("conf/Modules.config");
+            _mm.DoPostLoadStage();
 
-            IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
-            if (loader == null)
-                return;
-
-            try
-            {
-                loader.DoPostLoadStage();
-            }
-            finally
-            {
-                _mm.ReleaseInterface<IModuleLoader>();
-            }
-
-            if (ServerStarted != null)
-            {
-                ServerStarted(this, EventArgs.Empty);
-            }
+            ServerStarted?.Invoke(this, EventArgs.Empty);
         }
 
         public void Stop()
         {
-            IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
-            if (loader == null)
-                return;
-
-            try
-            {
-                loader.DoPreUnloadStage();
-            }
-            finally
-            {
-                _mm.ReleaseInterface<IModuleLoader>();
-            }
-
+            _mm.DoPreUnloadStage();
             _mm.UnloadAllModules();
 
-            if (ServerStopped != null)
-            {
-                ServerStopped(this, EventArgs.Empty);
-            }
+            ServerStopped?.Invoke(this, EventArgs.Empty);
         }
 
-        private void loadModuleFile(string moduleConfigFilename)
+        private void LoadModuleFile(string moduleConfigFilename)
         {
-            // TODO: 
-            // technically, if i just gave a directory to look for dlls in
-            // i could use reflection to create the module objects
-            // but i'm still thinking that it's better to read from a config file
-
-            // TODO: read config file
-            
-
-            ModuleLoader moduleLoader = new ModuleLoader();
-            _mm.LoadModule(moduleLoader);
-            /*
-            _mm.AddModule(new LogConsole());
-            _mm.AddModule(new ConfigManager());
-            _mm.AddModule(new Mainloop());
-            _mm.AddModule(new PlayerData());
-            _mm.AddModule(new ArenaManager());
-            //_mm.AddModule(new Network());
-            */
             IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
             if (loader == null)
-                return;
+            {
+                if (!_mm.LoadModule<ModuleLoader>())
+                {
+                    throw new Exception("Failed to load ModuleLoader.");
+                }
+
+                loader = _mm.GetInterface<IModuleLoader>();
+                if (loader == null)
+                {
+                    throw new Exception("Loaded ModuleLoader, but unable to get it via its interface.");
+                }
+            }
 
             try
             {
                 loader.LoadModulesFromConfig(moduleConfigFilename);
-                //loader.AddModuleModule("todo", "todo");
             }
             finally
             {
                 _mm.ReleaseInterface<IModuleLoader>();
             }
-
-            _mm.LoadAllModules();
         }
     }
 }
