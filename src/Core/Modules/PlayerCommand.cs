@@ -9,6 +9,7 @@ using System.Xml.Schema;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class PlayerCommand : IModule
     {
         private ModuleManager _mm;
@@ -59,7 +60,9 @@ Args: none
 Displays version information about the server. It might also print out some information about the machine that it's running on.");
 
             _commandManager.AddCommand("sheep", command_sheep, null, null);
+
             _commandManager.AddCommand("lsmod", Command_lsmod, null, null);
+            _commandManager.AddCommand("modinfo", Command_modinfo, null, null);
             _commandManager.AddCommand("insmod", Command_insmod, null, null);
             _commandManager.AddCommand("rmmod", Command_rmmod, null, null);
             _commandManager.AddCommand("attmod", Command_attmod, null, null);
@@ -184,8 +187,33 @@ Displays version information about the server. It might also print out some info
             _chat.SendWrappedText(p, sb.ToString());
         }
 
+        private void Command_modinfo(string command, string parameters, Player p, ITarget target)
+        {
+            if (string.IsNullOrWhiteSpace(parameters))
+                return;
+
+            string info = _mm.GetModuleInfo(parameters);
+            if (string.IsNullOrWhiteSpace(info))
+            {
+                _chat.SendMessage(p, $"No information available for module '{parameters}'.");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"Info:");
+
+                string[] tokens = info.Split('\n');
+                foreach(string token in tokens)
+                {
+                    _chat.SendMessage(p, $"  {token}");
+                }
+            }
+        }
+
         private void Command_insmod(string command, string parameters, Player p, ITarget target)
         {
+            if (string.IsNullOrWhiteSpace(parameters))
+                return;
+
             if (_mm.LoadModule(parameters))
                 _chat.SendMessage(p, $"Module '{parameters}' loaded.");
             else
@@ -194,6 +222,9 @@ Displays version information about the server. It might also print out some info
 
         private void Command_rmmod(string command, string parameters, Player p, ITarget target)
         {
+            if (string.IsNullOrWhiteSpace(parameters))
+                return;
+
             if (_mm.UnloadModule(parameters))
                 _chat.SendMessage(p, $"Module '{parameters}' unloaded.");
             else

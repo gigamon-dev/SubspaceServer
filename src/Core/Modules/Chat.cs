@@ -10,6 +10,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class Chat : IModule, IChat
     {
         private const char CmdChar1 = '?';

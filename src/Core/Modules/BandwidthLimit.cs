@@ -20,6 +20,7 @@ namespace SS.Core.Modules
         NumPriorities
     }
 
+    [CoreModuleInfo]
     public class BandwidthNoLimit : IModule, IBandwidthLimit
     {
         private class BWLimit : IBWLimit
@@ -88,6 +89,7 @@ namespace SS.Core.Modules
     }
 
     // TODO: i dont understand what ASSS is doing with the calculations with millseconds, ticks, etc
+    [CoreModuleInfo]
     public class DefaultBandwithLimit : IModule, IBandwidthLimit
     {
         private class BWLimit : IBWLimit

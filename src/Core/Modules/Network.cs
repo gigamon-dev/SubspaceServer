@@ -16,6 +16,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// TODO: revisit this module, it is basically 95% a direct port from asss
     /// </summary>
+    [CoreModuleInfo]
     public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
     {
         /// <summary>

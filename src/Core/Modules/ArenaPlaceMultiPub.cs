@@ -8,6 +8,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// the equivalent of ap_multipub.c
     /// </summary>
+    [CoreModuleInfo]
     public class ArenaPlaceMultiPub : IModule, IArenaPlace
     {
         private IConfigManager _configManager;

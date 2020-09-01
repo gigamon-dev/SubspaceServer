@@ -6,6 +6,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class LogConsole : IModule
     {
         private ILogManager _logManager;

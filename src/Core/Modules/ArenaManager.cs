@@ -11,6 +11,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class ArenaManager : IModule, IArenaManagerCore, IModuleLoaderAware
     {
         /// <summary>

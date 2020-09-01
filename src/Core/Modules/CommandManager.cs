@@ -7,6 +7,7 @@ using SS.Core.ComponentInterfaces;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class CommandManager : IModule, ICommandManager
     {
         private ModuleManager _mm;

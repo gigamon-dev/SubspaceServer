@@ -30,6 +30,7 @@ namespace SS.Core.Modules
     /// 
     /// that is, the entire lifetime of a player from getting authenticated by server, entering/leaving arenas, all the way to leaving the zone
     /// </summary>
+    [CoreModuleInfo]
     public class CoreModule : IModule, IAuth
     {
         private static readonly byte[] _keepAlive = new byte[1] { (byte)Packets.S2CPacketType.KeepAlive };

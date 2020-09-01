@@ -10,6 +10,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class EncryptionNull : IModule
     {
         private INetworkEncryption _net;

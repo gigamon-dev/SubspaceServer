@@ -14,6 +14,7 @@ using Ionic.Zlib;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class MapNewsDownload : IModule, IMapNewsDownload
     {
         private ModuleManager _mm;

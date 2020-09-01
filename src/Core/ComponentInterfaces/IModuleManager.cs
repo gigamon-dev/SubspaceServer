@@ -112,5 +112,12 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="enumerationCallback"></param>
         /// <param name="arena"></param>
         void EnumerateModules(EnumerateModulesDelegate enumerationCallback, Arena arena);
+
+        /// <summary>
+        /// Gets info about the module.
+        /// </summary>
+        /// <param name="assemblyQualifiedName">The name of the module to get info about.</param>
+        /// <returns>Info about the module. NULL if no info or not found.</returns>
+        string GetModuleInfo(string assemblyQualifiedName);
     }
 }

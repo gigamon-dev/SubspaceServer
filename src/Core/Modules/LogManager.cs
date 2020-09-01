@@ -9,6 +9,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class LogManager : IModule, IModuleLoaderAware, ILogManager
     {
         private MessagePassingQueue<string> _logQueue = new MessagePassingQueue<string>();

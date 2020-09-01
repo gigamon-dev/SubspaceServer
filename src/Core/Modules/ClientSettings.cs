@@ -9,6 +9,7 @@ using SS.Core.Packets;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class ClientSettings : IModule, IClientSettings
     {
         private ModuleManager _mm;

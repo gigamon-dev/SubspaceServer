@@ -16,6 +16,7 @@ namespace SS.Core.Modules
     /// running the 'mainloop'.  I am planning on changing the name when I have
     /// all the core components working together.
     /// </summary>
+    [CoreModuleInfo]
     public class Mainloop : IModule, IServerTimer, IMainloop, IMainloopController
     {
         #region Private Helpers

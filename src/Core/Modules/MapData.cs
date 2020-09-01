@@ -13,6 +13,7 @@ using SS.Utilities;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class MapData : IModule, IMapData
     {
         private ModuleManager _mm;

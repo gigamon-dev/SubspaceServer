@@ -1,29 +1,38 @@
+using SS.Core;
+using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
-using System.Text;
-
-using SS.Core;
 
 namespace TurfReward
 {
-    class TurfRewardPoints : IModule, IArenaAttachableModule
+    [ModuleInfo("Another test module.")]
+    public class TurfRewardPoints : IModule, IArenaAttachableModule, ITurfRewardPoints
     {
+        private ILogManager _log;
+        private ITurfReward _turfReward;
+
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies => new Type[]
         {
-            get { return null; }
-        }
+            typeof(ILogManager),
+            typeof(ITurfReward),
+        };
 
         bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
         {
-            Console.WriteLine("TurfRewardPoints:Load");
+            _log = interfaceDependencies[typeof(ILogManager)] as ILogManager;
+            _turfReward = interfaceDependencies[typeof(ITurfReward)] as ITurfReward;
+
+            _log.Log(LogLevel.Drivel, $"<{nameof(TurfRewardPoints)}> Load");
+            mm.RegisterInterface<ITurfRewardPoints>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            Console.WriteLine("TurfRewardPoints:Unload");
+            mm.UnregisterInterface<ITurfRewardPoints>();
+            _log.Log(LogLevel.Drivel, $"<{nameof(TurfRewardPoints)}> Unload");
             return true;
         }
 
@@ -31,15 +40,16 @@ namespace TurfReward
 
         #region IModuleArenaAttachable Members
 
-        void IArenaAttachableModule.AttachModule(Arena arena)
+        bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            //arena.
-            Console.WriteLine("TurfRewardPoints:AttachModule");
+            _log.Log(LogLevel.Drivel, $"<{nameof(TurfRewardPoints)}> {{{arena}}} AttachModule");
+            return true;
         }
 
-        void IArenaAttachableModule.DetachModule(Arena arena)
+        bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            Console.WriteLine("TurfRewardPoints:DetachModule");
+            _log.Log(LogLevel.Drivel, $"<{nameof(TurfRewardPoints)}> {{{arena}}} DetachModule");
+            return true;
         }
 
         #endregion

@@ -9,6 +9,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class FileTransferModule : IModule, IFileTransfer
     {
         private ModuleManager _mm;

@@ -6,6 +6,7 @@ using System.Xml.Linq;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class ModuleLoader : IModule, IModuleLoader
     {
         private ModuleManager _mm;

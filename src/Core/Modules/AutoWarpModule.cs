@@ -9,6 +9,7 @@ using SS.Utilities;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class AutoWarpModule : IModule
     {
         private ModuleManager _mm;

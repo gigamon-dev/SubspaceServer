@@ -8,6 +8,7 @@ using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class PlayerData : IModule, IPlayerData
     {
         private ModuleManager _mm;

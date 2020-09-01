@@ -8,6 +8,7 @@ using SS.Core.ComponentInterfaces;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class CapabilityManager : IModule, ICapabilityManager, IGroupManager
     {
         private ModuleManager _mm;

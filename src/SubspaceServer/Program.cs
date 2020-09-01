@@ -1,6 +1,8 @@
 ﻿using SS.Core;
 using System;
 using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
 
 namespace SubspaceServer
 {
@@ -28,11 +30,40 @@ namespace SubspaceServer
                 directory = Environment.CurrentDirectory;
             }
 
+            /* HACK: 
+             * To fix dynamically loading assemblies for modules that are not directly referenced.
+             * The default .NET Core logic doesn't automatically search the directory the executable is in.
+             * This does just that for the default AssemblyLoadContext.
+             * 
+             * Note:
+             * If loaded into a separate AssemblyLoadContext, it would load another copy of SS.Core into it.
+             * Then, the IModule interface type in the default context, would not work well with the copy of it in the other context.
+             * That caused: !typeof(IModule).IsAssignableFrom(type)
+             * To always return false.
+             * 
+             * For reference see: https://docs.microsoft.com/en-us/dotnet/api/system.runtime.loader.assemblyloadcontext
+             */
+            AssemblyLoadContext.Default.Resolving += ResolveAssembly;
+
             subspaceServer = new Server(directory);
 
             StartServer();
             MainMenu();
             StopServer(true);
+        }
+
+        private static Assembly ResolveAssembly(AssemblyLoadContext context, AssemblyName assemblyName)
+        {
+            try
+            {
+                return context.LoadFromAssemblyPath(
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, assemblyName.Name));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex.ToString());
+                return null;
+            }
         }
 
         private static void MainMenu()

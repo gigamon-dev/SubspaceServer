@@ -10,6 +10,7 @@ using SS.Utilities;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class ConfigManager : IModule, IModuleLoaderAware, IConfigManager
     {
         private readonly Dictionary<string, ConfigFile> _opened = new Dictionary<string, ConfigFile>(StringComparer.OrdinalIgnoreCase);

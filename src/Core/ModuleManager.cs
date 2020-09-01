@@ -84,6 +84,7 @@ namespace SS.Core
     /// Another issue I will have to make a decision on is if the ModuleManager should know anything about the Arena class.  That is, 
     /// whether an Arena object contains the methods to register interfaces and callbacks to itself.
     /// </summary>
+    [CoreModuleInfo]
     public sealed class ModuleManager : ComponentBroker, IModuleManager
     {
         private class ModuleInfo
@@ -453,6 +454,9 @@ namespace SS.Core
         /// <returns>True if the module was unloaded. Otherwise false.</returns>
         public bool UnloadModule(string assemblyQualifiedName)
         {
+            if (string.IsNullOrWhiteSpace(assemblyQualifiedName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(assemblyQualifiedName));
+
             Type typeToRemove = Type.GetType(assemblyQualifiedName);
             if (typeToRemove == null)
                 return false;
@@ -472,7 +476,7 @@ namespace SS.Core
                 _moduleTypeLookup.Remove(moduleInfo.ModuleType);
             }
 
-            return false;
+            return true;
         }
 
         /// <summary>
@@ -554,8 +558,29 @@ namespace SS.Core
             {
                 foreach (ModuleInfo moduleInfo in _moduleTypeLookup.Values)
                 {
+                    if (arena != null && !moduleInfo.AttachedArenas.Contains(arena))
+                        continue;
+
                     enumerationCallback(moduleInfo.ModuleType, moduleInfo.Description);
                 }
+            }
+        }
+
+        public string GetModuleInfo(string assemblyQualifiedName)
+        {
+            if (string.IsNullOrWhiteSpace(assemblyQualifiedName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(assemblyQualifiedName));
+
+            Type moduleType = Type.GetType(assemblyQualifiedName);
+            if (moduleType == null)
+                return null;
+
+            lock (_moduleLockObj)
+            {
+                if (_moduleTypeLookup.TryGetValue(moduleType, out ModuleInfo moduleInfo) == false)
+                    return null;
+
+                return moduleInfo.Description;
             }
         }
 
@@ -643,6 +668,20 @@ namespace SS.Core
         {
             if (moduleInfo == null)
                 throw new ArgumentNullException(nameof(moduleInfo));
+
+            if (moduleInfo.AttachedArenas.Count > 0)
+            {
+                var arenas = moduleInfo.AttachedArenas.ToArray();
+                foreach (Arena arena in arenas)
+                {
+                    DetachModule(moduleInfo.ModuleType.AssemblyQualifiedName, arena);
+                }
+
+                if (moduleInfo.AttachedArenas.Count > 0)
+                {
+                    return false;
+                }
+            }
 
             if (moduleInfo.Module.Unload(this) == false)
             {

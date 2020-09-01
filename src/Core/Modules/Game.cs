@@ -10,6 +10,7 @@ using SS.Core.Map;
 
 namespace SS.Core.Modules
 {
+    [CoreModuleInfo]
     public class Game : IModule, IGame
     {
         private ModuleManager _mm;
