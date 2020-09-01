@@ -1,15 +1,15 @@
+using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
+using SS.Core.Packets;
+using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-
-using SS.Core.ComponentCallbacks;
-using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
-using SS.Utilities;
 
 namespace SS.Core.Modules
 {
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
             #endregion
         }
         */
-        private Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
+        private readonly Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
 
         private interface ISizedSendData
         {
@@ -94,17 +94,14 @@ namespace SS.Core.Modules
 
         private class SizedSendData<T> : ISizedSendData
         {
-            private GetSizedSendDataDelegate<T> _requestDataCallback;
-            private T _clos;
-            private int _totalLength;
+            private readonly GetSizedSendDataDelegate<T> _requestDataCallback;
+            private readonly T _clos;
+            private readonly int _totalLength;
             private int _offset;
 
             public SizedSendData(GetSizedSendDataDelegate<T> requestDataCallback, T clos, int totalLength, int offset)
             {
-                if (requestDataCallback == null)
-                    throw new ArgumentNullException("requestDataCallback");
-
-                _requestDataCallback = requestDataCallback;
+                _requestDataCallback = requestDataCallback ?? throw new ArgumentNullException(nameof(requestDataCallback));
                 _clos = clos;
                 _totalLength = totalLength;
                 _offset = offset;
@@ -235,7 +232,7 @@ namespace SS.Core.Modules
                 public int size, room;
                 public byte[] buf; //byte *buf; in asss
 
-                internal void free()
+                internal void Free()
                 {
                     buf = null;
                     size = 0;
@@ -349,16 +346,16 @@ namespace SS.Core.Modules
         /// </summary>
         private int _connKey;
 
-        private Dictionary<EndPoint, Player> _clienthash = new Dictionary<EndPoint, Player>();
-        private object _hashmtx = new object();
+        private readonly Dictionary<EndPoint, Player> _clienthash = new Dictionary<EndPoint, Player>();
+        private readonly object _hashmtx = new object();
         
         /// <summary>
         /// this is a helper to group up packets to be send out together as 1 combined packet
         /// </summary>
         private struct GroupedPacket
         {
-            private Network _network;
-            private byte[] _buf;
+            private readonly Network _network;
+            private readonly byte[] _buf;
             private ArraySegment<byte> _remainingSegment;
             private int _count;
 
@@ -385,11 +382,11 @@ namespace SS.Core.Modules
                     // there's only one in the group, so don't send it
                     // in a group. +3 to skip past the 00 0E and size of
                     // first packet
-                    _network.sendRaw(conn, new ArraySegment<byte>(_buf, 3, _remainingSegment.Offset - 3));
+                    _network.SendRaw(conn, new ArraySegment<byte>(_buf, 3, _remainingSegment.Offset - 3));
                 }
                 else if (_count > 1)
                 {
-                    _network.sendRaw(conn, _buf, _remainingSegment.Offset);
+                    _network.SendRaw(conn, _buf, _remainingSegment.Offset);
                 }
 
                 // TODO: record stats
@@ -418,7 +415,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // can't fit into a grouped packet, send immediately
-                    _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
+                    _network.SendRaw(conn, buffer.Bytes, buffer.NumBytes);
                 }
 #endif
             }
@@ -429,40 +426,41 @@ namespace SS.Core.Modules
         /// <summary>
         /// handlers for 'core' packets (ss protocol's network/transport layer)
         /// </summary>
-        private oohandler[] _oohandlers;
+        private readonly oohandler[] _oohandlers;
 
         private const int MAXTYPES = 64;
 
         /// <summary>
         /// handlers for 'game' packets
         /// </summary>
-        private PacketDelegate[] _handlers = new PacketDelegate[MAXTYPES];
-        private PacketDelegate[] _nethandlers = new PacketDelegate[0x14];
-        private SizedPacketDelegate[] _sizedhandlers = new SizedPacketDelegate[MAXTYPES];
+        private readonly PacketDelegate[] _handlers = new PacketDelegate[MAXTYPES];
+        private readonly PacketDelegate[] _nethandlers = new PacketDelegate[0x14];
+        private readonly SizedPacketDelegate[] _sizedhandlers = new SizedPacketDelegate[MAXTYPES];
 
         private const int SELECT_TIMEOUT_MS = 1000;
 
-        private MessagePassingQueue<ConnData> _relqueue = new MessagePassingQueue<ConnData>();
+        private readonly MessagePassingQueue<ConnData> _relqueue = new MessagePassingQueue<ConnData>();
 
         private bool _stopThreads = false;
 
-        private List<Thread> _threadList = new List<Thread>();
-        private List<Thread> _reliableThreads = new List<Thread>();
+        private readonly List<Thread> _threadList = new List<Thread>();
+        private readonly List<Thread> _reliableThreads = new List<Thread>();
 
         /// <summary>
         /// info about sockets this object has created, etc...
         /// </summary>
-        private List<ListenData> _listenDataList = new List<ListenData>();
+        private readonly List<ListenData> _listenDataList;
+        private readonly ReadOnlyCollection<ListenData> _readOnlyListenData;
 
         /// <summary>
         /// Key: connectAs
         /// </summary>
         /// <remarks>for now, only 1 listen data allowed for each connectAs.</remarks>
-        private Dictionary<string, ListenData> _listenConnectAsLookup = new Dictionary<string, ListenData>();
+        private readonly Dictionary<string, ListenData> _listenConnectAsLookup = new Dictionary<string, ListenData>();
 
         private Socket _clientSocket;
 
-        private NetStats _globalStats = new NetStats();
+        private readonly NetStats _globalStats = new NetStats();
 
         public Network()
         {
@@ -470,29 +468,32 @@ namespace SS.Core.Modules
 
             _oohandlers[0] = null; //00 - nothing
             _oohandlers[1] = null; //01 - key initiation
-            _oohandlers[2] = processKeyResponse; //02 - key response
-            _oohandlers[3] = processReliable; //03 - reliable
-            _oohandlers[4] = processAck; //04 - reliable response
-            _oohandlers[5] = processSyncRequest; //05 - time sync request
+            _oohandlers[2] = ProcessKeyResponse; //02 - key response
+            _oohandlers[3] = ProcessReliable; //03 - reliable
+            _oohandlers[4] = ProcessAck; //04 - reliable response
+            _oohandlers[5] = ProcessSyncRequest; //05 - time sync request
             _oohandlers[6] = null; //06 - time sync response
-            _oohandlers[7] = processDrop; //07 - close connection
-            _oohandlers[8] = processBigData; //08 - bigpacket
-            _oohandlers[9] = processBigData; //09 - bigpacket2
-            _oohandlers[10] = processPresize; //0A - presized data (file transfer)
-            _oohandlers[11] = processCancelReq;  //0B - cancel presized
-            _oohandlers[12] = processCancel; //0C - presized has been cancelled
+            _oohandlers[7] = ProcessDrop; //07 - close connection
+            _oohandlers[8] = ProcessBigData; //08 - bigpacket
+            _oohandlers[9] = ProcessBigData; //09 - bigpacket2
+            _oohandlers[10] = ProcessPresize; //0A - presized data (file transfer)
+            _oohandlers[11] = ProcessCancelReq;  //0B - cancel presized
+            _oohandlers[12] = ProcessCancel; //0C - presized has been cancelled
             _oohandlers[13] = null; //0D - nothing
-            _oohandlers[14] = processGrouped; //0E - grouped
+            _oohandlers[14] = ProcessGrouped; //0E - grouped
             _oohandlers[15] = null; // 0x0F
             _oohandlers[16] = null; // 0x10
             _oohandlers[17] = null; // 0x11
             _oohandlers[18] = null; // 0x12
-            _oohandlers[19] = processSpecial; // 0x13 - cont key response
+            _oohandlers[19] = ProcessSpecial; // 0x13 - cont key response
+
+            _listenDataList = new List<ListenData>();
+            _readOnlyListenData = new ReadOnlyCollection<ListenData>(_listenDataList);
         }
 
         #region Socket initialization
 
-        private Socket createSocket(int port, IPAddress bindAddress)
+        private Socket CreateSocket(int port, IPAddress bindAddress)
         {
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
@@ -530,7 +531,7 @@ namespace SS.Core.Modules
             return socket;
         }
 
-        private ListenData createListenDataSockets(int configIndex)
+        private ListenData CreateListenDataSockets(int configIndex)
         {
             string configSection = "Listen" + ((configIndex == 0) ? string.Empty : configIndex.ToString());
 
@@ -561,7 +562,7 @@ namespace SS.Core.Modules
 
             try
             {
-                gameSocket = createSocket(gamePort, bindAddress);
+                gameSocket = CreateSocket(gamePort, bindAddress);
             }
             catch (Exception ex)
             {
@@ -571,7 +572,7 @@ namespace SS.Core.Modules
 
             try
             {
-                pingSocket = createSocket(pingPort, bindAddress);
+                pingSocket = CreateSocket(pingPort, bindAddress);
             }
             catch (Exception ex)
             {
@@ -589,11 +590,11 @@ namespace SS.Core.Modules
             return listenData;
         }
 
-        private bool initializeSockets()
+        private bool InitializeSockets()
         {
             for (int x = 0; x < 10; x++)
             {
-                ListenData listenData = createListenDataSockets(x);
+                ListenData listenData = CreateListenDataSockets(x);
                 if (listenData == null)
                     continue;
 
@@ -609,7 +610,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _clientSocket = createSocket(0, IPAddress.Any);
+                _clientSocket = CreateSocket(0, IPAddress.Any);
             }
             catch (Exception ex)
             {
@@ -621,7 +622,7 @@ namespace SS.Core.Modules
 
 #endregion
 
-        private void recieveThread()
+        private void RecieveThread()
         {
             List<Socket> socketList = new List<Socket>(_listenDataList.Count * 2 + 1);
             List<Socket> checkReadList = new List<Socket>(_listenDataList.Count * 2 + 1);
@@ -664,18 +665,17 @@ namespace SS.Core.Modules
 
                     foreach (Socket socket in checkReadList)
                     {
-                        ListenData listenData;
-                        if (gameEndpointLookup.TryGetValue(socket.LocalEndPoint, out listenData))
+                        if (gameEndpointLookup.TryGetValue(socket.LocalEndPoint, out ListenData listenData))
                         {
-                            handleGamePacketRecieved(listenData);
+                            HandleGamePacketRecieved(listenData);
                         }
-                        else if(pingEndpointLookup.TryGetValue(socket.LocalEndPoint, out listenData))
+                        else if (pingEndpointLookup.TryGetValue(socket.LocalEndPoint, out listenData))
                         {
-                            handlePingPacketRecieved(listenData);
+                            HandlePingPacketRecieved(listenData);
                         }
                         else if (socket == _clientSocket)
                         {
-                            handleClientPacketRecieved();
+                            HandleClientPacketRecieved();
                         }
 
                         /* i think that the Dictionary hashtable lookup method is more efficient than looping like this...
@@ -700,7 +700,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void sendThread()
+        private void SendThread()
         {
             while (_stopThreads == false)
             {
@@ -716,18 +716,17 @@ namespace SS.Core.Modules
                     {
                         if (p.Status >= PlayerState.Connected &&
                             p.Status < PlayerState.TimeWait &&
-                            isOurs(p))
+                            IsOurs(p))
                         {
-                            ConnData conn = p[_connKey] as ConnData;
-                            if (conn == null)
+                            if (!(p[_connKey] is ConnData conn))
                                 continue;
 
                             if (Monitor.TryEnter(conn.olmtx))
                             {
                                 try
                                 {
-                                    sendOutgoing(conn);
-                                    submitRelStats(p);
+                                    SendOutgoing(conn);
+                                    SubmitRelStats(p);
                                 }
                                 finally
                                 {
@@ -751,9 +750,9 @@ namespace SS.Core.Modules
                     foreach (Player p in _playerData.PlayerList)
                     {
                         if (p.Status >= PlayerState.Connected &&
-                            isOurs(p))
+                            IsOurs(p))
                         {
-                            processLagouts(p, now, toKill, toFree);
+                            ProcessLagouts(p, now, toKill, toFree);
                         }
                     }
                 }
@@ -772,12 +771,11 @@ namespace SS.Core.Modules
                 // and free ...
                 foreach (Player p in toFree)
                 {
-                    ConnData conn = p[_connKey] as ConnData;
-                    if (conn == null)
+                    if (!(p[_connKey] is ConnData))
                         continue;
 
                     // one more time, just to be sure
-                    clearBuffers(p);
+                    ClearBuffers(p);
 
                     //bwlimit->Free(conn->bw);
 
@@ -795,7 +793,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void relThread()
+        private void RelThread()
         {
             while (true)
             {
@@ -822,7 +820,7 @@ namespace SS.Core.Modules
                         // process it
                         buf.NumBytes -= Constants.ReliableHeaderLen;
                         Array.Copy(buf.Bytes, Constants.ReliableHeaderLen, buf.Bytes, 0, buf.NumBytes);
-                        processBuffer(buf);
+                        ProcessBuffer(buf);
 
                         Monitor.Enter(conn.relmtx);
                     }
@@ -831,10 +829,10 @@ namespace SS.Core.Modules
         }
 
         private byte[] _queueDataBuffer = null;
-        private byte[] _queueDataHeader = new byte[6] { 0x00, 0x0A, 0, 0, 0, 0 }; // size of a presized data packet header
+        private readonly byte[] _queueDataHeader = new byte[6] { 0x00, 0x0A, 0, 0, 0, 0 }; // size of a presized data packet header
 
         // NOTE: this is optimized slightly more than asss in the sense that it doesn't copy the array to another buffer just to send it off to bufferPacket()
-        private bool queueMoreData()
+        private bool QueueMoreData()
         {
             int requestAtOnce = _config.queue_packets * Constants.ChunkSize;
 
@@ -853,11 +851,10 @@ namespace SS.Core.Modules
             {
                 foreach (Player p in _playerData.PlayerList)
                 {
-                    if(!isOurs(p) || p.Status >= PlayerState.TimeWait)
+                    if(!IsOurs(p) || p.Status >= PlayerState.TimeWait)
                         continue;
 
-                    ConnData conn = p[_connKey] as ConnData;
-                    if (conn == null)
+                    if (!(p[_connKey] is ConnData conn))
                         continue;
 
                     if (Monitor.TryEnter(conn.olmtx) == false)
@@ -895,14 +892,14 @@ namespace SS.Core.Modules
                             Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
 
                             // queue the the header + chunk to be sent reliably (which gives the sequence to keep ordering of chunks)
-                            bufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
+                            BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
                             bufferIndex += Constants.ChunkSize;
                             needed -= Constants.ChunkSize;
                         }
 
                         // copy the header
                         Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
-                        bufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
+                        BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
 
                         // check if we need more
                         if (sd.Offset >= sd.TotalLength)
@@ -924,13 +921,12 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void clearBuffers(Player p)
+        private void ClearBuffers(Player p)
         {
             if (p == null)
                 return;
 
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return;
 
             // first handle the regular outlist and presized outlist
@@ -989,10 +985,9 @@ namespace SS.Core.Modules
         }
 
         // call with player status locked
-        private void processLagouts(Player p, DateTime now, LinkedList<Player> toKill, LinkedList<Player> toFree)
+        private void ProcessLagouts(Player p, DateTime now, LinkedList<Player> toKill, LinkedList<Player> toFree)
         {
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return;
 
             // this is used for lagouts and also for timewait
@@ -1026,7 +1021,7 @@ namespace SS.Core.Modules
 
                     lock (conn.olmtx)
                     {
-                        sendRaw(conn, buf.Bytes, len + 5);
+                        SendRaw(conn, buf.Bytes, len + 5);
                     }
 
                     _logManager.Log(LogLevel.Info, "<net> [{0}] [pid={1}] player kicked for {2}", p.Name, p.Id, reason);
@@ -1045,16 +1040,16 @@ namespace SS.Core.Modules
                     buf.Bytes[0] = 0x00;
                     buf.Bytes[1] = 0x07;
 
-                    sendRaw(conn, buf.Bytes, 2);
+                    SendRaw(conn, buf.Bytes, 2);
                 }
 
                 // clear all our buffers
                 lock (conn.bigmtx)
                 {
-                    endSized(p, false);
+                    EndSized(p, false);
                 }
 
-                clearBuffers(p);
+                ClearBuffers(p);
 
                 // tell encryption to forget about him
                 if (conn.enc != null)
@@ -1077,7 +1072,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void submitRelStats(Player p)
+        private void SubmitRelStats(Player p)
         {
             if (p == null)
                 return;
@@ -1085,8 +1080,7 @@ namespace SS.Core.Modules
             if (_lagCollect == null)
                 return;
 
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return;
 
             ReliableLagData rld = new ReliableLagData();
@@ -1097,14 +1091,14 @@ namespace SS.Core.Modules
             _lagCollect.RelStats(p, ref rld);
         }
 
-        private void sendRaw(ConnData conn, ArraySegment<byte> data)
+        private void SendRaw(ConnData conn, ArraySegment<byte> data)
         {
             int len = data.Count;
 
             Player p = conn.p;
 
 #if CFG_DUMP_RAW_PACKETS
-            dumpPk(string.Format("SEND: {0} bytes to pid ", len, p.Id), data);
+            DumpPk(string.Format("SEND: {0} bytes to pid ", len, p.Id), data);
 #endif
 
             if ((p != null) && (conn.enc != null))
@@ -1123,14 +1117,14 @@ namespace SS.Core.Modules
             _globalStats.pktsent++;
         }
 
-        private void sendRaw(ConnData conn, byte[] data, int len)
+        private void SendRaw(ConnData conn, byte[] data, int len)
         {
             Debug.Assert(len <= Constants.MaxPacket);
 
             Player p = conn.p;
 
 #if CFG_DUMP_RAW_PACKETS
-            dumpPk(string.Format("SEND: {0} bytes to pid ", len, p.Id), new ArraySegment<byte>(data, 0, len));
+            DumpPk(string.Format("SEND: {0} bytes to pid ", len, p.Id), new ArraySegment<byte>(data, 0, len));
 #endif
 
             if ((p != null) && (conn.enc != null))
@@ -1149,7 +1143,7 @@ namespace SS.Core.Modules
             _globalStats.pktsent++;
         }
 
-        private void sendOutgoing(ConnData conn)
+        private void SendOutgoing(ConnData conn)
         {
             DateTime now = DateTime.Now;
 
@@ -1158,7 +1152,7 @@ namespace SS.Core.Modules
 
             int canSend = conn.bw.GetCanBufferPackets();
 
-            clip(ref timeout, 250, 2000);
+            Clip(ref timeout, 250, 2000);
 
             // update the bandwidth limiter's counters
             conn.bw.Iter(now);
@@ -1276,7 +1270,7 @@ namespace SS.Core.Modules
                 conn.hitmaxoutlist = true;
         }
 
-        private void clip(ref uint timeout, uint low, uint high)
+        private void Clip(ref uint timeout, uint low, uint high)
         {
             if(timeout > high)
                 timeout = high;
@@ -1284,12 +1278,12 @@ namespace SS.Core.Modules
                 timeout = low;
         }
 
-        private static bool isOurs(Player p)
+        private static bool IsOurs(Player p)
         {
             return p.Type == ClientType.Continuum || p.Type == ClientType.VIE;
         }
 
-        private void handleGamePacketRecieved(ListenData ld)
+        private void HandleGamePacketRecieved(ListenData ld)
         {
             SubspaceBuffer buffer = _bufferPool.Get();
             Socket s = ld.GameSocket;
@@ -1303,18 +1297,16 @@ namespace SS.Core.Modules
             }
 
 #if CFG_DUMP_RAW_PACKETS
-            dumpPk(string.Format("RECV: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
+            DumpPk(string.Format("RECV: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
-            IPEndPoint remoteEndPoint = recievedFrom as IPEndPoint;
-            if (remoteEndPoint == null)
+            if (!(recievedFrom is IPEndPoint remoteEndPoint))
                 return;
 
-            Player p;
-            if (_clienthash.TryGetValue(remoteEndPoint, out p) == false)
+            if (_clienthash.TryGetValue(remoteEndPoint, out Player p) == false)
             {
                 // this might be a new connection. make sure it's really a connection init packet
-                if (isConnectionInitPacket(buffer.Bytes))
+                if (IsConnectionInitPacket(buffer.Bytes))
                 {
                     ConnectionInitCallback.Fire(_mm, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
@@ -1339,7 +1331,7 @@ namespace SS.Core.Modules
 
             ConnData conn = p[_connKey] as ConnData;
 
-            if (isConnectionInitPacket(buffer.Bytes))
+            if (IsConnectionInitPacket(buffer.Bytes))
             {
                 // here, we have a connection init, but it's from a
 		        // player we've seen before. there are a few scenarios:
@@ -1404,10 +1396,10 @@ namespace SS.Core.Modules
             }
 
 #if CFG_DUMP_RAW_PACKETS
-            dumpPk(string.Format("RECV: about to process {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
+            DumpPk(string.Format("RECV: about to process {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
-            processBuffer(buffer);
+            ProcessBuffer(buffer);
         }
 
         /// <summary>
@@ -1416,7 +1408,7 @@ namespace SS.Core.Modules
         /// which may free it or not.
         /// </summary>
         /// <param name="buffer"></param>
-        private void processBuffer(SubspaceBuffer buffer)
+        private void ProcessBuffer(SubspaceBuffer buffer)
         {
             ConnData conn = buffer.Conn;
             ReliablePacket rp = new ReliablePacket(buffer.Bytes);
@@ -1481,7 +1473,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static bool isConnectionInitPacket(byte[] data)
+        private static bool IsConnectionInitPacket(byte[] data)
         {
             if (data == null)
                 return false;
@@ -1490,7 +1482,7 @@ namespace SS.Core.Modules
             return (rp.T1 == 0x00) && ((rp.T2 == 0x01) || (rp.T2 == 0x11));
         }
 
-        private void handlePingPacketRecieved(ListenData ld)
+        private void HandlePingPacketRecieved(ListenData ld)
         {
             if (ld == null)
                 return;
@@ -1500,8 +1492,8 @@ namespace SS.Core.Modules
                 Socket s = ld.PingSocket;
                 EndPoint recievedFrom = new IPEndPoint(IPAddress.Any, 0);
                 buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref recievedFrom);
-                IPEndPoint remoteEndPoint = recievedFrom as IPEndPoint;
-                if (remoteEndPoint == null)
+
+                if (!(recievedFrom is IPEndPoint remoteEndPoint))
                     return;
 
                 // TODO: get stats if past threshold
@@ -1549,7 +1541,7 @@ namespace SS.Core.Modules
             _globalStats.pcountpings++;
         }
 
-        private void handleClientPacketRecieved()
+        private void HandleClientPacketRecieved()
         {
             SubspaceBuffer buffer = _bufferPool.Get();
 
@@ -1563,15 +1555,15 @@ namespace SS.Core.Modules
             }
 
 #if CFG_DUMP_RAW_PACKETS
-            dumpPk(string.Format("RAW CLIENT DATA: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
+            DumpPk(string.Format("RAW CLIENT DATA: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
             // TODO
         }
 
-        private SubspaceBuffer bufferPacket(ConnData conn, byte[] data, int len, NetSendFlags flags, ReliableDelegate callback, object clos)
+        private SubspaceBuffer BufferPacket(ConnData conn, byte[] data, int len, NetSendFlags flags, ReliableDelegate callback, object clos)
         {
-            return bufferPacket(conn, new ArraySegment<byte>(data, 0, len), flags, callback, clos);
+            return BufferPacket(conn, new ArraySegment<byte>(data, 0, len), flags, callback, clos);
             /*
             // data has to be able to fit into a reliable packet
             Debug.Assert(len <= Constants.MaxPacket - Constants.ReliableHeaderLen);
@@ -1656,7 +1648,7 @@ namespace SS.Core.Modules
             */
         }
 
-        private SubspaceBuffer bufferPacket(ConnData conn, ArraySegment<byte> data, NetSendFlags flags, ReliableDelegate callback, object clos)
+        private SubspaceBuffer BufferPacket(ConnData conn, ArraySegment<byte> data, NetSendFlags flags, ReliableDelegate callback, object clos)
         {
             int len = data.Count;
 
@@ -1700,7 +1692,7 @@ namespace SS.Core.Modules
                 // urgent and not reliable
                 if (conn.bw.Check(len, (int)pri))
                 {
-                    sendRaw(conn, data);
+                    SendRaw(conn, data);
                     return null;
                 }
                 else
@@ -1744,7 +1736,7 @@ namespace SS.Core.Modules
 
         #region oohandlers (network layer header handling)
 
-        private void processKeyResponse(SubspaceBuffer buffer)
+        private void ProcessKeyResponse(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -1769,7 +1761,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processReliable(SubspaceBuffer buffer)
+        private void ProcessReliable(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -1833,7 +1825,7 @@ namespace SS.Core.Modules
 
                     lock (conn.olmtx)
                     {
-                        bufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack, null, null);
+                        BufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack, null, null);
                     }
                 }
 
@@ -1842,7 +1834,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processAck(SubspaceBuffer buffer)
+        private void ProcessAck(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -1879,8 +1871,7 @@ namespace SS.Core.Modules
                     outlist.Remove(node);
                     Monitor.Exit(conn.olmtx);
 
-                    if (b.Callback != null)
-                        b.Callback(conn.p, true, b.Clos);
+                    b.Callback?.Invoke(conn.p, true, b.Clos);
 
                     if (b.Tries == 1)
                     {
@@ -1915,7 +1906,7 @@ namespace SS.Core.Modules
             buffer.Dispose();
         }
 
-        private void processSyncRequest(SubspaceBuffer buffer)
+        private void ProcessSyncRequest(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -1944,7 +1935,7 @@ namespace SS.Core.Modules
                     lock (conn.olmtx)
                     {
                         // note: this bypasses bandwidth limits
-                        sendRaw(conn, b.Bytes, TimeSyncS2CPacket.Length);
+                        SendRaw(conn, b.Bytes, TimeSyncS2CPacket.Length);
 
                         // submit data to lagdata
                         if (_lagCollect != null && conn.p != null)
@@ -1967,7 +1958,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processDrop(SubspaceBuffer buffer)
+        private void ProcessDrop(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -1999,7 +1990,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processBigData(SubspaceBuffer buffer)
+        private void ProcessBigData(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -2023,7 +2014,7 @@ namespace SS.Core.Modules
                         else
                             _logManager.Log(LogLevel.Malicious, "<net> (client connection) refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
 
-                        conn.bigrecv.free();
+                        conn.bigrecv.Free();
                         return;
                     }
 
@@ -2049,7 +2040,7 @@ namespace SS.Core.Modules
                         else
                             _logManager.Log(LogLevel.Error, "<net> (client connection) cannot allocate {0} bytes for bigpacket", newsize);
 
-                        conn.bigrecv.free();
+                        conn.bigrecv.Free();
                         return;
                     }
 
@@ -2078,7 +2069,7 @@ namespace SS.Core.Modules
                             _logManager.Log(LogLevel.Warn, "<net> (client connection) bad type for bigpacket: {0}", newbuf[0]);
                     }
 
-                    conn.bigrecv.free();
+                    conn.bigrecv.Free();
                 }
             }
             finally
@@ -2087,7 +2078,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processPresize(SubspaceBuffer buffer)
+        private void ProcessPresize(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -2123,19 +2114,19 @@ namespace SS.Core.Modules
                         }
                         else
                         {
-                            endSized(conn.p, false);
+                            EndSized(conn.p, false);
                         }
                     }
 
                     if (conn.sizedrecv.totallen != size)
                     {
                         _logManager.LogP(LogLevel.Malicious, "net", conn.p, "length mismatch in sized packet");
-                        endSized(conn.p, false);
+                        EndSized(conn.p, false);
                     }
                     else if ((conn.sizedrecv.offset + buffer.NumBytes - 6) > size)
                     {
                         _logManager.LogP(LogLevel.Malicious, "net", conn.p, "sized packet overflow");
-                        endSized(conn.p, false);
+                        EndSized(conn.p, false);
                     }
                     else
                     {
@@ -2144,7 +2135,7 @@ namespace SS.Core.Modules
                         conn.sizedrecv.offset += rpData.Count;
 
                         if (conn.sizedrecv.offset >= size)
-                            endSized(conn.p, true); // sized recieve is complete
+                            EndSized(conn.p, true); // sized recieve is complete
                     }
                 }
             }
@@ -2154,7 +2145,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processCancelReq(SubspaceBuffer buffer)
+        private void ProcessCancelReq(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -2186,7 +2177,7 @@ namespace SS.Core.Modules
                     ReliablePacket rp = new ReliablePacket(buffer.Bytes); // reusing buffer
                     rp.T1 = 0x00;
                     rp.T2 = 0x0C;
-                    bufferPacket(conn, buffer.Bytes, 2, NetSendFlags.Reliable, null, null);
+                    BufferPacket(conn, buffer.Bytes, 2, NetSendFlags.Reliable, null, null);
                 }
             }
             finally
@@ -2195,7 +2186,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processCancel(SubspaceBuffer buffer)
+        private void ProcessCancel(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -2213,7 +2204,7 @@ namespace SS.Core.Modules
                 {
                     lock (conn.bigmtx)
                     {
-                        endSized(conn.p, false);
+                        EndSized(conn.p, false);
                     }
                 }
             }
@@ -2224,13 +2215,12 @@ namespace SS.Core.Modules
         }
 
         // call with bigmtx locked
-        private void endSized(Player p, bool success)
+        private void EndSized(Player p, bool success)
         {
             if (p == null)
                 return;
 
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return;
 
             if (conn.sizedrecv.offset != 0)
@@ -2250,7 +2240,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processGrouped(SubspaceBuffer buffer)
+        private void ProcessGrouped(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -2275,7 +2265,7 @@ namespace SS.Core.Modules
                         b.Conn = conn;
                         b.NumBytes = len;
                         Array.Copy(buffer.Bytes, pos, b.Bytes, 0, len);
-                        processBuffer(b);
+                        ProcessBuffer(b);
                     }
 
                     pos += len;
@@ -2287,7 +2277,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void processSpecial(SubspaceBuffer buffer)
+        private void ProcessSpecial(SubspaceBuffer buffer)
         {
             if (buffer == null)
                 return;
@@ -2360,17 +2350,17 @@ namespace SS.Core.Modules
             _config.overhead = _configManager.GetInt(_configManager.Global, "Net", "PerPacketOverhead", 28);
             _config.pingrefreshtime = _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200);
 
-            if (initializeSockets() == false)
+            if (InitializeSockets() == false)
                 return false;
 
             // recieve thread
-            Thread thread = new Thread(recieveThread);
+            Thread thread = new Thread(RecieveThread);
             thread.Name = "network-recv";
             thread.Start();
             _threadList.Add(thread);
 
             // send thread
-            thread = new Thread(sendThread);
+            thread = new Thread(SendThread);
             thread.Name = "network-send";
             thread.Start();
             _threadList.Add(thread);
@@ -2378,7 +2368,7 @@ namespace SS.Core.Modules
             // reliable threads
             for (int i = 0; i < reliableThreadCount; i++)
             {
-                thread = new Thread(relThread);
+                thread = new Thread(RelThread);
                 thread.Name = "network-rel-" + i;
                 thread.Start();
                 _reliableThreads.Add(thread);
@@ -2386,7 +2376,7 @@ namespace SS.Core.Modules
             }
 
             // queue more data thread (sends sized data)
-            _serverTimer.SetTimer(queueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
+            _serverTimer.SetTimer(QueueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
             
             mm.RegisterInterface<INetwork>(this);
             mm.RegisterInterface<INetworkClient>(this);
@@ -2400,7 +2390,7 @@ namespace SS.Core.Modules
             mm.UnregisterInterface<INetworkClient>();
             mm.UnregisterInterface<INetworkEncryption>();
 
-            _serverTimer.ClearTimer(queueMoreData, null);
+            _serverTimer.ClearTimer(QueueMoreData, null);
 
             // stop threads
             _stopThreads = true;
@@ -2465,7 +2455,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(ld));
 
 #if CFG_DUMP_RAW_PACKETS
-            dumpPk(string.Format("SENDRAW: {0} bytes", len), new ArraySegment<byte>(pkt, 0, len));
+            DumpPk(string.Format("SENDRAW: {0} bytes", len), new ArraySegment<byte>(pkt, 0, len));
 #endif
 
             ld.GameSocket.SendTo(pkt, len, SocketFlags.None, remoteEndpoint);
@@ -2481,10 +2471,8 @@ namespace SS.Core.Modules
                 (clientType == ClientType.Continuum && !ld.AllowContinuum))
                 return null;
 
-            Player p;
-
             // try to find a matching player for the endpoint
-            if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out p))
+            if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out Player p))
             {
                 /* we found it. if its status is S_CONNECTED, just return the
 		            * pid. it means we have to redo part of the connection init. */
@@ -2577,11 +2565,10 @@ namespace SS.Core.Modules
             if (len <= 0)
                 return;
 
-            if (!isOurs(p))
+            if (!IsOurs(p))
                 return;
 
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return;
 
             // see if we can do it the quick way
@@ -2589,7 +2576,7 @@ namespace SS.Core.Modules
             {
                 lock (conn.olmtx)
                 {
-                    bufferPacket(conn, data, len, flags, null, null);
+                    BufferPacket(conn, data, len, flags, null, null);
                 }
             }
             else
@@ -2597,7 +2584,7 @@ namespace SS.Core.Modules
                 // not very efficient to allocate a new list and node just to send to one player
                 LinkedList<Player> set = new LinkedList<Player>();
                 set.AddLast(p);
-                sendToSet(set, data, len, flags);
+                SendToSet(set, data, len, flags);
             }
         }
 
@@ -2616,7 +2603,7 @@ namespace SS.Core.Modules
                     if (p.Status == PlayerState.Playing &&
                         (p.Arena == arena || arena == null) &&
                         p != except &&
-                        isOurs(p))
+                        IsOurs(p))
                     {
                         set.AddLast(p);
                     }
@@ -2627,15 +2614,15 @@ namespace SS.Core.Modules
                 _playerData.Unlock();
             }
 
-            sendToSet(set, data, len, flags);
+            SendToSet(set, data, len, flags);
         }
 
         void INetwork.SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags)
         {
-            sendToSet(set, data, len, flags);
+            SendToSet(set, data, len, flags);
         }
 
-        private void sendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags)
+        private void SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags)
         {
             if (set == null)
                 return;
@@ -2661,7 +2648,7 @@ namespace SS.Core.Modules
                     while (len > Constants.ChunkSize)
                     {
                         Array.Copy(data, position, buffer.Bytes, 2, Constants.ChunkSize);
-                        sendToSet(set, buffer.Bytes, Constants.ChunkSize + 2, flags); // only the 09 is sent reliably for some reason
+                        SendToSet(set, buffer.Bytes, Constants.ChunkSize + 2, flags); // only the 09 is sent reliably for some reason
                         position += Constants.ChunkSize;
                         len -= Constants.ChunkSize;
                     }
@@ -2669,23 +2656,22 @@ namespace SS.Core.Modules
                     // final packet is the 09 (signals the end of the big data)
                     buffer.Bytes[1] = 0x09;
                     Array.Copy(data, position, buffer.Bytes, 2, len);
-                    sendToSet(set, buffer.Bytes, len + 2, flags | NetSendFlags.Reliable);
+                    SendToSet(set, buffer.Bytes, len + 2, flags | NetSendFlags.Reliable);
                 }
             }
             else
             {
                 foreach (Player p in set)
                 {
-                    ConnData conn = p[_connKey] as ConnData;
-                    if (conn == null)
+                    if (!(p[_connKey] is ConnData conn))
                         continue;
 
-                    if (!isOurs(p))
+                    if (!IsOurs(p))
                         continue;
 
                     lock (conn.olmtx)
                     {
-                        bufferPacket(conn, data, len, flags, null, null);
+                        BufferPacket(conn, data, len, flags, null, null);
                     }
                 }
             }
@@ -2693,39 +2679,36 @@ namespace SS.Core.Modules
 
         void INetwork.SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object clos)
         {
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return;
 
             // we can't handle big packets here
             Debug.Assert(len <= (Constants.MaxPacket - Constants.ReliableHeaderLen));
 
-            if (!isOurs(p))
+            if (!IsOurs(p))
                 return;
 
             lock (conn.olmtx)
             {
-                bufferPacket(conn, data, len, NetSendFlags.Reliable, callback, clos);
+                BufferPacket(conn, data, len, NetSendFlags.Reliable, callback, clos);
             }
         }
 
         void INetwork.SendToTarget(ITarget target, byte[] data, int len, NetSendFlags flags)
         {
-            LinkedList<Player> set;
-            _playerData.TargetToSet(target, out set);
-            sendToSet(set, data, len, flags);
+            _playerData.TargetToSet(target, out LinkedList<Player> set);
+            SendToSet(set, data, len, flags);
         }
 
         bool INetwork.SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback)
         {
-            if (!isOurs(p))
+            if (!IsOurs(p))
             {
                 _logManager.LogP(LogLevel.Drivel, "net", p, "tried to send sized data to non-udp client");
                 return false;
             }
 
-            ConnData conn = p[_connKey] as ConnData;
-            if (conn == null)
+            if (!(p[_connKey] is ConnData conn))
                 return false;
 
             SizedSendData<T> sd = new SizedSendData<T>(requestCallback, clos, len, 0);
@@ -2798,7 +2781,7 @@ namespace SS.Core.Modules
             }
         }
 
-        IReadOnlyList<ListenData> INetwork.Listening => _listenDataList;
+        IReadOnlyList<ListenData> INetwork.Listening => _readOnlyListenData;
 
         #endregion
 
@@ -2818,21 +2801,20 @@ namespace SS.Core.Modules
         void INetworkClient.DropConnection(BaseClientConnection cc)
         {
             // TODO: it looks like billing_ssc uses this
-            ClientConnection clientConnection = cc as ClientConnection;
-            if (clientConnection != null)
+            if (cc is ClientConnection clientConnection)
             {
-                dropConnection(clientConnection);
+                DropConnection(clientConnection);
             }
         }
 
         #endregion
 
-        private void dropConnection(ClientConnection cc)
+        private void DropConnection(ClientConnection cc)
         {
         }
 
 #if CFG_DUMP_RAW_PACKETS
-        private void dumpPk(string description, ArraySegment<byte> d)
+        private void DumpPk(string description, ArraySegment<byte> d)
         {
             int len = d.Count;
             StringBuilder sb = new StringBuilder(description.Length + (len * 3));
