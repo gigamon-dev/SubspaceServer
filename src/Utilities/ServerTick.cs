@@ -19,7 +19,7 @@ namespace SS.Utilities
     /// 
     /// 100% Equivalent to ASSS' ticks_t
     /// </summary>
-    public struct ServerTick : IEquatable<ServerTick>, IComparable<ServerTick>
+    public readonly struct ServerTick : IEquatable<ServerTick>, IComparable<ServerTick>
     {
         private readonly uint tickcount;
 

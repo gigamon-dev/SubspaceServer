@@ -8,7 +8,7 @@ namespace SS.Core.Map
     /// <summary>
     /// wraps x and y coordinates of a map tile
     /// </summary>
-    public struct MapCoordinate : IEquatable<MapCoordinate>, IComparable<MapCoordinate>
+    public readonly struct MapCoordinate : IEquatable<MapCoordinate>, IComparable<MapCoordinate>
     {
         private readonly short _xCoord;
         private readonly short _yCoord;

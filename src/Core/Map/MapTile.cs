@@ -8,9 +8,9 @@ namespace SS.Core.Map
     /// <summary>
     /// Represents a single tile on a map (lvl file).
     /// </summary>
-    public struct MapTile
+    public readonly struct MapTile
     {
-        private byte _tile;
+        private readonly byte _tile;
 
         public MapTile(byte tile)
         {
