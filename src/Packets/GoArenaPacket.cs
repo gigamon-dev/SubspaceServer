@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct GoArenaPacket
+    public readonly struct GoArenaPacket
     {
         static GoArenaPacket()
         {
@@ -40,7 +40,7 @@ namespace SS.Core.Packets
 
         public GoArenaPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

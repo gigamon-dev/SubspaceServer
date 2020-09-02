@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct ChatPacket
+    public readonly struct ChatPacket
     {
         static ChatPacket()
         {
@@ -27,7 +27,7 @@ namespace SS.Core.Packets
         private static readonly DataLocation text; // NumBytes is variable for this location, do not use
 
         // used for finding the end of the text
-        private static Predicate<byte> _nullCharPredicate =
+        private static readonly Predicate<byte> _nullCharPredicate =
             delegate(byte b)
             {
                 return b == 0;
@@ -37,7 +37,7 @@ namespace SS.Core.Packets
 
         public ChatPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte PkType

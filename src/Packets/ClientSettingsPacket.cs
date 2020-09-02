@@ -8,20 +8,17 @@ namespace SS.Core.Packets
 {
     public class Int32Array
     {
-        private byte[] _data;
-        private int _byteOffset;
-        private int _bitOffset;
-        private Int32DataLocation[] _dataLocations;
+        private readonly byte[] _data;
+        private readonly int _byteOffset;
+        private readonly int _bitOffset;
+        private readonly Int32DataLocation[] _dataLocations;
 
         public Int32Array(byte[] data, int byteOffset, int bitOffset, Int32DataLocation[] dataLocations)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
             if (dataLocations == null)
-                throw new ArgumentNullException("dataLocations");
+                throw new ArgumentNullException(nameof(dataLocations));
 
-            _data = data;
+            _data = data ?? throw new ArgumentNullException(nameof(data));
             _byteOffset = byteOffset;
             _bitOffset = bitOffset;
 
@@ -49,20 +46,17 @@ namespace SS.Core.Packets
 
     public class Int16Array
     {
-        private byte[] _data;
-        private int _byteOffset;
-        private int _bitOffset;
-        private Int16DataLocation[] _dataLocations;
+        private readonly byte[] _data;
+        private readonly int _byteOffset;
+        private readonly int _bitOffset;
+        private readonly Int16DataLocation[] _dataLocations;
 
         public Int16Array(byte[] data, int byteOffset, int bitOffset, Int16DataLocation[] dataLocations)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
             if (dataLocations == null)
-                throw new ArgumentNullException("dataLocations");
+                throw new ArgumentNullException(nameof(dataLocations));
 
-            _data = data;
+            _data = data ?? throw new ArgumentNullException(nameof(data));
             _byteOffset = byteOffset;
             _bitOffset = bitOffset;
 
@@ -90,20 +84,17 @@ namespace SS.Core.Packets
 
     public class ByteArray
     {
-        private byte[] _data;
-        private int _byteOffset;
-        private int _bitOffset;
-        private ByteDataLocation[] _dataLocations;
+        private readonly byte[] _data;
+        private readonly int _byteOffset;
+        private readonly int _bitOffset;
+        private readonly ByteDataLocation[] _dataLocations;
 
         public ByteArray(byte[] data, int byteOffset, int bitOffset, ByteDataLocation[] dataLocations)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
             if (dataLocations == null)
-                throw new ArgumentNullException("dataLocations");
+                throw new ArgumentNullException(nameof(dataLocations));
 
-            _data = data;
+            _data = data ?? throw new ArgumentNullException(nameof(data));
             _byteOffset = byteOffset;
             _bitOffset = bitOffset;
 
@@ -177,14 +168,14 @@ namespace SS.Core.Packets
         }
 
         private static readonly ByteDataLocation type;
-        private static DataLocation bitset;
-        private static DataLocation[] ships;
-        private static Int32DataLocation[] longSet;
-        private static DataLocation[] spawnPos;
-        private static Int16DataLocation[] shortSet;
-        private static ByteDataLocation[] byteSet;
-        private static ByteDataLocation[] prizeWeightSet;
-        public static int Length;
+        private static readonly DataLocation bitset;
+        private static readonly DataLocation[] ships;
+        private static readonly Int32DataLocation[] longSet;
+        private static readonly DataLocation[] spawnPos;
+        private static readonly Int16DataLocation[] shortSet;
+        private static readonly ByteDataLocation[] byteSet;
+        private static readonly ByteDataLocation[] prizeWeightSet;
+        public static readonly int Length;
 
         private readonly byte[] data;
 
@@ -203,7 +194,7 @@ namespace SS.Core.Packets
         public ClientSettingsPacket(byte[] data)
         {
             if (data == null)
-                throw new ArgumentNullException("data");
+                throw new ArgumentNullException(nameof(data));
 
             if (data.Length != ClientSettingsPacket.Length)
                 throw new ArgumentOutOfRangeException("data", "must be of length " + ClientSettingsPacket.Length + " (was " + data.Length + ")");
@@ -276,7 +267,7 @@ namespace SS.Core.Packets
             private static readonly BoolBitFieldLocation disableBallThroughWalls;
             private static readonly BoolBitFieldLocation disableBallKilling;
 
-            private ArraySegment<byte> segment;
+            private readonly ArraySegment<byte> segment;
 
             public ClientBitSet(ArraySegment<byte> segment)
             {
@@ -414,7 +405,7 @@ namespace SS.Core.Packets
                 private static readonly BoolBitFieldLocation empBomb;
                 private static readonly BoolBitFieldLocation seeMines;
 
-                private ArraySegment<byte> segment;
+                private readonly ArraySegment<byte> segment;
 
                 public WeaponBits(ArraySegment<byte> segment)
                 {
@@ -509,15 +500,12 @@ namespace SS.Core.Packets
                 private static readonly ByteBitFieldLocation radius;
                 private static readonly ByteBitFieldLocation padding;
 
-                private byte[] _data;
-                private UInt16DataLocation _dataLocation;
+                private readonly byte[] _data;
+                private readonly UInt16DataLocation _dataLocation;
 
                 public MiscBitField(byte[] data, UInt16DataLocation dataLocation)
                 {
-                    if (data == null)
-                        throw new ArgumentException("data");
-
-                    _data = data;
+                    _data = data ?? throw new ArgumentException("data");
                     _dataLocation = dataLocation;
                 }
 
@@ -562,7 +550,7 @@ namespace SS.Core.Packets
             private static readonly BitFieldLocation y;
             private static readonly BitFieldLocation r;
 
-            private ArraySegment<byte> segment;
+            private readonly ArraySegment<byte> segment;
 
             public SpawnPos(ArraySegment<byte> segment)
             {

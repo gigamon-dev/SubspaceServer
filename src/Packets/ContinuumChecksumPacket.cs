@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct ContinuumChecksumPacket
+    public readonly struct ContinuumChecksumPacket
     {
         static ContinuumChecksumPacket()
         {
@@ -26,7 +26,7 @@ namespace SS.Core.Packets
 
         public ContinuumChecksumPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    [FlagsAttribute]
+    [Flags]
     public enum PlayerPositionStatus : byte
     {
         /// <summary>
@@ -63,7 +63,7 @@ namespace SS.Core.Packets
         Wormhole = 0
     }
 
-    public struct Weapons
+    public readonly struct Weapons
     {
         static Weapons()
         {
@@ -87,12 +87,12 @@ namespace SS.Core.Packets
         private static readonly BoolBitFieldLocation alternate;
         public static readonly int Length;
 
-        private byte[] data;
-        private int byteOffset;
+        private readonly byte[] data;
+        private readonly int byteOffset;
 
         public Weapons(byte[] data, int byteOffset)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
             this.byteOffset = byteOffset;
         }
 
@@ -144,7 +144,7 @@ namespace SS.Core.Packets
         }
     }
 
-    public struct ExtraPositionData
+    public readonly struct ExtraPositionData
     {
         static ExtraPositionData()
         {
@@ -183,12 +183,12 @@ namespace SS.Core.Packets
         private static readonly ByteBitFieldLocation portals;
         public static readonly int Length;
 
-        private byte[] data;
+        private readonly byte[] data;
         private readonly int byteOffset;
 
         public ExtraPositionData(byte[] data, int byteOffset)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
             this.byteOffset = byteOffset;
         }
 
@@ -276,7 +276,7 @@ namespace SS.Core.Packets
         }
     }
 
-    public struct S2CWeaponsPacket
+    public readonly struct S2CWeaponsPacket
     {
         static S2CWeaponsPacket()
         {
@@ -316,11 +316,11 @@ namespace SS.Core.Packets
         public static readonly int Length;
         public static readonly int LengthWithExtra;
 
-        private byte[] data;
+        private readonly byte[] data;
 
         public S2CWeaponsPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type
@@ -416,7 +416,7 @@ namespace SS.Core.Packets
         }
     }
 
-    public struct S2CPositionPacket
+    public readonly struct S2CPositionPacket
     {
         static S2CPositionPacket()
         {
@@ -452,11 +452,11 @@ namespace SS.Core.Packets
         public static readonly int Length;
         public static readonly int LengthWithExtra;
 
-        private byte[] data;
+        private readonly byte[] data;
 
         public S2CPositionPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type
@@ -532,7 +532,7 @@ namespace SS.Core.Packets
         }
     }
 
-    public struct C2SPositionPacket
+    public readonly struct C2SPositionPacket
     {
         static C2SPositionPacket()
         {
@@ -574,7 +574,7 @@ namespace SS.Core.Packets
 
         public C2SPositionPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

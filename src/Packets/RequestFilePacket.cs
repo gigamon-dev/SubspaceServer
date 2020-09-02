@@ -7,52 +7,49 @@ using SS.Utilities;
 namespace SS.Core.Packets
 {
     // packet sent by the server requesting the client to send a file.
-    public struct RequestFilePacket
+    public readonly struct RequestFilePacket
     {
         static RequestFilePacket()
         {
             DataLocationBuilder builder = new DataLocationBuilder();
-            _typeDataLocation = builder.CreateByteDataLocation();
-            _pathDataLocation = builder.CreateDataLocation(256);
-            _filenameDataLocation = builder.CreateDataLocation(16);
+            type = builder.CreateByteDataLocation();
+            path = builder.CreateDataLocation(256);
+            filename = builder.CreateDataLocation(16);
             Length = builder.NumBytes;
         }
 
-        private static ByteDataLocation _typeDataLocation;
-        private static DataLocation _pathDataLocation;
-        private static DataLocation _filenameDataLocation;
+        private static readonly ByteDataLocation type;
+        private static readonly DataLocation path;
+        private static readonly DataLocation filename;
         public static readonly int Length;
 
-        private byte[] _data;
+        private readonly byte[] data;
 
         public RequestFilePacket(byte[] data)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
-            _data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type
         {
-            get { return _typeDataLocation.GetValue(_data); }
-            private set { _typeDataLocation.SetValue(_data, value); }
+            get { return type.GetValue(data); }
+            private set { type.SetValue(data, value); }
         }
 
         public string Path
         {
             get
             {
-                return Encoding.ASCII.GetString(_data, _pathDataLocation.ByteOffset, _pathDataLocation.NumBytes);
+                return Encoding.ASCII.GetString(data, path.ByteOffset, path.NumBytes);
             }
 
             set
             {
                 int numCharacters = value.Length;
-                if (numCharacters > _pathDataLocation.NumBytes)
-                    numCharacters = _pathDataLocation.NumBytes;
+                if (numCharacters > path.NumBytes)
+                    numCharacters = path.NumBytes;
 
-                Encoding.ASCII.GetBytes(value, 0, numCharacters, _data, _pathDataLocation.ByteOffset);
+                Encoding.ASCII.GetBytes(value, 0, numCharacters, data, path.ByteOffset);
             }
         }
 
@@ -60,16 +57,16 @@ namespace SS.Core.Packets
         {
             get
             {
-                return Encoding.ASCII.GetString(_data, _filenameDataLocation.ByteOffset, _filenameDataLocation.NumBytes);
+                return Encoding.ASCII.GetString(data, filename.ByteOffset, filename.NumBytes);
             }
 
             set
             {
                 int numCharacters = value.Length;
-                if (numCharacters > _filenameDataLocation.NumBytes)
-                    numCharacters = _filenameDataLocation.NumBytes;
+                if (numCharacters > filename.NumBytes)
+                    numCharacters = filename.NumBytes;
 
-                Encoding.ASCII.GetBytes(value, 0, numCharacters, _data, _filenameDataLocation.ByteOffset);
+                Encoding.ASCII.GetBytes(value, 0, numCharacters, data, filename.ByteOffset);
             }
         }
 

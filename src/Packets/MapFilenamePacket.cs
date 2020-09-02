@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct MapFilenamePacket
+    public readonly struct MapFilenamePacket
     {
         public const int MaxLvzFiles = 16;
         private const int MaxFiles = 16 + 1; // +1 for map file
@@ -37,7 +37,7 @@ namespace SS.Core.Packets
 
         public MapFilenamePacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public void Initialize()

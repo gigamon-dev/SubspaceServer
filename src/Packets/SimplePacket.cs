@@ -5,7 +5,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct SimplePacket
+    public readonly struct SimplePacket
     {
         // static constructor to initialize packet's info
         static SimplePacket()
@@ -34,7 +34,7 @@ namespace SS.Core.Packets
 
         public SimplePacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

@@ -9,7 +9,7 @@ namespace SS.Core.Packets
     /// <summary>
     /// player login packet
     /// </summary>
-    public struct LoginPacket
+    public readonly struct LoginPacket
     {
         static LoginPacket()
         {
@@ -53,7 +53,7 @@ namespace SS.Core.Packets
 
         public LoginPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public string Name

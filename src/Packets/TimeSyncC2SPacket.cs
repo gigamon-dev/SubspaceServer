@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct TimeSyncC2SPacket
+    public readonly struct TimeSyncC2SPacket
     {
         // static constructor to initialize packet's info
         static TimeSyncC2SPacket()
@@ -17,7 +17,7 @@ namespace SS.Core.Packets
             time = locationBuilder.CreateUInt32DataLocation();
             pktsent = locationBuilder.CreateUInt32DataLocation();
             pktrecvd = locationBuilder.CreateUInt32DataLocation();
-            length = locationBuilder.NumBytes;
+            Length = locationBuilder.NumBytes;
         }
 
         // static data members that tell the location of each field in the byte array of a packet
@@ -26,14 +26,14 @@ namespace SS.Core.Packets
         private static readonly UInt32DataLocation time;
         private static readonly UInt32DataLocation pktsent;
         private static readonly UInt32DataLocation pktrecvd;
-        private static readonly int length;
+        public static int Length { get; }
 
         // data members
         private readonly byte[] data;
 
         public TimeSyncC2SPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte T1
@@ -59,11 +59,6 @@ namespace SS.Core.Packets
         public uint PktRecvd
         {
             get { return pktrecvd.GetValue(data); }
-        }
-
-        public static int Length
-        {
-            get { return length; }
         }
     }
 }

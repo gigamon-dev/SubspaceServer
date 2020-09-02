@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct BrickPacket
+    public readonly struct BrickPacket
     {
         static BrickPacket()
         {
@@ -36,7 +36,7 @@ namespace SS.Core.Packets
 
         public BrickPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

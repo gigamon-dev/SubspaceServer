@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct PlayerDataPacket
+    public readonly struct PlayerDataPacket
     {
         static PlayerDataPacket()
         {
@@ -48,7 +48,7 @@ namespace SS.Core.Packets
 
         public PlayerDataPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte[] Bytes

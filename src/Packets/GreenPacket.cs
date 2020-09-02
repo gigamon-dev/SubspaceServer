@@ -38,7 +38,7 @@ namespace SS.Core.Packets
         Portal
     }
 
-    public struct GreenPacket
+    public readonly struct GreenPacket
     {
         static GreenPacket()
         {
@@ -66,7 +66,7 @@ namespace SS.Core.Packets
 
         public GreenPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct ShipChangePacket
+    public readonly struct ShipChangePacket
     {
         static ShipChangePacket()
         {
@@ -28,7 +28,7 @@ namespace SS.Core.Packets
 
         public ShipChangePacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte Type

@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct AckPacket
+    public readonly struct AckPacket
     {
         // static constructor to initialize packet's info
         static AckPacket()
@@ -29,7 +29,7 @@ namespace SS.Core.Packets
 
         public AckPacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public byte T1

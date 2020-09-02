@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public struct LoginResponsePacket
+    public readonly struct LoginResponsePacket
     {
         static LoginResponsePacket()
         {
@@ -42,7 +42,7 @@ namespace SS.Core.Packets
 
         public LoginResponsePacket(byte[] data)
         {
-            this.data = data;
+            this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
         public void Initialize()
