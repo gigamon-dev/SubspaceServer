@@ -69,16 +69,20 @@ namespace SS.Core.Modules
             {
                 // Read the xml config.
                 var doc = XDocument.Load(moduleConfigFilename);
-                IEnumerable<string> typeNames =
+                var moduleEntries =
                     from moduleElement in doc.Descendants("module")
-                    let name = moduleElement.Attribute("type").Value
-                    where !string.IsNullOrWhiteSpace(name)
-                    select name;
+                    let type = moduleElement.Attribute("type").Value
+                    let path = moduleElement.Attribute("path")?.Value
+                    where !string.IsNullOrWhiteSpace(type)
+                    select (type, path);
 
                 // Try to load each module.
-                foreach (string name in typeNames)
+                foreach (var entry in moduleEntries)
                 {
-                    _mm.AddModule(name);
+                    if(string.IsNullOrWhiteSpace(entry.path))
+                        _mm.AddModule(entry.type);
+                    else
+                        _mm.AddModule(entry.type, entry.path);
                 }
 
                 // Tell the module manager to try to load everything that isn't already loaded.

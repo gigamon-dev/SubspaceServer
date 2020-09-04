@@ -2,9 +2,9 @@
 A zone server for the multiplayer game Subspace Continuum based on *A Small Subspace Server*.
 
 ## About
-This is a cross-platform server written in C#.  The libraries, which contain all the important logic, target .NET Standard.  And, the executable targets .NET Core. Though primarly developed on Windows, it has been briefly tested on macOS and Linux.
+This is a cross-platform server written in C#.  It was originally made for the .NET Frmework, but now targets .NET Core.  Though primarly developed on Windows, it has been briefly tested on macOS and Linux.
 
-This project was developed based on the *A Small Subspace Server* open-source project.  Many parts can almost be considered a direct port from C to C#.  While other parts do their own thing to achieve similar goals.
+This project was developed based on the *A Small Subspace Server* open-source project.  Many parts can almost be considered a direct port from C to C#.  While other parts have completely different logic, but achieve similar goals.
 
 This server only contains the basic functionality needed for a player to connect, download news.txt, download maps, and play. *A Small Subspace Server* has much more functionality which is far ouside the scope of this project.
 

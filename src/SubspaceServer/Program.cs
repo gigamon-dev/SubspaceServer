@@ -1,6 +1,9 @@
 ﻿using SS.Core;
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -17,11 +20,19 @@ namespace SubspaceServer
 
             if (args.Length > 0)
             {
-                directory = args[0];
-
-                if (!Directory.Exists(directory))
+                foreach (string arg in args)
                 {
-                    directory = null;
+                    if (string.Equals(arg, "-debug"))
+                    {
+                        PrintProbingProperties();
+                    }
+                    else
+                    {
+                        if (Directory.Exists(arg))
+                        {
+                            directory = arg;
+                        }
+                    }
                 }
             }
 
@@ -30,21 +41,6 @@ namespace SubspaceServer
                 directory = Environment.CurrentDirectory;
             }
 
-            /* HACK: 
-             * To fix dynamically loading assemblies for modules that are not directly referenced.
-             * The default .NET Core logic doesn't automatically search the directory the executable is in.
-             * This does just that for the default AssemblyLoadContext.
-             * 
-             * Note:
-             * If loaded into a separate AssemblyLoadContext, it would load another copy of SS.Core into it.
-             * Then, the IModule interface type in the default context, would not work well with the copy of it in the other context.
-             * That caused: !typeof(IModule).IsAssignableFrom(type)
-             * To always return false.
-             * 
-             * For reference see: https://docs.microsoft.com/en-us/dotnet/api/system.runtime.loader.assemblyloadcontext
-             */
-            AssemblyLoadContext.Default.Resolving += ResolveAssembly;
-
             subspaceServer = new Server(directory);
 
             StartServer();
@@ -52,18 +48,28 @@ namespace SubspaceServer
             StopServer(true);
         }
 
-        private static Assembly ResolveAssembly(AssemblyLoadContext context, AssemblyName assemblyName)
+        private static void PrintProbingProperties()
         {
-            try
-            {
-                return context.LoadFromAssemblyPath(
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, assemblyName.Name));
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine(ex.ToString());
-                return null;
-            }
+            PrintProbingPaths("TRUSTED_PLATFORM_ASSEMBLIES");
+            PrintProbingPaths("PLATFORM_RESOURCE_ROOTS");
+            PrintProbingPaths("NATIVE_DLL_SEARCH_DIRECTORIES");
+            PrintProbingPaths("APP_PATHS");
+            PrintProbingPaths("APP_NI_PATHS");
+        }
+
+        private static void PrintProbingPaths(string propertyName)
+        {
+            Console.WriteLine(propertyName);
+            Console.WriteLine(new string('-', propertyName.Length));
+            
+            string paths = AppContext.GetData(propertyName) as string;
+            if (string.IsNullOrWhiteSpace(paths))
+                return;
+
+            IEnumerable<string> tokens = paths.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            tokens = tokens.OrderBy(s => s, StringComparer.Ordinal);
+            foreach (var token in tokens)
+                Console.WriteLine(token);
         }
 
         private static void MainMenu()

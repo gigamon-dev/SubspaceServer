@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <AssemblyName>SS.Core.Packets</AssemblyName>
+    <RootNamespace>SS.Core.Packets</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

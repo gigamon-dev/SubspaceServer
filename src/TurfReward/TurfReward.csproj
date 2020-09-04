@@ -1,11 +1,15 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <OutDir>$(SolutionDir)SubspaceServer\Zone\bin\modules\TurfReward</OutDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Core\Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>all</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

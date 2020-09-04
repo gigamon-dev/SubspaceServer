@@ -192,20 +192,34 @@ Displays version information about the server. It might also print out some info
             if (string.IsNullOrWhiteSpace(parameters))
                 return;
 
-            string info = _mm.GetModuleInfo(parameters);
-            if (string.IsNullOrWhiteSpace(info))
+            var infoArray = _mm.GetModuleInfo(parameters);
+
+            if (infoArray.Length > 0)
             {
-                _chat.SendMessage(p, $"No information available for module '{parameters}'.");
+                foreach(var info in infoArray)
+                {
+                    _chat.SendMessage(p, info.ModuleTypeName);
+                    _chat.SendMessage(p, $"  Type: {info.ModuleQualifiedName}");
+                    _chat.SendMessage(p, $"  Assembly Path: {info.AssemblyPath}");
+                    _chat.SendMessage(p, $"  Module Type: {(info.IsPlugin ? "plug-in" : "built-in")}");
+
+                    if (info.AttachedArenas.Length > 0)
+                    {
+                        string attachedArenas = string.Join(", ", info.AttachedArenas.Select(a => a.Name));
+                        _chat.SendMessage(p, $"  Attached Arenas: {attachedArenas}");
+                    }
+
+                    _chat.SendMessage(p, $"  Description:");
+                    string[] tokens = info.Description.Split('\n');
+                    foreach (string token in tokens)
+                    {
+                        _chat.SendMessage(p, $"    {token}");
+                    }
+                }
             }
             else
             {
-                _chat.SendMessage(p, $"Info:");
-
-                string[] tokens = info.Split('\n');
-                foreach(string token in tokens)
-                {
-                    _chat.SendMessage(p, $"  {token}");
-                }
+                _chat.SendMessage(p, $"Module '{parameters}' not found.");
             }
         }
 
@@ -214,10 +228,30 @@ Displays version information about the server. It might also print out some info
             if (string.IsNullOrWhiteSpace(parameters))
                 return;
 
-            if (_mm.LoadModule(parameters))
-                _chat.SendMessage(p, $"Module '{parameters}' loaded.");
+            string moduleTypeName;
+            string path;
+
+            string[] tokens = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 1)
+            {
+                moduleTypeName = tokens[0];
+                path = null;
+            }
+            else if(tokens.Length == 2)
+            {
+                moduleTypeName = tokens[0];
+                path = tokens[1];
+                path = path.Trim('"', '\'', ' ');
+            }
             else
-                _chat.SendMessage(p, $"Failed to load module '{parameters}'.");
+            {
+                return;
+            }
+
+            if (_mm.LoadModule(moduleTypeName, path))
+                _chat.SendMessage(p, $"Module '{moduleTypeName}' loaded.");
+            else
+                _chat.SendMessage(p, $"Failed to load module '{moduleTypeName}'.");
         }
 
         private void Command_rmmod(string command, string parameters, Player p, ITarget target)
