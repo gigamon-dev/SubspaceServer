@@ -4,15 +4,6 @@ using System.Text;
 
 namespace SS.Core
 {
-    /// <summary>
-    /// Modules that are capable of attaching to an arena implement this interface.
-    /// </summary>
-    public interface IArenaAttachableModule
-    {
-        bool AttachModule(Arena arena);
-        bool DetachModule(Arena arena);
-    }
-
     // TODO: looks like the arena stuff has changed somewhat dramatically with the new version...
     public enum ArenaState
     {

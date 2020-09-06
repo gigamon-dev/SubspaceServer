@@ -11,69 +11,6 @@ using System.Runtime.Loader;
 
 namespace SS.Core
 {
-    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-    public class ModuleInfoAttribute : Attribute
-    {
-        public ModuleInfoAttribute(string description)
-        {
-            Description = description;
-        }
-
-        public string Description { get; }
-
-        public static bool TryGetAttribute(Type type, out ModuleInfoAttribute attribute)
-        {
-            if (type == null)
-            {
-                attribute = null;
-                return false;
-            }
-
-            attribute = Attribute.GetCustomAttribute(type, typeof(ModuleInfoAttribute)) as ModuleInfoAttribute;
-            return attribute != null;
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
-    internal class CoreModuleInfoAttribute : ModuleInfoAttribute
-    {
-        public CoreModuleInfoAttribute()
-            : base($"Subspace Server .NET ({Assembly.GetExecutingAssembly().GetName().Version})")
-        {
-        }
-    }
-
-    public interface IModule
-    {
-        /// <summary>
-        /// IComponentInterfaces that are required by the Module to load properly.
-        /// *** DO NOT INCLUDE OPTIONAL INTERFACES HERE ***
-        /// </summary>
-        Type[] InterfaceDependencies
-        {
-            get;
-        }
-
-        bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies);
-        bool Unload(ModuleManager mm);
-
-        // moved these to IModuleArenaAttachable
-        //void Attach(Arena arena);
-        //void Detach(Arena arena);
-    }
-
-    /// <summary>
-    /// A "Module" can implement this interface if it needs to do work 
-    /// after being loaded (<see cref="PostLoad(ModuleManager)"/>) 
-    /// or 
-    /// before being unloaded (<see cref="PreUnload(ModuleManager)"/>).
-    /// </summary>
-    public interface IModuleLoaderAware
-    {
-        bool PostLoad(ModuleManager mm);
-        bool PreUnload(ModuleManager mm);
-    }
-
     /// <summary>
     /// Equivalent of ASSS' module.[ch]
     /// Completely different style though...
@@ -93,7 +30,7 @@ namespace SS.Core
     /// Each Callback is identified by a unique name.
     /// Therefore, Callbacks are not dependencies that affect whether a module can be loaded.
     /// 
-    /// Interfaces and callbacks are usually hooked up when a module loads and released when unloaded.
+    /// Interfaces and callbacks are usually registered when a module loads and unregistered when unloaded.
     /// However, it is not limited to doing that.  For example, at any time, a module can check if there's an implementor of an interface,
     /// and if so, get it, and use it.
     /// 
