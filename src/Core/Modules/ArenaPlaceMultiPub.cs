@@ -18,18 +18,13 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[]
         {
-            get
-            {
-                return new Type[] {
-                    typeof(IConfigManager), 
-                    typeof(IArenaManagerCore)
-                };
-            }
-        }
+            typeof(IConfigManager), 
+            typeof(IArenaManagerCore)
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
             _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;

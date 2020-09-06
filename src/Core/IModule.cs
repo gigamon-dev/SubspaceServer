@@ -44,7 +44,7 @@ namespace SS.Core
         /// <param name="mm">The global component broker.</param>
         /// <param name="dependencies"></param>
         /// <returns>True on success.  False on failure.</returns>
-        bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> dependencies);
+        bool Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies);
 
         /// <summary>
         /// This is where a module should perform cleanup. Including:

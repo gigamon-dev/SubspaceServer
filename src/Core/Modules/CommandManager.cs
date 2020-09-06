@@ -43,20 +43,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[]
         {
-            get
-            {
-                return new Type[] {
-                    typeof(IPlayerData), 
-                    typeof(ILogManager), 
-                    typeof(ICapabilityManager), 
-                    typeof(IConfigManager), 
-                };
-            }
-        }
+            typeof(IPlayerData), 
+            typeof(ILogManager), 
+            typeof(ICapabilityManager), 
+            typeof(IConfigManager), 
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
             _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;

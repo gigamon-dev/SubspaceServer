@@ -17,12 +17,12 @@ namespace TurfReward
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies => new Type[]
+        Type[] IModule.InterfaceDependencies { get; } = new Type[]
         {
             typeof(ILogManager),
         };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _log = interfaceDependencies[typeof(ILogManager)] as ILogManager;
 

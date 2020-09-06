@@ -26,21 +26,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[]
         {
-            get
-            {
-                return new Type[]
-                {
-                    typeof(IServerTimer), 
-                    typeof(IConfigManager), 
-                    typeof(IArenaManagerCore), 
-                    typeof(ILogManager), 
-                };
-            }
-        }
+            typeof(IServerTimer), 
+            typeof(IConfigManager), 
+            typeof(IArenaManagerCore), 
+            typeof(ILogManager), 
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
             _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;

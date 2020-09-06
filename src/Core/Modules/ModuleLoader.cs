@@ -14,13 +14,9 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
-        {
-            get { return null; }
+        Type[] IModule.InterfaceDependencies { get; } = null;
 
-        }
-
-        public bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
 
@@ -29,7 +25,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ModuleManager mm)
+        bool IModule.Unload(ModuleManager mm)
         {
             _mm.UnregisterInterface<IModuleLoader>();
 

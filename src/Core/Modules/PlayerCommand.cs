@@ -24,19 +24,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
         {
-            get{
-                return new Type[] {
-                    typeof(IPlayerData), 
-                    typeof(IChat), 
-                    typeof(ICommandManager),
-                    typeof(ICapabilityManager)
-                };
-            }
-        }
+            typeof(IPlayerData), 
+            typeof(IChat), 
+            typeof(ICommandManager),
+            typeof(ICapabilityManager)
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
 
@@ -124,7 +120,6 @@ Displays version information about the server. It might also print out some info
 
         private void Command_lsmod(string command, string parameters, Player p, ITarget target)
         {
-            bool filterByArena = false; // TODO: 
             bool sort = false;
             string substr = null;
 
@@ -140,7 +135,6 @@ Displays version information about the server. It might also print out some info
                         if (target.Type == TargetType.Arena
                             && target is IArenaTarget arenaTarget)
                         {
-                            filterByArena = true;
                             arena = arenaTarget.Arena;
                         }
                     }

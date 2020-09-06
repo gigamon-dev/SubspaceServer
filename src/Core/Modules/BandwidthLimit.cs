@@ -59,18 +59,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public Type[] InterfaceDependencies
-        {
-            get { return null; }
-        }
+        Type[] IModule.InterfaceDependencies => null;
 
-        public bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             mm.RegisterInterface<IBandwidthLimit>(this);
             return true;
         }
 
-        public bool Unload(ModuleManager mm)
+        bool IModule.Unload(ModuleManager mm)
         {
             mm.UnregisterInterface<IBandwidthLimit>();
             return true;
@@ -180,12 +177,9 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
-        {
-            get { return null; }
-        }
+        Type[] IModule.InterfaceDependencies { get; } = null;
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             IConfigManager config = mm.GetInterface<IConfigManager>();
             if (config == null)

@@ -2301,22 +2301,17 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
         {
-            get
-            {
-                return new Type[] {
-                    typeof(IPlayerData), 
-                    typeof(IConfigManager), 
-                    typeof(ILogManager), 
-                    typeof(IServerTimer), 
-                    typeof(IBandwidthLimit), 
-                    typeof(ILagCollect), 
-                };
-            }
-        }
+            typeof(IPlayerData), 
+            typeof(IConfigManager), 
+            typeof(ILogManager), 
+            typeof(IServerTimer), 
+            typeof(IBandwidthLimit), 
+            typeof(ILagCollect), 
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
             _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;

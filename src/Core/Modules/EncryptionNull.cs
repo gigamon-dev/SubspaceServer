@@ -62,17 +62,12 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public Type[] InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[]
         {
-            get
-            {
-                return new Type[] {
-                    typeof(INetworkEncryption)
-                };
-            }
-        }
+            typeof(INetworkEncryption)
+        };
 
-        public bool Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _net = interfaceDependencies[typeof(INetworkEncryption)] as INetworkEncryption;
 
@@ -81,7 +76,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ModuleManager mm)
+        bool IModule.Unload(ModuleManager mm)
         {
             ConnectionInitCallback.Unregister(mm, connectionInit);
 

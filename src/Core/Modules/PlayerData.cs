@@ -76,17 +76,12 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
         {
-            get
-            {
-                return new Type[] {
-                    typeof(IConfigManager)
-                };
-            }
-        }
+            typeof(IConfigManager)
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
             mm.RegisterInterface<IPlayerData>(this);

@@ -2,6 +2,7 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -858,7 +859,20 @@ namespace SS.Core
             }
 
             // we got all the interfaces, now we can load the module
-            if (moduleData.Module.Load(this, moduleData.InterfaceDependencies) == false)
+            bool success;
+
+            try
+            {
+                ReadOnlyDictionary<Type, IComponentInterface> dependencies = new ReadOnlyDictionary<Type, IComponentInterface>(moduleData.InterfaceDependencies);
+                success = moduleData.Module.Load(this, dependencies);
+            }
+            catch (Exception ex)
+            {
+                success = false;
+                Console.Error.WriteLine(string.Format($"E <ModuleManager> Error loading module [{moduleData.ModuleType.FullName}]. Exception: {ex}"));
+            }
+
+            if (!success)
             {
                 // module loading failed
                 Console.Error.WriteLine(string.Format($"E <ModuleManager> Error loading module [{moduleData.ModuleType.FullName}]"));

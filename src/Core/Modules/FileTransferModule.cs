@@ -47,20 +47,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies
+        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
         {
-            get
-            {
-                return new Type[] {
-                    typeof(INetwork), 
-                    typeof(ILogManager), 
-                    typeof(ICapabilityManager), 
-                    typeof(IPlayerData), 
-                };
-            }
-        }
+            typeof(INetwork), 
+            typeof(ILogManager), 
+            typeof(ICapabilityManager), 
+            typeof(IPlayerData), 
+        };
 
-        bool IModule.Load(ModuleManager mm, Dictionary<Type, IComponentInterface> interfaceDependencies)
+        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
             _network = interfaceDependencies[typeof(INetwork)] as INetwork;
