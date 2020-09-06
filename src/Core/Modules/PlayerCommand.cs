@@ -132,7 +132,7 @@ Displays version information about the server. It might also print out some info
 
             if (!string.IsNullOrWhiteSpace(parameters))
             {
-                string[] args = parameters.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                string[] args = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 foreach(string arg in args)
                 {
                     if (string.Equals(arg, "-a", StringComparison.OrdinalIgnoreCase))
@@ -272,7 +272,7 @@ Displays version information about the server. It might also print out some info
 
             if (!string.IsNullOrWhiteSpace(parameters))
             {
-                string[] tokens = parameters.Split(new char[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                string[] tokens = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
                 if (tokens.Length == 2 && string.Equals(tokens[0], "-d"))
                 {
                     detach = true;
