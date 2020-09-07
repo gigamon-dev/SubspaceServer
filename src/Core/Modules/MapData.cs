@@ -353,7 +353,7 @@ namespace SS.Core.Modules
                         if (!string.IsNullOrEmpty(mapname) &&
                             lvl.LoadFromFile(mapname))
                         {
-                            _logManager.LogA(LogLevel.Info, "MapData", arena, "successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", mapname, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.ErrorCount);
+                            _logManager.LogA(LogLevel.Info, nameof(MapData), arena, "successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", mapname, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.ErrorCount);
 
                             /*
                             // useful check to see that we are in fact loading correctly
@@ -365,7 +365,7 @@ namespace SS.Core.Modules
                         }
                         else
                         {
-                            _logManager.LogA(LogLevel.Warn, "MapData", arena, "error finding or reading map file '{0}'", mapname);
+                            _logManager.LogA(LogLevel.Warn, nameof(MapData), arena, "error finding or reading map file '{0}'", mapname);
 
                             // fall back to emergency. this matches the compressed map in MapNewsDownload.cs
                             lvl.SetAsEmergencyMap();

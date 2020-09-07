@@ -64,6 +64,7 @@ namespace SS.Core.Modules
         {
             _configManager = mm.GetInterface<IConfigManager>();
             _loggingThread = new Thread(new ThreadStart(loggingThread));
+            _loggingThread.Name = "LogManager";
             _loggingThread.Start();
             return true;
         }
@@ -140,7 +141,7 @@ namespace SS.Core.Modules
             sb.Append("> {");
             sb.Append(arena?.Name ?? "(bad arena)");
             sb.Append("} [");
-            sb.Append(player?.Name ?? player?.Id.ToString() ?? "(bad player)");
+            sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
             sb.Append("] ");
             sb.AppendFormat(format, args);
 

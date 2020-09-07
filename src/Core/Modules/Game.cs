@@ -646,7 +646,7 @@ namespace SS.Core.Modules
                     }
 
                     if (pd.epdQueries > 0)
-                        _logManager.LogP(LogLevel.Error, "Game", p, "extra position data queries is still nonzero");
+                        _logManager.LogP(LogLevel.Error, nameof(Game), p, "extra position data queries is still nonzero");
 
                     clearSpeccing(pd);
                 }
@@ -754,7 +754,7 @@ namespace SS.Core.Modules
             if(len != C2SPositionPacket.Length && len != C2SPositionPacket.LengthWithExtra)
 #endif
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad position packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet len={0}", len);
                 return;
             }
 
@@ -772,7 +772,7 @@ namespace SS.Core.Modules
 
                 if (checksum != 0)
                 {
-                    _logManager.LogP(LogLevel.Malicious, "Game", p, "bad position packet checksum");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet checksum");
                     return;
                 }
             }
@@ -1225,7 +1225,7 @@ namespace SS.Core.Modules
 
             if (len != 3)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad spec req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad spec req packet len={0}", len);
                 return;
             }
 
@@ -1262,14 +1262,14 @@ namespace SS.Core.Modules
 
             if (len != 2)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad ship req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad ship req packet len={0}", len);
                 return;
             }
 
             Arena arena = p.Arena;
             if (p.Status != PlayerState.Playing || arena == null)
             {
-                _logManager.LogP(LogLevel.Warn, "Game", p, "state sync problem: ship request from bad status");
+                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: ship request from bad status");
                 return;
             }
 
@@ -1280,7 +1280,7 @@ namespace SS.Core.Modules
             ShipType ship = (ShipType)data[1];
             if (ship < ShipType.Warbird || ship > ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad ship number: {0}", ship);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad ship number: {0}", ship);
                 return;
             }
 
@@ -1288,13 +1288,13 @@ namespace SS.Core.Modules
             {
                 if (p.Flags.DuringChange)
                 {
-                    _logManager.LogP(LogLevel.Warn, "Game", p, "state sync problem: ship request before ack from previous change");
+                    _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: ship request before ack from previous change");
                     return;
                 }
 
                 if (ship == p.Ship)
                 {
-                    _logManager.LogP(LogLevel.Warn, "Game", p, "state sync problem: already in requested ship");
+                    _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: already in requested ship");
                     return;
                 }
 
@@ -1302,7 +1302,7 @@ namespace SS.Core.Modules
 
                 if (pd.changes.changes > cfg_changelimit && cfg_changelimit > 0)
                 {
-                    _logManager.LogP(LogLevel.Info, "Game", p, "too many ship changes");
+                    _logManager.LogP(LogLevel.Info, nameof(Game), p, "too many ship changes");
 
                     // disable for at least 30 seconds
                     pd.changes.changes |= (cfg_changelimit << 3);
@@ -1353,9 +1353,9 @@ namespace SS.Core.Modules
                 return;
 
             if (len != 3)
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad freq req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad freq req packet len={0}", len);
             else if (p.Flags.DuringChange)
-                _logManager.LogP(LogLevel.Warn, "Game", p, "state sync problem: freq change before ack from previous change");
+                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: freq change before ack from previous change");
             else
             {
                 SimplePacket pkt = new SimplePacket(data);
@@ -1376,7 +1376,7 @@ namespace SS.Core.Modules
 
             if (p.Status != PlayerState.Playing || arena == null)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "freq change from bad arena");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "freq change from bad arena");
                 return;
             }
 
@@ -1429,7 +1429,7 @@ namespace SS.Core.Modules
 
             if (p.Type == ClientType.Chat && ship != ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, "Game", p, "someone tried to forced chat client into playing ship");
+                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "someone tried to forced chat client into playing ship");
                 return;
             }
 
@@ -1479,7 +1479,7 @@ namespace SS.Core.Modules
                 fireShipChangeEvent(arena, p, ship, freq);
             }
 
-            _logManager.LogP(LogLevel.Drivel, "Game", p, "changed ship/freq to ship {0}, freq {1}", ship, freq);
+            _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "changed ship/freq to ship {0}, freq {1}", ship, freq);
         }
 
         private void fireShipChangeEvent(Arena arena, Player p, ShipType ship, short freq)
@@ -1537,7 +1537,7 @@ namespace SS.Core.Modules
                 fireFreqChangeEvent(arena, p, freq);
             }
 
-            _logManager.LogP(LogLevel.Drivel, "Game", p, "changed freq to {0}", freq);
+            _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "changed freq to {0}", freq);
         }
 
         private void resetDuringChange(Player p, bool success, object dummy)
@@ -1578,7 +1578,7 @@ namespace SS.Core.Modules
                     {
                         pd.lockship = false;
                         pd.expires = null;
-                        _logManager.LogP(LogLevel.Drivel, "Game", p, "lock expired");
+                        _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "lock expired");
                     }
             }
         }
@@ -1593,7 +1593,7 @@ namespace SS.Core.Modules
 
             if (len != 5)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad death packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad death packet len={0}", len);
                 return;
             }
 
@@ -1610,7 +1610,7 @@ namespace SS.Core.Modules
             Player killer = _playerData.PidToPlayer(dead.D1);
             if (killer == null || killer.Status != PlayerState.Playing || killer.Arena != arena)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "reported kill by bad pid {0}", dead.D1);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "reported kill by bad pid {0}", dead.D1);
                 return;
             }
 
@@ -1678,7 +1678,7 @@ namespace SS.Core.Modules
 
             firePostKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
-            _logManager.LogA(LogLevel.Drivel, "Game", arena, "{0} killed by {1} (bty={2},flags={3},pts={4}", p.Name, killer.Name, bty, flagCount, pts);
+            _logManager.LogA(LogLevel.Drivel, nameof(Game), arena, "{0} killed by {1} (bty={2},flags={3},pts={4}", p.Name, killer.Name, bty, flagCount, pts);
 
             if (p.Flags.SentWeaponPacket == false)
             {
@@ -1690,7 +1690,7 @@ namespace SS.Core.Modules
                     {
                         if (pd.deathWithoutFiring++ == ad.deathWithoutFiring)
                         {
-                            _logManager.LogP(LogLevel.Drivel, "Game", p, "specced for too many deaths without firing");
+                            _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "specced for too many deaths without firing");
                             setFreqAndShip(p, ShipType.Spec, arena.SpecFreq);
                         }
                     }
@@ -1748,7 +1748,7 @@ namespace SS.Core.Modules
 
             if (len != GreenPacket.C2SLength)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad green packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad green packet len={0}", len);
                 return;
             }
 
@@ -1798,7 +1798,7 @@ namespace SS.Core.Modules
 
             if (len != 3)
             {
-                _logManager.LogP(LogLevel.Malicious, "Game", p, "bad attach req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad attach req packet len={0}", len);
                 return;
             }
 
@@ -1824,7 +1824,7 @@ namespace SS.Core.Modules
                     p.Arena != to.Arena ||
                     p.Freq != to.Freq)
                 {
-                    _logManager.LogP(LogLevel.Malicious, "Game", p, "tried to attach to bad pid {0}", pid2);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "tried to attach to bad pid {0}", pid2);
                     return;
                 }
             }

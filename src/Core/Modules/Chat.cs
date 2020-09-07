@@ -405,7 +405,7 @@ namespace SS.Core.Modules
 
             if (len < 6 || len > 500)
             {
-                _logManager.LogP(LogLevel.Malicious, "Chat", p, "bad chat packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "bad chat packet len={0}", len);
                 return;
             }
 
@@ -426,7 +426,7 @@ namespace SS.Core.Modules
             switch ((ChatMessageType)from.Type)
             {
                 case ChatMessageType.Arena:
-                    _logManager.LogP(LogLevel.Malicious, "Chat", p, "recieved arena message");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "recieved arena message");
                     break;
 
                 case ChatMessageType.PubMacro:
@@ -445,7 +445,7 @@ namespace SS.Core.Modules
                     if (target.Arena == arena)
                         handleFreq(p, target.Freq, text, sound);
                     else
-                        _logManager.LogP(LogLevel.Malicious, "Chat", p, "cross-arena nmefreq chat message");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "cross-arena nmefreq chat message");
                     break;
 
                 case ChatMessageType.Freq:
@@ -460,7 +460,7 @@ namespace SS.Core.Modules
                     if (target.Arena == arena)
                         handlePrivate(p, target, text, false, sound);
                     else
-                        _logManager.LogP(LogLevel.Malicious, "Chat", p, "cross-arena private chat message");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "cross-arena private chat message");
                     break;
 
                 case ChatMessageType.RemotePrivate:
@@ -468,7 +468,7 @@ namespace SS.Core.Modules
                     break;
 
                 case ChatMessageType.SysopWarning:
-                    _logManager.LogP(LogLevel.Malicious, "Chat", p, "recieved sysop message");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "recieved sysop message");
                     break;
 
                 case ChatMessageType.Chat:
@@ -476,7 +476,7 @@ namespace SS.Core.Modules
                     break;
 
                 default:
-                    _logManager.LogP(LogLevel.Malicious, "Chat", p, "recieved undefined type {0} chat message", from.Type);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "recieved undefined type {0} chat message", from.Type);
                     break;
             }
 
@@ -522,7 +522,7 @@ namespace SS.Core.Modules
                     pm.mask.SetRestricted(ChatMessageType.BillerCommand);
 
                     sendMessage(p, "You have been shut up for {0} seconds for flooding.", _cfg.floodshutup);
-                    _logManager.LogP(LogLevel.Info, "Chat", p, "flooded chat, shut up for {0} seconds", _cfg.floodshutup);
+                    _logManager.LogP(LogLevel.Info, nameof(Chat), p, "flooded chat, shut up for {0} seconds", _cfg.floodshutup);
                 }
             }
         }
@@ -592,7 +592,7 @@ namespace SS.Core.Modules
             string[] tokens = text.Split(new char[] {':'}, StringSplitOptions.None);
             if (text[0] != ':' || tokens.Length != 3 || tokens[0] != string.Empty || tokens[1] == string.Empty || tokens[2] == string.Empty)
             {
-                _logManager.LogP(LogLevel.Malicious, "Chat", p, "malformed remote private message");
+                _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "malformed remote private message");
                 return;
             }
 
@@ -720,7 +720,7 @@ namespace SS.Core.Modules
                     sendReply(set, type, sound, p, p.Id, text, 0);
 
                     fireChatMessageEvent(arena, p, type, sound, null, freq, text);
-                    _logManager.LogP(LogLevel.Drivel, "Chat", p, "freq msg ({0}): {1}", freq, text);
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "freq msg ({0}): {1}", freq, text);
                 }
                 finally
                 {
@@ -750,13 +750,13 @@ namespace SS.Core.Modules
                     message = p.Name + "> " + message;
                     sendReply(set, ChatMessageType.ModChat, sound, p, p.Id, message, p.Name.Length + 2);
                     fireChatMessageEvent(null, p, ChatMessageType.ModChat, sound, null, -1, message);
-                    _logManager.LogP(LogLevel.Drivel, "Chat", p, "mod chat: {0}", message);
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "mod chat: {0}", message);
                 }
             }
             else
             {
                 sendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, "attempted mod chat (missing cap or shutup): {0}", message);
+                _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "attempted mod chat (missing cap or shutup): {0}", message);
             }
         }
 
@@ -790,7 +790,7 @@ namespace SS.Core.Modules
                         sendReply(set, type, sound, p, p.Id, msg, 0);
 
                     fireChatMessageEvent(arena, p, type, sound, null, -1, msg);
-                    _logManager.LogP(LogLevel.Drivel, "Chat", p, "pub msg: {0}", msg);
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "pub msg: {0}", msg);
                 }
             }
 

@@ -306,12 +306,12 @@ namespace SS.Core.Modules
 
             if (_capabilityManager == null)
             {
-                
+
 #if ALLOW_ALL_IF_CAPMAN_IS_MISSING
-                _logManager.Log(LogLevel.Warn, "<cmdman> the capability manager isn't loaded, allowing all commands");
+                _logManager.LogM(LogLevel.Warn, nameof(CommandManager), "the capability manager isn't loaded, allowing all commands");
                 return true;
 #else
-                _logManager.Log(LogLevel.Warn, "<cmdman> the capability manager isn't loaded, disallowing all commands");
+                _logManager.LogM(LogLevel.Warn, nameof(CommandManager), "the capability manager isn't loaded, disallowing all commands");
                 return false;
 #endif
             }
@@ -368,9 +368,9 @@ namespace SS.Core.Modules
             }
 
             if (!string.IsNullOrEmpty(parameters))
-                _logManager.LogP(LogLevel.Info, "CommandManager", p, "command {0}: {1} {2}", sb.ToString(), cmd, parameters);
+                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, "command {0}: {1} {2}", sb.ToString(), cmd, parameters);
             else
-                _logManager.LogP(LogLevel.Info, "CommandManager", p, "command {0}: {1}", sb.ToString(), cmd);
+                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, "command {0}: {1}", sb.ToString(), cmd);
 
         }
 

@@ -46,14 +46,13 @@ namespace SS.Core.Modules
                 _logManager = _mm.GetInterface<ILogManager>();
             }
 
-            string logText = $"<{nameof(ModuleLoader)}> {message}";
             if (_logManager != null)
             {
-                _logManager.Log(level, logText);
+                _logManager.LogM(level, nameof(ModuleLoader), message);
             }
             else
             {
-                Console.WriteLine(logText);
+                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleLoader)}> {message}");
             }
         }
 

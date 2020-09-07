@@ -95,7 +95,7 @@ namespace SS.Core.Modules
                 FileInfo fileInfo = new FileInfo(path);
                 if (!fileInfo.Exists)
                 {
-                    _logManager.Log(LogLevel.Warn, "<FileTransferModule> file '{0}' does not exist", path);
+                    _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "file '{0}' does not exist", path);
                     return false;
                 }
 
@@ -106,7 +106,7 @@ namespace SS.Core.Modules
             }
             catch(Exception ex)
             {
-                _logManager.Log(LogLevel.Warn, "<FileTransferModule> error opening file '{0}' - {1}", path, ex.Message);
+                _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "error opening file '{0}' - {1}", path, ex.Message);
                 return false;
             }
         }
@@ -139,18 +139,18 @@ namespace SS.Core.Modules
 
             if (bytesNeeded == 0)
             {
-                _logManager.Log(LogLevel.Info, "<FileTransferModule> completed send of {0}", dd.Filename);
+                _logManager.LogM(LogLevel.Info, nameof(FileTransferModule), "completed send of {0}", dd.Filename);
                 dd.Stream.Dispose();
                 if (!string.IsNullOrEmpty(dd.DeletePath))
                 {
                     try
                     {
                         File.Delete(dd.DeletePath);
-                        _logManager.Log(LogLevel.Info, "<FileTransferModule> deleted {0} after completed send", dd.Filename);
+                        _logManager.LogM(LogLevel.Info, nameof(FileTransferModule), "deleted {0} after completed send", dd.Filename);
                     }
                     catch(Exception ex)
                     {
-                        _logManager.Log(LogLevel.Warn, "<FileTransferModule> failed to delete {0} after completed send.  {1}", dd.Filename, ex.Message);
+                        _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "failed to delete {0} after completed send.  {1}", dd.Filename, ex.Message);
                     }
                 }
             }

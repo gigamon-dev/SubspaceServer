@@ -512,7 +512,7 @@ namespace SS.Core.Modules
             catch (Exception ex)
             {
                 // not fatal, just warn
-                _logManager.Log(LogLevel.Warn, "<net> can't make socket nonblocking: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Warn, nameof(Network), "can't make socket nonblocking: {0}", ex.Message);
             }
 
             if (bindAddress == null)
@@ -566,7 +566,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.Log(LogLevel.Error, "<net> unable to create game socket: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Network), "unable to create game socket: {0}", ex.Message);
                 return null;
             }
 
@@ -577,7 +577,7 @@ namespace SS.Core.Modules
             catch (Exception ex)
             {
                 gameSocket.Close();
-                _logManager.Log(LogLevel.Error, "<net> unable to create ping socket: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Network), "unable to create ping socket: {0}", ex.Message);
                 return null;
             }
 
@@ -605,7 +605,7 @@ namespace SS.Core.Modules
                     _listenConnectAsLookup.Add(listenData.ConnectAs, listenData);
                 }
 
-                _logManager.Log(LogLevel.Drivel, "<net> listening on {0}", listenData.GameSocket.LocalEndPoint);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), "listening on {0}", listenData.GameSocket.LocalEndPoint);
             }
 
             try
@@ -614,7 +614,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.Log(LogLevel.Error, "<net> unable to create socket for client connections: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Network), "unable to create socket for client connections: {0}", ex.Message);
             }
 
             return true;
@@ -1024,7 +1024,7 @@ namespace SS.Core.Modules
                         SendRaw(conn, buf.Bytes, len + 5);
                     }
 
-                    _logManager.Log(LogLevel.Info, "<net> [{0}] [pid={1}] player kicked for {2}", p.Name, p.Id, reason);
+                    _logManager.LogM(LogLevel.Info, nameof(Network), "[{0}] [pid={1}] player kicked for {2}", p.Name, p.Id, reason);
 
                     toKill.AddLast(p);
                 }
@@ -1060,12 +1060,12 @@ namespace SS.Core.Modules
                 }
 
                 // log message
-                _logManager.Log(LogLevel.Info, "<net> [{0}] [pid={1}] disconnected", p.Name, p.Id);
+                _logManager.LogM(LogLevel.Info, nameof(Network), "[{0}] [pid={1}] disconnected", p.Name, p.Id);
 
                 lock (_hashmtx)
                 {
                     if (_clienthash.Remove(conn.sin) == false)
-                        _logManager.Log(LogLevel.Error, "<net> internal error: established connection not in hash table");
+                        _logManager.LogM(LogLevel.Error, nameof(Network), "internal error: established connection not in hash table");
                 }
 
                 toFree.AddLast(p);
@@ -1313,14 +1313,14 @@ namespace SS.Core.Modules
 #if CFG_LOG_STUPID_STUFF
                 else if (buffer.NumBytes > 1)
                 {
-                    _logManager.Log(LogLevel.Drivel, "<net> recvd data ({0:X2} {1:X2} ; {2} bytes) before connection established",
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "recvd data ({0:X2} {1:X2} ; {2} bytes) before connection established",
                         buffer.Bytes[0],
                         buffer.Bytes[1],
                         buffer.NumBytes);
                 }
                 else
                 {
-                    _logManager.Log(LogLevel.Drivel, "<net> recvd data ({0:X2} ; {1} bytes) before connection established",
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "recvd data ({0:X2} ; {1} bytes) before connection established",
                         buffer.Bytes[0],
                         buffer.NumBytes);
                 }
@@ -1366,7 +1366,7 @@ namespace SS.Core.Modules
 
             if (p.Status > PlayerState.TimeWait)
             {
-                _logManager.Log(LogLevel.Warn, "<net> [pid={0}] packet recieved from bad state {1}", p.Id, p.Status);
+                _logManager.LogM(LogLevel.Warn, nameof(Network), "[pid={0}] packet recieved from bad state {1}", p.Id, p.Status);
 
                 // don't set lastpkt time here
 
@@ -1390,7 +1390,7 @@ namespace SS.Core.Modules
             if (buffer.NumBytes == 0)
             {
                 // bad crc, or something
-                _logManager.Log(LogLevel.Malicious, "<net> [pid={0}] failure decrypting packet", p.Id);
+                _logManager.LogM(LogLevel.Malicious, nameof(Network), "[pid={0}] failure decrypting packet", p.Id);
                 buffer.Dispose();
                 return;
             }
@@ -1423,11 +1423,11 @@ namespace SS.Core.Modules
                 {
                     if (conn.p != null)
                     {
-                        _logManager.Log(LogLevel.Malicious, "<net> [{0}] [pid={1}] unknown network subtype {2}", conn.p.Name, conn.p.Id, rp.T2);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "[{0}] [pid={1}] unknown network subtype {2}", conn.p.Name, conn.p.Id, rp.T2);
                     }
                     else
                     {
-                        _logManager.Log(LogLevel.Malicious, "<net> (client connection) unknown network subtype {0}", rp.T2);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) unknown network subtype {0}", rp.T2);
                     }
                     buffer.Dispose();
                 }
@@ -1444,7 +1444,7 @@ namespace SS.Core.Modules
                         if (packetDelegate != null)
                             packetDelegate(conn.p, buffer.Bytes, buffer.NumBytes);
                         else
-                            _logManager.Log(LogLevel.Drivel, "<net> no handler for packet T1 [0x{0:X2}]", rp.T1);
+                            _logManager.LogM(LogLevel.Drivel, nameof(Network), "no handler for packet T1 [0x{0:X2}]", rp.T1);
                     }
                     else if (conn.cc != null)
                     {
@@ -1462,9 +1462,9 @@ namespace SS.Core.Modules
                 try
                 {
                     if (conn.p != null)
-                        _logManager.Log(LogLevel.Malicious, "<net> [{0}] [pid={1}] unknown packet type {2}", conn.p.Name, conn.p.Id, rp.T1);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "[{0}] [pid={1}] unknown packet type {2}", conn.p.Name, conn.p.Id, rp.T1);
                     else
-                        _logManager.Log(LogLevel.Malicious, "<net> (client connection) unknown packet type {0}", rp.T1);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) unknown packet type {0}", rp.T1);
                 }
                 finally
                 {
@@ -1753,7 +1753,7 @@ namespace SS.Core.Modules
                 if (conn.cc != null)
                     conn.cc.i.Connected();
                 else if (conn.p != null)
-                    _logManager.LogP(LogLevel.Malicious, "net", conn.p, "got key response packet");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "got key response packet");
             }
             finally
             {
@@ -1790,9 +1790,9 @@ namespace SS.Core.Modules
 
                 // just drop it
                 if (conn.p != null)
-                    _logManager.Log(LogLevel.Drivel, "<net> [{0}] [pid={1}] reliable packet with too big delta ({2} - {3})", conn.p.Name, conn.p.Id, sn, conn.c2sn);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "[{0}] [pid={1}] reliable packet with too big delta ({2} - {3})", conn.p.Name, conn.p.Id, sn, conn.c2sn);
                 else
-                    _logManager.Log(LogLevel.Drivel, "<net> (client connection) reliable packet with too big delta ({0} - {1})", sn, conn.c2sn);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "(client connection) reliable packet with too big delta ({0} - {1})", sn, conn.c2sn);
 
                 buffer.Dispose();
             }
@@ -1878,7 +1878,7 @@ namespace SS.Core.Modules
                         int rtt = (int)DateTime.Now.Subtract(b.LastRetry).TotalMilliseconds;
                         if (rtt < 0)
                         {
-                            _logManager.Log(LogLevel.Error, "<net> negative rtt ({0}); clock going backwards", rtt);
+                            _logManager.LogM(LogLevel.Error, nameof(Network), "negative rtt ({0}); clock going backwards", rtt);
                             rtt = 100;
                         }
 
@@ -2010,9 +2010,9 @@ namespace SS.Core.Modules
                     if (newsize <= 0 || newsize > Constants.MaxBigPacket)
                     {
                         if (conn.p != null)
-                            _logManager.LogP(LogLevel.Malicious, "net", conn.p, "refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
+                            _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
                         else
-                            _logManager.Log(LogLevel.Malicious, "<net> (client connection) refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
+                            _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
 
                         conn.bigrecv.Free();
                         return;
@@ -2036,9 +2036,9 @@ namespace SS.Core.Modules
                     if (newbuf == null)
                     {
                         if (conn.p != null)
-                            _logManager.LogP(LogLevel.Error, "net", conn.p, "cannot allocate {0} bytes for bigpacket", newsize);
+                            _logManager.LogP(LogLevel.Error, nameof(Network), conn.p, "cannot allocate {0} bytes for bigpacket", newsize);
                         else
-                            _logManager.Log(LogLevel.Error, "<net> (client connection) cannot allocate {0} bytes for bigpacket", newsize);
+                            _logManager.LogM(LogLevel.Error, nameof(Network), "(client connection) cannot allocate {0} bytes for bigpacket", newsize);
 
                         conn.bigrecv.Free();
                         return;
@@ -2064,9 +2064,9 @@ namespace SS.Core.Modules
                     else
                     {
                         if (conn.p != null)
-                            _logManager.LogP(LogLevel.Warn, "net", conn.p, "bad type for bigpacket: {0}", newbuf[0]);
+                            _logManager.LogP(LogLevel.Warn, nameof(Network), conn.p, "bad type for bigpacket: {0}", newbuf[0]);
                         else
-                            _logManager.Log(LogLevel.Warn, "<net> (client connection) bad type for bigpacket: {0}", newbuf[0]);
+                            _logManager.LogM(LogLevel.Warn, nameof(Network), "(client connection) bad type for bigpacket: {0}", newbuf[0]);
                     }
 
                     conn.bigrecv.Free();
@@ -2120,12 +2120,12 @@ namespace SS.Core.Modules
 
                     if (conn.sizedrecv.totallen != size)
                     {
-                        _logManager.LogP(LogLevel.Malicious, "net", conn.p, "length mismatch in sized packet");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "length mismatch in sized packet");
                         EndSized(conn.p, false);
                     }
                     else if ((conn.sizedrecv.offset + buffer.NumBytes - 6) > size)
                     {
-                        _logManager.LogP(LogLevel.Malicious, "net", conn.p, "sized packet overflow");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "sized packet overflow");
                         EndSized(conn.p, false);
                     }
                     else
@@ -2483,7 +2483,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // otherwise, something is horribly wrong. make a note to this effect
-                    _logManager.Log(LogLevel.Error, "<net> [pid={0}] NewConnection called for an established address", p.Id);
+                    _logManager.LogM(LogLevel.Error, nameof(Network), "[pid={0}] NewConnection called for an established address", p.Id);
                     return null;
                 }
             }
@@ -2535,11 +2535,11 @@ namespace SS.Core.Modules
 
             if (remoteEndpoint != null)
             {
-                _logManager.Log(LogLevel.Drivel, "<net> [pid={0}] new connection from {1}", p.Id, remoteEndpoint);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), "[pid={0}] new connection from {1}", p.Id, remoteEndpoint);
             }
             else
             {
-                _logManager.Log(LogLevel.Drivel, "<net> [pid={0}] new internal connection", p.Id);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), "[pid={0}] new internal connection", p.Id);
             }
 
             return p;
@@ -2699,7 +2699,7 @@ namespace SS.Core.Modules
         {
             if (!IsOurs(p))
             {
-                _logManager.LogP(LogLevel.Drivel, "net", p, "tried to send sized data to non-udp client");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, "tried to send sized data to non-udp client");
                 return false;
             }
 

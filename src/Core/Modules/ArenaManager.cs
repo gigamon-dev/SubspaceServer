@@ -138,11 +138,11 @@ namespace SS.Core.Modules
 
             if (arena == null)
             {
-                _logManager.Log(LogLevel.Warn, "<arenaman> [{0}] bad arena in SendArenaResponse", player.Name);
+                _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, "bad arena in SendArenaResponse");
                 return;
             }
 
-            _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [" + player.Name + "] entering arena");
+            _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "entering arena");
 
             if (player.IsStandard)
             {
@@ -316,7 +316,7 @@ namespace SS.Core.Modules
                             !player.IsStandard &&
                             !player.IsChat)
                         {
-                            _logManager.LogA(LogLevel.Warn, "arenaman", arena, "can't recycle arena with fake players");
+                            _logManager.LogA(LogLevel.Warn, nameof(ArenaManager), arena, "can't recycle arena with fake players");
                             return false;
                         }
                     }
@@ -494,7 +494,7 @@ namespace SS.Core.Modules
         {
             if (player.Status != PlayerState.LoggedIn && player.Status != PlayerState.Playing && player.Status != PlayerState.LeavingArena)
             {
-                _logManager.LogP(LogLevel.Warn, "arenaman", player, "state sync problem: sent arena request from bad status ({0})", player.Status);
+                _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, "state sync problem: sent arena request from bad status ({0})", player.Status);
                 return;
             }
 
@@ -536,7 +536,7 @@ namespace SS.Core.Modules
 
                         if (arena == null)
                         {
-                            _logManager.Log(LogLevel.Error, "<arenaman> internal error: no running arenas but cannot create new one");
+                            _logManager.LogM(LogLevel.Error, nameof(ArenaManager), "internal error: no running arenas but cannot create new one");
                             return;
                         }
                     }
@@ -617,7 +617,7 @@ namespace SS.Core.Modules
                     //chatnet.SendToArena(
                 }
 
-                _logManager.Log(LogLevel.Info, "<arenaman> {" + arena.Name + "} [" + player.Name + "] leaving arena");
+                _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "leaving arena");
             }
         }
 
@@ -711,7 +711,7 @@ namespace SS.Core.Modules
                         break;
 
                     default:
-                        _logManager.LogA(LogLevel.Error, "arenaman", arena, "Hold called from invalid state");
+                        _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "Hold called from invalid state");
                         break;
                 }
             }
@@ -742,7 +742,7 @@ namespace SS.Core.Modules
                         break;
 
                     default:
-                        _logManager.LogA(LogLevel.Error, "arenaman", arena, "Unhold called from invalid state");
+                        _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "Unhold called from invalid state");
                         break;
                 }
             }
@@ -1026,7 +1026,7 @@ namespace SS.Core.Modules
                 writeUnlock();
             }
 
-            _logManager.Log(LogLevel.Info, "<arenaman> {" + name + "} created arena");
+            _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, "created arena");
 
             return arena;
         }
@@ -1068,7 +1068,7 @@ namespace SS.Core.Modules
                             if (skip)
                                 continue;
 
-                            _logManager.Log(LogLevel.Drivel, "<arenaman> {" + arena.Name + "} arena being " +
+                            _logManager.LogA(LogLevel.Drivel, nameof(ArenaManager), arena, "arena being " +
                                 ((arena.Status == ArenaState.Running) ? "destroyed" : "recycled"));
 
                             // set its status so that the arena processor will do appropriate things
@@ -1191,7 +1191,7 @@ namespace SS.Core.Modules
 
             if (len != GoArenaPacket.LengthVIE && len != GoArenaPacket.LengthContinuum)
             {
-                _logManager.LogP(LogLevel.Malicious, "arenaman", p, "bad arena packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "bad arena packet len={0}", len);
                 return;
             }
 
@@ -1199,7 +1199,7 @@ namespace SS.Core.Modules
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Malicious, "arenaman", p, "<arenaman> [{0}] bad shiptype in arena request", p.Name);
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "<arenaman> [{0}] bad shiptype in arena request", p.Name);
                 return;
             }
 
@@ -1251,7 +1251,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                _logManager.Log(LogLevel.Malicious, "<arenaman> [{0}] bad arenatype in arena request", p.Name);
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "bad arena type in arena request");
                 return;
             }
 
@@ -1273,7 +1273,7 @@ namespace SS.Core.Modules
 #if !CFG_RELAX_LENGTH_CHECKS
             if (len != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, "arenaman", p, "bad arena leaving packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "bad arena leaving packet len={0}", len);
             }
 #endif
             leaveArena(p);
