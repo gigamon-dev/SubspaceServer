@@ -96,9 +96,21 @@ namespace SS.Core.Modules
             sb.Append(' ');
 
             if (args != null && args.Length > 0)
-                sb.Append(string.Format(format, args));
+                sb.AppendFormat(format, args);
             else
                 sb.Append(format);
+
+            _logQueue.Enqueue(sb.ToString());
+        }
+
+        void ILogManager.LogM(LogLevel level, string module, string format, params object[] args)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append(((LogCode)level).ToString());
+            sb.Append(" <");
+            sb.Append(module);
+            sb.Append("> ");
+            sb.AppendFormat(format, args);
 
             _logQueue.Enqueue(sb.ToString());
         }
@@ -110,27 +122,27 @@ namespace SS.Core.Modules
             sb.Append(" <");
             sb.Append(module);
             sb.Append("> {");
-            sb.Append((arena != null) ? arena.Name : "(bad arena)");
+            sb.Append(arena?.Name ?? "(bad arena)");
             sb.Append("} ");
-            sb.Append(string.Format(format, args));
+            sb.AppendFormat(format, args);
 
             _logQueue.Enqueue(sb.ToString());
         }
 
         void ILogManager.LogP(LogLevel level, string module, Player player, string format, params object[] args)
         {
-            Arena arena = player != null ? player.Arena : null;
+            Arena arena = player?.Arena;
 
             StringBuilder sb = new StringBuilder();
             sb.Append(((LogCode)level).ToString());
             sb.Append(" <");
             sb.Append(module);
             sb.Append("> {");
-            sb.Append((arena != null) ? arena.Name : "(bad arena)");
+            sb.Append(arena?.Name ?? "(bad arena)");
             sb.Append("} [");
-            sb.Append(player != null ? (player.Name != null) ? player.Name : player.Id.ToString() : "(bad player)");
+            sb.Append(player?.Name ?? player?.Id.ToString() ?? "(bad player)");
             sb.Append("] ");
-            sb.Append(string.Format(format, args));
+            sb.AppendFormat(format, args);
 
             _logQueue.Enqueue(sb.ToString());
         }

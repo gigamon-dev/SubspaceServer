@@ -36,6 +36,15 @@ namespace SS.Core.ComponentInterfaces
         void Log(LogLevel level, string format, params object[] args);
 
         /// <summary>
+        /// Adds a line to the serer log, specialized for module-specific messages.
+        /// </summary>
+        /// <param name="level"></param>
+        /// <param name="module"></param>
+        /// <param name="format"></param>
+        /// <param name="args"></param>
+        void LogM(LogLevel level, string module, string format, params object[] args);
+
+        /// <summary>
         /// Adds a line to the server log, specialized for arena-specific messages.
         /// </summary>
         /// <param name="level"></param>

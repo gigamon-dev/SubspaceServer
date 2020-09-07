@@ -26,7 +26,7 @@ namespace TurfReward
         {
             _log = interfaceDependencies[typeof(ILogManager)] as ILogManager;
 
-            _log.Log(LogLevel.Drivel, $"<{nameof(TurfReward)}> Load");
+            _log.LogM(LogLevel.Drivel, nameof(TurfReward), "Load");
             mm.RegisterInterface<ITurfReward>(this);
             return true;
         }
@@ -34,7 +34,7 @@ namespace TurfReward
         bool IModule.Unload(ModuleManager mm)
         {
             mm.UnregisterInterface<ITurfReward>();
-            _log.Log(LogLevel.Drivel, $"<{nameof(TurfReward)}> Unload");
+            _log.LogM(LogLevel.Drivel, nameof(TurfReward), "Unload");
             return true;
         }
 
@@ -44,13 +44,13 @@ namespace TurfReward
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            _log.Log(LogLevel.Drivel, $"<{nameof(TurfReward)}> {{{arena}}} AttachModule");
+            _log.LogA(LogLevel.Drivel, nameof(TurfReward), arena, "AttachModule");
             return true;
         }
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            _log.Log(LogLevel.Drivel, $"<{nameof(TurfReward)}> {{{arena}}} DetachModule");
+            _log.LogA(LogLevel.Drivel, nameof(TurfReward), arena, "DetachModule");
             return true;
         }
 

@@ -69,16 +69,27 @@ namespace SS.Core.Modules
                     from moduleElement in doc.Descendants("module")
                     let type = moduleElement.Attribute("type").Value
                     let path = moduleElement.Attribute("path")?.Value
+                    let priority = moduleElement.Attribute("priority")?.Value
                     where !string.IsNullOrWhiteSpace(type)
-                    select (type, path);
+                    select (type, path, priority);
 
                 // Try to load each module.
                 foreach (var entry in moduleEntries)
                 {
-                    if(string.IsNullOrWhiteSpace(entry.path))
-                        _mm.AddModule(entry.type);
+                    if (string.Equals(entry.priority, "high", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (string.IsNullOrWhiteSpace(entry.path))
+                            _mm.LoadModule(entry.type);
+                        else
+                            _mm.LoadModule(entry.type, entry.path);
+                    }
                     else
-                        _mm.AddModule(entry.type, entry.path);
+                    {
+                        if (string.IsNullOrWhiteSpace(entry.path))
+                            _mm.AddModule(entry.type);
+                        else
+                            _mm.AddModule(entry.type, entry.path);
+                    }
                 }
 
                 // Tell the module manager to try to load everything that isn't already loaded.

@@ -120,7 +120,7 @@ X. Exit
 
             subspaceServer.Start();
             isRunning = true;
-            Console.WriteLine($"Started Server at {DateTime.Now.ToString("s")}");
+            Console.WriteLine($"Started Server at {DateTime.Now:s}");
         }
 
         private static void StopServer(bool skipWarning = false)
@@ -136,7 +136,7 @@ X. Exit
 
             subspaceServer.Stop();
             isRunning = false;
-            Console.WriteLine($"Stopped Server at {DateTime.Now.ToString("s")}");
+            Console.WriteLine($"Stopped Server at {DateTime.Now:s}");
         }
     }
 }

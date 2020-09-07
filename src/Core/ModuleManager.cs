@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
+using System.Text;
 
 namespace SS.Core
 {
@@ -115,7 +116,7 @@ namespace SS.Core
                     return true;
             }
 
-            Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Unable to find module '{moduleTypeName}'.");
+            WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Unable to find module '{moduleTypeName}'.");
             return false;
         }
 
@@ -129,7 +130,7 @@ namespace SS.Core
 
             if (!IsModule(type))
             {
-                Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Type '{type.FullName}', but it is not a module .");
+                WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Type '{type.FullName}', but it is not a module.");
                 return false;
             }
 
@@ -137,31 +138,31 @@ namespace SS.Core
             {
                 if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleInfo))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' is not registered, it needs to be loaded first.");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is not registered, it needs to be loaded first.");
                     return false;
                 }
 
                 if (!moduleInfo.IsLoaded)
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' is not loaded.");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is not loaded.");
                     return false;
                 }
 
                 if (moduleInfo.AttachedArenas.Contains(arena))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' is already attached to the arena.");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is already attached to the arena.");
                     return false;
                 }
 
                 if (!(moduleInfo.Module is IArenaAttachableModule arenaAttachableModule))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' does not support attaching.");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
                     return false;
                 }
 
                 if (!arenaAttachableModule.AttachModule(arena))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' failed to attach .");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to attach.");
                     return false;
                 }
 
@@ -202,7 +203,7 @@ namespace SS.Core
                     return true;
             }
 
-            Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} DetachModule failed: Unable to find module '{moduleTypeName}'.");
+            WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Unable to find module '{moduleTypeName}'.");
             return false;
         }
 
@@ -216,7 +217,7 @@ namespace SS.Core
 
             if (!IsModule(type))
             {
-                Console.Error.WriteLine($"E <ModuleManager> {{{arena}}}  DetachModule failed: Type '{type.FullName}' is not a module .");
+                WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Type '{type.FullName}' is not a module.");
                 return false;
             }
 
@@ -224,25 +225,25 @@ namespace SS.Core
             {
                 if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleInfo))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} DetachModule failed: Module '{type.FullName}' is not registered.");
+                    WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not registered.");
                     return false;
                 }
 
                 if (!moduleInfo.AttachedArenas.Contains(arena))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} DetachModule failed: Module '{type.FullName}' is not attached to the arena.");
+                    WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not attached to the arena.");
                     return false;
                 }
 
                 if (!(moduleInfo.Module is IArenaAttachableModule arenaAttachableModule))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' does not support attaching.");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
                     return false;
                 }
 
                 if (!arenaAttachableModule.DetachModule(arena))
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> {{{arena}}} AttachModule failed: Module '{type.FullName}' failed to detach .");
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to detach.");
                     return false;
                 }
 
@@ -362,7 +363,7 @@ namespace SS.Core
 
                 if (type == null)
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> Unable to find module '{moduleTypeName}'.");
+                    WriteLogM(LogLevel.Error, $"Unable to find module '{moduleTypeName}'.");
                     return false;
                 }
             }
@@ -512,7 +513,7 @@ namespace SS.Core
                 LinkedListNode<Type> node = _loadedModules.FindLast(type);
                 if (node == null)
                 {
-                    Console.WriteLine($"<ModuleManager> Can't unload module [{type.FullName}] because it is not loaded.");
+                    WriteLogM(LogLevel.Error, $"Can't unload module [{type.FullName}] because it is not loaded.");
                     return false;
                 }
                 
@@ -553,7 +554,7 @@ namespace SS.Core
                 // Unload the moduleLoadContext if it's the last module from that context/assembly
                 if (_pluginModuleTypeSet.Any((t) => t.Assembly == assembly) == false)
                 {
-                    Console.WriteLine($"<ModuleManager> Unloaded last module from assembly [{assembly.FullName}]");
+                    WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}]");
 
                     // TODO: also need to do some weak reference stuff?
                     //_loadedPluginAssemblies.Remove
@@ -869,13 +870,13 @@ namespace SS.Core
             catch (Exception ex)
             {
                 success = false;
-                Console.Error.WriteLine(string.Format($"E <ModuleManager> Error loading module [{moduleData.ModuleType.FullName}]. Exception: {ex}"));
+                WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]. Exception: {ex}");
             }
 
             if (!success)
             {
                 // module loading failed
-                Console.Error.WriteLine(string.Format($"E <ModuleManager> Error loading module [{moduleData.ModuleType.FullName}]"));
+                WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]");
 
                 // TODO: maybe we should do something more drastic than ignore and retry later?
                 ReleaseInterfaces(moduleData);
@@ -884,7 +885,7 @@ namespace SS.Core
 
             moduleData.IsLoaded = true;
             _loadedModules.AddLast(moduleData.ModuleType);
-            Console.WriteLine(string.Format($"I <ModuleManager> Loaded module [{moduleData.ModuleType.FullName}]"));
+            WriteLogM(LogLevel.Info, $"Loaded module [{moduleData.ModuleType.FullName}]");
             return true;
         }
 
@@ -903,21 +904,21 @@ namespace SS.Core
 
                 if (moduleData.AttachedArenas.Count > 0)
                 {
-                    Console.Error.WriteLine($"E <ModuleManager> Can't unload module [{moduleData.ModuleType.FullName}] because it failed to detach from at least one arena.");
+                    WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to detach from at least one arena.");
                     return false;
                 }
             }
 
             if (moduleData.Module.Unload(this) == false)
             {
-                Console.Error.WriteLine($"E <ModuleManager> Error unloading module [{moduleData.ModuleType.FullName}]");
+                WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]");
                 return false;
             }
 
             ReleaseInterfaces(moduleData);
 
             moduleData.IsLoaded = false;
-            Console.WriteLine(string.Format($"I <ModuleManager> Unloaded module [{moduleData.ModuleType.FullName}]"));
+            WriteLogM(LogLevel.Info, $"Unloaded module [{moduleData.ModuleType.FullName}]");
             return true;
         }
 
@@ -976,7 +977,7 @@ namespace SS.Core
                     assembly = loadContext.LoadFromAssemblyName(assemblyName);
                     _loadedPluginAssemblies[path] = assembly;
 
-                    Console.WriteLine($"<ModuleManager> Loaded assembly [{assembly.FullName}] from path \"{path}\"");
+                    WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\"");
                 }
 
                 Type type = assembly.GetType(typeName);
@@ -984,7 +985,7 @@ namespace SS.Core
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"<ModuleManager> GetTypeFromPluginAssemblyPath exception: {ex}");
+                WriteLogM(LogLevel.Error, $"Error loading assembly from path \"{path}\", exception: {ex}");
                 return null;
             }
         }
@@ -1028,5 +1029,51 @@ namespace SS.Core
         }
 
         #endregion
+
+        private void WriteLogA(LogLevel level, Arena arena, string format, params object[] args)
+        {
+            ILogManager log = GetInterface<ILogManager>();
+            if (log != null)
+            {
+                try
+                {
+                    log.LogA(level, nameof(ModuleManager), arena, format, args);
+                }
+                finally
+                {
+                    ReleaseInterface<ILogManager>();
+                }
+            }
+            else
+            {
+                if (level == LogLevel.Error)
+                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
+                else
+                    Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
+            }
+        }
+
+        private void WriteLogM(LogLevel level, string format, params object[] args)
+        {
+            ILogManager log = GetInterface<ILogManager>();
+            if (log != null)
+            {
+                try
+                {
+                    log.LogM(level, nameof(ModuleManager), format, args);
+                }
+                finally
+                {
+                    ReleaseInterface<ILogManager>();
+                }
+            }
+            else
+            {
+                if (level == LogLevel.Error)
+                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
+                else
+                    Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
+            }
+        }
     }
 }
