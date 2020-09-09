@@ -5,16 +5,8 @@ using System.Threading;
 
 namespace SS.Core
 {
-    public delegate void ComponentCallbackDelegate<T1>(T1 t1);
-    public delegate void ComponentCallbackDelegate<T1, T2>(T1 t1, T2 t2);
-    public delegate void ComponentCallbackDelegate<T1, T2, T3>(T1 t1, T2 t2, T3 t3);
-    public delegate void ComponentCallbackDelegate<T1, T2, T3, T4>(T1 t1, T2 t2, T3 t3, T4 t4);
-    public delegate void ComponentCallbackDelegate<T1, T2, T3, T4, T5>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5);
-    public delegate void ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6);
-    public delegate void ComponentCallbackDelegate<T1, T2, T3, T4, T5, T6, T7>(T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6, T7 t7);
-
     /// <summary>
-    /// Base interface for interfaces that are registerable with the ComponentBroker
+    /// Base interface for interfaces that are registerable with the ComponentBroker.
     /// </summary>
     public interface IComponentInterface
     {
@@ -36,7 +28,7 @@ namespace SS.Core
         }
 
         /// <summary>
-        /// The parent broker.
+        /// The parent broker. <see langword="null" /> means there's no parent.
         /// </summary>
         public ComponentBroker Parent { get; }
 
