@@ -6,10 +6,22 @@ using SS.Core.ComponentInterfaces;
 
 namespace SS.Core.ComponentCallbacks
 {
-    public delegate void ChatMessageDelegate(Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message);
-
+    /// <summary>
+    /// Helper class for the <see cref="ChatMessageDelegate"/> callback.
+    /// </summary>
     public static class ChatMessageCallback
     {
+        /// <summary>
+        /// Delegate for a callback that is invoked when a chat message is sent.
+        /// </summary>
+        /// <param name="playerFrom"></param>
+        /// <param name="type"></param>
+        /// <param name="sound"></param>
+        /// <param name="playerTo"></param>
+        /// <param name="freq"></param>
+        /// <param name="message"></param>
+        public delegate void ChatMessageDelegate(Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message);
+
         public static void Register(ComponentBroker broker, ChatMessageDelegate handler)
         {
             broker?.RegisterCallback(handler);
