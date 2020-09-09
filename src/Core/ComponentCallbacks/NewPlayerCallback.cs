@@ -5,6 +5,11 @@ using System.Text;
 
 namespace SS.Core.ComponentCallbacks
 {
+    /// <summary>
+    /// This callback is called whenever a Player is allocated or
+    /// deallocated. in general you probably want to use CB_PLAYERACTION
+    /// instead of this callback for general initialization tasks.
+    /// </summary>
     public static class NewPlayerCallback
     {
         public delegate void NewPlayerDelegate(Player p, bool isNew);

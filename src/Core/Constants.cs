@@ -59,34 +59,6 @@ namespace SS.Core
         public const string AG_GLOBAL = "(global)";
 
         /// <summary>
-        /// callbacks / events
-        /// </summary>
-        public static class Events
-        {
-            public const string ConnectionInit = "conninit";
-            public const string PlayerAction = "playeraction";
-            public const string ArenaAction = "ArenaAction";
-            public const string ChatMessage = "chatmessage";
-            public const string SafeZone = "safezone";
-            public const string FreqChange = "freqchange";
-            public const string ShipChange = "shipchange";
-            public const string Green = "green";
-            public const string Log = "log";
-            public const string Kill = "kill";
-            public const string PostKill = "postkill";
-            public const string Attach = "attach";
-            public const string MapRegion = "mapregion";
-
-            /// <summary>
-            /// this callback is called whenever a Player is allocated or
-            /// deallocated. in general you probably want to use CB_PLAYERACTION
-            /// instead of this callback for general initialization tasks.
-            /// </summary>
-            /// <remarks>NewPlayerDelegate</remarks>
-            public const string NewPlayer = "newplayer";
-        }
-
-        /// <summary>
         /// some standard capability names
         /// </summary>
         public static class Capabilities
