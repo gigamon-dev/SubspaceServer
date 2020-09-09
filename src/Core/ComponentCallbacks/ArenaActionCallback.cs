@@ -14,17 +14,20 @@ namespace SS.Core.ComponentCallbacks
     {
         public static void Register(ComponentBroker broker, ArenaActionDelegate handler)
         {
-            broker.RegisterCallback<Arena, ArenaAction>(Constants.Events.ArenaAction, new ComponentCallbackDelegate<Arena, ArenaAction>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, ArenaActionDelegate handler)
         {
-            broker.UnRegisterCallback<Arena, ArenaAction>(Constants.Events.ArenaAction, new ComponentCallbackDelegate<Arena, ArenaAction>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Arena arena, ArenaAction action)
         {
-            broker.DoCallback<Arena, ArenaAction>(Constants.Events.ArenaAction, arena, action);
+            broker?.GetCallback<ArenaActionDelegate>()?.Invoke(arena, action);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, arena, action);
         }
     }
 }

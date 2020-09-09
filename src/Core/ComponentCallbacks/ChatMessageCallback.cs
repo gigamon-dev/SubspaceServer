@@ -12,17 +12,20 @@ namespace SS.Core.ComponentCallbacks
     {
         public static void Register(ComponentBroker broker, ChatMessageDelegate handler)
         {
-            broker.RegisterCallback<Player, ChatMessageType, ChatSound, Player, short, string>(Constants.Events.ChatMessage, new ComponentCallbackDelegate<Player, ChatMessageType, ChatSound, Player, short, string>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, ChatMessageDelegate handler)
         {
-            broker.RegisterCallback<Player, ChatMessageType, ChatSound, Player, short, string>(Constants.Events.ChatMessage, new ComponentCallbackDelegate<Player, ChatMessageType, ChatSound, Player, short, string>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message)
         {
-            broker.DoCallback<Player, ChatMessageType, ChatSound, Player, short, string>(Constants.Events.ChatMessage, playerFrom, type, sound, playerTo, freq, message);
+            broker?.GetCallback<ChatMessageDelegate>()?.Invoke(playerFrom, type, sound, playerTo, freq, message);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, playerFrom, type, sound, playerTo, freq, message);
         }
     }
 }

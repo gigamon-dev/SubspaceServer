@@ -12,17 +12,20 @@ namespace SS.Core.ComponentCallbacks
 
         public static void Register(ComponentBroker broker, KillDelegate handler)
         {
-            broker.RegisterCallback<Arena, Player, Player, short, short, short, Prize>(Constants.Events.Kill, new ComponentCallbackDelegate<Arena, Player, Player, short, short, short, Prize>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, KillDelegate handler)
         {
-            broker.UnRegisterCallback<Arena, Player, Player, short, short, short, Prize>(Constants.Events.Kill, new ComponentCallbackDelegate<Arena, Player, Player, short, short, short, Prize>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
-            broker.DoCallback<Arena, Player, Player, short, short, short, Prize>(Constants.Events.Kill, arena, killer, killed, bty, flagCount, pts, green);
+            broker?.GetCallback<KillDelegate>()?.Invoke(arena, killer, killed, bty, flagCount, pts, green);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, arena, killer, killed, bty, flagCount, pts, green);
         }
     }
 
@@ -32,17 +35,20 @@ namespace SS.Core.ComponentCallbacks
 
         public static void Register(ComponentBroker broker, PostKillDelegate handler)
         {
-            broker.RegisterCallback<Arena, Player, Player, short, short, short, Prize>(Constants.Events.PostKill, new ComponentCallbackDelegate<Arena, Player, Player, short, short, short, Prize>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, PostKillDelegate handler)
         {
-            broker.UnRegisterCallback<Arena, Player, Player, short, short, short, Prize>(Constants.Events.PostKill, new ComponentCallbackDelegate<Arena, Player, Player, short, short, short, Prize>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
-            broker.DoCallback<Arena, Player, Player, short, short, short, Prize>(Constants.Events.PostKill, arena, killer, killed, bty, flagCount, pts, green);
+            broker?.GetCallback<PostKillDelegate>()?.Invoke(arena, killer, killed, bty, flagCount, pts, green);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, arena, killer, killed, bty, flagCount, pts, green);
         }
     }
 }

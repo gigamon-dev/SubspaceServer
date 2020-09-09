@@ -12,17 +12,20 @@ namespace SS.Core.ComponentCallbacks
     {
         public static void Register(ComponentBroker broker, SafeZoneDelegate handler)
         {
-            broker.RegisterCallback<Player, int, int, PlayerPositionStatus>(Constants.Events.SafeZone, new ComponentCallbackDelegate<Player, int, int, PlayerPositionStatus>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, SafeZoneDelegate handler)
         {
-            broker.UnRegisterCallback<Player, int, int, PlayerPositionStatus>(Constants.Events.SafeZone, new ComponentCallbackDelegate<Player, int, int, PlayerPositionStatus>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Player p, int x, int y, PlayerPositionStatus status)
         {
-            broker.DoCallback<Player, int, int, PlayerPositionStatus>(Constants.Events.SafeZone, p, x, y, status);
+            broker?.GetCallback<SafeZoneDelegate>()?.Invoke(p, x, y, status);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, p, x, y, status);
         }
     }
 }

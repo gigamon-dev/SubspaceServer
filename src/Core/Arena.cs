@@ -148,7 +148,7 @@ namespace SS.Core
         /// </summary>
         Dictionary<int, object> _arenaExtraData = new Dictionary<int,object>();
 
-        public Arena(ModuleManager mm, string name)
+        public Arena(ModuleManager mm, string name) : base(mm)
         {
             _mm = mm;
 
@@ -237,48 +237,6 @@ namespace SS.Core
             }
 
             return moduleInterface;
-        }
-        
-        public override void DoCallback<T1>(string callbackIdentifier, T1 t1)
-        {
-            base.DoCallback<T1>(callbackIdentifier, t1);
-            _mm.DoCallback<T1>(callbackIdentifier, t1);
-        }
-
-        public override void DoCallback<T1, T2>(string callbackIdentifier, T1 t1, T2 t2)
-        {
-            base.DoCallback<T1, T2>(callbackIdentifier, t1, t2);
-            _mm.DoCallback<T1, T2>(callbackIdentifier, t1, t2);
-        }
-
-        public override void DoCallback<T1, T2, T3>(string callbackIdentifier, T1 t1, T2 t2, T3 t3)
-        {
-            base.DoCallback<T1, T2, T3>(callbackIdentifier, t1, t2, t3);
-            _mm.DoCallback<T1, T2, T3>(callbackIdentifier, t1, t2, t3);
-        }
-
-        public override void DoCallback<T1, T2, T3, T4>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4)
-        {
-            base.DoCallback<T1, T2, T3, T4>(callbackIdentifier, t1, t2, t3, t4);
-            _mm.DoCallback<T1, T2, T3, T4>(callbackIdentifier, t1, t2, t3, t4);
-        }
-
-        public override void DoCallback<T1, T2, T3, T4, T5>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5)
-        {
-            base.DoCallback<T1, T2, T3, T4, T5>(callbackIdentifier, t1, t2, t3, t4, t5);
-            _mm.DoCallback<T1, T2, T3, T4, T5>(callbackIdentifier, t1, t2, t3, t4, t5);
-        }
-
-        public override void DoCallback<T1, T2, T3, T4, T5, T6>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6)
-        {
-            base.DoCallback<T1, T2, T3, T4, T5, T6>(callbackIdentifier, t1, t2, t3, t4, t5, t6);
-            _mm.DoCallback<T1, T2, T3, T4, T5, T6>(callbackIdentifier, t1, t2, t3, t4, t5, t6);
-        }
-
-        public override void DoCallback<T1, T2, T3, T4, T5, T6, T7>(string callbackIdentifier, T1 t1, T2 t2, T3 t3, T4 t4, T5 t5, T6 t6, T7 t7)
-        {
-            base.DoCallback<T1, T2, T3, T4, T5, T6, T7>(callbackIdentifier, t1, t2, t3, t4, t5, t6, t7);
-            _mm.DoCallback<T1, T2, T3, T4, T5, T6, T7>(callbackIdentifier, t1, t2, t3, t4, t5, t6, t7);
         }
 
         #endregion

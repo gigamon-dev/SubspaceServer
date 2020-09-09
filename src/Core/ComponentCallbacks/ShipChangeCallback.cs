@@ -11,17 +11,20 @@ namespace SS.Core.ComponentCallbacks
 
         public static void Register(ComponentBroker broker, ShipChangeDelegate handler)
         {
-            broker.RegisterCallback<Player, ShipType, short>(Constants.Events.ShipChange, new ComponentCallbackDelegate<Player, ShipType, short>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, ShipChangeDelegate handler)
         {
-            broker.UnRegisterCallback<Player, ShipType, short>(Constants.Events.ShipChange, new ComponentCallbackDelegate<Player, ShipType, short>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Player p, ShipType ship, short freq)
         {
-            broker.DoCallback<Player, ShipType, short>(Constants.Events.ShipChange, p, ship, freq);
+            broker?.GetCallback<ShipChangeDelegate>()?.Invoke(p, ship, freq);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, p, ship, freq);
         }
     }
 }

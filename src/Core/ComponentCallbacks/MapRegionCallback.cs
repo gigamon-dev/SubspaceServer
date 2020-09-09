@@ -12,17 +12,20 @@ namespace SS.Core.ComponentCallbacks
 
         public static void Register(ComponentBroker broker, MapRegionDelegate handler)
         {
-            broker.RegisterCallback<Player, MapRegion, short, short, bool>(Constants.Events.MapRegion, new ComponentCallbackDelegate<Player,MapRegion,short,short,bool>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, MapRegionDelegate handler)
         {
-            broker.UnRegisterCallback<Player, MapRegion, short, short, bool>(Constants.Events.MapRegion, new ComponentCallbackDelegate<Player, MapRegion, short, short, bool>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, Player p, MapRegion region, short x, short y, bool entering)
         {
-            broker.DoCallback<Player, MapRegion, short, short, bool>(Constants.Events.MapRegion, p, region, x, y, entering);
+            broker?.GetCallback<MapRegionDelegate>()?.Invoke(p, region, x, y, entering);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, p, region, x, y, entering);
         }
     }
 }

@@ -12,17 +12,20 @@ namespace SS.Core.ComponentCallbacks
     {
         public static void Register(ComponentBroker broker, ConnectionInitDelegate handler)
         {
-            broker.RegisterCallback(Constants.Events.ConnectionInit, new ComponentCallbackDelegate<IPEndPoint, byte[], int, ListenData>(handler));
+            broker?.RegisterCallback(handler);
         }
 
         public static void Unregister(ComponentBroker broker, ConnectionInitDelegate handler)
         {
-            broker.UnRegisterCallback(Constants.Events.ConnectionInit, new ComponentCallbackDelegate<IPEndPoint, byte[], int, ListenData>(handler));
+            broker?.UnregisterCallback(handler);
         }
 
         public static void Fire(ComponentBroker broker, IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
         {
-            broker.DoCallback(Constants.Events.ConnectionInit, remoteEndpoint, buffer, len, ld);
+            broker?.GetCallback<ConnectionInitDelegate>()?.Invoke(remoteEndpoint, buffer, len, ld);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, remoteEndpoint, buffer, len, ld);
         }
     }
 }
