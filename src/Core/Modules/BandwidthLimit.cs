@@ -23,6 +23,8 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class BandwidthNoLimit : IModule, IBandwidthLimit
     {
+        private InterfaceRegistrationToken _iBandwidthLimitToken;
+
         private class BWLimit : IBWLimit
         {
             #region IBWLimit Members
@@ -63,13 +65,15 @@ namespace SS.Core.Modules
 
         bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
-            mm.RegisterInterface<IBandwidthLimit>(this);
+            _iBandwidthLimitToken = mm.RegisterInterface<IBandwidthLimit>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<IBandwidthLimit>();
+            if (mm.UnregisterInterface<IBandwidthLimit>(ref _iBandwidthLimitToken) != 0)
+                return false;
+
             return true;
         }
 
@@ -89,6 +93,9 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class DefaultBandwithLimit : IModule, IBandwidthLimit
     {
+        private IConfigManager config;
+        private InterfaceRegistrationToken iBandwidthLimitToken;
+
         private class BWLimit : IBWLimit
         {
             #region Configuration
@@ -177,42 +184,38 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = null;
+        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        {
+            typeof(IConfigManager)
+        };
 
         bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
-            IConfigManager config = mm.GetInterface<IConfigManager>();
-            if (config == null)
-                return false;
+            config = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
 
-            try
-            {
-                BWLimit.LimitLow = config.GetInt(config.Global, "Net", "LimitMinimum", 2500);
-                BWLimit.LimitHigh = config.GetInt(config.Global, "Net", "LimitMaximum", 102400);
-                BWLimit.LimitInitial = config.GetInt(config.Global, "Net", "LimitInitial", 5000);
-                BWLimit.ClientCanBuffer = config.GetInt(config.Global, "Net", "SendAtOnce", 255);
-                BWLimit.LimitScale = config.GetInt(config.Global, "Net", "LimitScale", Constants.MaxPacket * 1);
-                BWLimit.MaxAvail = config.GetInt(config.Global, "Net", "Burst", Constants.MaxPacket * 4);
-                BWLimit.UseHitLimit = config.GetInt(config.Global, "Net", "UseHitLimit", 0) != 0;
+            BWLimit.LimitLow = config.GetInt(config.Global, "Net", "LimitMinimum", 2500);
+            BWLimit.LimitHigh = config.GetInt(config.Global, "Net", "LimitMaximum", 102400);
+            BWLimit.LimitInitial = config.GetInt(config.Global, "Net", "LimitInitial", 5000);
+            BWLimit.ClientCanBuffer = config.GetInt(config.Global, "Net", "SendAtOnce", 255);
+            BWLimit.LimitScale = config.GetInt(config.Global, "Net", "LimitScale", Constants.MaxPacket * 1);
+            BWLimit.MaxAvail = config.GetInt(config.Global, "Net", "Burst", Constants.MaxPacket * 4);
+            BWLimit.UseHitLimit = config.GetInt(config.Global, "Net", "UseHitLimit", 0) != 0;
 
-                BWLimit.PriorityLimits[0] = config.GetInt(config.Global, "Net", "PriLimit0", 20); // low pri unrel
-                BWLimit.PriorityLimits[1] = config.GetInt(config.Global, "Net", "PriLimit1", 40); // reg pri unrel
-                BWLimit.PriorityLimits[2] = config.GetInt(config.Global, "Net", "PriLimit2", 20); // high pri unrel
-                BWLimit.PriorityLimits[3] = config.GetInt(config.Global, "Net", "PriLimit3", 15); // rel
-                BWLimit.PriorityLimits[4] = config.GetInt(config.Global, "Net", "PriLimit4", 5);  // ack
-            }
-            finally
-            {
-                mm.ReleaseInterface<IConfigManager>();
-            }
+            BWLimit.PriorityLimits[0] = config.GetInt(config.Global, "Net", "PriLimit0", 20); // low pri unrel
+            BWLimit.PriorityLimits[1] = config.GetInt(config.Global, "Net", "PriLimit1", 40); // reg pri unrel
+            BWLimit.PriorityLimits[2] = config.GetInt(config.Global, "Net", "PriLimit2", 20); // high pri unrel
+            BWLimit.PriorityLimits[3] = config.GetInt(config.Global, "Net", "PriLimit3", 15); // rel
+            BWLimit.PriorityLimits[4] = config.GetInt(config.Global, "Net", "PriLimit4", 5);  // ack
 
-            mm.RegisterInterface<IBandwidthLimit>(this);
+            iBandwidthLimitToken = mm.RegisterInterface<IBandwidthLimit>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<IBandwidthLimit>();
+            if (mm.UnregisterInterface<IBandwidthLimit>(ref iBandwidthLimitToken) != 0)
+                return false;
+
             return true;
         }
 

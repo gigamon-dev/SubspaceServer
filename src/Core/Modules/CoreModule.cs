@@ -47,6 +47,7 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabiltyManager;
         private IPersist _persist;
         private IStats _stats;
+        private InterfaceRegistrationToken _iAuthToken;
 
         private int _pdkey;
 
@@ -149,7 +150,7 @@ namespace SS.Core.Modules
             _mainLoop.SetTimer(processPlayerStates, 100, 100, null);
 
             // register default interfaces which may be replaced later
-            mm.RegisterInterface<IAuth>(this);
+            _iAuthToken = mm.RegisterInterface<IAuth>(this);
 
             // set up periodic events
             _mainLoop.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
@@ -159,7 +160,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ModuleManager mm)
         {
-            if (_mm.UnregisterInterface<IAuth>() != 0)
+            if (_mm.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
                 return false;
 
             _mainLoop.ClearTimer(sendKeepAlive, null);
@@ -310,7 +311,7 @@ namespace SS.Core.Modules
                             finally
                             {
                                 if(auth != null)
-                                    _mm.ReleaseInterface<IAuth>();
+                                    _mm.ReleaseInterface(ref auth);
                             }
                         }
                         break;
@@ -358,7 +359,7 @@ namespace SS.Core.Modules
                                 }
                                 finally
                                 {
-                                    _mm.ReleaseInterface<IFreqManager>();
+                                    _mm.ReleaseInterface(ref fm);
                                 }
                             }
 

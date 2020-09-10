@@ -12,6 +12,7 @@ namespace SS.Core.Modules
     public class PlayerData : IModule, IPlayerData
     {
         private ModuleManager _mm;
+        private InterfaceRegistrationToken _iPlayerDataToken;
 
         /// <summary>
         /// how many seconds before we re-use a pid
@@ -84,13 +85,15 @@ namespace SS.Core.Modules
         bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
-            mm.RegisterInterface<IPlayerData>(this);
+            _iPlayerDataToken = mm.RegisterInterface<IPlayerData>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<IPlayerData>();
+            if (mm.UnregisterInterface<IPlayerData>(ref _iPlayerDataToken) != 0)
+                return false;
+
             return true;
         }
 
@@ -243,15 +246,16 @@ namespace SS.Core.Modules
                 if (player.Arena != null)
                 {
                     IArenaManagerCore aman = _mm.GetInterface<IArenaManagerCore>();
-                    try
+                    if (aman != null)
                     {
-                        if (aman != null)
+                        try
+                        {
                             aman.LeaveArena(player);
-                    }
-                    finally
-                    {
-                        if (aman != null)
-                            _mm.ReleaseInterface<IArenaManagerCore>();
+                        }
+                        finally
+                        {
+                            _mm.ReleaseInterface(ref aman);
+                        }
                     }
                 }
 

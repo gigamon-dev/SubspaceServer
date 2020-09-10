@@ -16,6 +16,7 @@ namespace SS.Core.Modules
         private Thread _loggingThread;
 
         private ModuleManager _mm;
+        private InterfaceRegistrationToken iLogManagerToken;
 
         private ReaderWriterLock _moduleUnloadLock = new ReaderWriterLock(); // using rwlock in case we ever have multiple logging threads
         private IConfigManager _configManager = null;
@@ -42,13 +43,13 @@ namespace SS.Core.Modules
         bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
             _mm = mm;
-            mm.RegisterInterface<ILogManager>(this);
+            iLogManagerToken = mm.RegisterInterface<ILogManager>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            if (mm.UnregisterInterface<ILogManager>() != 0)
+            if (mm.UnregisterInterface<ILogManager>(ref iLogManagerToken) != 0)
                 return false;
 
             _logQueue.Enqueue(null);
@@ -75,7 +76,7 @@ namespace SS.Core.Modules
 
             try
             {
-                mm.ReleaseInterface<IConfigManager>();
+                mm.ReleaseInterface(ref _configManager);
                 _configManager = null;
 
                 return true;

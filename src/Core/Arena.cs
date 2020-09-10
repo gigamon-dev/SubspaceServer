@@ -202,45 +202,6 @@ namespace SS.Core
             }
         }
 
-        #region Overriden ComponentBroker Methods
-
-        public override TInterface GetInterface<TInterface>()
-        {
-            // try to get the interface specific to this arena
-            TInterface theInterface = base.GetInterface<TInterface>();
-
-            if (theInterface == null)
-            {
-                // arena doesn't have the interface, try globally
-                theInterface = _mm.GetInterface<TInterface>();
-            }
-
-            return theInterface;
-        }
-
-        public override void ReleaseInterface<TInterface>()
-        {
-            base.ReleaseInterface<TInterface>();
-
-            // TODO: figure out if the interface was released here, otherwise release it on _mm
-        }
-
-        public override IComponentInterface GetInterface(Type interfaceType)
-        {
-            // try to get the interface specific to this arena
-            IComponentInterface moduleInterface = base.GetInterface(interfaceType);
-
-            if (moduleInterface == null)
-            {
-                // arena doesn't have the interface, try globally
-                moduleInterface = _mm.GetInterface(interfaceType);
-            }
-
-            return moduleInterface;
-        }
-
-        #endregion
-
         #region IArenaTarget Members
 
         Arena IArenaTarget.Arena

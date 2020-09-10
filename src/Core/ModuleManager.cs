@@ -934,7 +934,7 @@ namespace SS.Core
             {
                 if (moduleData.InterfaceDependencies[interfaceKey] != null)
                 {
-                    ReleaseInterface(interfaceKey);
+                    ReleaseInterface(interfaceKey, moduleData.InterfaceDependencies[interfaceKey]);
                     moduleData.InterfaceDependencies[interfaceKey] = null;
                 }
             }
@@ -1032,48 +1032,18 @@ namespace SS.Core
 
         private void WriteLogA(LogLevel level, Arena arena, string format, params object[] args)
         {
-            ILogManager log = GetInterface<ILogManager>();
-            if (log != null)
-            {
-                try
-                {
-                    log.LogA(level, nameof(ModuleManager), arena, format, args);
-                }
-                finally
-                {
-                    ReleaseInterface<ILogManager>();
-                }
-            }
+            if (level == LogLevel.Error)
+                Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
             else
-            {
-                if (level == LogLevel.Error)
-                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
-                else
-                    Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
-            }
+                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
         }
 
         private void WriteLogM(LogLevel level, string format, params object[] args)
         {
-            ILogManager log = GetInterface<ILogManager>();
-            if (log != null)
-            {
-                try
-                {
-                    log.LogM(level, nameof(ModuleManager), format, args);
-                }
-                finally
-                {
-                    ReleaseInterface<ILogManager>();
-                }
-            }
+            if (level == LogLevel.Error)
+                Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
             else
-            {
-                if (level == LogLevel.Error)
-                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
-                else
-                    Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
-            }
+                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
         }
     }
 }

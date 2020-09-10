@@ -16,6 +16,8 @@ namespace SS.Core.Modules
         private IArenaManagerCore _arenaManager;
         private ILogManager _logManager;
         private IConfigManager _configManager;
+        private InterfaceRegistrationToken _iCapabilityManagerToken;
+        private InterfaceRegistrationToken _iGroupManagerToken;
 
         private enum CapSource
         {
@@ -68,16 +70,19 @@ namespace SS.Core.Modules
             _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf", null, null);
             _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf", null, null);
 
-            _mm.RegisterInterface<ICapabilityManager>(this);
-            _mm.RegisterInterface<IGroupManager>(this);
+            _iCapabilityManagerToken = _mm.RegisterInterface<ICapabilityManager>(this);
+            _iGroupManagerToken = _mm.RegisterInterface<IGroupManager>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<ICapabilityManager>();
-            _mm.UnregisterInterface<IGroupManager>();
+            if (_mm.UnregisterInterface<ICapabilityManager>(ref _iCapabilityManagerToken) != 0)
+                return false;
+
+            if (_mm.UnregisterInterface<IGroupManager>(ref _iGroupManagerToken) != 0)
+                return false;
 
             _configManager.CloseConfigFile(_groupDefConfHandle);
             _configManager.CloseConfigFile(_staffConfHandle);

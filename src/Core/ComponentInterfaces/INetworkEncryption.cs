@@ -6,7 +6,7 @@ using System.Net;
 
 namespace SS.Core.ComponentInterfaces
 {
-    public interface IEncrypt
+    public interface IEncrypt : IComponentInterface
     {
         /// <summary>
         /// data is encrypted in place
@@ -40,6 +40,6 @@ namespace SS.Core.ComponentInterfaces
     public interface INetworkEncryption : IComponentInterface
     {
         void ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, ListenData ld);
-        Player NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, IEncrypt enc, ListenData ld);
+        Player NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld);
     }
 }

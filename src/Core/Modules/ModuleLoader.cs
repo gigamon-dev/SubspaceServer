@@ -10,7 +10,7 @@ namespace SS.Core.Modules
     public class ModuleLoader : IModule, IModuleLoader
     {
         private ModuleManager _mm;
-        private ILogManager _logManager;
+        private InterfaceRegistrationToken _iModuleLoaderToken;
 
         #region IModule Members
 
@@ -20,19 +20,14 @@ namespace SS.Core.Modules
         {
             _mm = mm;
 
-            _mm.RegisterInterface<IModuleLoader>(this);
-
+            _iModuleLoaderToken = _mm.RegisterInterface<IModuleLoader>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IModuleLoader>();
-
-            if (_logManager != null)
-            {
-                _mm.ReleaseInterface<ILogManager>();
-            }
+            if (_mm.UnregisterInterface<IModuleLoader>(ref _iModuleLoaderToken) != 0)
+                return false;
 
             return true;
         }
@@ -41,14 +36,18 @@ namespace SS.Core.Modules
 
         private void WriteLog(LogLevel level, string message)
         {
-            if (_logManager == null)
-            {
-                _logManager = _mm.GetInterface<ILogManager>();
-            }
+            ILogManager _logManager = _mm.GetInterface<ILogManager>();
 
             if (_logManager != null)
             {
-                _logManager.LogM(level, nameof(ModuleLoader), message);
+                try
+                {
+                    _logManager.LogM(level, nameof(ModuleLoader), message);
+                }
+                finally
+                {
+                    _mm.ReleaseInterface(ref _logManager);
+                }
             }
             else
             {

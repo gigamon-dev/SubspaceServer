@@ -29,6 +29,7 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabilityManager;
         private IPersist _persist;
         private IObscene _obscene;
+        private InterfaceRegistrationToken _iChatToken;
 
         private struct Config
         {
@@ -113,18 +114,19 @@ namespace SS.Core.Modules
 
             if (_net != null)
                 _net.AddPacket((int)C2SPacketType.Chat, onRecievePlayerChatPacket);
-            
-            //if(_chatNet != null)
-                //_chatNet.
 
-            _mm.RegisterInterface<IChat>(this);
+            //if(_chatNet != null)
+            //_chatNet.
+
+            _iChatToken = _mm.RegisterInterface<IChat>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IChat>();
+            if (_mm.UnregisterInterface<IChat>(ref _iChatToken) != 0)
+                return false;
 
             if (_net != null)
                 _net.RemovePacket((int)C2SPacketType.Chat, onRecievePlayerChatPacket);

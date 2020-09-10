@@ -61,7 +61,7 @@ namespace SS.Core
             }
             finally
             {
-                _mm.ReleaseInterface<IModuleLoader>();
+                _mm.ReleaseInterface(ref loader);
             }
         }
     }

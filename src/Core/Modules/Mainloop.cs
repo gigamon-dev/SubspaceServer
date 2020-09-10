@@ -223,6 +223,10 @@ namespace SS.Core.Modules
 
         #endregion
 
+        private InterfaceRegistrationToken _iServerTimerToken;
+        private InterfaceRegistrationToken _iMainloopToken;
+        private InterfaceRegistrationToken _iMainloopController;
+
         private readonly List<ITimer> _timerList = new List<ITimer>();
         private readonly object _lockObj = new object();
 
@@ -254,9 +258,9 @@ namespace SS.Core.Modules
 
         bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
         {
-            mm.RegisterInterface<IServerTimer>(this);
-            mm.RegisterInterface<IMainloop>(this);
-            mm.RegisterInterface<IMainloopController>(this);
+            _iServerTimerToken = mm.RegisterInterface<IServerTimer>(this);
+            _iMainloopToken = mm.RegisterInterface<IMainloop>(this);
+            _iMainloopController = mm.RegisterInterface<IMainloopController>(this);
             return true;
         }
 
@@ -279,9 +283,15 @@ namespace SS.Core.Modules
                 _timerList.Clear();
             }
 
-            mm.UnregisterInterface<IMainloopController>();
-            mm.UnregisterInterface<IMainloop>();
-            mm.UnregisterInterface<IServerTimer>();
+            if (mm.UnregisterInterface<IMainloopController>(ref _iMainloopController) != 0)
+                return false;
+
+            if (mm.UnregisterInterface<IMainloop>(ref _iMainloopToken) != 0)
+                return false;
+
+            if (mm.UnregisterInterface<IServerTimer>(ref _iServerTimerToken) != 0)
+                return false;
+
             return true;
         }
 

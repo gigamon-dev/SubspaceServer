@@ -14,6 +14,7 @@ namespace TurfReward
             "It is being used to test external assembly loading and arena attaching.";
 
         private ILogManager _log;
+        private InterfaceRegistrationToken _iTurfRewardToken;
 
         #region IModule Members
 
@@ -27,14 +28,17 @@ namespace TurfReward
             _log = interfaceDependencies[typeof(ILogManager)] as ILogManager;
 
             _log.LogM(LogLevel.Drivel, nameof(TurfReward), "Load");
-            mm.RegisterInterface<ITurfReward>(this);
+            _iTurfRewardToken = mm.RegisterInterface<ITurfReward>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<ITurfReward>();
             _log.LogM(LogLevel.Drivel, nameof(TurfReward), "Unload");
+
+            if (mm.UnregisterInterface<ITurfReward>(ref _iTurfRewardToken) != 0)
+                return false;
+            
             return true;
         }
 

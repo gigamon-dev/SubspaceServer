@@ -38,7 +38,6 @@ namespace SS.Core.Modules
         bool IModule.Unload(ModuleManager mm)
         {
             LogCallback.Unregister(mm, logToConsole);
-            mm.ReleaseInterface<ILogManager>();
             return true;
         }
 

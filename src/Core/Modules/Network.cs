@@ -216,6 +216,8 @@ namespace SS.Core.Modules
             /// </summary>
             public IEncrypt enc;
 
+            public string iEncryptName;
+
             internal class SizedRecieve
             {
                 public int type;
@@ -279,9 +281,10 @@ namespace SS.Core.Modules
             /// </summary>
             public object bigmtx = new object();
 
-            public void Initalize(IEncrypt enc, IBWLimit bw)
+            public void Initalize(IEncrypt enc, string iEncryptName, IBWLimit bw)
             {
                 this.enc = enc;
+                this.iEncryptName = iEncryptName;
                 this.bw = bw;
                 avgrtt = 200; // an initial guess
                 rttdev = 100;
@@ -312,6 +315,10 @@ namespace SS.Core.Modules
         private IServerTimer _serverTimer;
         private IBandwidthLimit _bandwithLimit;
         private ILagCollect _lagCollect;
+        private InterfaceRegistrationToken _iNetworkToken;
+        private InterfaceRegistrationToken _iNetworkClientToken;
+        private InterfaceRegistrationToken _iNetworkEncryptionToken;
+
 
         private class Config
         {
@@ -1055,8 +1062,7 @@ namespace SS.Core.Modules
                 if (conn.enc != null)
                 {
                     conn.enc.Void(p);
-                    _mm.ReleaseInterface<IEncrypt>();
-                    conn.enc = null;
+                    _mm.ReleaseInterface(ref conn.enc, conn.iEncryptName);
                 }
 
                 // log message
@@ -2372,18 +2378,23 @@ namespace SS.Core.Modules
 
             // queue more data thread (sends sized data)
             _serverTimer.SetTimer(QueueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
-            
-            mm.RegisterInterface<INetwork>(this);
-            mm.RegisterInterface<INetworkClient>(this);
-            mm.RegisterInterface<INetworkEncryption>(this);
+
+            _iNetworkToken = mm.RegisterInterface<INetwork>(this);
+            _iNetworkClientToken = mm.RegisterInterface<INetworkClient>(this);
+            _iNetworkEncryptionToken = mm.RegisterInterface<INetworkEncryption>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<INetwork>();
-            mm.UnregisterInterface<INetworkClient>();
-            mm.UnregisterInterface<INetworkEncryption>();
+            if (mm.UnregisterInterface<INetwork>(ref _iNetworkToken) != 0)
+                return false;
+
+            if (mm.UnregisterInterface<INetworkClient>(ref _iNetworkClientToken) != 0)
+                return false;
+
+            if (mm.UnregisterInterface<INetworkEncryption>(ref _iNetworkEncryptionToken) != 0)
+                return false;
 
             _serverTimer.ClearTimer(QueueMoreData, null);
 
@@ -2436,7 +2447,45 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PreUnload(ModuleManager mm)
         {
+            //
+            // Disconnect all clients nicely
+            //
+
+            _playerData.Lock();
+
+            try
+            {
+                byte[] disconnectPacket = new byte[] { 0x00, 0x07 };
+
+                foreach (Player player in _playerData.PlayerList)
+                {
+                    if (IsOurs(player))
+                    {
+                        ConnData conn = player[_connKey] as ConnData;
+                        if (conn == null)
+                            continue;
+
+                        SendRaw(conn, disconnectPacket, disconnectPacket.Length);
+
+                        if (conn.enc != null)
+                        {
+                            conn.enc.Void(player);
+                            mm.ReleaseInterface(ref conn.enc, conn.iEncryptName);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            //
+            // And disconnect our client connections
+            //
+            
             // TODO: 
+
             return true;
         }
 
@@ -2456,7 +2505,7 @@ namespace SS.Core.Modules
             ld.GameSocket.SendTo(pkt, len, SocketFlags.None, remoteEndpoint);
         }
 
-        Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, IEncrypt enc, ListenData ld)
+        Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld)
         {
             if (ld == null)
                 throw new ArgumentNullException(nameof(ld));
@@ -2471,10 +2520,6 @@ namespace SS.Core.Modules
             {
                 /* we found it. if its status is S_CONNECTED, just return the
 		            * pid. it means we have to redo part of the connection init. */
-
-                /* whether we return p or not, we still have to drop the
-                    * reference to enc that we were given. */
-                //_mm.ReleaseInterface<IEncrypt>(
 
                 if (p.Status <= PlayerState.Connected)
                 {
@@ -2491,7 +2536,8 @@ namespace SS.Core.Modules
             p = _playerData.NewPlayer(clientType);
             ConnData conn = p[_connKey] as ConnData;
 
-            conn.Initalize(enc, _bandwithLimit.New());
+            IEncrypt enc = (iEncryptName != null) ? _mm.GetInterface<IEncrypt>(iEncryptName) : null;
+            conn.Initalize(enc, iEncryptName, _bandwithLimit.New());
             conn.p = p;
 
             // copy data from ListenData

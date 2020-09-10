@@ -17,6 +17,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
         private IPlayerData _playerData;
+        private InterfaceRegistrationToken _iFileTransferToken;
 
         private class DownloadDataContext
         {
@@ -65,13 +66,15 @@ namespace SS.Core.Modules
 
             _udKey = _playerData.AllocatePlayerData<UploadDataContext>();
             PlayerActionCallback.Register(_mm, playerAction);
-            _mm.RegisterInterface<IFileTransfer>(this);
+            _iFileTransferToken = _mm.RegisterInterface<IFileTransfer>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IFileTransfer>();
+            if (_mm.UnregisterInterface<IFileTransfer>(ref _iFileTransferToken) != 0)
+                return false;
+
             PlayerActionCallback.Unregister(_mm, playerAction);
             _playerData.FreePlayerData(_udKey);
 

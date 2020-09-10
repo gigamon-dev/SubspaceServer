@@ -20,6 +20,8 @@ namespace SS.Core.Modules
 
         private ModuleManager _mm;
         private IPlayerData _playerData;
+        private InterfaceRegistrationToken _iLagCollectToken;
+        private InterfaceRegistrationToken _iLagQueryToken;
 
         private class PingStats
         {
@@ -116,16 +118,19 @@ namespace SS.Core.Modules
 
             PlayerActionCallback.Register(_mm, playerAction);
 
-            _mm.RegisterInterface<ILagCollect>(this);
-            _mm.RegisterInterface<ILagQuery>(this);
+            _iLagCollectToken = _mm.RegisterInterface<ILagCollect>(this);
+            _iLagQueryToken = _mm.RegisterInterface<ILagQuery>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<ILagCollect>();
-            _mm.UnregisterInterface<ILagQuery>();
+            if (_mm.UnregisterInterface<ILagCollect>(ref _iLagCollectToken) != 0)
+                return false;
+
+            if (_mm.UnregisterInterface<ILagQuery>(ref _iLagQueryToken) != 0)
+                return false;
 
             PlayerActionCallback.Unregister(_mm, playerAction);
 

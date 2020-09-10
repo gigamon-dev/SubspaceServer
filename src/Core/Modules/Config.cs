@@ -22,6 +22,7 @@ namespace SS.Core.Modules
 
         private IServerTimer _timerManager;
         private ILogManager _logManager;
+        private InterfaceRegistrationToken _iConfigManagerToken;
 
         public ConfigManager()
         {
@@ -228,17 +229,19 @@ namespace SS.Core.Modules
                 return false;
 
             // TODO: set timer to watch for when the server should write to config files (this is not a priority so i will hold off doing this for now)
-            
+
             // TODO: set timer to watch for when the server should reload a file
             // TODO: instead of using timers to check for config files that have to be reloaded maybe use the FileSystemWatcher class
-            mm.RegisterInterface<IConfigManager>(this);
+            _iConfigManagerToken = mm.RegisterInterface<IConfigManager>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<IConfigManager>();
+            if (mm.UnregisterInterface<IConfigManager>(ref _iConfigManagerToken) != 0)
+                return false;
+
             return true;
         }
 
@@ -254,7 +257,7 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PreUnload(ModuleManager mm)
         {
-            mm.ReleaseInterface<ILogManager>();
+            mm.ReleaseInterface(ref _logManager);
             return true;
         }
 

@@ -36,6 +36,7 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private IServerTimer _mainLoop;
         //private IPersist _persist;
+        private InterfaceRegistrationToken _iArenaManagerCoreToken;
 
         // for managing per player data
         private ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
@@ -166,7 +167,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _mm.ReleaseInterface<IClientSettings>();
+                        _mm.ReleaseInterface(ref clientset);
                     }
                 }
             }
@@ -201,16 +202,16 @@ namespace SS.Core.Modules
                 // send to self
                 _net.SendToOne(player, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
 
-                IMapNewsDownload map = _mm.GetInterface<IMapNewsDownload>();
-                if (map != null)
+                IMapNewsDownload mapNewDownload = _mm.GetInterface<IMapNewsDownload>();
+                if (mapNewDownload != null)
                 {
                     try
                     {
-                        map.SendMapFilename(player);
+                        mapNewDownload.SendMapFilename(player);
                     }
                     finally
                     {
-                        _mm.ReleaseInterface<IMapNewsDownload>();
+                        _mm.ReleaseInterface(ref mapNewDownload);
                     }
                 }
 
@@ -1130,7 +1131,7 @@ namespace SS.Core.Modules
             _mainLoop.SetTimer(processArenaStates, 100, 100, null);
             _mainLoop.SetTimer(reapArenas, 1700, 1700, null);
 
-            _mm.RegisterInterface<IArenaManagerCore>(this);
+            _iArenaManagerCoreToken = _mm.RegisterInterface<IArenaManagerCore>(this);
 
             //_logManager.Log(LogLevel.Drivel, "ArenaManager.Load");
             //_logManager.LogP(LogLevel.Warn, "ArenaManager", null, "testing 123");
@@ -1139,7 +1140,8 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IArenaManagerCore>();
+            if (_mm.UnregisterInterface<IArenaManagerCore>(ref _iArenaManagerCoreToken) != 0)
+                return false;
 
             _net.RemovePacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);
             _net.RemovePacket((int)Packets.C2SPacketType.Leaving, packetLeaving);
@@ -1234,7 +1236,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _mm.ReleaseInterface<IArenaPlace>();
+                        _mm.ReleaseInterface(ref ap);
                     }
                 }
                 else

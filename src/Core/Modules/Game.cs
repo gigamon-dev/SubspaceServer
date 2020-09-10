@@ -27,6 +27,7 @@ namespace SS.Core.Modules
         private IChat _chat;
         private ICommandManager _commandManager;
         //private IPersist _persist;
+        private InterfaceRegistrationToken _iGameToken;
 
         private int _pdkey;
         private int _adkey;
@@ -252,18 +253,19 @@ namespace SS.Core.Modules
                 _commandManager.AddCommand("energy", command_energy, null, commandEnergyHelpText);
             }
 
-            _mm.RegisterInterface<IGame>(this);
+            _iGameToken = _mm.RegisterInterface<IGame>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IGame>();
+            if (_mm.UnregisterInterface<IGame>(ref _iGameToken) != 0)
+                return false;
 
             //if(_chatnet != null)
 
-            if (_commandManager != null)
+                if (_commandManager != null)
             {
                 _commandManager.RemoveCommand("spec", command_spec, null);
                 _commandManager.RemoveCommand("energy", command_energy, null);
@@ -1340,7 +1342,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface<IFreqManager>();
+                    _mm.ReleaseInterface(ref fm);
                 }
             }
 
@@ -1404,7 +1406,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface<IFreqManager>();
+                    _mm.ReleaseInterface(ref fm);
                 }
             }
 
@@ -1633,7 +1635,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        arena.ReleaseInterface<IClientSettings>();
+                        arena.ReleaseInterface(ref cset);
                     }
                 }
                 else
@@ -1656,7 +1658,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    arena.ReleaseInterface<IKillPoints>();
+                    arena.ReleaseInterface(ref kp);
                 }
             }
 
@@ -1666,9 +1668,15 @@ namespace SS.Core.Modules
                 IStats stats = _mm.GetInterface<IStats>();
                 if (stats != null)
                 {
-                    // TODO: 
-                    //stats.IncrementStats(killer, 
-                    _mm.ReleaseInterface<IStats>();
+                    try
+                    {
+                        // TODO: 
+                        //stats.IncrementStats(killer, 
+                    }
+                    finally
+                    {
+                        _mm.ReleaseInterface(ref stats);
+                    }
                 }
             }
 

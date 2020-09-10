@@ -10,6 +10,7 @@ namespace TurfReward
     {
         private ILogManager _log;
         private ITurfReward _turfReward;
+        private InterfaceRegistrationToken _iTurfRewardPointsToken;
 
         #region IModule Members
 
@@ -25,14 +26,17 @@ namespace TurfReward
             _turfReward = interfaceDependencies[typeof(ITurfReward)] as ITurfReward;
 
             _log.LogM(LogLevel.Drivel, nameof(TurfRewardPoints), "Load");
-            mm.RegisterInterface<ITurfRewardPoints>(this);
+            _iTurfRewardPointsToken = mm.RegisterInterface<ITurfRewardPoints>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<ITurfRewardPoints>();
             _log.LogM(LogLevel.Drivel, nameof(TurfRewardPoints), "Unload");
+
+            if (mm.UnregisterInterface<ITurfRewardPoints>(ref _iTurfRewardPointsToken) != 0)
+                return false;
+
             return true;
         }
 

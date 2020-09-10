@@ -25,6 +25,7 @@ namespace SS.Core.Modules
         private IServerTimer _mainLoop;
         private IArenaManagerCore _arenaManager;
         private IMapData _mapData;
+        private InterfaceRegistrationToken _iMapNewsDownloadToken;
 
         private int _dlKey;
 
@@ -262,13 +263,14 @@ namespace SS.Core.Modules
 
             _newsManager = new NewsManager(newsFilename);
 
-            mm.RegisterInterface<IMapNewsDownload>(this);
+            _iMapNewsDownloadToken = mm.RegisterInterface<IMapNewsDownload>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<IMapNewsDownload>();
+            if (mm.UnregisterInterface<IMapNewsDownload>(ref _iMapNewsDownloadToken) != 0)
+                return false;
 
             _newsManager.Dispose();
 
@@ -523,7 +525,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface<IFileTransfer>();
+                    _mm.ReleaseInterface(ref fileTransfer);
                 }
             }
 
@@ -582,7 +584,7 @@ namespace SS.Core.Modules
                         }
                         finally
                         {
-                            _mm.ReleaseInterface<IGame>();
+                            _mm.ReleaseInterface(ref game);
                         }
                     }
                 }

@@ -18,6 +18,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IConfigManager _configManager;
         private IArenaManagerCore _arenaManager;
+        private InterfaceRegistrationToken _iClientSettingsToken;
 
         private int _adkey;
         private int _pdkey;
@@ -68,13 +69,14 @@ namespace SS.Core.Modules
             ArenaActionCallback.Register(_mm, arenaAction);
             PlayerActionCallback.Register(_mm, playerAction);
 
-            _mm.RegisterInterface<IClientSettings>(this);
+            _iClientSettingsToken = _mm.RegisterInterface<IClientSettings>(this);
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IClientSettings>();
+            if (_mm.UnregisterInterface<IClientSettings>(ref _iClientSettingsToken) != 0)
+                return false;
 
             ArenaActionCallback.Unregister(_mm, arenaAction);
             PlayerActionCallback.Unregister(_mm, playerAction);

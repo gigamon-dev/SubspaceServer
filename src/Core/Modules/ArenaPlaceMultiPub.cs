@@ -13,6 +13,7 @@ namespace SS.Core.Modules
     {
         private IConfigManager _configManager;
         private IArenaManagerCore _arenaManager;
+        private InterfaceRegistrationToken _iArenaPlaceToken;
 
         private string[] _pubNames;
 
@@ -31,14 +32,15 @@ namespace SS.Core.Modules
 
             loadPubNames();
 
-            mm.RegisterInterface<IArenaPlace>(this);
+            _iArenaPlaceToken = mm.RegisterInterface<IArenaPlace>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            mm.UnregisterInterface<IArenaPlace>();
+            if (mm.UnregisterInterface<IArenaPlace>(ref _iArenaPlaceToken) != 0)
+                return false;
 
             return true;
         }

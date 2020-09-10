@@ -21,6 +21,7 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private IArenaManagerCore _arenaManager;
         private ILogManager _logManager;
+        private InterfaceRegistrationToken _iMapDataToken;
 
         private int _lvlKey;
 
@@ -44,14 +45,16 @@ namespace SS.Core.Modules
 
             _lvlKey = _arenaManager.AllocateArenaData<ExtendedLvl>();
             ArenaActionCallback.Register(_mm, arenaAction);
-            _mm.RegisterInterface<IMapData>(this);
+            _iMapDataToken = _mm.RegisterInterface<IMapData>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<IMapData>();
+            if (_mm.UnregisterInterface<IMapData>(ref _iMapDataToken) != 0)
+                return false;
+
             ArenaActionCallback.Unregister(_mm, arenaAction);
             _arenaManager.FreeArenaData(_lvlKey);
 

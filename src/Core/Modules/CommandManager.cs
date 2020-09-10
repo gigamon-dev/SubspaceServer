@@ -15,6 +15,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
+        private InterfaceRegistrationToken _iCommandManagerToken;
 
         private class CommandData
         {
@@ -62,14 +63,15 @@ namespace SS.Core.Modules
             _cmdLookup = new Dictionary<string, LinkedList<CommandData>>(StringComparer.OrdinalIgnoreCase);
             _defaultHandler = null;
 
-            _mm.RegisterInterface<ICommandManager>(this);
+            _iCommandManagerToken = _mm.RegisterInterface<ICommandManager>(this);
 
             return true;
         }
 
         bool IModule.Unload(ModuleManager mm)
         {
-            _mm.UnregisterInterface<ICommandManager>();
+            if (_mm.UnregisterInterface<ICommandManager>(ref _iCommandManagerToken) != 0)
+                return false;
 
             return true;
         }
