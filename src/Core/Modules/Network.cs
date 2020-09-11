@@ -2522,7 +2522,18 @@ namespace SS.Core.Modules
             p = _playerData.NewPlayer(clientType);
             ConnData conn = p[_connKey] as ConnData;
 
-            IEncrypt enc = (iEncryptName != null) ? _broker.GetInterface<IEncrypt>(iEncryptName) : null;
+            IEncrypt enc = null;
+            if (iEncryptName != null)
+            {
+                enc = _broker.GetInterface<IEncrypt>(iEncryptName);
+
+                if (enc == null)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), "[pid={0}] NewConnection called to use IEncrypt '{0}', but interface not found", p.Id, iEncryptName);
+                    return null;
+                }
+            }
+            
             conn.Initalize(enc, iEncryptName, _bandwithLimit.New());
             conn.p = p;
 
