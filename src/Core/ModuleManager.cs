@@ -45,6 +45,7 @@ namespace SS.Core
     /// of the existence of <see cref="Arena"/>s, even though it is not the one who directly manages them.  That is the job of
     /// the <see cref="Modules.ArenaManager"/>.
     /// </summary>
+    /// <inheritdoc/>
     [CoreModuleInfo]
     public sealed class ModuleManager : ComponentBroker, IModuleManager
     {
@@ -70,7 +71,7 @@ namespace SS.Core
         private readonly Dictionary<string, Assembly> _loadedPluginAssemblies = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Types of 'plug-in' modules that registered.
+        /// Types of 'plug-in' modules that are registered.
         /// Plug-in modules are modules that are in assemblies loaded (and isolated) into their own <see cref="ModulePluginLoadContext"/> as a 'plug-in'.
         /// </summary>
         private readonly HashSet<Type> _pluginModuleTypeSet = new HashSet<Type>();
@@ -281,69 +282,118 @@ namespace SS.Core
 
         public bool AddModule(string moduleTypeName, string path) => AddAndLoadModule(moduleTypeName, path, false);
 
-        /// <summary>
-        /// Adds a module to be loaded later.
-        /// </summary>
-        /// <param name="moduleTypeName">The assembly to load in the format of <see cref="Type.AssemblyQualifiedName"/>.</param>
-        /// <returns>True if the module was added. Otherwise, false.</returns>
+        
         public bool AddModule(string moduleTypeName) => AddAndLoadModule(moduleTypeName, null, false);
 
-        /// <summary>
-        /// Adds a module to be loaded later.
-        /// </summary>
-        /// <param name="module">The module to add.</param>
-        /// <returns>True if the module was added. Otherwise, false.</returns>
+        
         public bool AddModule(IModule module) => AddAndLoadModule(module, false);
 
-        /// <summary>
-        /// Adds a module to be loaded later.
-        /// </summary>
-        /// <typeparam name="TModule">Type of the module to add.</typeparam>
-        /// <param name="module">The module to add.</param>
-        /// <returns>True if the module was added. Otherwise, false.</returns>
+        
         public bool AddModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, false);
 
-        /// <summary>
-        /// Adds a module to be loaded later.
-        /// </summary>
-        /// <typeparam name="TModule">Type of the module to add.</typeparam>
-        /// <returns>True if the module was added. Otherwise, false.</returns>
+        
         public bool AddModule<TModule>() where TModule : class, IModule => AddAndLoadModule<TModule>(false);
 
         #endregion
 
         #region Load Module
 
-        public bool LoadModule(string moduleTypeName, string path) => AddAndLoadModule(moduleTypeName, path, true);
+        public bool LoadModule(string moduleTypeName, string path)
+        {
+            //
+            // Check if the module is already registered.
+            //
 
-        /// <summary>
-        /// Adds and loads a module.
-        /// </summary>
-        /// <param name="moduleTypeName">The assembly to load in the format of <see cref="Type.AssemblyQualifiedName"/>.</param>
-        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
-        public bool LoadModule(string moduleTypeName) => AddAndLoadModule(moduleTypeName, null, true);
+            lock (_moduleLockObj)
+            {
+                List<ModuleData> matchingModules = new List<ModuleData>();
 
-        /// <summary>
-        /// Adds and loads a module.
-        /// </summary>
-        /// <param name="module">The module to add and load.</param>
-        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    // Look for built-in modules that match the type name.
+                    Type type = Type.GetType(moduleTypeName);
+
+                    if (type != null)
+                    {
+                        if (_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData))
+                            matchingModules.Add(moduleData);
+                    }
+
+                    // Look for plug-in modules that match the type name.
+                    matchingModules.AddRange(
+                        from moduleType in GetPluginModuleTypes(moduleTypeName)
+                        let md = _moduleTypeLookup[moduleType]
+                        select md);
+                }
+                else
+                {
+                    // Look for plugin modules that match the type name and path.
+                    path = Path.GetFullPath(path);
+
+                    matchingModules.AddRange(
+                        from type in GetPluginModuleTypes(moduleTypeName)
+                        let md = _moduleTypeLookup[type]
+                        where string.Equals(md.ModuleType.Assembly.Location, path, StringComparison.OrdinalIgnoreCase)
+                        select md
+                    );
+                }
+
+                if (matchingModules.Count > 0)
+                {
+                    // Found at least one registered module that matched the criteria.
+                    bool failedLoad = false;
+
+                    foreach (var moduleData in matchingModules)
+                    {
+                        if (moduleData.IsLoaded)
+                            continue; // already loaded
+
+                        // Not loaded yet, try to load it.
+                        if (!LoadModule(moduleData))
+                            failedLoad = true;
+                    }
+
+                    return !failedLoad;
+                }
+            }
+
+            //
+            // The module is not already registered, try to add and load it.
+            //
+
+            return AddAndLoadModule(moduleTypeName, path, true);
+        }
+
+        public bool LoadModule(string moduleTypeName) => LoadModule(moduleTypeName, null);
+
         public bool LoadModule(IModule module) => AddAndLoadModule(module, true);
 
-        /// <summary>
-        /// Adds and loads a module.
-        /// </summary>
-        /// <typeparam name="TModule">Type of the module to add and load.</typeparam>
-        /// <param name="module">The module to add and load.</param>
-        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
         public bool LoadModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, true);
 
-        /// <summary>
-        /// Adds and loads a module.
-        /// </summary>
-        /// <typeparam name="TModule">Type of the module to add and load.</typeparam>
-        /// <returns>True if the module was added and loaded. Otherwise, false.</returns>
-        public bool LoadModule<TModule>() where TModule : class, IModule => AddAndLoadModule<TModule>(true);
+        public bool LoadModule<TModule>() where TModule : class, IModule
+        {
+            //
+            // Check if the module is already registered.
+            //
+
+            lock (_moduleLockObj)
+            {
+                Type moduleType = typeof(TModule);
+                if (_moduleTypeLookup.TryGetValue(moduleType, out ModuleData moduleData))
+                {
+                    if (moduleData.IsLoaded)
+                        return true;
+
+                    return LoadModule(moduleData);
+                }
+            }
+
+            //
+            // The module is not already registered, try to add and load it.
+            //
+
+            return AddAndLoadModule<TModule>(true);
+        }
 
         #endregion
 
@@ -354,19 +404,21 @@ namespace SS.Core
             if (string.IsNullOrWhiteSpace(moduleTypeName))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(moduleTypeName));
 
-            Type type = Type.GetType(moduleTypeName);
+            Type type;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                type = Type.GetType(moduleTypeName);
+            }
+            else
+            {
+                type = GetTypeFromPluginAssemblyPath(moduleTypeName, path);
+            }
+
             if (type == null)
             {
-                if (!string.IsNullOrWhiteSpace(path))
-                {
-                    type = GetTypeFromPluginAssemblyPath(moduleTypeName, path);
-                }
-
-                if (type == null)
-                {
-                    WriteLogM(LogLevel.Error, $"Unable to find module '{moduleTypeName}'.");
-                    return false;
-                }
+                WriteLogM(LogLevel.Error, $"Unable to find module '{moduleTypeName}'.");
+                return false;
             }
 
             IModule module = CreateModuleObject(type);
@@ -464,11 +516,6 @@ namespace SS.Core
 
         #region Unload Module
 
-        /// <summary>
-        /// Unloads a module.
-        /// </summary>
-        /// <param name="moduleTypeName">The type to unload in the format of <see cref="Type.AssemblyQualifiedName"/>.</param>
-        /// <returns>True if the module was unloaded. Otherwise false.</returns>
         public bool UnloadModule(string moduleTypeName)
         {
             if (string.IsNullOrWhiteSpace(moduleTypeName))
@@ -570,9 +617,6 @@ namespace SS.Core
 
         #region Bulk Operations
 
-        /// <summary>
-        /// Attempts to load any modules that are pending to load.
-        /// </summary>
         public void LoadAllModules()
         {
             lock (_moduleLockObj)
@@ -679,8 +723,6 @@ namespace SS.Core
             public Arena[] AttachedArenas { get; }
         }
 
-        // TODO: change this to return a collection of info (and include the assembly / loader context info)
-        // if there are multiple of the same type, then knowing the assembly info (including file path) might be helpful to debug
         public ModuleInfo[] GetModuleInfo(string moduleTypeName)
         {
             if (string.IsNullOrWhiteSpace(moduleTypeName))
@@ -730,6 +772,9 @@ namespace SS.Core
 
         #region Module Load Stages
 
+        /// <summary>
+        /// Goes through all loaded modules and has them perform the <see cref="IModuleLoaderAware.PostLoad(ComponentBroker)"/> stage of loading.
+        /// </summary>
         public void DoPostLoadStage()
         {
             lock (_moduleLockObj)
@@ -745,6 +790,9 @@ namespace SS.Core
             }
         }
 
+        /// <summary>
+        /// Goes through all loaded modules and has them perform the <see cref="IModuleLoaderAware.PreUnload(ComponentBroker)"/> stage of loading.
+        /// </summary>
         public void DoPreUnloadStage()
         {
             lock (_moduleLockObj)
@@ -1015,7 +1063,7 @@ namespace SS.Core
         /// <returns></returns>
         private IEnumerable<Type> GetPluginModuleTypes(string typeName)
         {
-            return _pluginModuleTypeSet.Where(t => string.Equals(t.FullName, typeName));
+            return _pluginModuleTypeSet.Where(t => string.Equals(t.FullName, typeName, StringComparison.Ordinal));
         }
 
         private Type GetTypeFromPluginAssemblyPath(string typeName, string path)
@@ -1091,6 +1139,8 @@ namespace SS.Core
 
         #endregion
 
+        #region Log Methods
+
         private void WriteLogA(LogLevel level, Arena arena, string format, params object[] args)
         {
             if (level == LogLevel.Error)
@@ -1106,5 +1156,7 @@ namespace SS.Core
             else
                 Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
         }
+
+        #endregion
     }
 }

@@ -84,6 +84,9 @@ namespace SS.Core
     {
         /// <summary>
         /// This is called after all modules are loaded.
+        /// It is a second initialization phase that allows modules to obtain references
+        /// to interfaces exported by modules loaded after them.
+        /// Iterfaces obtained in this method should release them in <see cref="PostLoad(ComponentBroker)"/>.
         /// </summary>
         /// <param name="broker"></param>
         /// <returns>True on success.  False on failure.</returns>
@@ -91,6 +94,7 @@ namespace SS.Core
 
         /// <summary>
         /// This is called before all modules are unloaded.
+        /// It is for cleaning up activity done in <see cref="PostLoad(ComponentBroker)"/>.
         /// </summary>
         /// <param name="broker"></param>
         /// <returns>True on success.  False on failure.</returns>
