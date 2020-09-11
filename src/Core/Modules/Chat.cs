@@ -18,7 +18,7 @@ namespace SS.Core.Modules
         private const char MultiChar = '|';
         private const char ModChatChar = '\\';
 
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private INetwork _net;
         private IChatNet _chatNet;
@@ -70,33 +70,27 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            INetwork net,
+            IConfigManager configManager,
+            ILogManager logManager,
+            IArenaManagerCore arenaManager,
+            ICommandManager commandManager,
+            ICapabilityManager capabilityManager)
         {
-            typeof(IPlayerData), 
-            typeof(INetwork), 
-            //typeof(IChatNet), 
-            typeof(IConfigManager), 
-            typeof(ILogManager), 
-            typeof(IArenaManagerCore), 
-            typeof(ICommandManager), 
-            typeof(ICapabilityManager), 
-            //typeof(IPersist), 
-            //typeof(IObscene), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
-            //_chatNet = interfaceDependencies[typeof(IChatNet)] as IChatNet;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
-            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
-            //_persist = interfaceDependencies[typeof(IPersist)] as IPersist;
-            //_obscene = interfaceDependencies[typeof(IObscene)] as IObscene;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            //_chatNet = chatNet ?? throw new ArgumentNullException(nameof(chatNet));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            //_persist = persist ?? throw new ArgumentNullException(nameof(persist));
+            //_obscene = obscene ?? throw new ArgumentNullException(nameof(obscene));
 
             _cmkey = _arenaManager.AllocateArenaData<ArenaChatMask>();
             _pmkey = _playerData.AllocatePlayerData<PlayerChatMask>();
@@ -104,8 +98,8 @@ namespace SS.Core.Modules
             //if(_persist != null)
                 //_persist.
 
-            ArenaActionCallback.Register(_mm, arenaAction);
-            PlayerActionCallback.Register(_mm, playerAction);
+            ArenaActionCallback.Register(_broker, arenaAction);
+            PlayerActionCallback.Register(_broker, playerAction);
 
             _cfg.msgrel = _configManager.GetInt(_configManager.Global, "Chat", "MessageReliable", 1) != 0;
             _cfg.floodlimit = _configManager.GetInt(_configManager.Global, "Chat", "FloodLimit", 10);
@@ -118,14 +112,14 @@ namespace SS.Core.Modules
             //if(_chatNet != null)
             //_chatNet.
 
-            _iChatToken = _mm.RegisterInterface<IChat>(this);
+            _iChatToken = _broker.RegisterInterface<IChat>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IChat>(ref _iChatToken) != 0)
+            if (_broker.UnregisterInterface<IChat>(ref _iChatToken) != 0)
                 return false;
 
             if (_net != null)
@@ -134,8 +128,8 @@ namespace SS.Core.Modules
             //if(_chatNet != null)
                 //_chatNet.
 
-            ArenaActionCallback.Unregister(_mm, arenaAction);
-            PlayerActionCallback.Unregister(_mm, playerAction);
+            ArenaActionCallback.Unregister(_broker, arenaAction);
+            PlayerActionCallback.Unregister(_broker, playerAction);
 
             //if(_persist != null)
                 //_persist.
@@ -672,7 +666,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 ChatMessageCallback.Fire(arena, playerFrom, type, sound, playerTo, freq, message);
             else
-                ChatMessageCallback.Fire(_mm, playerFrom, type, sound, playerTo, freq, message);
+                ChatMessageCallback.Fire(_broker, playerFrom, type, sound, playerTo, freq, message);
         }
 
         private void handleFreq(Player p, short freq, string text, ChatSound sound)

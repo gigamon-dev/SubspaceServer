@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core
 {
@@ -136,25 +137,25 @@ namespace SS.Core
 
             lock (_moduleLockObj)
             {
-                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleInfo))
+                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is not registered, it needs to be loaded first.");
                     return false;
                 }
 
-                if (!moduleInfo.IsLoaded)
+                if (!moduleData.IsLoaded)
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is not loaded.");
                     return false;
                 }
 
-                if (moduleInfo.AttachedArenas.Contains(arena))
+                if (moduleData.AttachedArenas.Contains(arena))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is already attached to the arena.");
                     return false;
                 }
 
-                if (!(moduleInfo.Module is IArenaAttachableModule arenaAttachableModule))
+                if (!(moduleData.Module is IArenaAttachableModule arenaAttachableModule))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
                     return false;
@@ -166,7 +167,7 @@ namespace SS.Core
                     return false;
                 }
 
-                moduleInfo.AttachedArenas.Add(arena);
+                moduleData.AttachedArenas.Add(arena);
                 return true;
             }
         }
@@ -223,19 +224,19 @@ namespace SS.Core
 
             lock (_moduleLockObj)
             {
-                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleInfo))
+                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData))
                 {
                     WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not registered.");
                     return false;
                 }
 
-                if (!moduleInfo.AttachedArenas.Contains(arena))
+                if (!moduleData.AttachedArenas.Contains(arena))
                 {
                     WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not attached to the arena.");
                     return false;
                 }
 
-                if (!(moduleInfo.Module is IArenaAttachableModule arenaAttachableModule))
+                if (!(moduleData.Module is IArenaAttachableModule arenaAttachableModule))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
                     return false;
@@ -247,7 +248,7 @@ namespace SS.Core
                     return false;
                 }
 
-                moduleInfo.AttachedArenas.Remove(arena);
+                moduleData.AttachedArenas.Remove(arena);
                 return true;
             }
         }
@@ -414,8 +415,8 @@ namespace SS.Core
                 if (_moduleTypeLookup.ContainsKey(moduleType))
                     return false;
 
-                ModuleData moduleInfo = new ModuleData(module);
-                _moduleTypeLookup.Add(moduleType, moduleInfo);
+                ModuleData moduleData = new ModuleData(module);
+                _moduleTypeLookup.Add(moduleType, moduleData);
 
                 Assembly assembly = moduleType.Assembly;
                 AssemblyLoadContext loadContext = AssemblyLoadContext.GetLoadContext(assembly);
@@ -426,7 +427,7 @@ namespace SS.Core
                 }
 
                 if (load)
-                    return LoadModule(moduleInfo);
+                    return LoadModule(moduleData);
 
                 return true;
             }
@@ -531,18 +532,18 @@ namespace SS.Core
 
             Type type = node.Value;
 
-            if (_moduleTypeLookup.TryGetValue(type, out ModuleData moduleInfo) == false)
+            if (_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData) == false)
             {
                 return false;
             }
 
-            if (UnloadModule(moduleInfo) == false)
+            if (UnloadModule(moduleData) == false)
             {
                 return false; // can't unload, possibly can't unregister one of its interfaces
             }
 
-            _loadedModules.Remove(moduleInfo.ModuleType);
-            _moduleTypeLookup.Remove(moduleInfo.ModuleType);
+            _loadedModules.Remove(moduleData.ModuleType);
+            _moduleTypeLookup.Remove(moduleData.ModuleType);
 
             Assembly assembly = type.Assembly;
             AssemblyLoadContext loadContext = AssemblyLoadContext.GetLoadContext(assembly);
@@ -587,11 +588,11 @@ namespace SS.Core
                     // go through all the modules and try to load each
                     foreach (KeyValuePair<Type, ModuleData> kvp in _moduleTypeLookup)
                     {
-                        ModuleData moduleInfo = kvp.Value;
-                        if (moduleInfo.IsLoaded)
+                        ModuleData moduleData = kvp.Value;
+                        if (moduleData.IsLoaded)
                             continue; // already loaded
 
-                        if (LoadModule(moduleInfo) == true)
+                        if (LoadModule(moduleData) == true)
                         {
                             // loaded module
                             numModulesLoadedDuringLastPass++;
@@ -639,12 +640,12 @@ namespace SS.Core
         {
             lock (_moduleLockObj)
             {
-                foreach (ModuleData moduleInfo in _moduleTypeLookup.Values)
+                foreach (ModuleData moduleData in _moduleTypeLookup.Values)
                 {
-                    if (arena != null && !moduleInfo.AttachedArenas.Contains(arena))
+                    if (arena != null && !moduleData.AttachedArenas.Contains(arena))
                         continue;
 
-                    enumerationCallback(moduleInfo.ModuleType, moduleInfo.Description);
+                    enumerationCallback(moduleData.ModuleType, moduleData.Description);
                 }
             }
         }
@@ -733,10 +734,10 @@ namespace SS.Core
         {
             lock (_moduleLockObj)
             {
-                foreach (ModuleData moduleInfo in _moduleTypeLookup.Values)
+                foreach (ModuleData moduleData in _moduleTypeLookup.Values)
                 {
-                    if (moduleInfo.IsLoaded
-                        && moduleInfo.Module is IModuleLoaderAware loaderAwareModule)
+                    if (moduleData.IsLoaded
+                        && moduleData.Module is IModuleLoaderAware loaderAwareModule)
                     {
                         loaderAwareModule.PostLoad(this);
                     }
@@ -748,10 +749,10 @@ namespace SS.Core
         {
             lock (_moduleLockObj)
             {
-                foreach (ModuleData moduleInfo in _moduleTypeLookup.Values)
+                foreach (ModuleData moduleData in _moduleTypeLookup.Values)
                 {
-                    if (moduleInfo.IsLoaded
-                        && moduleInfo.Module is IModuleLoaderAware loaderAwareModule)
+                    if (moduleData.IsLoaded
+                        && moduleData.Module is IModuleLoaderAware loaderAwareModule)
                     {
                         loaderAwareModule.PreUnload(this);
                     }
@@ -765,6 +766,10 @@ namespace SS.Core
 
         private class ModuleData
         {
+            private static readonly Type brokerType = typeof(ComponentBroker);
+            private static readonly Type dependencyType = typeof(IComponentInterface);
+            private static readonly Type returnType = typeof(bool);
+
             public ModuleData(IModule module)
             {
                 if (module == null)
@@ -778,20 +783,52 @@ namespace SS.Core
                 Module = module;
                 IsLoaded = false;
 
-                if (module.InterfaceDependencies == null)
+                //
+                // Find the Load method
+                //
+
+                MethodInfo[] methods = ModuleType.GetMethods();
+
+                var filteredMethods = (
+                    from method in methods
+                    where method.IsPublic
+                        && !method.IsStatic
+                        && !method.IsGenericMethod
+                        && method.ReturnType == returnType
+                        && string.Equals(method.Name, "Load", StringComparison.Ordinal)
+                    let parameters = method.GetParameters()
+                    where parameters.Length >= 1 && parameters[0].ParameterType == brokerType
+                    let otherParameters = parameters.Skip(1)
+                    where otherParameters.All(otherParameter =>
+                        otherParameter.ParameterType.IsInterface
+                        && !otherParameter.IsIn
+                        && !otherParameter.IsOut
+                        && !otherParameter.IsRetval
+                        && !otherParameter.IsOptional
+                        && dependencyType.IsAssignableFrom(otherParameter.ParameterType))
+                    select (method, parameters)
+                ).ToArray();
+
+                if (filteredMethods.Length <= 0)
+                    throw new ArgumentException("Does not have an acceptable Load method.", nameof(module));
+
+                if (filteredMethods.Length > 1)
+                    throw new ArgumentException("Ambiguous Load method. Found filteredMethods.Length possiblities.", nameof(module));
+
+                LoadMethod = filteredMethods[0].method;
+                LoadParameters = filteredMethods[0].parameters;
+
+                if (LoadParameters.Length == 1)
                 {
                     InterfaceDependencies = new Dictionary<Type, IComponentInterface>(0);
                 }
                 else
                 {
-                    InterfaceDependencies = new Dictionary<Type, IComponentInterface>(module.InterfaceDependencies.Length);
-                    foreach (Type interfaceType in module.InterfaceDependencies)
+                    InterfaceDependencies = new Dictionary<Type, IComponentInterface>(LoadParameters.Length - 1);
+
+                    for (int i = 1; i < LoadParameters.Length; i++)
                     {
-                        if (interfaceType.IsInterface == true
-                            && typeof(IComponentInterface).IsAssignableFrom(interfaceType))
-                        {
-                            InterfaceDependencies.Add(interfaceType, null);
-                        }
+                        InterfaceDependencies[LoadParameters[i].ParameterType] = null;
                     }
                 }
             }
@@ -815,6 +852,16 @@ namespace SS.Core
             {
                 get;
                 set;
+            }
+
+            public MethodInfo LoadMethod
+            {
+                get;
+            }
+
+            public ParameterInfo[] LoadParameters
+            {
+                get;
             }
 
             public Dictionary<Type, IComponentInterface> InterfaceDependencies
@@ -860,12 +907,26 @@ namespace SS.Core
             }
 
             // we got all the interfaces, now we can load the module
-            bool success;
+            bool success = false;
 
             try
             {
-                ReadOnlyDictionary<Type, IComponentInterface> dependencies = new ReadOnlyDictionary<Type, IComponentInterface>(moduleData.InterfaceDependencies);
-                success = moduleData.Module.Load(this, dependencies);
+                object[] parameters = new object[moduleData.LoadParameters.Length];
+                parameters[0] = this;
+                
+                for (int i = 1; i < parameters.Length; i++)
+                {
+                    if (moduleData.InterfaceDependencies.TryGetValue(moduleData.LoadParameters[i].ParameterType, out IComponentInterface dependency))
+                    {
+                        parameters[i] = dependency;
+                    }
+                }
+
+                if (parameters.All(p => p != null))
+                {
+                    object retObj = moduleData.LoadMethod.Invoke(moduleData.Module, parameters);
+                    success = Convert.ToBoolean(retObj);
+                }
             }
             catch (Exception ex)
             {

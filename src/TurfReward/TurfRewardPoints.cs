@@ -14,27 +14,21 @@ namespace TurfReward
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(ComponentBroker broker, ILogManager log, ITurfReward turfReward)
         {
-            typeof(ILogManager),
-            typeof(ITurfReward),
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _log = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _turfReward = interfaceDependencies[typeof(ITurfReward)] as ITurfReward;
+            _log = log ?? throw new ArgumentNullException(nameof(log));
+            _turfReward = turfReward ?? throw new ArgumentNullException(nameof(turfReward));
 
             _log.LogM(LogLevel.Drivel, nameof(TurfRewardPoints), "Load");
-            _iTurfRewardPointsToken = mm.RegisterInterface<ITurfRewardPoints>(this);
+            _iTurfRewardPointsToken = broker.RegisterInterface<ITurfRewardPoints>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
             _log.LogM(LogLevel.Drivel, nameof(TurfRewardPoints), "Unload");
 
-            if (mm.UnregisterInterface<ITurfRewardPoints>(ref _iTurfRewardPointsToken) != 0)
+            if (broker.UnregisterInterface<ITurfRewardPoints>(ref _iTurfRewardPointsToken) != 0)
                 return false;
 
             return true;

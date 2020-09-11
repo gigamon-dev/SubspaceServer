@@ -20,7 +20,7 @@ namespace SS.Core.Modules
         private ConfigHandle _global;
         public event EventHandler GlobalConfigChanged;
 
-        private IServerTimer _timerManager;
+        private IServerTimer _serverTimer;
         private ILogManager _logManager;
         private InterfaceRegistrationToken _iConfigManagerToken;
 
@@ -214,15 +214,9 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(ComponentBroker broker, IServerTimer serverTimer)
         {
-            typeof(IServerTimer)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _timerManager = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
             _global = OpenConfigFile(null, null, global_changed, null);
             if (_global == null)
@@ -232,14 +226,14 @@ namespace SS.Core.Modules
 
             // TODO: set timer to watch for when the server should reload a file
             // TODO: instead of using timers to check for config files that have to be reloaded maybe use the FileSystemWatcher class
-            _iConfigManagerToken = mm.RegisterInterface<IConfigManager>(this);
+            _iConfigManagerToken = broker.RegisterInterface<IConfigManager>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<IConfigManager>(ref _iConfigManagerToken) != 0)
+            if (broker.UnregisterInterface<IConfigManager>(ref _iConfigManagerToken) != 0)
                 return false;
 
             return true;
@@ -249,15 +243,15 @@ namespace SS.Core.Modules
 
         #region IModuleLoaderAware Members
 
-        bool IModuleLoaderAware.PostLoad(ModuleManager mm)
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            _logManager = mm.GetInterface<ILogManager>();
+            _logManager = broker.GetInterface<ILogManager>();
             return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ModuleManager mm)
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
-            mm.ReleaseInterface(ref _logManager);
+            broker.ReleaseInterface(ref _logManager);
             return true;
         }
 

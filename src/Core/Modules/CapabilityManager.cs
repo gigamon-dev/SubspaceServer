@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class CapabilityManager : IModule, ICapabilityManager, IGroupManager
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private IArenaManagerCore _arenaManager;
         private ILogManager _logManager;
@@ -46,49 +46,46 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            IArenaManagerCore arenaManager,
+            ILogManager logManager,
+            IConfigManager configManager)
         {
-            typeof(IPlayerData), 
-            typeof(IArenaManagerCore), 
-            typeof(ILogManager), 
-            typeof(IConfigManager), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
+            _broker = broker;
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
 
-            PlayerActionCallback.Register(_mm, playerAction);
-            NewPlayerCallback.Register(_mm, newPlayer);
+            PlayerActionCallback.Register(_broker, playerAction);
+            NewPlayerCallback.Register(_broker, newPlayer);
 
             _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf", null, null);
             _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf", null, null);
 
-            _iCapabilityManagerToken = _mm.RegisterInterface<ICapabilityManager>(this);
-            _iGroupManagerToken = _mm.RegisterInterface<IGroupManager>(this);
+            _iCapabilityManagerToken = _broker.RegisterInterface<ICapabilityManager>(this);
+            _iGroupManagerToken = _broker.RegisterInterface<IGroupManager>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<ICapabilityManager>(ref _iCapabilityManagerToken) != 0)
+            if (_broker.UnregisterInterface<ICapabilityManager>(ref _iCapabilityManagerToken) != 0)
                 return false;
 
-            if (_mm.UnregisterInterface<IGroupManager>(ref _iGroupManagerToken) != 0)
+            if (_broker.UnregisterInterface<IGroupManager>(ref _iGroupManagerToken) != 0)
                 return false;
 
             _configManager.CloseConfigFile(_groupDefConfHandle);
             _configManager.CloseConfigFile(_staffConfHandle);
 
-            PlayerActionCallback.Unregister(_mm, playerAction);
-            NewPlayerCallback.Unregister(_mm, newPlayer);
+            PlayerActionCallback.Unregister(_broker, playerAction);
+            NewPlayerCallback.Unregister(_broker, newPlayer);
 
             _playerData.FreePlayerData(_pdkey);
 

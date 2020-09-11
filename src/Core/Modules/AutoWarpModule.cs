@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class AutoWarpModule : IModule
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IArenaManagerCore _arenaManager;
         private IGame _game;
         private IMapData _mapData;
@@ -72,27 +72,20 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(ComponentBroker broker, IArenaManagerCore arenaManager, IGame game, IMapData mapData)
         {
-            typeof(IArenaManagerCore), 
-            typeof(IGame), 
-            typeof(IMapData), 
-        };
+            _broker = broker;
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _game = game ?? throw new ArgumentNullException(nameof(game));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
 
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _game = interfaceDependencies[typeof(IGame)] as IGame;
-            _mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
-
-            MapRegionCallback.Register(mm, mapRegionHandler);
+            MapRegionCallback.Register(broker, mapRegionHandler);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            MapRegionCallback.Unregister(mm, mapRegionHandler);
+            MapRegionCallback.Unregister(broker, mapRegionHandler);
             return true;
         }
 

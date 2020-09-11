@@ -8,10 +8,47 @@ namespace SS.Core
     /// Interface for modules to implement.
     /// 
     /// <para>
-    /// Note: A module also needs to include a default parameterless constructor if it is intended to be created by the <see cref="ModuleManager"/> (the normal case).
+    /// A module needs to include the following:
+    /// <list type="number">
+    /// <item>
+    /// It must implement the <see cref="IModule"/> interface.
+    /// </item>
+    /// <item>
+    /// It needs to have a default parameterless constructor if it is intended to be created by the 
+    /// <see cref="ModuleManager"/> (the normal case).
+    /// </item>
+    /// <item>
+    /// It needs to have a method named "Load".
+    /// <para>
+    /// The Load method must have a return type of <see cref="bool"/>. Returning true means success, false 
+    /// indiciates failure.
     /// </para>
     /// 
     /// <para>
+    /// The Load method must have at least one parameter.
+    /// 
+    /// <para>
+    /// The first parameter must be of type <see cref="ComponentBroker"/>. The global <see cref="ComponentBroker"/> 
+    /// will be passed into it.  Use the broker to register for callbacks or to get other interfaces that not required 
+    /// to load.
+    /// </para>
+    /// 
+    /// <para>
+    /// All other parameters, if any, are for injecting interface dependencies that are REQUIRED for the module to load.
+    /// Interface dependency parameters must all be interface types derived from <see cref="IComponentInterface"/>.  
+    /// When the <see cref="ModuleManager"/> loads the module, it will gather the required dependencies and call the 
+    /// Load method with all the dependencies passed in.  The <see cref="ModuleManager"/> will only call the Load method 
+    /// when it can fulfill all of the dependencies. Therefore, only include dependency parameters for interfaces that 
+    /// are REQUIRED for the module to load. Optional interfaces can be loaded during steps that occur after load, such 
+    /// as <see cref="IModuleLoaderAware.PostLoad(ComponentBroker)"/>. DO NOT release the interfaces that the 
+    /// <see cref="ModuleManager"/> passes in.  The <see cref="ModuleManager"/> manages getting and releasing them.
+    /// For an idea of built-in interfaces that can be used, see the SS.Core.ComponentInterfaces namespace.
+    /// </para>
+    /// 
+    /// </para>
+    /// </item>
+    /// </list>
+    /// 
     /// Module life cycle:
     /// <list type="number">
     /// <item><see cref="IModule.Load(ModuleManager, Dictionary{Type, IComponentInterface})"/></item>
@@ -26,36 +63,15 @@ namespace SS.Core
     public interface IModule
     {
         /// <summary>
-        /// The <see cref="IComponentInterface"/>s that a module declares are REQUIRED to load properly.
-        /// The <see cref="ModuleManager"/> uses this list of dependencies to check whether
-        /// all of them are available. When the dependencies can be fulfilled, the <see cref="ModuleManager"/>
-        /// will then call the <see cref="Load(ModuleManager, Dictionary{Type, IComponentInterface})"/>
-        /// method with references to the interfaces.
-        /// <para>
-        /// Do not include optional interfaces here. Only those that are required.
-        /// </para>
-        /// For the built-in interfaces see: SS.Core.ComponentInterfaces
-        /// </summary>
-        Type[] InterfaceDependencies { get; }
-
-        /// <summary>
-        /// This is where a module should initialize itself.
-        /// </summary>
-        /// <param name="mm">The global component broker.</param>
-        /// <param name="dependencies"></param>
-        /// <returns>True on success.  False on failure.</returns>
-        bool Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies);
-
-        /// <summary>
-        /// This is where a module should perform cleanup. Including:
+        /// A module should perform cleanup in this method. Examples of cleanup include:
         /// <list type="bullet">
         /// <item>Unregistering any <see cref="IComponentInterface"/>s it previously registered as being the implementor of.</item>
         /// <item>Unregistering from any Callbacks it previously subscribed to.</item>
         /// </list>
         /// </summary>
-        /// <param name="mm">The global component broker.</param>
+        /// <param name="broker">The global component broker.</param>
         /// <returns>True on success.  False on failure.</returns>
-        bool Unload(ModuleManager mm);
+        bool Unload(ComponentBroker broker);
     }
 
     /// <summary>
@@ -69,16 +85,16 @@ namespace SS.Core
         /// <summary>
         /// This is called after all modules are loaded.
         /// </summary>
-        /// <param name="mm"></param>
+        /// <param name="broker"></param>
         /// <returns>True on success.  False on failure.</returns>
-        bool PostLoad(ModuleManager mm);
+        bool PostLoad(ComponentBroker broker);
 
         /// <summary>
         /// This is called before all modules are unloaded.
         /// </summary>
-        /// <param name="mm"></param>
+        /// <param name="broker"></param>
         /// <returns>True on success.  False on failure.</returns>
-        bool PreUnload(ModuleManager mm);
+        bool PreUnload(ComponentBroker broker);
     }
 
     /// <summary>
@@ -95,7 +111,7 @@ namespace SS.Core
         bool AttachModule(Arena arena);
 
         /// <summary>
-        /// This is called hwen a  module is detached from an arena.
+        /// This is called when a module is detached from an arena.
         /// </summary>
         /// <param name="arena">The arena the module is being detached from.</param>
         /// <returns>True on success.  False on failure.</returns>

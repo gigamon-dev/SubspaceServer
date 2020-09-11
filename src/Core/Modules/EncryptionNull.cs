@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class EncryptionNull : IModule
     {
-        private INetworkEncryption _net;
+        private INetworkEncryption _networkEncryption;
 
         private struct ConnectionInitResponsePacket
         {
@@ -62,23 +62,18 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(ComponentBroker broker, INetworkEncryption networkEncryption)
         {
-            typeof(INetworkEncryption)
-        };
+            _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
 
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _net = interfaceDependencies[typeof(INetworkEncryption)] as INetworkEncryption;
-
-            ConnectionInitCallback.Register(mm, connectionInit);
+            ConnectionInitCallback.Register(broker, connectionInit);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            ConnectionInitCallback.Unregister(mm, connectionInit);
+            ConnectionInitCallback.Unregister(broker, connectionInit);
 
             return true;
         }
@@ -113,13 +108,13 @@ namespace SS.Core.Modules
             }
 
             // get connection (null means no encryption)
-            p = _net.NewConnection(type, remoteEndpoint, null, ld);
+            p = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
 
             if (p == null)
             {
                 // no slots left?
                 byte[] pkt = {0x00, 0x07};
-                _net.ReallyRawSend(remoteEndpoint, pkt, pkt.Length, ld);
+                _networkEncryption.ReallyRawSend(remoteEndpoint, pkt, pkt.Length, ld);
                 return;
             }
 
@@ -132,7 +127,7 @@ namespace SS.Core.Modules
             rp.T1 = 0x00;
             rp.T2 = 0x02;
             rp.Key = key;
-            _net.ReallyRawSend(remoteEndpoint, buffer, 6, ld);
+            _networkEncryption.ReallyRawSend(remoteEndpoint, buffer, 6, ld);
         }
     }
 }

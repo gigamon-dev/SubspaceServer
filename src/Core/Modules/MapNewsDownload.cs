@@ -17,12 +17,12 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class MapNewsDownload : IModule, IMapNewsDownload
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private INetwork _net;
         private ILogManager _logManager;
         private IConfigManager _configManager;
-        private IServerTimer _mainLoop;
+        private IServerTimer _serverTimer;
         private IArenaManagerCore _arenaManager;
         private IMapData _mapData;
         private InterfaceRegistrationToken _iMapNewsDownloadToken;
@@ -227,27 +227,24 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            INetwork net,
+            ILogManager logManager,
+            IConfigManager configManager,
+            IServerTimer serverTimer,
+            IArenaManagerCore arenaManager,
+            IMapData mapData)
         {
-            typeof(IPlayerData), 
-            typeof(INetwork), 
-            typeof(ILogManager), 
-            typeof(IConfigManager), 
-            typeof(IServerTimer), 
-            typeof(IArenaManagerCore), 
-            typeof(IMapData), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
 
             _dlKey = _arenaManager.AllocateArenaData<LinkedList<MapDownloadData>>();
 
@@ -255,7 +252,7 @@ namespace SS.Core.Modules
             _net.AddPacket((int)Packets.C2SPacketType.MapRequest, packetMapNewsRequest);
             _net.AddPacket((int)Packets.C2SPacketType.NewsRequest, packetMapNewsRequest);
 
-            ArenaActionCallback.Register(_mm, arenaAction);
+            ArenaActionCallback.Register(_broker, arenaAction);
 
             string newsFilename = _configManager.GetStr(_configManager.Global, "General", "NewsFile");
             if (string.IsNullOrEmpty(newsFilename))
@@ -263,13 +260,13 @@ namespace SS.Core.Modules
 
             _newsManager = new NewsManager(newsFilename);
 
-            _iMapNewsDownloadToken = mm.RegisterInterface<IMapNewsDownload>(this);
+            _iMapNewsDownloadToken = broker.RegisterInterface<IMapNewsDownload>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<IMapNewsDownload>(ref _iMapNewsDownloadToken) != 0)
+            if (broker.UnregisterInterface<IMapNewsDownload>(ref _iMapNewsDownloadToken) != 0)
                 return false;
 
             _newsManager.Dispose();
@@ -278,7 +275,7 @@ namespace SS.Core.Modules
             _net.RemovePacket((int)Packets.C2SPacketType.MapRequest, packetMapNewsRequest);
             _net.RemovePacket((int)Packets.C2SPacketType.NewsRequest, packetMapNewsRequest);
 
-            ArenaActionCallback.Unregister(_mm, arenaAction);
+            ArenaActionCallback.Unregister(_broker, arenaAction);
 
             _arenaManager.FreeArenaData(_dlKey);
 
@@ -360,7 +357,7 @@ namespace SS.Core.Modules
             {
                 // note: asss does this in reverse order, but i think it is a race condition
                 _arenaManager.HoldArena(arena);
-                _mainLoop.RunInThread<Arena>(arenaActionWork, arena);
+                _serverTimer.RunInThread<Arena>(arenaActionWork, arena);
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -513,7 +510,7 @@ namespace SS.Core.Modules
             _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, "UpdateRequest");
 
             // TODO: implement file transfer module and use it here
-            IFileTransfer fileTransfer = _mm.GetInterface<IFileTransfer>();
+            IFileTransfer fileTransfer = _broker.GetInterface<IFileTransfer>();
             if (fileTransfer != null)
             {
                 try
@@ -525,7 +522,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface(ref fileTransfer);
+                    _broker.ReleaseInterface(ref fileTransfer);
                 }
             }
 
@@ -575,7 +572,7 @@ namespace SS.Core.Modules
                 // and team directly, we need to go through the in-game procedures
                 if (p.IsStandard && (p.Ship != ShipType.Spec || p.Freq != arena.SpecFreq))
                 {
-                    IGame game = _mm.GetInterface<IGame>();
+                    IGame game = _broker.GetInterface<IGame>();
                     if (game != null)
                     {
                         try
@@ -584,7 +581,7 @@ namespace SS.Core.Modules
                         }
                         finally
                         {
-                            _mm.ReleaseInterface(ref game);
+                            _broker.ReleaseInterface(ref game);
                         }
                     }
                 }

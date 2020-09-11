@@ -19,25 +19,18 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(ComponentBroker broker, ILogManager logManager)
         {
-            typeof(ILogManager)
-        };
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            if (_logManager == null)
-                return false;
-
-            LogCallback.Register(mm, logToConsole);
+            LogCallback.Register(broker, logToConsole);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            LogCallback.Unregister(mm, logToConsole);
+            LogCallback.Unregister(broker, logToConsole);
             return true;
         }
 

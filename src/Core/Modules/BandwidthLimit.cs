@@ -61,17 +61,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies => null;
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
+        public bool Load(ComponentBroker broker)
         {
-            _iBandwidthLimitToken = mm.RegisterInterface<IBandwidthLimit>(this);
+            _iBandwidthLimitToken = broker.RegisterInterface<IBandwidthLimit>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<IBandwidthLimit>(ref _iBandwidthLimitToken) != 0)
+            if (broker.UnregisterInterface<IBandwidthLimit>(ref _iBandwidthLimitToken) != 0)
                 return false;
 
             return true;
@@ -184,14 +182,9 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(ComponentBroker mm, IConfigManager configManager)
         {
-            typeof(IConfigManager)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            config = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
+            config = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
             BWLimit.LimitLow = config.GetInt(config.Global, "Net", "LimitMinimum", 2500);
             BWLimit.LimitHigh = config.GetInt(config.Global, "Net", "LimitMaximum", 102400);
@@ -211,9 +204,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<IBandwidthLimit>(ref iBandwidthLimitToken) != 0)
+            if (broker.UnregisterInterface<IBandwidthLimit>(ref iBandwidthLimitToken) != 0)
                 return false;
 
             return true;

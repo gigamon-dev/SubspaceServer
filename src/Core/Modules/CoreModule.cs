@@ -35,13 +35,13 @@ namespace SS.Core.Modules
     {
         private static readonly byte[] _keepAlive = new byte[1] { (byte)Packets.S2CPacketType.KeepAlive };
 
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private INetwork _net;
         private IChatNet _chatnet;
         private ILogManager _logManager;
         private IConfigManager _configManager;
-        private IServerTimer _mainLoop;
+        private IServerTimer _serverTimer;
         private IMapNewsDownload _map;
         private IArenaManagerCore _arenaManager;
         private ICapabilityManager _capabiltyManager;
@@ -110,30 +110,27 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            INetwork net,
+            ILogManager logManager,
+            IConfigManager configManager,
+            IServerTimer serverTimer,
+            IMapNewsDownload map,
+            IArenaManagerCore arenaManager,
+            ICapabilityManager capabilityManager)
         {
-            typeof(IPlayerData), 
-            typeof(INetwork), 
-            typeof(ILogManager), 
-            typeof(IConfigManager), 
-            typeof(IServerTimer), 
-            typeof(IMapNewsDownload), 
-            typeof(IArenaManagerCore), 
-            typeof(ICapabilityManager), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
             //_chatnet = 
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-            _map = interfaceDependencies[typeof(IMapNewsDownload)] as IMapNewsDownload;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _capabiltyManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _map = map ?? throw new ArgumentNullException(nameof(map));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
 
             _continuumChecksum = getChecksum(ContinuumExeFile);
             _codeChecksum = getU32(ContinuumChecksumFile, 4);
@@ -147,24 +144,24 @@ namespace SS.Core.Modules
             //if(_chatnet != null)
                 //_chatnet.AddHandler("LOGIN", chatLogin);
 
-            _mainLoop.SetTimer(processPlayerStates, 100, 100, null);
+            _serverTimer.SetTimer(processPlayerStates, 100, 100, null);
 
             // register default interfaces which may be replaced later
-            _iAuthToken = mm.RegisterInterface<IAuth>(this);
+            _iAuthToken = broker.RegisterInterface<IAuth>(this);
 
             // set up periodic events
-            _mainLoop.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
+            _serverTimer.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
+            if (_broker.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
                 return false;
 
-            _mainLoop.ClearTimer(sendKeepAlive, null);
-            _mainLoop.ClearTimer(processPlayerStates, null);
+            _serverTimer.ClearTimer(sendKeepAlive, null);
+            _serverTimer.ClearTimer(processPlayerStates, null);
             
             if (_net != null)
             {
@@ -291,7 +288,7 @@ namespace SS.Core.Modules
                 {
                     case PlayerState.NeedAuth:
                         {
-                            IAuth auth = _mm.GetInterface<IAuth>();
+                            IAuth auth = _broker.GetInterface<IAuth>();
                             try
                             {
                                 if (auth != null && pdata.loginpkt != null && pdata.lplen > 0)
@@ -311,7 +308,7 @@ namespace SS.Core.Modules
                             finally
                             {
                                 if(auth != null)
-                                    _mm.ReleaseInterface(ref auth);
+                                    _broker.ReleaseInterface(ref auth);
                             }
                         }
                         break;
@@ -350,7 +347,7 @@ namespace SS.Core.Modules
                             ShipType ship = player.Ship = requestedShip;
                             short freq = player.Freq = 0;
 
-                            IFreqManager fm = _mm.GetInterface<IFreqManager>();
+                            IFreqManager fm = _broker.GetInterface<IFreqManager>();
                             if (fm != null)
                             {
                                 try
@@ -359,7 +356,7 @@ namespace SS.Core.Modules
                                 }
                                 finally
                                 {
-                                    _mm.ReleaseInterface(ref fm);
+                                    _broker.ReleaseInterface(ref fm);
                                 }
                             }
 
@@ -435,7 +432,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 PlayerActionCallback.Fire(arena, p, action, arena);
             else
-                PlayerActionCallback.Fire(_mm, p, action, arena);
+                PlayerActionCallback.Fire(_broker, p, action, arena);
         }
 
         private void failLoginWith(Player p, AuthCode authCode, string text, string logmsg)

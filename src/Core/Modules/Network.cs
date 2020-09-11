@@ -308,7 +308,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private IConfigManager _configManager;
         private ILogManager _logManager;
@@ -1062,7 +1062,7 @@ namespace SS.Core.Modules
                 if (conn.enc != null)
                 {
                     conn.enc.Void(p);
-                    _mm.ReleaseInterface(ref conn.enc, conn.iEncryptName);
+                    _broker.ReleaseInterface(ref conn.enc, conn.iEncryptName);
                 }
 
                 // log message
@@ -1314,7 +1314,7 @@ namespace SS.Core.Modules
                 // this might be a new connection. make sure it's really a connection init packet
                 if (IsConnectionInitPacket(buffer.Bytes))
                 {
-                    ConnectionInitCallback.Fire(_mm, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    ConnectionInitCallback.Fire(_broker, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
 #if CFG_LOG_STUPID_STUFF
                 else if (buffer.NumBytes > 1)
@@ -1346,7 +1346,7 @@ namespace SS.Core.Modules
                     // if the player is in S_CONNECTED, it means that
                     // the connection init response got dropped on the
                     // way to the client. we have to resend it.
-                    ConnectionInitCallback.Fire(_mm, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    ConnectionInitCallback.Fire(_broker, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
                 else
                 {
@@ -2307,36 +2307,22 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            IConfigManager configManager,
+            ILogManager logManager,
+            IServerTimer serverTimer,
+            IBandwidthLimit bandwidthLimit,
+            ILagCollect lagCollect)
         {
-            typeof(IPlayerData), 
-            typeof(IConfigManager), 
-            typeof(ILogManager), 
-            typeof(IServerTimer), 
-            typeof(IBandwidthLimit), 
-            typeof(ILagCollect), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _serverTimer = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-            _bandwithLimit = interfaceDependencies[typeof(IBandwidthLimit)] as IBandwidthLimit;
-            _lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
-
-            if (_mm == null ||
-                _playerData == null ||
-                _configManager == null ||
-                _logManager == null ||
-                _serverTimer == null ||
-                _bandwithLimit == null ||
-                _lagCollect == null)
-            {
-                return false;
-            }
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
+            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
 
             _connKey = _playerData.AllocatePlayerData<ConnData>();
 
@@ -2379,21 +2365,21 @@ namespace SS.Core.Modules
             // queue more data thread (sends sized data)
             _serverTimer.SetTimer(QueueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
 
-            _iNetworkToken = mm.RegisterInterface<INetwork>(this);
-            _iNetworkClientToken = mm.RegisterInterface<INetworkClient>(this);
-            _iNetworkEncryptionToken = mm.RegisterInterface<INetworkEncryption>(this);
+            _iNetworkToken = broker.RegisterInterface<INetwork>(this);
+            _iNetworkClientToken = broker.RegisterInterface<INetworkClient>(this);
+            _iNetworkEncryptionToken = broker.RegisterInterface<INetworkEncryption>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<INetwork>(ref _iNetworkToken) != 0)
+            if (broker.UnregisterInterface<INetwork>(ref _iNetworkToken) != 0)
                 return false;
 
-            if (mm.UnregisterInterface<INetworkClient>(ref _iNetworkClientToken) != 0)
+            if (broker.UnregisterInterface<INetworkClient>(ref _iNetworkClientToken) != 0)
                 return false;
 
-            if (mm.UnregisterInterface<INetworkEncryption>(ref _iNetworkEncryptionToken) != 0)
+            if (broker.UnregisterInterface<INetworkEncryption>(ref _iNetworkEncryptionToken) != 0)
                 return false;
 
             _serverTimer.ClearTimer(QueueMoreData, null);
@@ -2439,13 +2425,13 @@ namespace SS.Core.Modules
 
         #region IModuleLoaderAware Members
 
-        bool IModuleLoaderAware.PostLoad(ModuleManager mm)
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
             // NOOP
             return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ModuleManager mm)
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
             //
             // Disconnect all clients nicely
@@ -2470,7 +2456,7 @@ namespace SS.Core.Modules
                         if (conn.enc != null)
                         {
                             conn.enc.Void(player);
-                            mm.ReleaseInterface(ref conn.enc, conn.iEncryptName);
+                            broker.ReleaseInterface(ref conn.enc, conn.iEncryptName);
                         }
                     }
                 }
@@ -2536,7 +2522,7 @@ namespace SS.Core.Modules
             p = _playerData.NewPlayer(clientType);
             ConnData conn = p[_connKey] as ConnData;
 
-            IEncrypt enc = (iEncryptName != null) ? _mm.GetInterface<IEncrypt>(iEncryptName) : null;
+            IEncrypt enc = (iEncryptName != null) ? _broker.GetInterface<IEncrypt>(iEncryptName) : null;
             conn.Initalize(enc, iEncryptName, _bandwithLimit.New());
             conn.p = p;
 

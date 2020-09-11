@@ -10,7 +10,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class CommandManager : IModule, ICommandManager
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
@@ -44,33 +44,30 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            ILogManager logManager,
+            ICapabilityManager capabilityManager,
+            IConfigManager configManager)
         {
-            typeof(IPlayerData), 
-            typeof(ILogManager), 
-            typeof(ICapabilityManager), 
-            typeof(IConfigManager), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
             _cmdLookup = new Dictionary<string, LinkedList<CommandData>>(StringComparer.OrdinalIgnoreCase);
             _defaultHandler = null;
 
-            _iCommandManagerToken = _mm.RegisterInterface<ICommandManager>(this);
+            _iCommandManagerToken = _broker.RegisterInterface<ICommandManager>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<ICommandManager>(ref _iCommandManagerToken) != 0)
+            if (_broker.UnregisterInterface<ICommandManager>(ref _iCommandManagerToken) != 0)
                 return false;
 
             return true;

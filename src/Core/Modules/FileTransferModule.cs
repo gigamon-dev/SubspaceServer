@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class FileTransferModule : IModule, IFileTransfer
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private INetwork _network;
         private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
@@ -48,34 +48,31 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(
+            ComponentBroker broker,
+            INetwork net,
+            ILogManager logManager,
+            ICapabilityManager capabilityManager,
+            IPlayerData playerData)
         {
-            typeof(INetwork), 
-            typeof(ILogManager), 
-            typeof(ICapabilityManager), 
-            typeof(IPlayerData), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _network = interfaceDependencies[typeof(INetwork)] as INetwork;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _network = net ?? throw new ArgumentNullException(nameof(net));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _udKey = _playerData.AllocatePlayerData<UploadDataContext>();
-            PlayerActionCallback.Register(_mm, playerAction);
-            _iFileTransferToken = _mm.RegisterInterface<IFileTransfer>(this);
+            PlayerActionCallback.Register(_broker, playerAction);
+            _iFileTransferToken = _broker.RegisterInterface<IFileTransfer>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IFileTransfer>(ref _iFileTransferToken) != 0)
+            if (_broker.UnregisterInterface<IFileTransfer>(ref _iFileTransferToken) != 0)
                 return false;
 
-            PlayerActionCallback.Unregister(_mm, playerAction);
+            PlayerActionCallback.Unregister(_broker, playerAction);
             _playerData.FreePlayerData(_udKey);
 
             return true;

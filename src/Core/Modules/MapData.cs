@@ -16,8 +16,8 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class MapData : IModule, IMapData
     {
-        private ModuleManager _mm;
-        private IServerTimer _mainLoop;
+        private ComponentBroker _broker;
+        private IServerTimer _serverTimer;
         private IConfigManager _configManager;
         private IArenaManagerCore _arenaManager;
         private ILogManager _logManager;
@@ -27,35 +27,32 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(
+            ComponentBroker broker,
+            IServerTimer serverTimer,
+            IConfigManager configManager,
+            IArenaManagerCore arenaManager,
+            ILogManager logManager)
         {
-            typeof(IServerTimer), 
-            typeof(IConfigManager), 
-            typeof(IArenaManagerCore), 
-            typeof(ILogManager), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
 
             _lvlKey = _arenaManager.AllocateArenaData<ExtendedLvl>();
-            ArenaActionCallback.Register(_mm, arenaAction);
-            _iMapDataToken = _mm.RegisterInterface<IMapData>(this);
+            ArenaActionCallback.Register(_broker, arenaAction);
+            _iMapDataToken = _broker.RegisterInterface<IMapData>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IMapData>(ref _iMapDataToken) != 0)
+            if (_broker.UnregisterInterface<IMapData>(ref _iMapDataToken) != 0)
                 return false;
 
-            ArenaActionCallback.Unregister(_mm, arenaAction);
+            ArenaActionCallback.Unregister(_broker, arenaAction);
             _arenaManager.FreeArenaData(_lvlKey);
 
             return true;
@@ -326,7 +323,7 @@ namespace SS.Core.Modules
             if (action == ArenaAction.Create || action == ArenaAction.Destroy)
             {
                 _arenaManager.HoldArena(arena); // the worker thread will unhold
-                _mainLoop.RunInThread<Arena>(arenaActionWork, arena);
+                _serverTimer.RunInThread<Arena>(arenaActionWork, arena);
             }
         }
 

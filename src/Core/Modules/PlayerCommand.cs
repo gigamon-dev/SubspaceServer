@@ -12,7 +12,8 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class PlayerCommand : IModule
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
+        private IModuleManager _mm;
         private IPlayerData _playerData;
         private IChat _chat;
         private ICommandManager _commandManager;
@@ -24,22 +25,20 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(
+            ComponentBroker broker,
+            IModuleManager mm,
+            IPlayerData playerData,
+            IChat chat,
+            ICommandManager commandManager,
+            ICapabilityManager capabilityManager)
         {
-            typeof(IPlayerData), 
-            typeof(IChat), 
-            typeof(ICommandManager),
-            typeof(ICapabilityManager)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _chat = interfaceDependencies[typeof(IChat)] as IChat;
-            _commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
-            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
 
             _startedAt = DateTime.Now;
 
@@ -65,7 +64,7 @@ Displays version information about the server. It might also print out some info
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
             return true;
         }

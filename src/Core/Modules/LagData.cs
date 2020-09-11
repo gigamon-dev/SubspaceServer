@@ -18,7 +18,7 @@ namespace SS.Core.Modules
         private const int BucketWidth = 20;
 
 
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private InterfaceRegistrationToken _iLagCollectToken;
         private InterfaceRegistrationToken _iLagQueryToken;
@@ -104,35 +104,30 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(ComponentBroker broker, IPlayerData playerData)
         {
-            typeof(IPlayerData), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _lagkey = _playerData.AllocatePlayerData<PlayerLagStats>();
 
-            PlayerActionCallback.Register(_mm, playerAction);
+            PlayerActionCallback.Register(_broker, playerAction);
 
-            _iLagCollectToken = _mm.RegisterInterface<ILagCollect>(this);
-            _iLagQueryToken = _mm.RegisterInterface<ILagQuery>(this);
+            _iLagCollectToken = _broker.RegisterInterface<ILagCollect>(this);
+            _iLagQueryToken = _broker.RegisterInterface<ILagQuery>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<ILagCollect>(ref _iLagCollectToken) != 0)
+            if (_broker.UnregisterInterface<ILagCollect>(ref _iLagCollectToken) != 0)
                 return false;
 
-            if (_mm.UnregisterInterface<ILagQuery>(ref _iLagQueryToken) != 0)
+            if (_broker.UnregisterInterface<ILagQuery>(ref _iLagQueryToken) != 0)
                 return false;
 
-            PlayerActionCallback.Unregister(_mm, playerAction);
+            PlayerActionCallback.Unregister(_broker, playerAction);
 
             _playerData.FreePlayerData(_lagkey);
 

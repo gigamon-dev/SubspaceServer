@@ -254,17 +254,15 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = null;
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
+        public bool Load(ComponentBroker broker)
         {
-            _iServerTimerToken = mm.RegisterInterface<IServerTimer>(this);
-            _iMainloopToken = mm.RegisterInterface<IMainloop>(this);
-            _iMainloopController = mm.RegisterInterface<IMainloopController>(this);
+            _iServerTimerToken = broker.RegisterInterface<IServerTimer>(this);
+            _iMainloopToken = broker.RegisterInterface<IMainloop>(this);
+            _iMainloopController = broker.RegisterInterface<IMainloopController>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
             // Make sure all timers are stopped.
             // There shouldn't be any left if all modules were correctly written to stop their timers when unloading.
@@ -283,13 +281,13 @@ namespace SS.Core.Modules
                 _timerList.Clear();
             }
 
-            if (mm.UnregisterInterface<IMainloopController>(ref _iMainloopController) != 0)
+            if (broker.UnregisterInterface<IMainloopController>(ref _iMainloopController) != 0)
                 return false;
 
-            if (mm.UnregisterInterface<IMainloop>(ref _iMainloopToken) != 0)
+            if (broker.UnregisterInterface<IMainloop>(ref _iMainloopToken) != 0)
                 return false;
 
-            if (mm.UnregisterInterface<IServerTimer>(ref _iServerTimerToken) != 0)
+            if (broker.UnregisterInterface<IServerTimer>(ref _iServerTimerToken) != 0)
                 return false;
 
             return true;

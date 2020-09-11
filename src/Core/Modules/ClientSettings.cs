@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class ClientSettings : IModule, IClientSettings
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private INetwork _net;
         private ILogManager _logManager;
@@ -45,41 +45,38 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            INetwork net,
+            ILogManager logManager,
+            IConfigManager configManager,
+            IArenaManagerCore arenaManager)
         {
-            typeof(IPlayerData), 
-            typeof(INetwork), 
-            typeof(ILogManager), 
-            typeof(IConfigManager), 
-            typeof(IArenaManagerCore), 
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
 
             _adkey = _arenaManager.AllocateArenaData<ArenaClientSettingsData>();
             _pdkey = _playerData.AllocatePlayerData<PlayerClientSettingsData>();
 
-            ArenaActionCallback.Register(_mm, arenaAction);
-            PlayerActionCallback.Register(_mm, playerAction);
+            ArenaActionCallback.Register(_broker, arenaAction);
+            PlayerActionCallback.Register(_broker, playerAction);
 
-            _iClientSettingsToken = _mm.RegisterInterface<IClientSettings>(this);
+            _iClientSettingsToken = _broker.RegisterInterface<IClientSettings>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IClientSettings>(ref _iClientSettingsToken) != 0)
+            if (_broker.UnregisterInterface<IClientSettings>(ref _iClientSettingsToken) != 0)
                 return false;
 
-            ArenaActionCallback.Unregister(_mm, arenaAction);
-            PlayerActionCallback.Unregister(_mm, playerAction);
+            ArenaActionCallback.Unregister(_broker, arenaAction);
+            PlayerActionCallback.Unregister(_broker, playerAction);
 
             _arenaManager.FreeArenaData(_adkey);
             _playerData.FreePlayerData(_pdkey);

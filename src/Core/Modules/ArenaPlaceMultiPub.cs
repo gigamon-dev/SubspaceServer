@@ -19,27 +19,21 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(ComponentBroker broker, IConfigManager configManager, IArenaManagerCore arenaManager)
         {
-            typeof(IConfigManager), 
-            typeof(IArenaManagerCore)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
 
             loadPubNames();
 
-            _iArenaPlaceToken = mm.RegisterInterface<IArenaPlace>(this);
+            _iArenaPlaceToken = broker.RegisterInterface<IArenaPlace>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<IArenaPlace>(ref _iArenaPlaceToken) != 0)
+            if (broker.UnregisterInterface<IArenaPlace>(ref _iArenaPlaceToken) != 0)
                 return false;
 
             return true;

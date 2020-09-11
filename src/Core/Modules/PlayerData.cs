@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class PlayerData : IModule, IPlayerData
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private InterfaceRegistrationToken _iPlayerDataToken;
 
         /// <summary>
@@ -77,21 +77,16 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(ComponentBroker broker)
         {
-            typeof(IConfigManager)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _iPlayerDataToken = mm.RegisterInterface<IPlayerData>(this);
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _iPlayerDataToken = broker.RegisterInterface<IPlayerData>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<IPlayerData>(ref _iPlayerDataToken) != 0)
+            if (broker.UnregisterInterface<IPlayerData>(ref _iPlayerDataToken) != 0)
                 return false;
 
             return true;
@@ -199,14 +194,14 @@ namespace SS.Core.Modules
                 WriteUnlock();
             }
 
-            NewPlayerCallback.Fire(_mm, player, true);
+            NewPlayerCallback.Fire(_broker, player, true);
 
             return player;
         }
 
         void IPlayerData.FreePlayer(Player player)
         {
-            NewPlayerCallback.Fire(_mm, player, false);
+            NewPlayerCallback.Fire(_broker, player, false);
 
             WriteLock();
 
@@ -245,7 +240,7 @@ namespace SS.Core.Modules
                 // this will set state to S_LEAVING_ARENA, if it was anywhere above S_LOGGEDIN
                 if (player.Arena != null)
                 {
-                    IArenaManagerCore aman = _mm.GetInterface<IArenaManagerCore>();
+                    IArenaManagerCore aman = _broker.GetInterface<IArenaManagerCore>();
                     if (aman != null)
                     {
                         try
@@ -254,7 +249,7 @@ namespace SS.Core.Modules
                         }
                         finally
                         {
-                            _mm.ReleaseInterface(ref aman);
+                            _broker.ReleaseInterface(ref aman);
                         }
                     }
                 }

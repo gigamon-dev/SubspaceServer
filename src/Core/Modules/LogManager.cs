@@ -15,7 +15,7 @@ namespace SS.Core.Modules
         private MessagePassingQueue<string> _logQueue = new MessagePassingQueue<string>();
         private Thread _loggingThread;
 
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private InterfaceRegistrationToken iLogManagerToken;
 
         private ReaderWriterLock _moduleUnloadLock = new ReaderWriterLock(); // using rwlock in case we ever have multiple logging threads
@@ -32,24 +32,22 @@ namespace SS.Core.Modules
                 if (message == null)
                     return;
 
-                LogCallback.Fire(_mm, message);
+                LogCallback.Fire(_broker, message);
             }
         }
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = null;        
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
+        public bool Load(ComponentBroker broker)
         {
-            _mm = mm;
-            iLogManagerToken = mm.RegisterInterface<ILogManager>(this);
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (mm.UnregisterInterface<ILogManager>(ref iLogManagerToken) != 0)
+            if (broker.UnregisterInterface<ILogManager>(ref iLogManagerToken) != 0)
                 return false;
 
             _logQueue.Enqueue(null);
@@ -61,22 +59,22 @@ namespace SS.Core.Modules
 
         #region IModuleLoaderAware Members
 
-        bool IModuleLoaderAware.PostLoad(ModuleManager mm)
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            _configManager = mm.GetInterface<IConfigManager>();
+            _configManager = broker.GetInterface<IConfigManager>();
             _loggingThread = new Thread(new ThreadStart(loggingThread));
             _loggingThread.Name = "LogManager";
             _loggingThread.Start();
             return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ModuleManager mm)
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
             _moduleUnloadLock.AcquireWriterLock(Timeout.Infinite);
 
             try
             {
-                mm.ReleaseInterface(ref _configManager);
+                broker.ReleaseInterface(ref _configManager);
                 _configManager = null;
 
                 return true;

@@ -9,24 +9,24 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class ModuleLoader : IModule, IModuleLoader
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
+        private IModuleManager _mm;
         private InterfaceRegistrationToken _iModuleLoaderToken;
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = null;
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
+        public bool Load(ComponentBroker broker, IModuleManager mm)
         {
-            _mm = mm;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
 
-            _iModuleLoaderToken = _mm.RegisterInterface<IModuleLoader>(this);
+            _iModuleLoaderToken = _broker.RegisterInterface<IModuleLoader>(this);
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IModuleLoader>(ref _iModuleLoaderToken) != 0)
+            if (_broker.UnregisterInterface<IModuleLoader>(ref _iModuleLoaderToken) != 0)
                 return false;
 
             return true;
@@ -36,7 +36,7 @@ namespace SS.Core.Modules
 
         private void WriteLog(LogLevel level, string message)
         {
-            ILogManager _logManager = _mm.GetInterface<ILogManager>();
+            ILogManager _logManager = _broker.GetInterface<ILogManager>();
 
             if (_logManager != null)
             {
@@ -46,7 +46,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface(ref _logManager);
+                    _broker.ReleaseInterface(ref _logManager);
                 }
             }
             else

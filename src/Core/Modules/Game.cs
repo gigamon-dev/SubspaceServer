@@ -13,10 +13,10 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Game : IModule, IGame
     {
-        private ModuleManager _mm;
+        private ComponentBroker _broker;
         private IPlayerData _playerData;
         private IConfigManager _configManager;
-        private IServerTimer _mainLoop;
+        private IServerTimer _serverTimer;
         private ILogManager _logManager;
         private INetwork _net;
         //private IChatNet _chatnet;
@@ -167,39 +167,36 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[] 
+        public bool Load(
+            ComponentBroker broker,
+            IPlayerData playerData,
+            IConfigManager configManager,
+            IServerTimer serverTimer,
+            ILogManager logManager,
+            INetwork net,
+            //IChatNet chatnet,
+            IArenaManagerCore arenaManager,
+            ICapabilityManager capabilityManager,
+            IMapData mapData,
+            ILagCollect lagCollect,
+            IChat chat,
+            ICommandManager commandManager)
+            //IPersist persist)
         {
-            typeof(IPlayerData), 
-            typeof(IConfigManager),
-            typeof(IServerTimer),
-            typeof(ILogManager),
-            typeof(INetwork),
-            //typeof(IChatNet),
-            typeof(IArenaManagerCore),
-            typeof(ICapabilityManager),
-            typeof(IMapData),
-            typeof(ILagCollect),
-            typeof(IChat),
-            typeof(ICommandManager),
-            //typeof(IPersist)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
-            //_chatnet = interfaceDependencies[typeof(IChatNet)] as IChatNet;
-            _arenaManager = interfaceDependencies[typeof(IArenaManagerCore)] as IArenaManagerCore;
-            _capabilityManager = interfaceDependencies[typeof(ICapabilityManager)] as ICapabilityManager;
-            _mapData = interfaceDependencies[typeof(IMapData)] as IMapData;
-            _lagCollect = interfaceDependencies[typeof(ILagCollect)] as ILagCollect;
-            _chat = interfaceDependencies[typeof(IChat)] as IChat;
-            _commandManager = interfaceDependencies[typeof(ICommandManager)] as ICommandManager;
-            //_persist = interfaceDependencies[typeof(IPersist)] as IPersist;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            //_chatnet = chatnet ?? throw new ArgumentNullException(nameof(chatnet));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            //_persist = persist ?? throw new ArgumentNullException(nameof(persist));
 
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
@@ -231,9 +228,9 @@ namespace SS.Core.Modules
             wpnRange[(int)WeaponCodes.BounceBullet] = cfg_bulletpix;
             wpnRange[(int)WeaponCodes.Thor] = 30000;
 
-            ArenaActionCallback.Register(_mm, arenaAction);
-            PlayerActionCallback.Register(_mm, playerAction);
-            NewPlayerCallback.Register(_mm, newPlayer);
+            ArenaActionCallback.Register(_broker, arenaAction);
+            PlayerActionCallback.Register(_broker, playerAction);
+            NewPlayerCallback.Register(_broker, newPlayer);
 
             _net.AddPacket((int)C2SPacketType.Position, new PacketDelegate(recievedPositionPacket));
             _net.AddPacket((int)C2SPacketType.SpecRequest, new PacketDelegate(recievedSpecRequestPacket));
@@ -253,14 +250,14 @@ namespace SS.Core.Modules
                 _commandManager.AddCommand("energy", command_energy, null, commandEnergyHelpText);
             }
 
-            _iGameToken = _mm.RegisterInterface<IGame>(this);
+            _iGameToken = _broker.RegisterInterface<IGame>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IGame>(ref _iGameToken) != 0)
+            if (_broker.UnregisterInterface<IGame>(ref _iGameToken) != 0)
                 return false;
 
             //if(_chatnet != null)
@@ -280,9 +277,9 @@ namespace SS.Core.Modules
             _net.RemovePacket((int)C2SPacketType.AttachTo, new PacketDelegate(recievedAttachToPacket));
             _net.RemovePacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(recievedTurretKickoffPacket));
 
-            ArenaActionCallback.Unregister(_mm, arenaAction);
-            PlayerActionCallback.Unregister(_mm, playerAction);
-            NewPlayerCallback.Unregister(_mm, newPlayer);
+            ArenaActionCallback.Unregister(_broker, arenaAction);
+            PlayerActionCallback.Unregister(_broker, playerAction);
+            NewPlayerCallback.Unregister(_broker, newPlayer);
 
             //if(_persist != null)
 
@@ -1137,7 +1134,7 @@ namespace SS.Core.Modules
             {
                 p.Flags.SentPositionPacket = true;
                 //_mainLoop.SetTimer<Player>(new TimerDelegate<Player>(runEnterGameCB), 0, 0, p, null);
-                _mainLoop.RunInThread<Player>(new WorkerDelegate<Player>(runEnterGameCB), p);
+                _serverTimer.RunInThread<Player>(new WorkerDelegate<Player>(runEnterGameCB), p);
             }
         }
 
@@ -1149,7 +1146,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 SafeZoneCallback.Fire(arena, p, x, y, status);
             else
-                SafeZoneCallback.Fire(_mm, p, x, y, status);
+                SafeZoneCallback.Fire(_broker, p, x, y, status);
         }
 
         private void runEnterGameCB(Player p)
@@ -1166,7 +1163,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 PlayerActionCallback.Fire(arena, p, action, arena);
             else
-                PlayerActionCallback.Fire(_mm, p, action, arena);
+                PlayerActionCallback.Fire(_broker, p, action, arena);
         }
 
         private void updateRegions(Player p, short x, short y)
@@ -1333,7 +1330,7 @@ namespace SS.Core.Modules
             }
 
             short freq = p.Freq;
-            IFreqManager fm = _mm.GetInterface<IFreqManager>();
+            IFreqManager fm = _broker.GetInterface<IFreqManager>();
             if (fm != null)
             {
                 try
@@ -1342,7 +1339,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface(ref fm);
+                    _broker.ReleaseInterface(ref fm);
                 }
             }
 
@@ -1397,7 +1394,7 @@ namespace SS.Core.Modules
             }
 
             ShipType ship = p.Ship;
-            IFreqManager fm = _mm.GetInterface<IFreqManager>();
+            IFreqManager fm = _broker.GetInterface<IFreqManager>();
             if(fm != null)
             {
                 try
@@ -1406,7 +1403,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _mm.ReleaseInterface(ref fm);
+                    _broker.ReleaseInterface(ref fm);
                 }
             }
 
@@ -1492,7 +1489,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 ShipChangeCallback.Fire(arena, p, ship, freq);
             else
-                ShipChangeCallback.Fire(_mm, p, ship, freq);
+                ShipChangeCallback.Fire(_broker, p, ship, freq);
         }
 
         private void setFreq(Player p, short freq)
@@ -1665,7 +1662,7 @@ namespace SS.Core.Modules
             // record the kill points on our side
             if (pts != 0)
             {
-                IStats stats = _mm.GetInterface<IStats>();
+                IStats stats = _broker.GetInterface<IStats>();
                 if (stats != null)
                 {
                     try
@@ -1675,7 +1672,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _mm.ReleaseInterface(ref stats);
+                        _broker.ReleaseInterface(ref stats);
                     }
                 }
             }
@@ -1796,7 +1793,7 @@ namespace SS.Core.Modules
             if(arena != null)
                 GreenCallback.Fire(arena, p, x, y, prize);
             else
-                GreenCallback.Fire(_mm, p, x, y, prize);
+                GreenCallback.Fire(_broker, p, x, y, prize);
         }
 
         private void recievedAttachToPacket(Player p, byte[] data, int len)

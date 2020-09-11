@@ -94,8 +94,6 @@ namespace SS.Core
 
     public class Arena : ComponentBroker, IArenaTarget
     {
-        private ModuleManager _mm;
-
         private const string PUBLIC = "(public)";
         private const string GLOBAL = "(global)";
 
@@ -148,10 +146,8 @@ namespace SS.Core
         /// </summary>
         Dictionary<int, object> _arenaExtraData = new Dictionary<int,object>();
 
-        public Arena(ModuleManager mm, string name) : base(mm)
+        public Arena(ComponentBroker parent, string name) : base(parent)
         {
-            _mm = mm;
-
             Name = name;
             BaseName = name.TrimEnd(new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
             if (string.IsNullOrEmpty(BaseName))

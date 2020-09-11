@@ -27,22 +27,19 @@ namespace SS.Core.Modules
         /// </summary>
         private Dictionary<Type, List<Arena>> _attachedModules = new Dictionary<Type, List<Arena>>();
 
-        private ModuleManager _mm;
-        
-        // other modules
+        private ComponentBroker _broker;
+        private IModuleManager _mm;
         private ILogManager _logManager;
         private IPlayerData _playerData;
         private INetwork _net;
         private IConfigManager _configManager;
-        private IServerTimer _mainLoop;
+        private IServerTimer _serverTimer;
         //private IPersist _persist;
         private InterfaceRegistrationToken _iArenaManagerCoreToken;
 
         // for managing per player data
         private ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
         private SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
-
-        //public event ArenaActionEventHandler ArenaActionEvent;
 
         private class SpawnLoc
         {
@@ -88,10 +85,6 @@ namespace SS.Core.Modules
         private static readonly byte[] _brickClearBytes = new byte[1] { (byte)Packets.S2CPacketType.Brick };
         private static readonly byte[] _enteringArenaBytes = new byte[1] { (byte)Packets.S2CPacketType.EnteringArena };
 
-        public ArenaManager()
-        {
-        }
-
         /// <summary>
         /// all arenas
         /// </summary>
@@ -106,12 +99,22 @@ namespace SS.Core.Modules
 
         #region Locks
 
-        public void Lock()
+        void IArenaManagerCore.Lock()
+        {
+            Lock();
+        }
+
+        private void Lock()
         {
             _arenaLock.AcquireReaderLock(Timeout.Infinite);
         }
-        
-        public void Unlock()
+
+        void IArenaManagerCore.Unlock()
+        {
+            Unlock();
+        }
+
+        private void Unlock()
         {
             _arenaLock.ReleaseReaderLock();
         }
@@ -158,7 +161,7 @@ namespace SS.Core.Modules
                 }
                 
                 // send settings
-                IClientSettings clientset = _mm.GetInterface<IClientSettings>();
+                IClientSettings clientset = _broker.GetInterface<IClientSettings>();
                 if (clientset != null)
                 {
                     try
@@ -167,7 +170,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _mm.ReleaseInterface(ref clientset);
+                        _broker.ReleaseInterface(ref clientset);
                     }
                 }
             }
@@ -202,7 +205,7 @@ namespace SS.Core.Modules
                 // send to self
                 _net.SendToOne(player, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
 
-                IMapNewsDownload mapNewDownload = _mm.GetInterface<IMapNewsDownload>();
+                IMapNewsDownload mapNewDownload = _broker.GetInterface<IMapNewsDownload>();
                 if (mapNewDownload != null)
                 {
                     try
@@ -211,7 +214,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _mm.ReleaseInterface(ref mapNewDownload);
+                        _broker.ReleaseInterface(ref mapNewDownload);
                     }
                 }
 
@@ -694,7 +697,7 @@ namespace SS.Core.Modules
             }
         }
 
-        public void HoldArena(Arena arena)
+        void IArenaManagerCore.HoldArena(Arena arena)
         {
             writeLock();
             try
@@ -722,7 +725,7 @@ namespace SS.Core.Modules
             }
         }
 
-        public void UnholdArena(Arena arena)
+        void IArenaManagerCore.UnholdArena(Arena arena)
         {
             writeLock();
             try
@@ -835,7 +838,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 ArenaActionCallback.Fire(arena, arena, action);
             else
-                ArenaActionCallback.Fire(_mm, arena, action);
+                ArenaActionCallback.Fire(_broker, arena, action);
         }
 
         private bool processArenaStates()
@@ -1002,7 +1005,7 @@ namespace SS.Core.Modules
         // call with writeLock held
         private Arena createArena(string name)
         {
-            Arena arena = new Arena(_mm, name);
+            Arena arena = new Arena(_broker, name);
 
             _perArenaDataLock.AcquireReaderLock(Timeout.Infinite);
             try
@@ -1092,28 +1095,23 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        Type[] IModule.InterfaceDependencies { get; } = new Type[]
+        public bool Load(
+            ComponentBroker broker,
+            IModuleManager mm,
+            ILogManager log,
+            IPlayerData playerData,
+            INetwork net,
+            IConfigManager configManager,
+            IServerTimer serverTimer)
         {
-            typeof(ILogManager),
-            typeof(IPlayerData),
-            typeof(INetwork),
-            typeof(IConfigManager),
-            typeof(IServerTimer)
-        };
-
-        bool IModule.Load(ModuleManager mm, IReadOnlyDictionary<Type, IComponentInterface> interfaceDependencies)
-        {
-            _mm = mm;
-
-            _logManager = interfaceDependencies[typeof(ILogManager)] as ILogManager;
-            _playerData = interfaceDependencies[typeof(IPlayerData)] as IPlayerData;
-            _net = interfaceDependencies[typeof(INetwork)] as INetwork;
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
+            _logManager = log ?? throw new ArgumentNullException(nameof(log));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
             //_chatnet = 
-            _configManager = interfaceDependencies[typeof(IConfigManager)] as IConfigManager;
-            _mainLoop = interfaceDependencies[typeof(IServerTimer)] as IServerTimer;
-
-            if (_playerData == null || _configManager == null || _mainLoop == null)
-                return false;
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
             _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
 
@@ -1128,19 +1126,19 @@ namespace SS.Core.Modules
             //{
             //}
 
-            _mainLoop.SetTimer(processArenaStates, 100, 100, null);
-            _mainLoop.SetTimer(reapArenas, 1700, 1700, null);
+            _serverTimer.SetTimer(processArenaStates, 100, 100, null);
+            _serverTimer.SetTimer(reapArenas, 1700, 1700, null);
 
-            _iArenaManagerCoreToken = _mm.RegisterInterface<IArenaManagerCore>(this);
+            _iArenaManagerCoreToken = _broker.RegisterInterface<IArenaManagerCore>(this);
 
             //_logManager.Log(LogLevel.Drivel, "ArenaManager.Load");
             //_logManager.LogP(LogLevel.Warn, "ArenaManager", null, "testing 123");
             return true;
         }
 
-        bool IModule.Unload(ModuleManager mm)
+        bool IModule.Unload(ComponentBroker broker)
         {
-            if (_mm.UnregisterInterface<IArenaManagerCore>(ref _iArenaManagerCoreToken) != 0)
+            if (_broker.UnregisterInterface<IArenaManagerCore>(ref _iArenaManagerCoreToken) != 0)
                 return false;
 
             _net.RemovePacket((int)Packets.C2SPacketType.GotoArena, packetGotoArena);
@@ -1151,8 +1149,8 @@ namespace SS.Core.Modules
             //{
             //}
 
-            _mainLoop.ClearTimer(processArenaStates, null);
-            _mainLoop.ClearTimer(reapArenas, null);
+            _serverTimer.ClearTimer(processArenaStates, null);
+            _serverTimer.ClearTimer(reapArenas, null);
 
             _playerData.FreePlayerData(_spawnkey);
 
@@ -1169,13 +1167,13 @@ namespace SS.Core.Modules
 
         #region IModuleLoaderAware Members
 
-        bool IModuleLoaderAware.PostLoad(ModuleManager mm)
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
             //_persist = mm.GetInterface<IPersist>();
             return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ModuleManager mm)
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
             //mm.ReleaseInterface<IPersist>();
             return true;
@@ -1224,7 +1222,7 @@ namespace SS.Core.Modules
             }
             else if (go.ArenaType == -2 || go.ArenaType == -1)
             {
-                IArenaPlace ap = _mm.GetInterface<IArenaPlace>();
+                IArenaPlace ap = _broker.GetInterface<IArenaPlace>();
                 if (ap != null)
                 {
                     try
@@ -1236,7 +1234,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _mm.ReleaseInterface(ref ap);
+                        _broker.ReleaseInterface(ref ap);
                     }
                 }
                 else
