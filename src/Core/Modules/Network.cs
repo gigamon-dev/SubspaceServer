@@ -2840,6 +2840,14 @@ namespace SS.Core.Modules
             }
         }
 
+        NetStats INetwork.GetStats()
+        {
+            _globalStats.buffercount = Convert.ToUInt64(_bufferPool.ObjectsCreated);
+            _globalStats.buffersused = _globalStats.buffercount - Convert.ToUInt64(_bufferPool.ObjectsAvailable);
+
+            return _globalStats;
+        }
+
         IReadOnlyList<ListenData> INetwork.Listening => _readOnlyListenData;
 
         #endregion

@@ -28,6 +28,17 @@ namespace SS.Utilities
             get { return _objectsCreated; }
         }
 
+        public int ObjectsAvailable
+        {
+            get
+            {
+                lock (_availableList)
+                {
+                    return _availableList.Count;
+                }
+            }
+        }
+
         public Pool()
         {
         }

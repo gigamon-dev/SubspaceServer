@@ -20,6 +20,7 @@ namespace SS.Core.Modules
         //private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
         //private IConfigManager _configManager;
+        private INetwork _net;
 
         private DateTime _startedAt;
 
@@ -31,7 +32,8 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             IChat chat,
             ICommandManager commandManager,
-            ICapabilityManager capabilityManager)
+            ICapabilityManager capabilityManager,
+            INetwork net)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
@@ -39,6 +41,7 @@ namespace SS.Core.Modules
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
 
             _startedAt = DateTime.Now;
 
@@ -55,6 +58,7 @@ Args: none
 Displays version information about the server. It might also print out some information about the machine that it's running on.");
 
             _commandManager.AddCommand("sheep", command_sheep, null, null);
+            _commandManager.AddCommand("netstats", Command_netstats, null, null);
 
             _commandManager.AddCommand("lsmod", Command_lsmod, null, null);
             _commandManager.AddCommand("modinfo", Command_modinfo, null, null);
@@ -66,6 +70,8 @@ Displays version information about the server. It might also print out some info
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            // TODO: 
+            //_commandManager.RemoveCommand()
             return true;
         }
 
@@ -115,6 +121,39 @@ Displays version information about the server. It might also print out some info
                 _chat.SendSoundMessage(p, ChatSound.Sheep, sheepMessage);
             else
                 _chat.SendSoundMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
+        }
+
+        private void Command_netstats(string command, string parameters, Player p, ITarget target)
+        {
+            ulong secs = Convert.ToUInt64((DateTime.Now - _startedAt).TotalSeconds);
+
+            NetStats stats = _net.GetStats();
+            _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}", 
+                stats.pcountpings, stats.pktsent, stats.pktrecvd);
+
+            ulong bwout = (stats.bytesent + stats.pktsent * 28) / secs;
+            ulong bwin = (stats.byterecvd + stats.pktrecvd * 28) / secs;
+            _chat.SendMessage(p, "netstats: bw out={0}  bw in={1}", bwout, bwin);
+
+            _chat.SendMessage(p, "netstats: buffers used={0}/{1} ({2:p})",
+                stats.buffersused, stats.buffercount, (double)stats.buffersused / (double)stats.buffercount);
+
+            _chat.SendMessage(p, "netstats: grouped={0}/{1}/{2}/{3}/{4}/{5}/{6}/{7}",
+                stats.grouped_stats[0],
+                stats.grouped_stats[1],
+                stats.grouped_stats[2],
+                stats.grouped_stats[3],
+                stats.grouped_stats[4],
+                stats.grouped_stats[5],
+                stats.grouped_stats[6],
+                stats.grouped_stats[7]);
+
+            _chat.SendMessage(p, "netstats: pri={0}/{1}/{2}/{3}/{4}",
+                stats.pri_stats[0],
+                stats.pri_stats[1],
+                stats.pri_stats[2],
+                stats.pri_stats[3],
+                stats.pri_stats[4]);
         }
 
         private void Command_lsmod(string command, string parameters, Player p, ITarget target)

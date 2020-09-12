@@ -134,6 +134,12 @@ namespace SS.Core.ComponentInterfaces
         void RemoveSizedPacket(int pktype, SizedPacketDelegate func);
 
         /// <summary>
+        /// Gets statistics about the Network module.
+        /// </summary>
+        /// <returns>The stats.</returns>
+        NetStats GetStats();
+
+        /// <summary>
         /// Collection of information about sockets that the Network module is listening on.
         /// Do not modify data in any of these lists.
         /// </summary>
