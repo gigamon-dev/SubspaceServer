@@ -344,6 +344,11 @@ namespace SS.Core.Modules
             /// how often to refresh the ping packet data
             /// </summary>
             public int pingrefreshtime;
+
+            /// <summary>
+            /// display total or playing in simple ping responses
+            /// </summary>
+            public int simplepingpopulationmode;
         }
 
         private readonly Config _config = new Config();
@@ -370,7 +375,10 @@ namespace SS.Core.Modules
             {
                 _network = network;
                 _buf = buf;
-                _remainingSegment = new ArraySegment<byte>(_buf, 0, _buf.Length);
+
+                _buf[0] = 0x00;
+                _buf[1] = 0x0E;
+                _remainingSegment = new ArraySegment<byte>(_buf, 2, Math.Min(_buf.Length, Constants.MaxPacket) - 2);
                 _count = 0;
             }
 
@@ -378,7 +386,7 @@ namespace SS.Core.Modules
             {
                 _buf[0] = 0x00;
                 _buf[1] = 0x0E;
-                _remainingSegment = new ArraySegment<byte>(_buf, 2, _buf.Length - 2);
+                _remainingSegment = new ArraySegment<byte>(_buf, 2, Math.Min(_buf.Length, Constants.MaxPacket) - 2);
                 _count = 0;
             }
 
@@ -396,8 +404,9 @@ namespace SS.Core.Modules
                     _network.SendRaw(conn, _buf, _remainingSegment.Offset);
                 }
 
-                // TODO: record stats
-                //if(count > 0 && count < _config.n
+                // record stats about grouped packets
+                if (_count > 0)
+                    _network._globalStats.grouped_stats[Math.Min((_count - 1), _network._globalStats.grouped_stats.Length - 1)]++;
 
                 Init();
             }
@@ -409,8 +418,8 @@ namespace SS.Core.Modules
 #else
                 if (buffer.NumBytes <= 255) // 255 must be the size limit a grouped packet can store (max 1 byte can represent for the length)
                 {
-                    if(_remainingSegment.Count < (buffer.NumBytes + 1)) // +1 is for the byte that specifies the length
-                    //if (_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes)) // i dont know why asss does the -10
+                    //if (_remainingSegment.Count > (Constants.MaxPacket - 10 - buffer.NumBytes)) // I don't know why asss does the -10
+                    if (_remainingSegment.Count < (buffer.NumBytes + 1)) // +1 is for the byte that specifies the length
                         Flush(conn); // not enough room in the grouped packet, send it out first to start with a fresh grouped packet
 
                     _remainingSegment.Array[_remainingSegment.Offset] = (byte)buffer.NumBytes;
@@ -599,6 +608,10 @@ namespace SS.Core.Modules
 
         private bool InitializeSockets()
         {
+            //
+            // Listen sockets (pairs of game and ping sockets)
+            //
+
             for (int x = 0; x < 10; x++)
             {
                 ListenData listenData = CreateListenDataSockets(x);
@@ -615,9 +628,15 @@ namespace SS.Core.Modules
                 _logManager.LogM(LogLevel.Drivel, nameof(Network), "listening on {0}", listenData.GameSocket.LocalEndPoint);
             }
 
+            //
+            // Client socket (for communicating with the biller and directory server)
+            //
+
+            int bindPort = _configManager.GetInt(_configManager.Global, "Net", "InternalClientPort", 0);
+
             try
             {
-                _clientSocket = CreateSocket(0, IPAddress.Any);
+                _clientSocket = CreateSocket(bindPort, IPAddress.Any);
             }
             catch (Exception ex)
             {
@@ -1024,11 +1043,11 @@ namespace SS.Core.Modules
                     buf.Bytes[2] = 0x00;
                     buf.Bytes[3] = 0x00;
                     buf.Bytes[4] = 0x00;
-                    int len = Encoding.ASCII.GetBytes(message, 0, message.Length, buf.Bytes, 5);
+                    buf.NumBytes = 5 + Encoding.ASCII.GetBytes(message, 0, message.Length, buf.Bytes, 5);
 
                     lock (conn.olmtx)
                     {
-                        SendRaw(conn, buf.Bytes, len + 5);
+                        SendRaw(conn, buf.Bytes, buf.NumBytes);
                     }
 
                     _logManager.LogM(LogLevel.Info, nameof(Network), "[{0}] [pid={1}] player kicked for {2}", p.Name, p.Id, reason);
@@ -1180,7 +1199,6 @@ namespace SS.Core.Modules
             using (SubspaceBuffer gpb = _bufferPool.Get())
             {
                 GroupedPacket gp = new GroupedPacket(this, gpb.Bytes);
-                gp.Init();
 
                 // process highest priority first
                 for (int pri = (int)BandwidthPriorities.NumPriorities - 1; pri >= 0; pri--)
@@ -1335,6 +1353,11 @@ namespace SS.Core.Modules
                 return;
             }
 
+            if (buffer.NumBytes > Constants.MaxPacket)
+            {
+                buffer.NumBytes = Constants.MaxPacket;
+            }
+
             ConnData conn = p[_connKey] as ConnData;
 
             if (IsConnectionInitPacket(buffer.Bytes))
@@ -1343,7 +1366,7 @@ namespace SS.Core.Modules
 		        // player we've seen before. there are a few scenarios:
                 if (p.Status == PlayerState.Connected)
                 {
-                    // if the player is in S_CONNECTED, it means that
+                    // if the player is in PlayerState.Connected, it means that
                     // the connection init response got dropped on the
                     // way to the client. we have to resend it.
                     ConnectionInitCallback.Fire(_broker, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
@@ -1929,14 +1952,11 @@ namespace SS.Core.Modules
                 TimeSyncC2SPacket cts = new TimeSyncC2SPacket(buffer.Bytes);
                 using (SubspaceBuffer b = _bufferPool.Get())
                 {
-                    TimeSyncS2CPacket ts = new TimeSyncS2CPacket(b.Bytes);
-                    ts.Initialize();
-                    //ts.T1 = 0x00;
-                    //ts.T2 = 0x06;
                     uint clientTime = cts.Time;
-                    uint serverTime = ServerTick.Now; // asss does this one in the lock, but i rather lock as short as possbile
-                    ts.ClientTime = clientTime;
-                    ts.ServerTime = serverTime;
+                    uint serverTime = ServerTick.Now;
+
+                    TimeSyncS2CPacket ts = new TimeSyncS2CPacket(b.Bytes);
+                    ts.Initialize(clientTime, serverTime);
 
                     lock (conn.olmtx)
                     {
@@ -2336,6 +2356,7 @@ namespace SS.Core.Modules
             int reliableThreadCount = _configManager.GetInt(_configManager.Global, "Net", "ReliableThreads", 1);
             _config.overhead = _configManager.GetInt(_configManager.Global, "Net", "PerPacketOverhead", 28);
             _config.pingrefreshtime = _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200);
+            _config.simplepingpopulationmode = _configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
 
             if (InitializeSockets() == false)
                 return false;

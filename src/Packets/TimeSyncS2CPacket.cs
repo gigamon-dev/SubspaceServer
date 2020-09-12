@@ -40,6 +40,14 @@ namespace SS.Core.Packets
             T2 = 0x06;
         }
 
+        public void Initialize(uint clientType, uint serverTime)
+        {
+            Initialize();
+
+            ClientTime = clientType;
+            ServerTime = serverTime;
+        }
+
         public byte T1
         {
             set { t1.SetValue(data, value); }
