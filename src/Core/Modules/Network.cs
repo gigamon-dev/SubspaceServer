@@ -17,7 +17,7 @@ namespace SS.Core.Modules
     /// TODO: revisit this module, it is basically 95% a direct port from asss
     /// </summary>
     [CoreModuleInfo]
-    public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient
+    public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient, IDisposable
     {
         /// <summary>
         /// specialized data buffer which keeps track of what connection it is for and other useful info
@@ -457,7 +457,8 @@ namespace SS.Core.Modules
 
         private readonly MessagePassingQueue<ConnData> _relqueue = new MessagePassingQueue<ConnData>();
 
-        private bool _stopThreads = false;
+        private readonly CancellationTokenSource _stopCancellationTokenSource = new CancellationTokenSource();
+        private CancellationToken _stopToken;
 
         private readonly List<Thread> _threadList = new List<Thread>();
         private readonly List<Thread> _reliableThreads = new List<Thread>();
@@ -475,6 +476,34 @@ namespace SS.Core.Modules
         private readonly Dictionary<string, ListenData> _listenConnectAsLookup = new Dictionary<string, ListenData>();
 
         private Socket _clientSocket;
+
+        // TODO: figure out if multiple threads are reading/writing
+        private class NetStats : IReadOnlyNetStats
+        {
+            public ulong pcountpings, pktsent, pktrecvd;
+            public ulong bytesent, byterecvd;
+            public ulong buffercount, buffersused;
+            public ulong[] grouped_stats = new ulong[8];
+            public ulong[] pri_stats = new ulong[5];
+
+            public ulong PingsReceived => pcountpings;
+
+            public ulong PacketsSent => pktsent;
+
+            public ulong PacketsReceived => pktrecvd;
+
+            public ulong BytesSent => bytesent;
+
+            public ulong BytesReceived => byterecvd;
+
+            public ulong BuffersTotal => buffercount;
+
+            public ulong BuffersUsed => buffersused;
+
+            public ReadOnlySpan<ulong> GroupedStats => grouped_stats;
+
+            public ReadOnlySpan<ulong> PriorityStats => pri_stats;
+        }
 
         private readonly NetStats _globalStats = new NetStats();
 
@@ -678,7 +707,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    if (_stopThreads)
+                    if (_stopToken.IsCancellationRequested)
                         return;
 
                     checkReadList.Clear();
@@ -686,7 +715,7 @@ namespace SS.Core.Modules
 
                     Socket.Select(checkReadList, null, null, SELECT_TIMEOUT_MS * 1000);
 
-                    if (_stopThreads)
+                    if (_stopToken.IsCancellationRequested)
                         return;
 
                     foreach (Socket socket in checkReadList)
@@ -728,7 +757,7 @@ namespace SS.Core.Modules
 
         private void SendThread()
         {
-            while (_stopThreads == false)
+            while (_stopToken.IsCancellationRequested == false)
             {
                 LinkedList<Player> toKill = new LinkedList<Player>();
                 LinkedList<Player> toFree = new LinkedList<Player>();
@@ -812,7 +841,7 @@ namespace SS.Core.Modules
                 // outgoing packets and lagouts for client connections
                 // TODO
 
-                if (_stopThreads)
+                if (_stopToken.IsCancellationRequested)
                     return;
 
                 Thread.Sleep(10); // 1/100 second
@@ -2361,6 +2390,8 @@ namespace SS.Core.Modules
             if (InitializeSockets() == false)
                 return false;
 
+            _stopToken = _stopCancellationTokenSource.Token;
+
             // recieve thread
             Thread thread = new Thread(RecieveThread);
             thread.Name = "network-recv";
@@ -2406,7 +2437,8 @@ namespace SS.Core.Modules
             _serverTimer.ClearTimer(QueueMoreData, null);
 
             // stop threads
-            _stopThreads = true;
+            _stopCancellationTokenSource.Cancel();
+
             for (int x = 0; x < _reliableThreads.Count; x++)
             {
                 _relqueue.Enqueue(null);
@@ -2840,7 +2872,7 @@ namespace SS.Core.Modules
             }
         }
 
-        NetStats INetwork.GetStats()
+        IReadOnlyNetStats INetwork.GetStats()
         {
             _globalStats.buffercount = Convert.ToUInt64(_bufferPool.ObjectsCreated);
             _globalStats.buffersused = _globalStats.buffercount - Convert.ToUInt64(_bufferPool.ObjectsAvailable);
@@ -2910,5 +2942,10 @@ namespace SS.Core.Modules
             Debug.Write(sb.ToString());
         }
 #endif
+
+        public void Dispose()
+        {
+            _stopCancellationTokenSource.Dispose();
+        }
     }
 }

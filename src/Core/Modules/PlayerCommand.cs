@@ -127,33 +127,33 @@ Displays version information about the server. It might also print out some info
         {
             ulong secs = Convert.ToUInt64((DateTime.Now - _startedAt).TotalSeconds);
 
-            NetStats stats = _net.GetStats();
+            IReadOnlyNetStats stats = _net.GetStats();
             _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}", 
-                stats.pcountpings, stats.pktsent, stats.pktrecvd);
+                stats.PingsReceived, stats.PacketsSent, stats.PacketsReceived);
 
-            ulong bwout = (stats.bytesent + stats.pktsent * 28) / secs;
-            ulong bwin = (stats.byterecvd + stats.pktrecvd * 28) / secs;
+            ulong bwout = (stats.BytesSent + stats.PacketsSent * 28) / secs; // TODO: figure out why 28?
+            ulong bwin = (stats.BytesReceived + stats.PacketsReceived * 28) / secs;
             _chat.SendMessage(p, "netstats: bw out={0}  bw in={1}", bwout, bwin);
 
             _chat.SendMessage(p, "netstats: buffers used={0}/{1} ({2:p})",
-                stats.buffersused, stats.buffercount, (double)stats.buffersused / (double)stats.buffercount);
+                stats.BuffersUsed, stats.BuffersTotal, (double)stats.BuffersUsed / (double)stats.BuffersTotal);
 
             _chat.SendMessage(p, "netstats: grouped={0}/{1}/{2}/{3}/{4}/{5}/{6}/{7}",
-                stats.grouped_stats[0],
-                stats.grouped_stats[1],
-                stats.grouped_stats[2],
-                stats.grouped_stats[3],
-                stats.grouped_stats[4],
-                stats.grouped_stats[5],
-                stats.grouped_stats[6],
-                stats.grouped_stats[7]);
+                stats.GroupedStats[0],
+                stats.GroupedStats[1],
+                stats.GroupedStats[2],
+                stats.GroupedStats[3],
+                stats.GroupedStats[4],
+                stats.GroupedStats[5],
+                stats.GroupedStats[6],
+                stats.GroupedStats[7]);
 
             _chat.SendMessage(p, "netstats: pri={0}/{1}/{2}/{3}/{4}",
-                stats.pri_stats[0],
-                stats.pri_stats[1],
-                stats.pri_stats[2],
-                stats.pri_stats[3],
-                stats.pri_stats[4]);
+                stats.PriorityStats[0],
+                stats.PriorityStats[1],
+                stats.PriorityStats[2],
+                stats.PriorityStats[3],
+                stats.PriorityStats[4]);
         }
 
         private void Command_lsmod(string command, string parameters, Player p, ITarget target)

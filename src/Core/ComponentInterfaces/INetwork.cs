@@ -37,6 +37,20 @@ namespace SS.Core.ComponentInterfaces
     //public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
     public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
 
+    public interface IReadOnlyNetStats
+    {
+        public ulong PingsReceived { get; }
+        public ulong PacketsSent { get; }
+        public ulong PacketsReceived { get; }
+        public ulong BytesSent { get; }
+        public ulong BytesReceived { get; }
+        public ulong BuffersTotal { get; }
+        public ulong BuffersUsed { get; }
+
+        ReadOnlySpan<ulong> GroupedStats { get; }
+        ReadOnlySpan<ulong> PriorityStats { get; }
+    }
+
     public interface INetwork : IComponentInterface
     {
         /// <summary>
@@ -137,7 +151,7 @@ namespace SS.Core.ComponentInterfaces
         /// Gets statistics about the Network module.
         /// </summary>
         /// <returns>The stats.</returns>
-        NetStats GetStats();
+        IReadOnlyNetStats GetStats();
 
         /// <summary>
         /// Collection of information about sockets that the Network module is listening on.

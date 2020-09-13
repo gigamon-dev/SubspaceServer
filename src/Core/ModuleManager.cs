@@ -957,23 +957,24 @@ namespace SS.Core
             // we got all the interfaces, now we can load the module
             bool success = false;
 
+            object[] parameters = new object[moduleData.LoadParameters.Length];
+            parameters[0] = this;
+
+            for (int i = 1; i < parameters.Length; i++)
+            {
+                if (moduleData.InterfaceDependencies.TryGetValue(moduleData.LoadParameters[i].ParameterType, out IComponentInterface dependency))
+                {
+                    parameters[i] = dependency;
+                }
+            }
+
             try
             {
-                object[] parameters = new object[moduleData.LoadParameters.Length];
-                parameters[0] = this;
-                
-                for (int i = 1; i < parameters.Length; i++)
-                {
-                    if (moduleData.InterfaceDependencies.TryGetValue(moduleData.LoadParameters[i].ParameterType, out IComponentInterface dependency))
-                    {
-                        parameters[i] = dependency;
-                    }
-                }
+                success = (bool)moduleData.LoadMethod.Invoke(moduleData.Module, parameters);
 
-                if (parameters.All(p => p != null))
+                if (!success)
                 {
-                    object retObj = moduleData.LoadMethod.Invoke(moduleData.Module, parameters);
-                    success = Convert.ToBoolean(retObj);
+                    WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]");
                 }
             }
             catch (Exception ex)
@@ -985,8 +986,6 @@ namespace SS.Core
             if (!success)
             {
                 // module loading failed
-                WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]");
-
                 // TODO: maybe we should do something more drastic than ignore and retry later?
                 ReleaseInterfaces(moduleData);
                 return false;
@@ -1018,10 +1017,23 @@ namespace SS.Core
                 }
             }
 
-            if (moduleData.Module.Unload(this) == false)
+            try
             {
-                WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]");
+                if (moduleData.Module.Unload(this) == false)
+                {
+                    WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]. Exception: {ex.Message}");
                 return false;
+            }
+
+            if (moduleData.Module is IDisposable disposable)
+            {
+                disposable.Dispose();
             }
 
             ReleaseInterfaces(moduleData);
