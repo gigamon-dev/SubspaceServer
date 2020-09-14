@@ -31,9 +31,7 @@ namespace SS.Core.Modules
 
             public DateTime LastRetry;
 
-            public ReliableDelegate Callback;
-            public object Clos;
-            //public IReliableDelegateInvoker CallbackInvoker;  // i was thinking of switching the callback info to use a generic wrapper
+            public IReliableCallbackInvoker CallbackInvoker;
 
             public override void Clear()
             {
@@ -41,39 +39,57 @@ namespace SS.Core.Modules
                 Tries = 0;
                 Flags = NetSendFlags.None;
                 LastRetry = DateTime.MinValue;
-                Callback = null;
-                Clos = null;
+                CallbackInvoker = null;
 
                 base.Clear();
             }
         }
-        /*
-        private interface IReliableDelegateInvoker
+        
+        private interface IReliableCallbackInvoker
         {
-            void InvokeCallback(Player p, bool success);
+            void Invoke(Player p, bool success);
         }
 
-        private class ReliableDelegateWrapper<T> : IReliableDelegateInvoker
+        private class ReliableCallbackInvoker : IReliableCallbackInvoker
         {
-            private ReliableDelegate<T> callback;
-            private T clos;
+            private readonly ReliableDelegate callback;
 
-            public ReliableDelegateWrapper(ReliableDelegate<T> callback, T clos)
+            public ReliableCallbackInvoker(ReliableDelegate callback)
             {
-                this.callback = callback;
+                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
+            }
+
+            #region IReliableDelegateInvoker Members
+
+            public void Invoke(Player p, bool success)
+            {
+                callback(p, success);
+            }
+
+            #endregion
+        }
+
+        private class ReliableCallbackInvoker<T> : IReliableCallbackInvoker
+        {
+            private readonly ReliableDelegate<T> callback;
+            private readonly T clos;
+
+            public ReliableCallbackInvoker(ReliableDelegate<T> callback, T clos)
+            {
+                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 this.clos = clos;
             }
 
             #region IReliableDelegateInvoker Members
 
-            public void InvokeCallback(Player p, bool success)
+            public void Invoke(Player p, bool success)
             {
                 callback(p, success, clos);
             }
 
             #endregion
         }
-        */
+        
         private readonly Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
 
         private interface ISizedSendData
@@ -216,8 +232,14 @@ namespace SS.Core.Modules
             /// </summary>
             public IEncrypt enc;
 
+            /// <summary>
+            /// The name of the IEncrypt interface for <see cref="enc"/>.
+            /// </summary>
             public string iEncryptName;
 
+            /// <summary>
+            /// For receiving sized packets, protected by bigmtx
+            /// </summary>
             internal class SizedRecieve
             {
                 public int type;
@@ -225,7 +247,7 @@ namespace SS.Core.Modules
             }
 
             /// <summary>
-            /// stuff for recving sized packets, protected by bigmtx
+            /// For receiving big packets, protected by bigmtx
             /// </summary>
             public SizedRecieve sizedrecv = new SizedRecieve();
 
@@ -257,27 +279,28 @@ namespace SS.Core.Modules
             /// </summary>
             public IBWLimit bw;
 
-            public LinkedList<SubspaceBuffer>[] outlist = new LinkedList<SubspaceBuffer>[5];
+            /// <summary>
+            /// array of outgoing lists, one for each priority
+            /// </summary>
+            public LinkedList<SubspaceBuffer>[] outlist = new LinkedList<SubspaceBuffer>[(int)BandwidthPriorities.NumPriorities];
 
             /// <summary>
             /// incoming reliable packets
             /// </summary>
             public SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
 
-            // TODO: some other members here that i dont understand yet
-
             /// <summary>
-            /// outlist mutex
+            /// mutex for <see cref="outlist"/>
             /// </summary>
             public object olmtx = new object();
 
             /// <summary>
-            /// reliable mutex
+            /// mutex for <see cref="relbuf"/>
             /// </summary>
             public object relmtx = new object();
 
             /// <summary>
-            /// big mutex (bigrecv and sizedrecv)
+            /// mutex for (<see cref="bigrecv"/> and <see cref="sizedrecv"/>)
             /// </summary>
             public object bigmtx = new object();
 
@@ -947,14 +970,14 @@ namespace SS.Core.Modules
                             Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
 
                             // queue the the header + chunk to be sent reliably (which gives the sequence to keep ordering of chunks)
-                            BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
+                            BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
                             bufferIndex += Constants.ChunkSize;
                             needed -= Constants.ChunkSize;
                         }
 
                         // copy the header
                         Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
-                        BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable, null, null);
+                        BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
 
                         // check if we need more
                         if (sd.Offset >= sd.TotalLength)
@@ -997,14 +1020,14 @@ namespace SS.Core.Modules
                     nextNode = node.Next;
 
                     SubspaceBuffer b = node.Value;
-                    if (b.Callback != null)
+                    if (b.CallbackInvoker != null)
                     {
                         // this is ugly, but we have to release the outlist mutex
                         // during these callbacks, because the callback might need
                         // to acquire some mutexes of its own, and we want to avoid
                         // deadlock.
                         Monitor.Exit(conn.olmtx);
-                        b.Callback(p, false, b.Clos);
+                        b.CallbackInvoker.Invoke(p, false);
                         Monitor.Enter(conn.olmtx);
                     }
 
@@ -1619,94 +1642,12 @@ namespace SS.Core.Modules
             // TODO
         }
 
-        private SubspaceBuffer BufferPacket(ConnData conn, byte[] data, int len, NetSendFlags flags, ReliableDelegate callback, object clos)
+        private SubspaceBuffer BufferPacket(ConnData conn, byte[] data, int len, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
         {
-            return BufferPacket(conn, new ArraySegment<byte>(data, 0, len), flags, callback, clos);
-            /*
-            // data has to be able to fit into a reliable packet
-            Debug.Assert(len <= Constants.MaxPacket - Constants.ReliableHeaderLen);
-
-            // you can't buffer already-reliable packets
-            Debug.Assert(!(data[0] == 0x00 && data[1] == 0x03));
-
-            // reliable packets can't be droppable
-            Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Dropabble)) != (NetSendFlags.Reliable | NetSendFlags.Dropabble));
-
-            BandwidthPriorities pri;
-            if ((flags & NetSendFlags.PriorityN1) == NetSendFlags.PriorityN1)
-            {
-                pri = BandwidthPriorities.UnreiableLow;
-            }
-            else if (((flags & NetSendFlags.PriorityP4) == NetSendFlags.PriorityP4) ||
-                ((flags & NetSendFlags.PriorityP5) == NetSendFlags.PriorityP5))
-            {
-                pri = BandwidthPriorities.UnreliableHigh;
-            }
-            else
-            {
-                pri = BandwidthPriorities.Unreliable;
-            }
-
-            if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
-                pri = BandwidthPriorities.Reliable;
-
-            if ((flags & NetSendFlags.Ack) == NetSendFlags.Ack)
-                pri = BandwidthPriorities.Ack;
-
-            // update global stats based on requested priority
-            _globalStats.pri_stats[(int)pri] += (ulong)len;
-
-            // try the fast path
-            if (((flags & NetSendFlags.Reliable) != NetSendFlags.Reliable) &&
-                ((flags & NetSendFlags.Urgent) == NetSendFlags.Urgent))
-            {
-                // urgent and not reliable
-                if (conn.bw.Check(len, (int)pri))
-                {
-                    sendRaw(conn, data, len);
-                    return null;
-                }
-                else
-                {
-                    if ((flags & NetSendFlags.Dropabble) == NetSendFlags.Dropabble)
-                    {
-                        conn.pktdropped++;
-                        return null;
-                    }
-                }
-            }
-
-            SubspaceBuffer buf = _bufferPool.Get();
-            buf.Conn = conn;
-            buf.LastRetry = DateTime.Now.Subtract(new TimeSpan(0, 0, 100));
-            buf.Tries = 0;
-            buf.Callback = callback;
-            buf.Clos = clos;
-            buf.Flags = flags;
-
-            // get data into packet
-            if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
-            {
-                buf.NumBytes = len + Constants.ReliableHeaderLen;
-                ReliablePacket rp = new ReliablePacket(buf.Bytes);
-                rp.T1 = 0x00;
-                rp.T2 = 0x03;
-                rp.SeqNum = conn.s2cn++;
-                rp.SetData(data, len);
-            }
-            else
-            {
-                buf.NumBytes = len;
-                Array.Copy(data, 0, buf.Bytes, 0, len);
-            }
-
-            conn.outlist[(int)pri].AddLast(buf);
-
-            return buf;
-            */
+            return BufferPacket(conn, new ArraySegment<byte>(data, 0, len), flags, callbackInvoker);
         }
 
-        private SubspaceBuffer BufferPacket(ConnData conn, ArraySegment<byte> data, NetSendFlags flags, ReliableDelegate callback, object clos)
+        private SubspaceBuffer BufferPacket(ConnData conn, ArraySegment<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
         {
             int len = data.Count;
 
@@ -1767,8 +1708,7 @@ namespace SS.Core.Modules
             buf.Conn = conn;
             buf.LastRetry = DateTime.Now.Subtract(new TimeSpan(0, 0, 100));
             buf.Tries = 0;
-            buf.Callback = callback;
-            buf.Clos = clos;
+            buf.CallbackInvoker = callbackInvoker;
             buf.Flags = flags;
 
             // get data into packet
@@ -1883,7 +1823,7 @@ namespace SS.Core.Modules
 
                     lock (conn.olmtx)
                     {
-                        BufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack, null, null);
+                        BufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack);
                     }
                 }
 
@@ -1929,7 +1869,7 @@ namespace SS.Core.Modules
                     outlist.Remove(node);
                     Monitor.Exit(conn.olmtx);
 
-                    b.Callback?.Invoke(conn.p, true, b.Clos);
+                    b.CallbackInvoker?.Invoke(conn.p, true);
 
                     if (b.Tries == 1)
                     {
@@ -2232,7 +2172,7 @@ namespace SS.Core.Modules
                     ReliablePacket rp = new ReliablePacket(buffer.Bytes); // reusing buffer
                     rp.T1 = 0x00;
                     rp.T2 = 0x0C;
-                    BufferPacket(conn, buffer.Bytes, 2, NetSendFlags.Reliable, null, null);
+                    BufferPacket(conn, buffer.Bytes, 2, NetSendFlags.Reliable);
                 }
             }
             finally
@@ -2500,8 +2440,7 @@ namespace SS.Core.Modules
                 {
                     if (IsOurs(player))
                     {
-                        ConnData conn = player[_connKey] as ConnData;
-                        if (conn == null)
+                        if (!(player[_connKey] is ConnData conn))
                             continue;
 
                         SendRaw(conn, disconnectPacket, disconnectPacket.Length);
@@ -2667,7 +2606,7 @@ namespace SS.Core.Modules
             {
                 lock (conn.olmtx)
                 {
-                    BufferPacket(conn, data, len, flags, null, null);
+                    BufferPacket(conn, data, len, flags);
                 }
             }
             else
@@ -2762,14 +2701,36 @@ namespace SS.Core.Modules
 
                     lock (conn.olmtx)
                     {
-                        BufferPacket(conn, data, len, flags, null, null);
+                        BufferPacket(conn, data, len, flags);
                     }
                 }
             }
         }
 
-        void INetwork.SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object clos)
+        void INetwork.SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback)
         {
+            SendWithCallback(p, data, len, new ReliableCallbackInvoker(callback));
+        }
+
+        void INetwork.SendWithCallback<T>(Player p, byte[] data, int len, ReliableDelegate<T> callback, T clos)
+        {
+            SendWithCallback(p, data, len, new ReliableCallbackInvoker<T>(callback, clos));
+        }
+
+        private void SendWithCallback(Player p, byte[] data, int len, IReliableCallbackInvoker callbackInvoker)
+        {
+            if (p == null)
+                throw new ArgumentNullException(nameof(p));
+
+            if (data == null)
+                throw new ArgumentNullException(nameof(data));
+
+            if (len < 1)
+                throw new ArgumentOutOfRangeException(nameof(len), "Must be >= 1");
+
+            if (callbackInvoker == null)
+                throw new ArgumentNullException(nameof(callbackInvoker));
+
             if (!(p[_connKey] is ConnData conn))
                 return;
 
@@ -2781,7 +2742,7 @@ namespace SS.Core.Modules
 
             lock (conn.olmtx)
             {
-                BufferPacket(conn, data, len, NetSendFlags.Reliable, callback, clos);
+                BufferPacket(conn, data, len, NetSendFlags.Reliable, callbackInvoker);
             }
         }
 

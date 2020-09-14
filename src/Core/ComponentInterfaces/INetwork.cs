@@ -33,8 +33,8 @@ namespace SS.Core.ComponentInterfaces
 
     public delegate void PacketDelegate(Player p, byte[] data, int length);
     public delegate void SizedPacketDelegate(Player p, ArraySegment<byte>? data, int offset, int totallen);
-    public delegate void ReliableDelegate(Player p, bool success, object clos);
-    //public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
+    public delegate void ReliableDelegate(Player p, bool success);
+    public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
     public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
 
     public interface IReadOnlyNetStats
@@ -99,8 +99,17 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="data">array conaining the data</param>
         /// <param name="len">number of bytes to send</param>
         /// <param name="callback">the callback which will be called after the data has been sent</param>
+        void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback);
+
+        /// <summary>
+        /// To send data to a player and recieve a callback after the data has been sent.
+        /// </summary>
+        /// <param name="p">player sending data to</param>
+        /// <param name="data">array conaining the data</param>
+        /// <param name="len">number of bytes to send</param>
+        /// <param name="callback">the callback which will be called after the data has been sent</param>
         /// <param name="clos">argument to use when calling the callback</param>
-        void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback, object clos);
+        void SendWithCallback<T>(Player p, byte[] data, int len, ReliableDelegate<T> callback, T clos);
 
         /// <summary>
         /// To send sized data to a player.

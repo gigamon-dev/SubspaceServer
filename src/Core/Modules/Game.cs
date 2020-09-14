@@ -1467,7 +1467,7 @@ namespace SS.Core.Modules
                 if (p.IsStandard)
                 {
                     // send it to him, with a callback
-                    _net.SendWithCallback(p, buffer.Bytes, ShipChangePacket.Length, resetDuringChange, null);
+                    _net.SendWithCallback(p, buffer.Bytes, ShipChangePacket.Length, resetDuringChange);
                 }
 
                 // send it to everyone else
@@ -1526,7 +1526,7 @@ namespace SS.Core.Modules
 
                 // him with callback
                 if (p.IsStandard)
-                    _net.SendWithCallback(p, buffer.Bytes, 6, resetDuringChange, null);
+                    _net.SendWithCallback(p, buffer.Bytes, 6, resetDuringChange);
                 
                 // everyone else
                 _net.SendToArena(arena, p, buffer.Bytes, 6, NetSendFlags.Reliable);
@@ -1539,7 +1539,7 @@ namespace SS.Core.Modules
             _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "changed freq to {0}", freq);
         }
 
-        private void resetDuringChange(Player p, bool success, object dummy)
+        private void resetDuringChange(Player p, bool success)
         {
             if (p == null)
                 return;
