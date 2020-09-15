@@ -14,7 +14,7 @@ namespace SubspaceServer
         private static Server subspaceServer;
         private static bool isRunning = false;
 
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
             string directory = null;
 
@@ -36,16 +36,44 @@ namespace SubspaceServer
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(directory))
+            if (!string.IsNullOrWhiteSpace(directory))
             {
-                directory = Environment.CurrentDirectory;
+                try
+                {
+                    Directory.SetCurrentDirectory(directory);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error setting current directory. {ex.Message}");
+                    return 1;
+                }
             }
 
-            subspaceServer = new Server(directory);
 
+            // mainloop on the main thread and quit via SIGINT, SIGBREAK, or ?shutdown/?recycle 
+            Console.CancelKeyPress += Console_CancelKeyPress;
+
+            subspaceServer = new Server();
+            int ret = subspaceServer.Run();
+
+            Console.CancelKeyPress -= Console_CancelKeyPress;
+
+            return ret;
+
+            /*
+            // mainloop in a worker thread
+            subspaceServer = new Server();
             StartServer();
             MainMenu();
             StopServer(true);
+            return 0;
+            */
+        }
+
+        private static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        {
+            subspaceServer.Quit();
+            e.Cancel = true; // The main thread should gracefully end.
         }
 
         private static void PrintProbingProperties()

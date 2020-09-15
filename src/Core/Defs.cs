@@ -4,6 +4,39 @@ using System.Text;
 
 namespace SS.Core
 {
+    public enum ExitCode : byte
+    {
+        /// <summary>
+        /// Normal shutdown
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// Recycle
+        /// </summary>
+        Recycle = 1,
+
+        /// <summary>
+        /// General 'something went wrong' error
+        /// </summary>
+        General = 2,
+
+        /// <summary>
+        /// we ran out of memory
+        /// </summary>
+        //Memory = 3,
+
+        /// <summary>
+        /// The initial module file is missing
+        /// </summary>
+        ModConf = 4,
+
+        /// <summary>
+        /// An error loading initial modules
+        /// </summary>
+        ModLoad = 5,
+    }
+
     public enum ShipType
     {
         Warbird = 0,

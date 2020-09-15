@@ -21,6 +21,7 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabilityManager;
         //private IConfigManager _configManager;
         private INetwork _net;
+        private IMainloop _mainloop;
 
         private DateTime _startedAt;
 
@@ -33,7 +34,8 @@ namespace SS.Core.Modules
             IChat chat,
             ICommandManager commandManager,
             ICapabilityManager capabilityManager,
-            INetwork net)
+            INetwork net, 
+            IMainloop mainloop)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
@@ -42,22 +44,24 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _net = net ?? throw new ArgumentNullException(nameof(net));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
 
             _startedAt = DateTime.Now;
 
             // TODO: do some sort of derivative of that command group thing asss does
-
-            _commandManager.AddCommand("uptime", command_uptime, null, 
+            _commandManager.AddCommand("shutdown", Command_shutdown, null, null);
+            _commandManager.AddCommand("recyclezone", Command_recyclezone, null, null);
+            _commandManager.AddCommand("uptime", Command_uptime, null, 
 @"Targets: none
 Args: none
 Displays how long the server has been running.");
 
-            _commandManager.AddCommand("version", command_version, null, 
+            _commandManager.AddCommand("version", Command_version, null, 
 @"Targets: none
 Args: none
 Displays version information about the server. It might also print out some information about the machine that it's running on.");
 
-            _commandManager.AddCommand("sheep", command_sheep, null, null);
+            _commandManager.AddCommand("sheep", Command_sheep, null, null);
             _commandManager.AddCommand("netstats", Command_netstats, null, null);
 
             _commandManager.AddCommand("lsmod", Command_lsmod, null, null);
@@ -77,14 +81,28 @@ Displays version information about the server. It might also print out some info
 
         #endregion
 
-        private void command_uptime(string command, string parameters, Player p, ITarget target)
+        private void Command_shutdown(string command, string parameters, Player p, ITarget target)
+        {
+            ExitCode code = string.Equals(parameters, "-r", StringComparison.OrdinalIgnoreCase)
+                ? ExitCode.Recycle
+                : ExitCode.None;
+
+            _mainloop.Quit(code);
+        }
+
+        private void Command_recyclezone(string command, string parameters, Player p, ITarget target)
+        {
+            _mainloop.Quit(ExitCode.Recycle);
+        }
+
+        private void Command_uptime(string command, string parameters, Player p, ITarget target)
         {
             TimeSpan ts = DateTime.Now - _startedAt;
 
             _chat.SendMessage(p, "uptime: {0} days {1} hours {2} minutes {3} seconds", ts.Days, ts.Hours, ts.Minutes, ts.Seconds);
         }
 
-        private void command_version(string command, string parameters, Player p, ITarget target)
+        private void Command_version(string command, string parameters, Player p, ITarget target)
         {
             _chat.SendMessage(p, $"Subspace Server .NET");
 
@@ -110,7 +128,7 @@ Displays version information about the server. It might also print out some info
             }
         }
 
-        private void command_sheep(string command, string parameters, Player p, ITarget target)
+        private void Command_sheep(string command, string parameters, Player p, ITarget target)
         {
             if (target.Type != TargetType.Arena)
                 return;

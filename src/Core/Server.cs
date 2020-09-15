@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
 
@@ -13,13 +14,58 @@ namespace SS.Core
     public class Server
     {
         private ModuleManager _mm;
+        private IMainloop _ml;
+        private Task<int> _mainloopTask;
 
-        public event EventHandler ServerStarted;
-        public event EventHandler ServerStopped;
-
-        public Server(string homeDirectory)
+        public int Run()
         {
+            if (_mm != null)
+                throw new InvalidOperationException("Found an existing instance of ModuleManager.  Is the server already running?");
+
             _mm = new ModuleManager();
+            LoadModuleFile("conf/Modules.config");
+            _mm.DoPostLoadStage();
+
+            _ml = _mm.GetInterface<IMainloop>();
+            if (_ml == null)
+                throw new Exception("Loaded modules, but unable to get IMainloop. Check that it is in the Modules.config.");
+
+            int ret;
+
+            try
+            {
+                ret = _ml.RunLoop();
+            }
+            finally
+            {
+                _mm.ReleaseInterface(ref _ml);
+            }
+
+            IChat chat = _mm.GetInterface<IChat>();
+            if (chat != null)
+            {
+                try
+                {
+                    chat.SendArenaMessage(null, $"The server is {(ret == (int)ExitCode.Recycle ? "recycling" : "shutting down")} now!");
+                }
+                finally
+                {
+                    _mm.ReleaseInterface(ref chat);
+                }
+            }
+
+            _mm.DoPreUnloadStage();
+            _mm.UnloadAllModules();
+
+            //_mm.Dispose(); // TODO
+            _mm = null;
+
+            return ret;
+        }
+
+        public void Quit()
+        {
+            _ml.Quit(ExitCode.None);
         }
 
         public void Start()
@@ -27,15 +73,22 @@ namespace SS.Core
             LoadModuleFile("conf/Modules.config");
             _mm.DoPostLoadStage();
 
-            ServerStarted?.Invoke(this, EventArgs.Empty);
+            _ml = _mm.GetInterface<IMainloop>();
+            if (_ml == null)
+                throw new Exception("Loaded modules, but unable to get IMainloop. Check that it is in the Modules.config.");
+
+            _mainloopTask = Task.Factory.StartNew(() => _ml.RunLoop(), TaskCreationOptions.LongRunning);
         }
 
-        public void Stop()
+        public int Stop()
         {
+            _ml.Quit(ExitCode.None);
+            int ret = _mainloopTask.Result;
+
             _mm.DoPreUnloadStage();
             _mm.UnloadAllModules();
 
-            ServerStopped?.Invoke(this, EventArgs.Empty);
+            return ret;
         }
 
         private void LoadModuleFile(string moduleConfigFilename)

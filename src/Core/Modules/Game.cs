@@ -16,7 +16,7 @@ namespace SS.Core.Modules
         private ComponentBroker _broker;
         private IPlayerData _playerData;
         private IConfigManager _configManager;
-        private IServerTimer _serverTimer;
+        private IMainloop _mainloop;
         private ILogManager _logManager;
         private INetwork _net;
         //private IChatNet _chatnet;
@@ -171,7 +171,7 @@ namespace SS.Core.Modules
             ComponentBroker broker,
             IPlayerData playerData,
             IConfigManager configManager,
-            IServerTimer serverTimer,
+            IMainloop mainloop,
             ILogManager logManager,
             INetwork net,
             //IChatNet chatnet,
@@ -186,7 +186,7 @@ namespace SS.Core.Modules
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _net = net ?? throw new ArgumentNullException(nameof(net));
             //_chatnet = chatnet ?? throw new ArgumentNullException(nameof(chatnet));
@@ -1134,7 +1134,7 @@ namespace SS.Core.Modules
             {
                 p.Flags.SentPositionPacket = true;
                 //_mainLoop.SetTimer<Player>(new TimerDelegate<Player>(runEnterGameCB), 0, 0, p, null);
-                _serverTimer.RunInThread<Player>(new WorkerDelegate<Player>(runEnterGameCB), p);
+                _mainloop.QueueMainWorkItem(runEnterGameCB, p);
             }
         }
 

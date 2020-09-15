@@ -17,7 +17,7 @@ namespace SS.Core.Modules
     public class MapData : IModule, IMapData
     {
         private ComponentBroker _broker;
-        private IServerTimer _serverTimer;
+        private IMainloop _mainloop;
         private IConfigManager _configManager;
         private IArenaManagerCore _arenaManager;
         private ILogManager _logManager;
@@ -29,13 +29,13 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IServerTimer serverTimer,
+            IMainloop mainloop,
             IConfigManager configManager,
             IArenaManagerCore arenaManager,
             ILogManager logManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
@@ -323,7 +323,7 @@ namespace SS.Core.Modules
             if (action == ArenaAction.Create || action == ArenaAction.Destroy)
             {
                 _arenaManager.HoldArena(arena); // the worker thread will unhold
-                _serverTimer.RunInThread<Arena>(arenaActionWork, arena);
+                _mainloop.QueueThreadPoolWorkItem(arenaActionWork, arena);
             }
         }
 

@@ -22,7 +22,7 @@ namespace SS.Core.Modules
         private INetwork _net;
         private ILogManager _logManager;
         private IConfigManager _configManager;
-        private IServerTimer _serverTimer;
+        private IMainloop _mainloop;
         private IArenaManagerCore _arenaManager;
         private IMapData _mapData;
         private InterfaceRegistrationToken _iMapNewsDownloadToken;
@@ -233,7 +233,7 @@ namespace SS.Core.Modules
             INetwork net,
             ILogManager logManager,
             IConfigManager configManager,
-            IServerTimer serverTimer,
+            IMainloop mainloop,
             IArenaManagerCore arenaManager,
             IMapData mapData)
         {
@@ -242,7 +242,7 @@ namespace SS.Core.Modules
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
 
@@ -357,7 +357,7 @@ namespace SS.Core.Modules
             {
                 // note: asss does this in reverse order, but i think it is a race condition
                 _arenaManager.HoldArena(arena);
-                _serverTimer.RunInThread<Arena>(arenaActionWork, arena);
+                _mainloop.QueueThreadPoolWorkItem(arenaActionWork, arena);
             }
             else if (action == ArenaAction.Destroy)
             {
