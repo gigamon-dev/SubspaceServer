@@ -335,7 +335,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private IConfigManager _configManager;
         private ILogManager _logManager;
-        private IServerTimer _serverTimer;
+        private IMainloopTimer _mainloopTimer;
         private IBandwidthLimit _bandwithLimit;
         private ILagCollect _lagCollect;
         private InterfaceRegistrationToken _iNetworkToken;
@@ -2301,7 +2301,7 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             IConfigManager configManager,
             ILogManager logManager,
-            IServerTimer serverTimer,
+            IMainloopTimer mainloopTimer,
             IBandwidthLimit bandwidthLimit,
             ILagCollect lagCollect)
         {
@@ -2309,7 +2309,7 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
             _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
 
@@ -2355,7 +2355,7 @@ namespace SS.Core.Modules
             }
 
             // queue more data thread (sends sized data)
-            _serverTimer.SetTimer(QueueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
+            _mainloopTimer.SetTimer(QueueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
 
             _iNetworkToken = broker.RegisterInterface<INetwork>(this);
             _iNetworkClientToken = broker.RegisterInterface<INetworkClient>(this);
@@ -2374,7 +2374,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface<INetworkEncryption>(ref _iNetworkEncryptionToken) != 0)
                 return false;
 
-            _serverTimer.ClearTimer(QueueMoreData, null);
+            _mainloopTimer.ClearTimer(QueueMoreData, null);
 
             // stop threads
             _stopCancellationTokenSource.Cancel();

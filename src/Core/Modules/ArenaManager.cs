@@ -33,7 +33,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private INetwork _net;
         private IConfigManager _configManager;
-        private IServerTimer _serverTimer;
+        private IMainloopTimer _mainloopTimer;
         //private IPersist _persist;
         private InterfaceRegistrationToken _iArenaManagerCoreToken;
 
@@ -1102,7 +1102,7 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             INetwork net,
             IConfigManager configManager,
-            IServerTimer serverTimer)
+            IMainloopTimer mainloopTimer)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
@@ -1111,7 +1111,7 @@ namespace SS.Core.Modules
             _net = net ?? throw new ArgumentNullException(nameof(net));
             //_chatnet = 
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
 
             _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
 
@@ -1126,8 +1126,8 @@ namespace SS.Core.Modules
             //{
             //}
 
-            _serverTimer.SetTimer(processArenaStates, 100, 100, null);
-            _serverTimer.SetTimer(reapArenas, 1700, 1700, null);
+            _mainloopTimer.SetTimer(processArenaStates, 100, 100, null);
+            _mainloopTimer.SetTimer(reapArenas, 1700, 1700, null);
 
             _iArenaManagerCoreToken = _broker.RegisterInterface<IArenaManagerCore>(this);
 
@@ -1149,8 +1149,8 @@ namespace SS.Core.Modules
             //{
             //}
 
-            _serverTimer.ClearTimer(processArenaStates, null);
-            _serverTimer.ClearTimer(reapArenas, null);
+            _mainloopTimer.ClearTimer(processArenaStates, null);
+            _mainloopTimer.ClearTimer(reapArenas, null);
 
             _playerData.FreePlayerData(_spawnkey);
 

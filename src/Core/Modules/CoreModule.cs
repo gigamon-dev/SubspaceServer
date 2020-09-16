@@ -41,7 +41,7 @@ namespace SS.Core.Modules
         private IChatNet _chatnet;
         private ILogManager _logManager;
         private IConfigManager _configManager;
-        private IServerTimer _serverTimer;
+        private IMainloopTimer _mainloopTimer;
         private IMapNewsDownload _map;
         private IArenaManagerCore _arenaManager;
         private ICapabilityManager _capabiltyManager;
@@ -116,7 +116,7 @@ namespace SS.Core.Modules
             INetwork net,
             ILogManager logManager,
             IConfigManager configManager,
-            IServerTimer serverTimer,
+            IMainloopTimer mainloopTimer,
             IMapNewsDownload map,
             IArenaManagerCore arenaManager,
             ICapabilityManager capabilityManager)
@@ -127,7 +127,7 @@ namespace SS.Core.Modules
             //_chatnet = 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
@@ -144,13 +144,13 @@ namespace SS.Core.Modules
             //if(_chatnet != null)
                 //_chatnet.AddHandler("LOGIN", chatLogin);
 
-            _serverTimer.SetTimer(processPlayerStates, 100, 100, null);
+            _mainloopTimer.SetTimer(processPlayerStates, 100, 100, null);
 
             // register default interfaces which may be replaced later
             _iAuthToken = broker.RegisterInterface<IAuth>(this);
 
             // set up periodic events
-            _serverTimer.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
+            _mainloopTimer.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             return true;
         }
@@ -160,8 +160,8 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
                 return false;
 
-            _serverTimer.ClearTimer(sendKeepAlive, null);
-            _serverTimer.ClearTimer(processPlayerStates, null);
+            _mainloopTimer.ClearTimer(sendKeepAlive, null);
+            _mainloopTimer.ClearTimer(processPlayerStates, null);
             
             if (_net != null)
             {

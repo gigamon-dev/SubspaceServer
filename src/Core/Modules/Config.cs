@@ -20,7 +20,7 @@ namespace SS.Core.Modules
         private ConfigHandle _global;
         public event EventHandler GlobalConfigChanged;
 
-        private IServerTimer _serverTimer;
+        private IMainloopTimer _mainloopTimer;
         private ILogManager _logManager;
         private InterfaceRegistrationToken _iConfigManagerToken;
 
@@ -214,9 +214,9 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IServerTimer serverTimer)
+        public bool Load(ComponentBroker broker, IMainloopTimer mainloopTimer)
         {
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
 
             _global = OpenConfigFile(null, null, global_changed, null);
             if (_global == null)

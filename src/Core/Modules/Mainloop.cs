@@ -10,7 +10,6 @@ namespace SS.Core.Modules
 {
     /// <summary>
     /// The equivalent of ASSS' mainloop.[ch]
-    /// 
     /// </summary>
     [CoreModuleInfo]
     public class Mainloop : IModule, IMainloop, IMainloopTimer, IServerTimer, IDisposable
@@ -33,6 +32,8 @@ namespace SS.Core.Modules
         // for IMainloopTimer
         private readonly LinkedList<MainloopTimer> _mainloopTimerList = new LinkedList<MainloopTimer>();
         private readonly AutoResetEvent _mainloopTimerAutoResetEvent = new AutoResetEvent(false);
+        private readonly object _mainloopTimerLock = new object();
+        private MainloopTimer _timerProcessing = null;
 
         // for IServerTimer
         private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new LinkedList<ThreadPoolTimer>();
@@ -58,6 +59,14 @@ namespace SS.Core.Modules
         {
             // Make sure all timers are stopped.
             // There shouldn't be any left if all modules were correctly written to stop their timers when unloading.
+            lock (_mainloopTimerLock)
+            {
+                if (_mainloopTimerList.Count > 0)
+                {
+                    _mainloopTimerList.Clear();
+                }
+            }
+
             lock (_serverTimerLock)
             {
                 if (_serverTimerList.Count > 0)
@@ -108,19 +117,45 @@ namespace SS.Core.Modules
             {
                 MainloopCallback.Fire(_broker);
 
-                // TODO: wait until the next timer needs to be processed
-                // perhaps keep track of the one, so we can immediately process it
-                TimeSpan waitTime = TimeSpan.FromMilliseconds(10);
+                // Wait until the next timer needs to be processed
+                // perhaps keep track of the one, so we can immediately process it?
+                // perhaps keep the list ordered such that the next one due is in front?
+
+                LinkedListNode<MainloopTimer> dueNext = null;
+
+                lock (_mainloopTimerLock)
+                {
+                    for(LinkedListNode<MainloopTimer> node = _mainloopTimerList.First; node != null; node = node.Next)
+                    {
+                        if (dueNext == null || node.Value.WhenDue < dueNext.Value.WhenDue)
+                            dueNext = node;
+                    }
+                }
+
+                TimeSpan waitTime;
+                if (dueNext != null)
+                {
+                    waitTime = DateTime.UtcNow - dueNext.Value.WhenDue;
+                    if (waitTime != waitTime.Duration())
+                    {
+                        waitTime = TimeSpan.FromMilliseconds(1);
+                    }
+                }
+                else
+                {
+                    waitTime = TimeSpan.FromMilliseconds(-1); // wait indefinitely
+                }
 
                 // wait until:
                 // the next timer needs to be run 
                 // OR 
                 // we're signaled (to quit, that another timer was added, or that another work item was added)
                 int waitHandleIndex = WaitHandle.WaitAny(waitHandles, waitTime);
-                switch(waitHandleIndex)
+                switch (waitHandleIndex)
                 {
                     case WaitHandle.WaitTimeout:
                         // process timers, that's why we timed out
+                        ProcessTimers();
                         break;
 
                     case 0:
@@ -139,6 +174,65 @@ namespace SS.Core.Modules
             }
 
             return _quitCode & 0xFF;
+        }
+
+        private void ProcessTimers()
+        {
+            DateTime now = DateTime.UtcNow;
+
+            Monitor.Enter(_mainloopTimerLock);
+
+            LinkedListNode<MainloopTimer> node = _mainloopTimerList.First;
+            while (node != null)
+            {
+                if (node.Value.WhenDue <= now)
+                {
+                    MainloopTimer timer = node.Value;
+
+                    _timerProcessing = timer;
+                    Monitor.Exit(_mainloopTimerLock);
+
+                    bool wantsToKeepRunning = false;
+
+                    try
+                    {
+                        wantsToKeepRunning = timer.CallbackInvoker.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        // TODO: write log
+                    }
+
+                    Monitor.Enter(_mainloopTimerLock);
+                    _timerProcessing = null;
+
+                    if (timer.Stop || !wantsToKeepRunning || timer.Interval == Timeout.Infinite)
+                    {
+                        // Stop/remove the timer.
+                        LinkedListNode<MainloopTimer> next = node.Next;
+                        _mainloopTimerList.Remove(node);
+                        node = next;
+
+                        if (timer.Stop)
+                        {
+                            // At least one other thread asked us to stop/remove the timer while we were processing it.
+                            // That thread, or threads, is waiting. Signal back that it's been removed.
+                            timer.Stopped = true;
+                            Monitor.PulseAll(_mainloopTimerLock);
+                        }
+
+                        continue;
+                    }
+                    else
+                    {
+                        timer.WhenDue = now.AddMilliseconds(timer.Interval);
+                    }
+                }
+
+                node = node.Next;
+            }
+
+            Monitor.Exit(_mainloopTimerLock);
         }
 
         private void DrainRunInMain()
@@ -207,36 +301,39 @@ namespace SS.Core.Modules
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
-            // TODO: 
-            throw new NotImplementedException();
+            lock(_mainloopTimerLock)
+            {
+                _mainloopTimerList.AddLast(new MainloopTimer(initialDelay, interval, key, callbackInvoker));
+            }
+
+            _mainloopTimerAutoResetEvent.Set();
         }
 
         void IMainloopTimer.ClearTimer(TimerDelegate callback, object key)
         {
-            // TODO: 
-            //MainloopTimer_ClearTimer(
-            throw new NotImplementedException();
+            MainloopTimer_ClearTimer(callback, key, null);
         }
 
         void IMainloopTimer.ClearTimer(TimerDelegate callback, object key, TimerCleanupDelegate cleanupCallback)
         {
-            // TODO: 
-            //MainloopTimer_ClearTimer(
-            throw new NotImplementedException();
+            MainloopTimer_ClearTimer(callback, key, _ => cleanupCallback());
         }
 
         void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object key)
         {
-            // TODO: 
-            //MainloopTimer_ClearTimer(
-            throw new NotImplementedException();
+            MainloopTimer_ClearTimer(callback, key, null);
         }
 
         void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object key, TimerCleanupDelegate<TState> cleanupCallback)
         {
-            // TODO: 
-            //MainloopTimer_ClearTimer(
-            throw new NotImplementedException();
+            MainloopTimer_ClearTimer(callback, key,
+                (timer) =>
+                {
+                    if (timer.CallbackInvoker is TimerCallbackInvoker<TState> callbackInvoker)
+                    {
+                        cleanupCallback?.Invoke(callbackInvoker.State);
+                    }
+                });
         }
 
         private void MainloopTimer_ClearTimer(Delegate callback, object key, Action<MainloopTimer> timerDisposedAction)
@@ -244,8 +341,72 @@ namespace SS.Core.Modules
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            // TODO: 
-            throw new NotImplementedException();
+            LinkedList<MainloopTimer> timersRemoved = null;
+
+            lock (_mainloopTimerLock)
+            {
+                LinkedListNode<MainloopTimer> node, next, inProgress = null;
+                for (node = _mainloopTimerList.First; node != null; node = next)
+                {
+                    next = node.Next;
+
+                    MainloopTimer timer = node.Value;
+
+                    if (timer.CallbackInvoker.Callback.Equals(callback)
+                        && ((key == null) || (key == timer.Key)))
+                    {
+                        if (timer == _timerProcessing)
+                        {
+                            // Can't touch the node, the mainloop thread is working on it.  We'll wait on it later.
+                            inProgress = node;
+                        }
+                        else
+                        {
+                            _mainloopTimerList.Remove(node);
+
+                            if (timerDisposedAction != null)
+                            {
+                                if (timersRemoved == null)
+                                    timersRemoved = new LinkedList<MainloopTimer>();
+
+                                timersRemoved.AddLast(node);
+                            }
+                        }
+                    }
+                }
+
+                if (inProgress != null)
+                {
+                    // We want to remove the timer that the mainloop is currently executing.
+                    MainloopTimer timer = inProgress.Value;
+                    timer.Stop = true;
+
+                    while (timer.Stopped == false)
+                        Monitor.Wait(_mainloopTimerLock);
+
+                    // The mainloop removed it for us.
+                    System.Diagnostics.Debug.Assert(inProgress.List == null);
+                    System.Diagnostics.Debug.Assert(inProgress.Previous == null);
+                    System.Diagnostics.Debug.Assert(inProgress.Next == null);
+                    System.Diagnostics.Debug.Assert(inProgress.Value != null);
+
+                    if (timerDisposedAction != null)
+                    {
+                        if (timersRemoved == null)
+                            timersRemoved = new LinkedList<MainloopTimer>();
+
+                        timersRemoved.AddLast(timer);
+                    }
+                }
+            }
+
+            if (timerDisposedAction != null && timersRemoved != null)
+            {
+                for (LinkedListNode<MainloopTimer> node = _mainloopTimerList.First; node != null; node = node.Next)
+                {
+                    timerDisposedAction.Invoke(node.Value);
+                }
+            }
         }
 
         #endregion
@@ -427,7 +588,7 @@ namespace SS.Core.Modules
             _runInMainQueue.Dispose();
         }
 
-        #region Private Helpers
+        #region Main Work Item Helpers
 
         private interface IRunInMainWorkItem
         {
@@ -515,7 +676,7 @@ namespace SS.Core.Modules
 
             public WorkerCallbackInvoker(WorkerDelegate<TState> callback, TState state)
             {
-                _callback = callback;
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 _state = state;
             }
 
@@ -524,6 +685,10 @@ namespace SS.Core.Modules
                 _callback(_state);
             }
         }
+
+        #endregion
+
+        #region Timer Helpers
 
         private interface ITimerCallbackInvoker
         {
@@ -569,9 +734,32 @@ namespace SS.Core.Modules
             }
         }
 
-        public class MainloopTimer
+        private class MainloopTimer
         {
-            // TODO: 
+            public DateTime WhenDue { get; set; }
+            public int Interval { get; }
+            public object Key { get; }
+            public ITimerCallbackInvoker CallbackInvoker { get; }
+            public bool Stop { get; set; } = false;
+            public bool Stopped { get; set; } = false;
+
+            public MainloopTimer(
+                int initialDelay,
+                int interval,
+                object key,
+                ITimerCallbackInvoker callbackInvoker)
+            {
+                if (initialDelay <= 0)
+                    throw new ArgumentOutOfRangeException("initialDelay", "must be > 0");
+
+                if (interval <= 0 && interval != Timeout.Infinite)
+                    throw new ArgumentOutOfRangeException("interval", "must be > 0 or Timeout.Infinite");
+
+                WhenDue = DateTime.UtcNow.AddMilliseconds(initialDelay);
+                Interval = interval;
+                Key = key;
+                CallbackInvoker = callbackInvoker ?? throw new ArgumentNullException(nameof(callbackInvoker));
+            }
         }
 
         /// <summary>
