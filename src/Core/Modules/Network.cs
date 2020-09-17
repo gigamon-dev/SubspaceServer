@@ -335,6 +335,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private IConfigManager _configManager;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
         private IBandwidthLimit _bandwithLimit;
         private ILagCollect _lagCollect;
@@ -698,7 +699,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-#endregion
+        #endregion
 
         private void RecieveThread()
         {
@@ -1483,6 +1484,59 @@ namespace SS.Core.Modules
             ProcessBuffer(buffer);
         }
 
+        private void CallPacketHandlers(ConnData conn, byte[] bytes, int len)
+        {
+            if (conn == null)
+                throw new ArgumentNullException(nameof(conn));
+
+            if (bytes == null)
+                throw new ArgumentNullException(nameof(bytes));
+
+            if (len < 1)
+                throw new ArgumentOutOfRangeException(nameof(len));
+
+            byte packetType = bytes[0];
+
+            if (conn.p != null)
+            {
+                // player connection
+                PacketDelegate handler = _handlers[packetType];
+
+                if (handler != null)
+                    handler(conn.p, bytes, len);
+                else
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "no handler for packet type [0x{0:X2}]", packetType);
+            }
+            else if (conn.cc != null)
+            {
+                // client connection
+                conn.cc.i.HandlePacket(bytes, len);
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), "no player or client connection, but got packet type [0x{0:X2}] of length {1}", packetType, len);
+            }
+        }
+
+        private void MainloopWork_CallPacketHandlers(SubspaceBuffer buffer)
+        {
+            if (buffer == null)
+                return;
+
+            ConnData conn = buffer.Conn;
+            if (conn == null)
+                return;
+
+            try
+            {
+                CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes);
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
         /// <summary>
         /// unreliable packets will be processed before the call returns and freed.
         /// network packets will be processed by the appropriate network handler,
@@ -1493,6 +1547,7 @@ namespace SS.Core.Modules
         {
             ConnData conn = buffer.Conn;
             ReliablePacket rp = new ReliablePacket(buffer.Bytes);
+
             if (rp.T1 == 0x00)
             {
                 // 'core' packet
@@ -1515,28 +1570,7 @@ namespace SS.Core.Modules
             }
             else if (rp.T1 < MAXTYPES)
             {
-                try
-                {
-                    if (conn.p != null)
-                    {
-                        // player connection
-                        PacketDelegate packetDelegate = _handlers[rp.T1];
-
-                        if (packetDelegate != null)
-                            packetDelegate(conn.p, buffer.Bytes, buffer.NumBytes);
-                        else
-                            _logManager.LogM(LogLevel.Drivel, nameof(Network), "no handler for packet T1 [0x{0:X2}]", rp.T1);
-                    }
-                    else if (conn.cc != null)
-                    {
-                        // client connection
-                        conn.cc.i.HandlePacket(buffer.Bytes, buffer.NumBytes);
-                    }
-                }
-                finally
-                {
-                    buffer.Dispose();
-                }
+                _mainloop.QueueMainWorkItem(MainloopWork_CallPacketHandlers, buffer);
             }
             else
             {
@@ -1985,6 +2019,18 @@ namespace SS.Core.Modules
             }
         }
 
+        private struct BigPacketWork
+        {
+            public ConnData ConnData;
+            public byte[] PacketBytes;
+            public int PacketLength;
+        }
+
+        private void MainloopWork_CallBigPacketHandlers(BigPacketWork work)
+        {
+            CallPacketHandlers(work.ConnData, work.PacketBytes, work.PacketLength);
+        }
+
         private void ProcessBigData(SubspaceBuffer buffer)
         {
             if (buffer == null)
@@ -1992,7 +2038,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (buffer.NumBytes < 3)
+                if (buffer.NumBytes < 3) // 0x00, [0x08 or 0x09], and then at least one byte of data
                     return;
 
                 ConnData conn = buffer.Conn;
@@ -2047,14 +2093,17 @@ namespace SS.Core.Modules
                     if (rp.T2 == 0x08)
                         return;
 
+                    // Getting here means the we got 0x09 (end of "Big" data packet), so we should process it now.
                     if (newbuf[0] > 0 && newbuf[0] < MAXTYPES)
                     {
-                        if (conn.p != null)
-                        {
-                            _handlers[newbuf[0]]?.Invoke(conn.p, newbuf, newsize);
-                        }
-                        else
-                            conn.cc.i.HandlePacket(newbuf, newsize);
+                        _mainloop.QueueMainWorkItem(
+                            MainloopWork_CallBigPacketHandlers,
+                            new BigPacketWork()
+                            {
+                                ConnData = conn,
+                                PacketBytes = newbuf,
+                                PacketLength = newsize,
+                            });
                     }
                     else
                     {
@@ -2301,6 +2350,7 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             IConfigManager configManager,
             ILogManager logManager,
+            IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             IBandwidthLimit bandwidthLimit,
             ILagCollect lagCollect)
@@ -2309,6 +2359,7 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
             _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
@@ -2391,6 +2442,8 @@ namespace SS.Core.Modules
             _threadList.Clear();
             _reliableThreads.Clear();
 
+            _mainloop.WaitForMainWorkItemDrain();
+
             Array.Clear(_handlers, 0, _handlers.Length);
             Array.Clear(_nethandlers, 0, _nethandlers.Length); // for some reason ASSS doesn't clear this?
             Array.Clear(_sizedhandlers, 0, _sizedhandlers.Length);
@@ -2467,12 +2520,21 @@ namespace SS.Core.Modules
             return true;
         }
 
-#endregion
+        #endregion
 
         #region INetworkEncryption Members
 
         void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, ListenData ld)
         {
+            if (remoteEndpoint == null)
+                throw new ArgumentNullException(nameof(remoteEndpoint));
+
+            if (pkt == null)
+                throw new ArgumentNullException(nameof(pkt));
+
+            if (len < 1)
+                throw new ArgumentOutOfRangeException(nameof(len), "Need at least 1 byte to send.");
+
             if (ld == null)
                 throw new ArgumentNullException(nameof(ld));
 
@@ -2481,6 +2543,9 @@ namespace SS.Core.Modules
 #endif
 
             ld.GameSocket.SendTo(pkt, len, SocketFlags.None, remoteEndpoint);
+
+            _globalStats.bytesent += (ulong)len;
+            _globalStats.pktsent++;
         }
 
         Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld)
