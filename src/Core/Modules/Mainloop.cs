@@ -200,7 +200,7 @@ namespace SS.Core.Modules
                     }
                     catch (Exception ex)
                     {
-                        // TODO: write log
+                        WriteLog(LogLevel.Warn, $"Caught exception while invoking main loop timer. {ex}");
                     }
 
                     Monitor.Enter(_mainloopTimerLock);
@@ -240,7 +240,16 @@ namespace SS.Core.Modules
             while (_runInMainQueue.TryTake(out IRunInMainWorkItem workItem))
             {
                 if (workItem != null)
-                    workItem.Process();
+                {
+                    try
+                    {
+                        workItem.Process();
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(LogLevel.Warn, $"Caught an exception while processing a work item. {ex}");
+                    }
+                }
             }
         }
 
@@ -580,6 +589,30 @@ namespace SS.Core.Modules
 
         #endregion
 
+        private void WriteLog(LogLevel level, string format, params object[] args)
+        {
+            ILogManager _logManager = _broker.GetInterface<ILogManager>();
+
+            if (_logManager != null)
+            {
+                try
+                {
+                    _logManager.LogM(level, nameof(Mainloop), format, args);
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref _logManager);
+                }
+            }
+            else
+            {
+                if (level == LogLevel.Error)
+                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(Mainloop)}> {string.Format(format, args)}");
+                else
+                    Console.WriteLine($"{(LogCode)level} <{nameof(Mainloop)}> {string.Format(format, args)}");
+            }
+        }
+
         public void Dispose()
         {
             _cancellationTokenSource.Dispose();
@@ -836,7 +869,7 @@ namespace SS.Core.Modules
                     catch (Exception ex)
                     {
                         // exception means dont run again
-                        Console.WriteLine("Mainloop timer caught exception: " + ex.Message);
+                        _owner.WriteLog(LogLevel.Warn, $"Caught exception while invoking thread pool timer. {ex}");
                     }
                     finally
                     {
