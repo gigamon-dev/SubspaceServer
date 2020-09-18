@@ -2676,9 +2676,8 @@ namespace SS.Core.Modules
             }
             else
             {
-                // not very efficient to allocate a new list and node just to send to one player
-                LinkedList<Player> set = new LinkedList<Player>();
-                set.AddLast(p);
+                // TODO: investigate a way to not allocate
+                Player[] set = new Player[] { p };
                 SendToSet(set, data, len, flags);
             }
         }
