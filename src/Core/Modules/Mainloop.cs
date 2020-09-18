@@ -782,8 +782,8 @@ namespace SS.Core.Modules
                 object key,
                 ITimerCallbackInvoker callbackInvoker)
             {
-                if (initialDelay <= 0)
-                    throw new ArgumentOutOfRangeException("initialDelay", "must be > 0");
+                if (initialDelay < 0)
+                    throw new ArgumentOutOfRangeException("initialDelay", "must be >= 0");
 
                 if (interval <= 0 && interval != Timeout.Infinite)
                     throw new ArgumentOutOfRangeException("interval", "must be > 0 or Timeout.Infinite");
@@ -820,8 +820,8 @@ namespace SS.Core.Modules
                 object key,
                 ITimerCallbackInvoker callbackInvoker)
             {
-                if (initialDelay <= 0)
-                    throw new ArgumentOutOfRangeException("initialDelay", "must be > 0");
+                if (initialDelay < 0)
+                    throw new ArgumentOutOfRangeException("initialDelay", "must be >= 0");
 
                 if (interval <= 0 && interval != Timeout.Infinite)
                     throw new ArgumentOutOfRangeException("interval", "must be > 0 or Timeout.Infinite");
