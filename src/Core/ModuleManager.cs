@@ -1007,7 +1007,7 @@ namespace SS.Core
                 var arenas = moduleData.AttachedArenas.ToArray();
                 foreach (Arena arena in arenas)
                 {
-                    DetachModule(moduleData.ModuleType.AssemblyQualifiedName, arena);
+                    DetachModule(moduleData.ModuleType, arena);
                 }
 
                 if (moduleData.AttachedArenas.Count > 0)
