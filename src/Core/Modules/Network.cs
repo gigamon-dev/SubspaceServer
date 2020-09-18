@@ -1365,7 +1365,18 @@ namespace SS.Core.Modules
             SubspaceBuffer buffer = _bufferPool.Get();
             Socket s = ld.GameSocket;
             EndPoint recievedFrom = new IPEndPoint(IPAddress.Any, 0);
-            buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref recievedFrom);
+
+            try
+            {
+                buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref recievedFrom);
+            }
+            catch (SocketException ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network),
+                    $"Caught a SocketException when calling ReceiveFrom. Error code: {ex.ErrorCode}. {ex}");
+                buffer.Dispose();
+                return;
+            }
 
             if (buffer.NumBytes <= 0)
             {
@@ -1378,7 +1389,10 @@ namespace SS.Core.Modules
 #endif
 
             if (!(recievedFrom is IPEndPoint remoteEndPoint))
+            {
+                buffer.Dispose();
                 return;
+            }
 
             if (_clienthash.TryGetValue(remoteEndPoint, out Player p) == false)
             {
