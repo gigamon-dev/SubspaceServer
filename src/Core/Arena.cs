@@ -140,7 +140,13 @@ namespace SS.Core
         /// call GetPopulationSummary to update this.
 	    /// </summary>
 	    public int Total;
-	    
+
+        /// <summary>
+        /// whether this arena should not be destroyed when
+        /// there are no players inside it.
+        /// </summary>
+        public bool KeepAlive;
+
         /// <summary>
         /// space for private data associated with this arena
         /// </summary>
@@ -173,7 +179,7 @@ namespace SS.Core
         /// </summary>
         public bool IsPublic
         {
-            get { return String.Compare(BaseName, PUBLIC) == 0; }
+            get { return string.Equals(BaseName, PUBLIC, StringComparison.OrdinalIgnoreCase); }
         }
 
         public void RemovePerArenaData(int key)

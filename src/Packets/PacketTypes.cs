@@ -102,7 +102,7 @@ namespace SS.Core.Packets
     public enum C2SPacketType : byte
     {
         GotoArena = 0x01, 
-        Leaving = 0x02, 
+        LeaveArena = 0x02, 
         Position = 0x03, 
         // missing 04 : appears to be disabled in subgame
         Die = 0x05, 
