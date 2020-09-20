@@ -16,15 +16,15 @@ namespace SS.Core.Modules
         /// <summary>
         /// the read-write lock for the global arena list
         /// </summary>
-        private ReaderWriterLock _arenaLock = new ReaderWriterLock();
+        private readonly ReaderWriterLock _arenaLock = new ReaderWriterLock();
 
-        private Dictionary<string, Arena> _arenaDictionary = new Dictionary<string, Arena>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Arena> _arenaDictionary = new Dictionary<string, Arena>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Key = module Type
         /// Value = list of arenas that have the module attached
         /// </summary>
-        private Dictionary<Type, List<Arena>> _attachedModules = new Dictionary<Type, List<Arena>>();
+        private readonly Dictionary<Type, List<Arena>> _attachedModules = new Dictionary<Type, List<Arena>>();
 
         private ComponentBroker _broker;
         private IModuleManager _mm;
@@ -39,14 +39,14 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken _iArenaManagerCoreToken;
 
         // for managing per arena data
-        private ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
-        private SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
+        private readonly ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
+        private readonly SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
 
         // population
         private int _playersTotal;
         private int _playersPlaying;
         private DateTime? _populationLastRefreshed;
-        private TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
+        private readonly TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
         private readonly object _populationRefreshLock = new object();
 
 
@@ -230,16 +230,14 @@ namespace SS.Core.Modules
                 _net.SendToOne(player, _brickClearBytes, _brickClearBytes.Length, NetSendFlags.Reliable);
                 _net.SendToOne(player, _enteringArenaBytes, _enteringArenaBytes.Length, NetSendFlags.Reliable);
 
-                SpawnLoc sp = player[_spawnkey] as SpawnLoc;
-
-                if(sp != null)
+                if (player[_spawnkey] is SpawnLoc sp)
                 {
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
                         using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
                         {
                             SimplePacket wto = new SimplePacket(buffer.Bytes);
-                        
+
                             wto.Type = (byte)S2CPacketType.WarpTo;
                             wto.D1 = sp.X;
                             wto.D2 = sp.Y;
@@ -368,8 +366,8 @@ namespace SS.Core.Modules
                 }
 
                 arena.Status = ArenaState.Closing;
-                ArenaData arenaData = arena[_adkey] as ArenaData;
-                if (arenaData != null)
+
+                if (arena[_adkey] is ArenaData arenaData)
                     arenaData.Resurrect = true;
 
                 return true;
@@ -455,8 +453,7 @@ namespace SS.Core.Modules
             ReadLock();
             try
             {
-                Arena arena;
-                if (_arenaDictionary.TryGetValue(name, out arena) == false)
+                if (_arenaDictionary.TryGetValue(name, out Arena arena) == false)
                     return null;
 
                 if (minState != null && arena.Status < minState)
@@ -581,8 +578,7 @@ namespace SS.Core.Modules
                     {
                         // arena is on it's way out
                         // this isn't a problem, just make sure that it will come back
-                        ArenaData arenaData = arena[_adkey] as ArenaData;
-                        if (arenaData == null)
+                        if (!(arena[_adkey] is ArenaData arenaData))
                             return;
 
                         arenaData.Resurrect = true;
@@ -606,8 +602,7 @@ namespace SS.Core.Modules
                 player.pkt.AcceptAudio = voices ? (byte)1 : (byte)0;
                 player.Flags.ObscenityFilter = obscene;
 
-                SpawnLoc sp = player[_spawnkey] as SpawnLoc;
-                if (sp != null)
+                if (player[_spawnkey] is SpawnLoc sp)
                 {
                     sp.X = (short)spawnX;
                     sp.Y = (short)spawnY;
@@ -819,8 +814,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        ArenaData arenaData = arena[_adkey] as ArenaData;
-                        if(arenaData == null)
+                        if (!(arena[_adkey] is ArenaData arenaData))
                             return;
 
                         arenaData.Holds++;
@@ -847,8 +841,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        ArenaData arenaData = arena[_adkey] as ArenaData;
-                        if (arenaData == null)
+                        if (!(arena[_adkey] is ArenaData arenaData))
                             return;
 
                         if (arenaData.Holds > 0)
@@ -884,8 +877,7 @@ namespace SS.Core.Modules
 
         private void ArenaConfChanged(object clos)
         {
-            Arena arena = clos as Arena;
-            if (arena == null)
+            if (!(clos is Arena arena))
                 return;
 
             ReadLock();
@@ -1402,7 +1394,7 @@ namespace SS.Core.Modules
                 (ShipType)go.ShipType,
                 go.XRes,
                 go.YRes,
-                (len >= GoArenaPacket.LengthContinuum) ? go.OptionalGraphics != 0 : false,
+                (len >= GoArenaPacket.LengthContinuum) && go.OptionalGraphics != 0,
                 go.WavMsg != 0,
                 (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
                 spx,
