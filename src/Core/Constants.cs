@@ -104,6 +104,11 @@ namespace SS.Core
             public const string SeePrivFreq = "seeprivfreq";
 
             /// <summary>
+            /// if a security warnings are suppressed for the player
+            /// </summary>
+            public const string SuppressSecurity = "suppresssecurity";
+
+            /// <summary>
             /// if a player can stay connected despite security checksum failures
             /// </summary>
             public const string BypassSecurity = "bypasssecurity";
@@ -142,6 +147,16 @@ namespace SS.Core
             /// if a player can sees all non-group-default players even if they lack isstaff
             /// </summary>
             public const string SeeAllStaff = "seeallstaff";
+
+            /// <summary>
+            /// if a player always forces a change with setship or setfreq instead of going by the arena freqman
+            /// </summary>
+            public const string ForceShipFreqChange = "forceshipfreqchange";
+
+            /// <summary>
+            /// if a player is excluded from the population count (useful for bots)
+            /// </summary>
+            public const string ExcludePopulation = "excludepopulation";
 
             /// <summary>
             /// if a player can change ships even if locked

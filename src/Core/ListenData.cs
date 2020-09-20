@@ -34,8 +34,15 @@ namespace SS.Core
         /// </summary>
         public bool AllowContinuum;
 
-        /* dynamic population data */
-        //int total, playing;
+        /// <summary>
+        /// Total # of players for the 'virtual' zone.
+        /// </summary>
+        public int PlayersTotal;
+
+        /// <summary>
+        /// Total # of players for the 'virtual' zone.
+        /// </summary>
+        public int PlayersPlaying;
 
         public ListenData(Socket gameSocket, Socket pingSocket)
         {

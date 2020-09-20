@@ -119,5 +119,11 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena"></param>
         void UnholdArena(Arena arena);
+
+        /// <summary>
+        /// All the arenas the server knows about.
+        /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.
+        /// </summary>
+        IEnumerable<Arena> ArenaList { get; }
     }
 }

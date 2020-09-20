@@ -1,11 +1,10 @@
-﻿using System;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Core.Packets;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-
-using SS.Core.ComponentInterfaces;
 using System.Reflection;
-using System.Xml.Schema;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -14,6 +13,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IModuleManager _mm;
+        private IArenaManagerCore _arenaManager;
         private IPlayerData _playerData;
         private IChat _chat;
         private ICommandManager _commandManager;
@@ -30,6 +30,7 @@ namespace SS.Core.Modules
         public bool Load(
             ComponentBroker broker,
             IModuleManager mm,
+            IArenaManagerCore arenaManager,
             IPlayerData playerData,
             IChat chat,
             ICommandManager commandManager,
@@ -39,6 +40,7 @@ namespace SS.Core.Modules
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -49,6 +51,7 @@ namespace SS.Core.Modules
             _startedAt = DateTime.Now;
 
             // TODO: do some sort of derivative of that command group thing asss does
+            _commandManager.AddCommand("arena", Command_arena, null, null);
             _commandManager.AddCommand("shutdown", Command_shutdown, null, null);
             _commandManager.AddCommand("recyclezone", Command_recyclezone, null, null);
             _commandManager.AddCommand("uptime", Command_uptime, null, 
@@ -80,6 +83,64 @@ Displays version information about the server. It might also print out some info
         }
 
         #endregion
+
+        private void Command_arena(string command, string parameters, Player p, ITarget target)
+        {
+            // TODO: add support for chat output
+            // TODO: add support for -a argument
+            //bool isChatOutput = p.Type == ClientType.Chat || parameters.Contains("-t");
+            bool includePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
+
+            byte[] bytes = new byte[1024];
+            Span<byte> bufferSpan = bytes; // TODO: stackalloc byte[1024];
+
+            // Write header
+            bufferSpan[0] = (byte)S2CPacketType.Arena;
+            int length = 1;
+
+            _arenaManager.Lock();
+
+            try
+            {
+                // refresh arena counts
+                _arenaManager.GetPopulationSummary(out _, out _);
+
+                foreach (Arena arena in _arenaManager.ArenaList)
+                {
+                    int nameLength = arena.Name.Length + 1; // +1 because the name in the packet is null terminated
+                    int additionalLength = nameLength + 2;
+
+                    if (length + additionalLength > (Constants.MaxPacket - Constants.ReliableHeaderLen))
+                    {
+                        break;
+                    }
+
+                    if (arena.Status == ArenaState.Running
+                        && (!arena.IsPrivate || includePrivateArenas || p.Arena == arena))
+                    {
+                        // arena name
+                        Span<byte> remainingSpan = bufferSpan.Slice(length);
+                        Encoding.ASCII.GetBytes(arena.Name, remainingSpan);
+                        remainingSpan[arena.Name.Length] = 0; // null terminate
+
+                        // player count (a negative value denotes the player's current arena)
+                        Span<byte> playerCountSpan = remainingSpan.Slice(nameLength, 2);
+                        bool success = BitConverter.TryWriteBytes(playerCountSpan, arena == p.Arena ? (short)-arena.Total : (short)arena.Total);
+
+                        length += additionalLength;
+                    }
+                }
+            }
+            finally
+            {
+                _arenaManager.Unlock();
+            }
+
+            // TODO: when Microsoft adds span support to Socket methods for UDP the buffer could be stackalloc'd and passed ot the network module.
+            //_net.SendToOne(p, bufferSpan.Slice(0, length), NetSendFlags.Reliable);
+
+            _net.SendToOne(p, bytes, length, NetSendFlags.Reliable);
+        }
 
         private void Command_shutdown(string command, string parameters, Player p, ITarget target)
         {

@@ -38,9 +38,17 @@ namespace SS.Core.Modules
         //private IPersist _persist;
         private InterfaceRegistrationToken _iArenaManagerCoreToken;
 
-        // for managing per player data
+        // for managing per arena data
         private ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
         private SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
+
+        // population
+        private int _playersTotal;
+        private int _playersPlaying;
+        private DateTime? _populationLastRefreshed;
+        private TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
+        private readonly object _populationRefreshLock = new object();
+
 
         private class SpawnLoc
         {
@@ -652,11 +660,74 @@ namespace SS.Core.Modules
 
         void IArenaManagerCore.GetPopulationSummary(out int total, out int playing)
         {
-            // TODO: for some reason asss does counting
-            // i'm not sure why it has to count
-            // it must not increment/decrement when players leave/enter, change ships, etc
-            total = 0;
-            playing = 0;
+            // Unless I'm missing something, thread synchronization in ASSS doesn't seem right.  
+            // a read lock is being held for reading the arena list (supposed to be locked prior to calling this method)
+            // a read lock is being held for reading the player list
+            // but it's writing to each arena, meaning multiple threads could be writing to Arena.Total and Areana.Playing simultaneously
+            // I've added a double checked lock, _populationRefreshLock, which will only allow 1 thread in to refresh the data at a given time.
+
+            // TODO: Can ArenaManager/Arena be enhanced such that an increment/decrement occurs when players enter/leave, change ships, etc?
+
+            if (RefreshNeeded())
+            {
+                lock (_populationRefreshLock)
+                {
+                    if (RefreshNeeded())
+                    {
+                        // refresh population stats
+                        ICapabilityManager capman = _broker.GetInterface<ICapabilityManager>();
+
+                        try
+                        {
+                            _playersTotal = _playersPlaying = 0;
+
+                            foreach (Arena arena in ArenaList)
+                            {
+                                arena.Total = arena.Playing = 0;
+                            }
+
+                            _playerData.Lock();
+
+                            try
+                            {
+                                foreach (Player p in _playerData.PlayerList)
+                                {
+                                    if (p.Status == PlayerState.Playing
+                                        && p.Type != ClientType.Fake
+                                        && p.Arena != null
+                                        && (capman == null || !capman.HasCapability(p, Constants.Capabilities.ExcludePopulation)))
+                                    {
+                                        _playersTotal++;
+                                        p.Arena.Total++;
+
+                                        if (p.Ship != ShipType.Spec)
+                                        {
+                                            _playersPlaying++;
+                                            p.Arena.Playing++;
+                                        }
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                _playerData.Unlock();
+                            }
+                        }
+                        finally
+                        {
+                            if (capman != null)
+                                _broker.ReleaseInterface(ref capman);
+                        }
+
+                        _populationLastRefreshed = DateTime.UtcNow;
+                    }
+                }
+            }
+
+            total = _playersTotal;
+            playing = _playersPlaying;
+
+            bool RefreshNeeded() => _populationLastRefreshed == null || (DateTime.UtcNow - _populationLastRefreshed.Value) >= _populationRefreshThreshold;
         }
 
         private bool ServerTimer_UpdateKnownArenas()

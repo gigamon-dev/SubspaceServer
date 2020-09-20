@@ -154,6 +154,9 @@ namespace SS.Core
 
         public Arena(ComponentBroker parent, string name) : base(parent)
         {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(name));
+
             Name = name;
             BaseName = name.TrimEnd(new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
             if (string.IsNullOrEmpty(BaseName))
@@ -180,6 +183,14 @@ namespace SS.Core
         public bool IsPublic
         {
             get { return string.Equals(BaseName, PUBLIC, StringComparison.OrdinalIgnoreCase); }
+        }
+
+        /// <summary>
+        /// Whether the arena is private (name starts with #).
+        /// </summary>
+        public bool IsPrivate
+        {
+            get { return Name[0] == '#'; }
         }
 
         public void RemovePerArenaData(int key)

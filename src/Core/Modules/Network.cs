@@ -343,6 +343,12 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken _iNetworkClientToken;
         private InterfaceRegistrationToken _iNetworkEncryptionToken;
 
+        [Flags]
+        private enum PingPopulationMode
+        {
+            Total = 1,
+            Playing = 2,
+        }
 
         private class Config
         {
@@ -367,15 +373,24 @@ namespace SS.Core.Modules
             /// <summary>
             /// how often to refresh the ping packet data
             /// </summary>
-            public int pingrefreshtime;
+            public TimeSpan PingRefreshThreshold;
 
             /// <summary>
             /// display total or playing in simple ping responses
             /// </summary>
-            public int simplepingpopulationmode;
+            public PingPopulationMode simplepingpopulationmode;
         }
 
         private readonly Config _config = new Config();
+
+        private class PingData
+        {
+            public DateTime? LastRefresh = null;
+            public uint GlobalTotal = 0;
+            public uint GlobalPlaying = 0;
+        }
+
+        private readonly PingData _pingData = new PingData();
 
         /// <summary>
         /// per player data key to ConnData
@@ -477,7 +492,7 @@ namespace SS.Core.Modules
         private readonly PacketDelegate[] _nethandlers = new PacketDelegate[0x14];
         private readonly SizedPacketDelegate[] _sizedhandlers = new SizedPacketDelegate[MAXTYPES];
 
-        private const int SELECT_TIMEOUT_MS = 1000;
+        private const int MICROSECONDS_PER_MILLISECOND = 1000;
 
         private readonly MessagePassingQueue<ConnData> _relqueue = new MessagePassingQueue<ConnData>();
 
@@ -701,31 +716,33 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void RecieveThread()
+        private void ReceiveThread()
         {
             List<Socket> socketList = new List<Socket>(_listenDataList.Count * 2 + 1);
             List<Socket> checkReadList = new List<Socket>(_listenDataList.Count * 2 + 1);
-
-            Dictionary<EndPoint, ListenData> gameEndpointLookup = new Dictionary<EndPoint, ListenData>(_listenDataList.Count);
-            Dictionary<EndPoint, ListenData> pingEndpointLookup = new Dictionary<EndPoint, ListenData>(_listenDataList.Count);
+            
+            Dictionary<EndPoint, (char Type, ListenData ListenData)> endpointLookup 
+                = new Dictionary<EndPoint, (char type, ListenData listenData)>(_listenDataList.Count * 2);
 
             foreach (ListenData ld in _listenDataList)
             {
                 if (ld.GameSocket != null)
                 {
                     socketList.Add(ld.GameSocket);
-                    gameEndpointLookup.Add(ld.GameSocket.LocalEndPoint, ld);
+                    endpointLookup.Add(ld.GameSocket.LocalEndPoint, ('G', ld));
                 }
 
                 if (ld.PingSocket != null)
                 {
                     socketList.Add(ld.PingSocket);
-                    pingEndpointLookup.Add(ld.PingSocket.LocalEndPoint, ld);
+                    endpointLookup.Add(ld.PingSocket.LocalEndPoint, ('P', ld));
                 }
             }
 
             if (_clientSocket != null)
+            {
                 socketList.Add(_clientSocket);
+            }
 
             while (true)
             {
@@ -737,44 +754,29 @@ namespace SS.Core.Modules
                     checkReadList.Clear();
                     checkReadList.AddRange(socketList);
 
-                    Socket.Select(checkReadList, null, null, SELECT_TIMEOUT_MS * 1000);
+                    Socket.Select(checkReadList, null, null, MICROSECONDS_PER_MILLISECOND * 1000);
 
                     if (_stopToken.IsCancellationRequested)
                         return;
 
                     foreach (Socket socket in checkReadList)
                     {
-                        if (gameEndpointLookup.TryGetValue(socket.LocalEndPoint, out ListenData listenData))
+                        if (endpointLookup.TryGetValue(socket.LocalEndPoint, out var tuple))
                         {
-                            HandleGamePacketRecieved(listenData);
-                        }
-                        else if (pingEndpointLookup.TryGetValue(socket.LocalEndPoint, out listenData))
-                        {
-                            HandlePingPacketRecieved(listenData);
+                            if (tuple.Type == 'G')
+                                HandleGamePacketRecieved(tuple.ListenData);
+                            else if (tuple.Type == 'P')
+                                HandlePingPacketRecieved(tuple.ListenData);
                         }
                         else if (socket == _clientSocket)
                         {
                             HandleClientPacketRecieved();
                         }
-
-                        /* i think that the Dictionary hashtable lookup method is more efficient than looping like this...
-                        foreach (ListenData ld in _listenDataList)
-                        {
-                            if (ld.GameSocket == socket)
-                                handleGamePacketRecieved(ld);
-
-                            if (ld.PingSocket == socket)
-                                handlePingPacketRecieved(ld);
-                        }
-
-                        if (socket == _clientSocket)
-                            handleClientPacketRecieved();
-                        */
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
+                    _logManager.LogM(LogLevel.Error, nameof(LogManager), "Caught an exception in ReceiveThread. {0}", ex);
                 }
             }
         }
@@ -1363,12 +1365,11 @@ namespace SS.Core.Modules
         private void HandleGamePacketRecieved(ListenData ld)
         {
             SubspaceBuffer buffer = _bufferPool.Get();
-            Socket s = ld.GameSocket;
             EndPoint recievedFrom = new IPEndPoint(IPAddress.Any, 0);
 
             try
             {
-                buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref recievedFrom);
+                buffer.NumBytes = ld.GameSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref recievedFrom);
             }
             catch (SocketException ex)
             {
@@ -1625,12 +1626,63 @@ namespace SS.Core.Modules
                 if (!(recievedFrom is IPEndPoint remoteEndPoint))
                     return;
 
-                // TODO: get stats if past threshold
+                if (buffer.NumBytes <= 0)
+                    return;
 
-                // HACK: so that we can actually get something other than 0 ms :)
-                //Random random = new Random();
-                //int randomDelay = random.Next(100, 200);
-                //System.Threading.Thread.Sleep(randomDelay);
+                //
+                // Refresh data (if needed)
+                //
+
+                if (_pingData.LastRefresh == null 
+                    || (DateTime.UtcNow - _pingData.LastRefresh) > _config.PingRefreshThreshold)
+                {
+                    foreach (ListenData listenData in _listenDataList)
+                    {
+                        listenData.PlayersTotal = listenData.PlayersPlaying = 0;
+                    }
+
+                    IArenaManagerCore aman = _broker.GetInterface<IArenaManagerCore>();
+                    if (aman == null)
+                        return;
+
+                    try
+                    {
+                        aman.Lock();
+
+                        try
+                        {
+                            aman.GetPopulationSummary(out int total, out int playing);
+
+                            // global
+                            _pingData.GlobalTotal = (uint)total;
+                            _pingData.GlobalPlaying = (uint)playing;
+
+                            // arenas that are associated with ListenData
+                            foreach (Arena arena in aman.ArenaList)
+                            {
+                                if (_listenConnectAsLookup.TryGetValue(arena.BaseName, out ListenData listenData))
+                                {
+                                    listenData.PlayersTotal += arena.Total;
+                                    listenData.PlayersPlaying += arena.Playing;
+                                }
+                            }
+
+                            _pingData.LastRefresh = DateTime.UtcNow;
+                        }
+                        finally
+                        {
+                            aman.Unlock();
+                        }
+                    }
+                    finally
+                    {
+                        _broker.ReleaseInterface(ref aman);
+                    }
+                }
+
+                //
+                // Respond
+                //
 
                 if (buffer.NumBytes == 4)
                 {
@@ -1640,23 +1692,17 @@ namespace SS.Core.Modules
                     buffer.Bytes[6] = buffer.Bytes[2];
                     buffer.Bytes[7] = buffer.Bytes[3];
 
-                    if (string.IsNullOrEmpty(ld.ConnectAs))
+                    Span<byte> span = new Span<byte>(buffer.Bytes, 0, 4);
+
+                    if (string.IsNullOrWhiteSpace(ld.ConnectAs))
                     {
                         // global
-                        // TODO: # players
-                        buffer.Bytes[0] = 1;
-                        buffer.Bytes[1] = 0;
-                        buffer.Bytes[2] = 0;
-                        buffer.Bytes[3] = 0;
+                        BitConverter.TryWriteBytes(span, _pingData.GlobalTotal);
                     }
                     else
                     {
                         // specific arena/zone
-                        // TODO: # players
-                        buffer.Bytes[0] = 1;
-                        buffer.Bytes[1] = 0;
-                        buffer.Bytes[2] = 0;
-                        buffer.Bytes[3] = 0;
+                        BitConverter.TryWriteBytes(span, ld.PlayersTotal);
                     }
 
                     int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
@@ -1664,7 +1710,7 @@ namespace SS.Core.Modules
                 else if (buffer.NumBytes == 8)
                 {
                     // TODO: add the ability handle ASSS' extended ping packets
-                }                
+                }
             }
 
             _globalStats.pcountpings++;
@@ -2389,8 +2435,8 @@ namespace SS.Core.Modules
             _config.queue_packets = _configManager.GetInt(_configManager.Global, "Net", "PresizedQueuePackets", 25);
             int reliableThreadCount = _configManager.GetInt(_configManager.Global, "Net", "ReliableThreads", 1);
             _config.overhead = _configManager.GetInt(_configManager.Global, "Net", "PerPacketOverhead", 28);
-            _config.pingrefreshtime = _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200);
-            _config.simplepingpopulationmode = _configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
+            _config.PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200));
+            _config.simplepingpopulationmode = (PingPopulationMode)_configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
 
             if (InitializeSockets() == false)
                 return false;
@@ -2398,7 +2444,7 @@ namespace SS.Core.Modules
             _stopToken = _stopCancellationTokenSource.Token;
 
             // recieve thread
-            Thread thread = new Thread(RecieveThread);
+            Thread thread = new Thread(ReceiveThread);
             thread.Name = "network-recv";
             thread.Start();
             _threadList.Add(thread);
