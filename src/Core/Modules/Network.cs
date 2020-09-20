@@ -1641,7 +1641,7 @@ namespace SS.Core.Modules
                         listenData.PlayersTotal = listenData.PlayersPlaying = 0;
                     }
 
-                    IArenaManagerCore aman = _broker.GetInterface<IArenaManagerCore>();
+                    IArenaManager aman = _broker.GetInterface<IArenaManager>();
                     if (aman == null)
                         return;
 

@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     public class AutoWarpModule : IModule
     {
         private ComponentBroker _broker;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private IGame _game;
         private IMapData _mapData;
 
@@ -72,7 +72,7 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IArenaManagerCore arenaManager, IGame game, IMapData mapData)
+        public bool Load(ComponentBroker broker, IArenaManager arenaManager, IGame game, IMapData mapData)
         {
             _broker = broker;
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));

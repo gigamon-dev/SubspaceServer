@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IModuleManager _mm;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private IPlayerData _playerData;
         private IChat _chat;
         private ICommandManager _commandManager;
@@ -30,7 +30,7 @@ namespace SS.Core.Modules
         public bool Load(
             ComponentBroker broker,
             IModuleManager mm,
-            IArenaManagerCore arenaManager,
+            IArenaManager arenaManager,
             IPlayerData playerData,
             IChat chat,
             ICommandManager commandManager,

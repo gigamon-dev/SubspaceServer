@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IConfigManager _configManager;
         private IMainloop _mainloop;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private IMapData _mapData;
         private InterfaceRegistrationToken _iMapNewsDownloadToken;
 
@@ -234,7 +234,7 @@ namespace SS.Core.Modules
             ILogManager logManager,
             IConfigManager configManager,
             IMainloop mainloop,
-            IArenaManagerCore arenaManager,
+            IArenaManager arenaManager,
             IMapData mapData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));

@@ -24,7 +24,7 @@ namespace SS.Core.Modules
         private IChatNet _chatNet;
         private IConfigManager _configManager;
         private ILogManager _logManager;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private ICommandManager _commandManager;
         private ICapabilityManager _capabilityManager;
         private IPersist _persist;
@@ -76,7 +76,7 @@ namespace SS.Core.Modules
             INetwork net,
             IConfigManager configManager,
             ILogManager logManager,
-            IArenaManagerCore arenaManager,
+            IArenaManager arenaManager,
             ICommandManager commandManager,
             ICapabilityManager capabilityManager)
         {

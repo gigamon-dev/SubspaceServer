@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IPlayerData _playerData;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private ILogManager _logManager;
         private IConfigManager _configManager;
         private InterfaceRegistrationToken _iCapabilityManagerToken;
@@ -49,7 +49,7 @@ namespace SS.Core.Modules
         public bool Load(
             ComponentBroker broker,
             IPlayerData playerData,
-            IArenaManagerCore arenaManager,
+            IArenaManager arenaManager,
             ILogManager logManager,
             IConfigManager configManager)
         {

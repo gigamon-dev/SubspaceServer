@@ -43,7 +43,7 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private IMainloopTimer _mainloopTimer;
         private IMapNewsDownload _map;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private ICapabilityManager _capabiltyManager;
         private IPersist _persist;
         private IStats _stats;
@@ -118,7 +118,7 @@ namespace SS.Core.Modules
             IConfigManager configManager,
             IMainloopTimer mainloopTimer,
             IMapNewsDownload map,
-            IArenaManagerCore arenaManager,
+            IArenaManager arenaManager,
             ICapabilityManager capabilityManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));

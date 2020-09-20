@@ -11,7 +11,7 @@ using System.Threading;
 namespace SS.Core.Modules
 {
     [CoreModuleInfo]
-    public class ArenaManager : IModule, IArenaManagerCore, IModuleLoaderAware
+    public class ArenaManager : IModule, IArenaManager, IModuleLoaderAware
     {
         /// <summary>
         /// the read-write lock for the global arena list
@@ -108,7 +108,7 @@ namespace SS.Core.Modules
 
         #region Locks
 
-        void IArenaManagerCore.Lock()
+        void IArenaManager.Lock()
         {
             ReadLock();
         }
@@ -118,7 +118,7 @@ namespace SS.Core.Modules
             _arenaLock.AcquireReaderLock(Timeout.Infinite);
         }
 
-        void IArenaManagerCore.Unlock()
+        void IArenaManager.Unlock()
         {
             ReadUnlock();
         }
@@ -142,7 +142,7 @@ namespace SS.Core.Modules
 
         #region IArenaManagerCore Members
 
-        void IArenaManagerCore.SendArenaResponse(Player player)
+        void IArenaManager.SendArenaResponse(Player player)
         {
             if (player == null)
                 return;
@@ -250,7 +250,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManagerCore.LeaveArena(Player player)
+        void IArenaManager.LeaveArena(Player player)
         {
             LeaveArena(player);
         }
@@ -311,7 +311,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        bool IArenaManagerCore.RecycleArena(Arena arena)
+        bool IArenaManager.RecycleArena(Arena arena)
         {
             WriteLock();
             try
@@ -380,7 +380,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManagerCore.SendToArena(Player player, string arenaName, int spawnx, int spawny)
+        void IArenaManager.SendToArena(Player player, string arenaName, int spawnx, int spawny)
         {
             switch(player.Type)
             {
@@ -428,12 +428,12 @@ namespace SS.Core.Modules
             }
         }
 
-        Arena IArenaManagerCore.FindArena(string name)
+        Arena IArenaManager.FindArena(string name)
         {
             return FindArena(name);
         }
 
-        Arena IArenaManagerCore.FindArena(string name, out int totalCount, out int playing)
+        Arena IArenaManager.FindArena(string name, out int totalCount, out int playing)
         {
             Arena arena = FindArena(name);
 
@@ -658,7 +658,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManagerCore.GetPopulationSummary(out int total, out int playing)
+        void IArenaManager.GetPopulationSummary(out int total, out int playing)
         {
             // Unless I'm missing something, thread synchronization in ASSS doesn't seem right.  
             // a read lock is being held for reading the arena list (supposed to be locked prior to calling this method)
@@ -746,7 +746,7 @@ namespace SS.Core.Modules
             return true; // keep running
         }
 
-        int IArenaManagerCore.AllocateArenaData<T>()
+        int IArenaManager.AllocateArenaData<T>()
         {
             int key = 0;
 
@@ -783,7 +783,7 @@ namespace SS.Core.Modules
             return key;
         }
 
-        void IArenaManagerCore.FreeArenaData(int key)
+        void IArenaManager.FreeArenaData(int key)
         {
             ReadLock();
             try
@@ -809,7 +809,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManagerCore.HoldArena(Arena arena)
+        void IArenaManager.HoldArena(Arena arena)
         {
             WriteLock();
             try
@@ -837,7 +837,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManagerCore.UnholdArena(Arena arena)
+        void IArenaManager.UnholdArena(Arena arena)
         {
             WriteLock();
             try
@@ -1240,7 +1240,7 @@ namespace SS.Core.Modules
 
             _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
 
-            IArenaManagerCore amc = this;
+            IArenaManager amc = this;
             _adkey = amc.AllocateArenaData<ArenaData>();
 
             _net.AddPacket((int)Packets.C2SPacketType.GotoArena, Packet_GotoArena);
@@ -1255,14 +1255,14 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(ReapArenas, 1700, 1700, null);
             _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
 
-            _iArenaManagerCoreToken = _broker.RegisterInterface<IArenaManagerCore>(this);
+            _iArenaManagerCoreToken = _broker.RegisterInterface<IArenaManager>(this);
 
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IArenaManagerCore>(ref _iArenaManagerCoreToken) != 0)
+            if (_broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerCoreToken) != 0)
                 return false;
 
             _net.RemovePacket((int)Packets.C2SPacketType.GotoArena, Packet_GotoArena);
@@ -1279,7 +1279,7 @@ namespace SS.Core.Modules
 
             _playerData.FreePlayerData(_spawnkey);
 
-            IArenaManagerCore amc = this;
+            IArenaManager amc = this;
             amc.FreeArenaData(_spawnkey);
             amc.FreeArenaData(_adkey);
 

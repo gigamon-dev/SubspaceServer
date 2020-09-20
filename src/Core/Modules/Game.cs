@@ -20,7 +20,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private INetwork _net;
         //private IChatNet _chatnet;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private ICapabilityManager _capabilityManager;
         private IMapData _mapData;
         private ILagCollect _lagCollect;
@@ -175,7 +175,7 @@ namespace SS.Core.Modules
             ILogManager logManager,
             INetwork net,
             //IChatNet chatnet,
-            IArenaManagerCore arenaManager,
+            IArenaManager arenaManager,
             ICapabilityManager capabilityManager,
             IMapData mapData,
             ILagCollect lagCollect,

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
-    public interface IArenaManagerCore : IComponentInterface
+    public interface IArenaManager : IComponentInterface
     {
         /// <summary>
         /// Locks the global arena lock.

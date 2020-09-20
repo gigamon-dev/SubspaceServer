@@ -240,7 +240,7 @@ namespace SS.Core.Modules
                 // this will set state to S_LEAVING_ARENA, if it was anywhere above S_LOGGEDIN
                 if (player.Arena != null)
                 {
-                    IArenaManagerCore aman = _broker.GetInterface<IArenaManagerCore>();
+                    IArenaManager aman = _broker.GetInterface<IArenaManager>();
                     if (aman != null)
                     {
                         try

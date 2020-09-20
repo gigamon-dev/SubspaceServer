@@ -17,7 +17,7 @@ namespace SS.Core.Modules
         private INetwork _net;
         private ILogManager _logManager;
         private IConfigManager _configManager;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private InterfaceRegistrationToken _iClientSettingsToken;
 
         private int _adkey;
@@ -51,7 +51,7 @@ namespace SS.Core.Modules
             INetwork net,
             ILogManager logManager,
             IConfigManager configManager,
-            IArenaManagerCore arenaManager)
+            IArenaManager arenaManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));

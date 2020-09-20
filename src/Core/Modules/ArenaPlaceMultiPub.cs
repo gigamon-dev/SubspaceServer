@@ -12,14 +12,14 @@ namespace SS.Core.Modules
     public class ArenaPlaceMultiPub : IModule, IArenaPlace
     {
         private IConfigManager _configManager;
-        private IArenaManagerCore _arenaManager;
+        private IArenaManager _arenaManager;
         private InterfaceRegistrationToken _iArenaPlaceToken;
 
         private string[] _pubNames;
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IConfigManager configManager, IArenaManagerCore arenaManager)
+        public bool Load(ComponentBroker broker, IConfigManager configManager, IArenaManager arenaManager)
         {
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
