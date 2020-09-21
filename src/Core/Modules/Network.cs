@@ -311,7 +311,7 @@ namespace SS.Core.Modules
                 this.bw = bw;
                 avgrtt = 200; // an initial guess
                 rttdev = 100;
-                lastPkt = DateTime.Now;
+                lastPkt = DateTime.UtcNow;
                 sizedsends.Clear();
 
                 for (int x = 0; x < outlist.Length; x++)
@@ -825,7 +825,7 @@ namespace SS.Core.Modules
 
                 // process lagouts and timewait
                 _playerData.Lock();
-                DateTime now = DateTime.Now;
+                DateTime now = DateTime.UtcNow;
                 try
                 {
                     foreach (Player p in _playerData.PlayerList)
@@ -1072,7 +1072,7 @@ namespace SS.Core.Modules
                 return;
 
             // this is used for lagouts and also for timewait
-            TimeSpan diff = DateTime.Now - conn.lastPkt;
+            TimeSpan diff = now - conn.lastPkt;
 
             // process lagouts
             if (p.WhenLoggedIn == PlayerState.Uninitialized // acts as flag to prevent dups
@@ -1225,7 +1225,7 @@ namespace SS.Core.Modules
 
         private void SendOutgoing(ConnData conn)
         {
-            DateTime now = DateTime.Now;
+            DateTime now = DateTime.UtcNow;
 
             // use an estimate of the average round-trip time to figure out when to resend a packet
             uint timeout = (uint)(conn.avgrtt + (4 * conn.rttdev));
@@ -1323,7 +1323,7 @@ namespace SS.Core.Modules
                             conn.bw.AdjustForRetry();
                         }
 
-                        buf.LastRetry = DateTime.Now;
+                        buf.LastRetry = DateTime.UtcNow;
                         buf.Tries++;
 
                         // this sends it or adds it to a pending grouped packet
@@ -1472,7 +1472,7 @@ namespace SS.Core.Modules
             }
 
             buffer.Conn = conn;
-            conn.lastPkt = DateTime.Now;
+            conn.lastPkt = DateTime.UtcNow;
             conn.bytesRecieved += (ulong)buffer.NumBytes;
             conn.pktRecieved++;
             _globalStats.byterecvd += (ulong)buffer.NumBytes;
@@ -1800,7 +1800,7 @@ namespace SS.Core.Modules
 
             SubspaceBuffer buf = _bufferPool.Get();
             buf.Conn = conn;
-            buf.LastRetry = DateTime.Now.Subtract(new TimeSpan(0, 0, 100));
+            buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 100));
             buf.Tries = 0;
             buf.CallbackInvoker = callbackInvoker;
             buf.Flags = flags;
@@ -1967,7 +1967,7 @@ namespace SS.Core.Modules
 
                     if (b.Tries == 1)
                     {
-                        int rtt = (int)DateTime.Now.Subtract(b.LastRetry).TotalMilliseconds;
+                        int rtt = (int)DateTime.UtcNow.Subtract(b.LastRetry).TotalMilliseconds;
                         if (rtt < 0)
                         {
                             _logManager.LogM(LogLevel.Error, nameof(Network), "negative rtt ({0}); clock going backwards", rtt);

@@ -140,7 +140,7 @@ namespace SS.Core.Modules
                 _limit = LimitInitial;
                 _maxavail = MaxAvail;
                 _hitlimit = false;
-                _sincetime = DateTime.Now;
+                _sincetime = DateTime.UtcNow;
             }
 
             #region IBWLimit Members

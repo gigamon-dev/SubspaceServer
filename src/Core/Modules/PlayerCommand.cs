@@ -48,7 +48,7 @@ namespace SS.Core.Modules
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
 
-            _startedAt = DateTime.Now;
+            _startedAt = DateTime.UtcNow;
 
             // TODO: do some sort of derivative of that command group thing asss does
             _commandManager.AddCommand("arena", Command_arena, null, null);
@@ -158,7 +158,7 @@ Displays version information about the server. It might also print out some info
 
         private void Command_uptime(string command, string parameters, Player p, ITarget target)
         {
-            TimeSpan ts = DateTime.Now - _startedAt;
+            TimeSpan ts = DateTime.UtcNow - _startedAt;
 
             _chat.SendMessage(p, "uptime: {0} days {1} hours {2} minutes {3} seconds", ts.Days, ts.Hours, ts.Minutes, ts.Seconds);
         }
@@ -204,7 +204,7 @@ Displays version information about the server. It might also print out some info
 
         private void Command_netstats(string command, string parameters, Player p, ITarget target)
         {
-            ulong secs = Convert.ToUInt64((DateTime.Now - _startedAt).TotalSeconds);
+            ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
 
             IReadOnlyNetStats stats = _net.GetStats();
             _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}", 

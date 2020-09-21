@@ -339,7 +339,7 @@ namespace SS.Core.Modules
                 if (timeout == 0)
                     pm.expires = null;
                 else
-                    pm.expires = DateTime.Now.AddSeconds(timeout);
+                    pm.expires = DateTime.UtcNow.AddSeconds(timeout);
             }
         }
 
@@ -386,7 +386,7 @@ namespace SS.Core.Modules
                     pm.mask.Clear();
                     pm.expires = null;
                     pm.msgs = 0;
-                    pm.lastCheck = DateTime.Now;
+                    pm.lastCheck = DateTime.UtcNow;
                 }
             }
         }
@@ -504,7 +504,7 @@ namespace SS.Core.Modules
                     else if (pm.mask.IsClear)
                     {
                         // only set expiry time if this is a new shutup
-                        pm.expires = DateTime.Now.AddSeconds(_cfg.floodshutup);
+                        pm.expires = DateTime.UtcNow.AddSeconds(_cfg.floodshutup);
                     }
 
                     pm.mask.SetRestricted(ChatMessageType.PubMacro);
@@ -962,7 +962,7 @@ namespace SS.Core.Modules
             if (pm == null)
                 return;
 
-            DateTime now = DateTime.Now;
+            DateTime now = DateTime.UtcNow;
 
             // handle expiring masks
             if(pm.expires != null)

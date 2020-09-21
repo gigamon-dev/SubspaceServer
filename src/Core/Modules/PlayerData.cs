@@ -49,7 +49,7 @@ namespace SS.Core.Modules
 
             public void SetAvailableTimestampFromNow()
             {
-                AvailableTimestamp = DateTime.Now.AddSeconds(PID_REUSE_DELAY);
+                AvailableTimestamp = DateTime.UtcNow.AddSeconds(PID_REUSE_DELAY);
             }
         }
 
@@ -147,7 +147,7 @@ namespace SS.Core.Modules
                 LinkedListNode<FreePlayerInfo> pidNode = _freePlayersList.First;
 
                 if ((pidNode != null) &&
-                    (DateTime.Now > pidNode.Value.AvailableTimestamp))
+                    (DateTime.UtcNow > pidNode.Value.AvailableTimestamp))
                 {
                     // got an existing player object
                     _freePlayersList.Remove(pidNode);
@@ -186,7 +186,7 @@ namespace SS.Core.Modules
                 player.NewArena = null;
                 player.pkt.Ship = (sbyte)ShipType.Spec;
                 player.Attached = -1;
-                player.ConnectTime = DateTime.Now;
+                player.ConnectTime = DateTime.UtcNow;
                 player.ConnectAs = null;
             }
             finally
