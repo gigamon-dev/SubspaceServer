@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 
 namespace SS.Core.ComponentInterfaces
@@ -49,6 +50,35 @@ namespace SS.Core.ComponentInterfaces
 
         ReadOnlySpan<ulong> GroupedStats { get; }
         ReadOnlySpan<ulong> PriorityStats { get; }
+    }
+
+    public class NetClientStats
+    {
+        /// <summary>
+        /// Server to client sequence number
+        /// </summary>
+        public int s2cn;
+
+        /// <summary>
+        /// Client to server sequence number
+        /// </summary>
+        public int c2sn;
+
+        public uint PacketsSent;
+        public uint PacketsReceived;
+        public ulong BytesSent;
+        public ulong BytesReceived;
+
+        /// <summary>
+        /// Server to client packets dropped
+        /// </summary>
+        public ulong PacketsDropped;
+
+        public string EncryptionName;
+
+        public IPEndPoint IPEndPoint;
+
+        //TODO: public byte[] BandwidthLimitInfo;
     }
 
     public interface INetwork : IComponentInterface
@@ -161,6 +191,8 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <returns>The stats.</returns>
         IReadOnlyNetStats GetStats();
+
+        NetClientStats GetClientStats(Player p);
 
         /// <summary>
         /// Collection of information about sockets that the Network module is listening on.

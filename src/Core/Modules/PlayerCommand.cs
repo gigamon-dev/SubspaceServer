@@ -22,6 +22,7 @@ namespace SS.Core.Modules
         //private IConfigManager _configManager;
         private INetwork _net;
         private IMainloop _mainloop;
+        private IGame _game;
 
         private DateTime _startedAt;
 
@@ -36,7 +37,8 @@ namespace SS.Core.Modules
             ICommandManager commandManager,
             ICapabilityManager capabilityManager,
             INetwork net, 
-            IMainloop mainloop)
+            IMainloop mainloop, 
+            IGame game)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
@@ -47,6 +49,7 @@ namespace SS.Core.Modules
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _game = game ?? throw new ArgumentNullException(nameof(game));
 
             _startedAt = DateTime.UtcNow;
 
@@ -66,6 +69,7 @@ Displays version information about the server. It might also print out some info
 
             _commandManager.AddCommand("sheep", Command_sheep, null, null);
             _commandManager.AddCommand("netstats", Command_netstats, null, null);
+            _commandManager.AddCommand("info", Command_info, null, null);
 
             _commandManager.AddCommand("lsmod", Command_lsmod, null, null);
             _commandManager.AddCommand("modinfo", Command_modinfo, null, null);
@@ -233,6 +237,61 @@ Displays version information about the server. It might also print out some info
                 stats.PriorityStats[2],
                 stats.PriorityStats[3],
                 stats.PriorityStats[4]);
+        }
+
+        private void Command_info(string command, string parameters, Player p, ITarget target)
+        {
+            if (target == null 
+                || target.Type != TargetType.Player
+                || !(target is IPlayerTarget playerTarget))
+            {
+                _chat.SendMessage(p, "info: must use on a player");
+                return;
+            }
+
+            Player t = playerTarget.Player;
+            if (t == null)
+                return;
+
+            string prefix = t.Name;
+            TimeSpan connectedTimeSpan = DateTime.UtcNow - t.ConnectTime;
+
+            _chat.SendMessage(p, $"{prefix}: pid={t.Id} name='{t.Name}' squad='{t.Squad}' " +
+                $"auth={(t.Flags.Authenticated?'Y':'N')} ship={t.Ship} freq={t.Freq}");
+            _chat.SendMessage(p, $"{prefix}: arena={(t.Arena != null ? t.Arena.Name : "(none)")} " +
+                $"client={t.ClientName} res={t.Xres}x{t.Yres} onFor={connectedTimeSpan} " +
+                $"connectAs={(!string.IsNullOrWhiteSpace(t.ConnectAs)? t.ConnectAs : "<default>")}");
+
+            if (t.IsStandard)
+            {
+                SendCommonBandwidthInfo(p, t, connectedTimeSpan, prefix, true);
+            }
+        }
+
+        private void SendCommonBandwidthInfo(Player p, Player t, TimeSpan connectedTimeSpan, string prefix, bool includeSensitive)
+        {
+            NetClientStats stats = _net.GetClientStats(t);
+
+            if (includeSensitive)
+            {
+                _chat.SendMessage(p, $"{prefix}: ip:{stats.IPEndPoint.Address} port:{stats.IPEndPoint.Port} " +
+                    $"encName={stats.EncryptionName} macId={t.MacId} permId={t.PermId}");
+            }
+
+            int ignoringwpns = (int)(100f * _game.GetIgnoreWeapons(t));
+
+            _chat.SendMessage(p,
+                $"{prefix}: " +
+                $"ave bw in/out={(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0} " +
+                $"ignoringWpns={ignoringwpns} dropped={stats.PacketsDropped}");
+
+            // TODO: bwlimit info
+
+            if (t.Flags.NoShip)
+                _chat.SendMessage(p, $"{prefix}: lag too high to play");
+
+            if (t.Flags.NoFlagsBalls)
+                _chat.SendMessage(p, $"{prefix}: lag too high to carry flags or balls");
         }
 
         private void Command_lsmod(string command, string parameters, Player p, ITarget target)

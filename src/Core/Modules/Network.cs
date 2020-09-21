@@ -2965,6 +2965,32 @@ namespace SS.Core.Modules
             return _globalStats;
         }
 
+        NetClientStats INetwork.GetClientStats(Player p)
+        {
+            if (!(p[_connKey] is ConnData conn))
+                return null;
+
+            NetClientStats stats = new NetClientStats();
+            stats.s2cn = conn.s2cn;
+            stats.c2sn = conn.c2sn;
+            stats.PacketsSent = conn.pktSent;
+            stats.PacketsReceived = conn.pktRecieved;
+            stats.BytesSent = conn.bytesSent;
+            stats.BytesReceived = conn.bytesRecieved;
+            stats.PacketsDropped = conn.pktdropped;
+
+            if (conn.enc != null)
+            {
+                stats.EncryptionName = conn.iEncryptName;
+            }
+
+            stats.IPEndPoint = conn.sin;
+
+            //TODO: _bandwithLimit.
+
+            return stats;
+        }
+
         IReadOnlyList<ListenData> INetwork.Listening => _readOnlyListenData;
 
         #endregion
