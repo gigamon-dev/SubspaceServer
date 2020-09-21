@@ -77,6 +77,8 @@ Displays version information about the server. It might also print out some info
             _commandManager.AddCommand("rmmod", Command_rmmod, null, null);
             _commandManager.AddCommand("attmod", Command_attmod, null, null);
             _commandManager.AddCommand("detmod", Command_detmod, null, null);
+
+            _commandManager.AddCommand("where", Command_where, null, null);
             return true;
         }
 
@@ -477,6 +479,37 @@ Displays version information about the server. It might also print out some info
                     _chat.SendMessage(p, $"Module '{module}' attached.");
                 else
                     _chat.SendMessage(p, $"Failed to attach module '{module}'.");
+            }
+        }
+
+        private void Command_where(string command, string parameters, Player p, ITarget target)
+        {
+            Player t = null;
+
+            if (target != null
+                && target.Type == TargetType.Player
+                && target is IPlayerTarget playerTarget)
+            {
+                t = playerTarget.Player;
+            }
+
+            if (t == null)
+                t = p;
+
+            // right shift by 4 is divide by 16 (each tile is 16 pixels)
+            int x = t.Position.X >> 4;
+            int y = t.Position.Y >> 4;
+
+            string name = (t == p) ? "You" : t.Name;
+            string verb = (t == p) ? "are" : "is";
+
+            if (t.IsStandard)
+            {
+                _chat.SendMessage(p, $"{name} {verb} at {(char)('A' + (x * 20 / 1024))}{(y * 20 / 1024 + 1)} ({x},{y})");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"{name} {verb} not using a playable client.");
             }
         }
     }
