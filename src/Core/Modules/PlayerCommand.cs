@@ -76,6 +76,7 @@ Displays version information about the server. It might also print out some info
             _commandManager.AddCommand("insmod", Command_insmod, null, null);
             _commandManager.AddCommand("rmmod", Command_rmmod, null, null);
             _commandManager.AddCommand("attmod", Command_attmod, null, null);
+            _commandManager.AddCommand("detmod", Command_detmod, null, null);
             return true;
         }
 
@@ -450,9 +451,22 @@ Displays version information about the server. It might also print out some info
                 }
             }
 
+            AttachDetachModule(p, module, detach);
+        }
+
+        private void Command_detmod(string command, string parameters, Player p, ITarget target)
+        {
+            AttachDetachModule(p, parameters, true);
+        }
+
+        private void AttachDetachModule(Player p, string module, bool detach)
+        {
+            if (p == null)
+                return;
+
             if (detach)
             {
-                if(_mm.DetachModule(module, p.Arena))
+                if (_mm.DetachModule(module, p.Arena))
                     _chat.SendMessage(p, $"Module '{module}' detached.");
                 else
                     _chat.SendMessage(p, $"Failed to detach module '{module}'.");

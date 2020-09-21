@@ -21,6 +21,7 @@ cmd_modinfo
 cmd_insmod
 cmd_rmmod
 cmd_attmod
+cmd_detmod
 
 cmd_setscore
 cmd_resetgame

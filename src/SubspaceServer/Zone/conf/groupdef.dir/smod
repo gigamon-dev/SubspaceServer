@@ -19,6 +19,7 @@ cmd_aa
 cmd_az
 
 cmd_attmod
+cmd_detmod
 
 cmd_moveflag
 
