@@ -352,7 +352,12 @@ namespace SS.Core.Modules
 
         private class Config
         {
+            [ConfigHelp("Net", "DropTimeout", ConfigScope.Global, typeof(int), DefaultValue = "3000",
+                Description = "How long to get no data from a client before disconnecting him(in ticks).")]
             public int droptimeout;
+
+            [ConfigHelp("Net", "MaxOutlistSize", ConfigScope.Global, typeof(int), DefaultValue = "500",
+                Description = "How many S2C packets the server will buffer for a client before dropping him.")]
             public int maxoutlist;
 
             /// <summary>
@@ -378,6 +383,12 @@ namespace SS.Core.Modules
             /// <summary>
             /// display total or playing in simple ping responses
             /// </summary>
+            [ConfigHelp("Net", "SimplePingPopulationMode", ConfigScope.Global, typeof(int), DefaultValue = "1",
+                Description = 
+                "Display what value in the simple ping reponse (used by continuum)?" +
+                "1 = display total player count(default);" +
+                "2 = display playing count(in ships);" +
+                "3 = alternate between 1 and 2")]
             public PingPopulationMode simplepingpopulationmode;
         }
 
@@ -615,10 +626,18 @@ namespace SS.Core.Modules
             return socket;
         }
 
+        [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int), 
+            "The port that the game protocol listens on. Sections named " +
+            "Listen1 through Listen9 are also supported.All Listen " +
+            "sections must contain a port setting.")]
+        [ConfigHelp("Listen", "BindAddress", ConfigScope.Global, typeof(string),
+            "The interface address to bind to. This is optional, and if " +
+            "omitted, the server will listen on all available interfaces.")]
         private ListenData CreateListenDataSockets(int configIndex)
         {
             string configSection = "Listen" + ((configIndex == 0) ? string.Empty : configIndex.ToString());
 
+            
             int gamePort = _configManager.GetInt(_configManager.Global, configSection, "Port", -1);
             if (gamePort == -1)
                 return null;
@@ -674,6 +693,8 @@ namespace SS.Core.Modules
             return listenData;
         }
 
+        [ConfigHelp("Net", "InternalClientPort", ConfigScope.Global, typeof(int),
+            Description = "The bind port for the internal client socket (used to communicate with biller and dirserver).")]
         private bool InitializeSockets()
         {
             //

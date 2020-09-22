@@ -861,6 +861,9 @@ namespace SS.Core.Modules
             }
         }
 
+        [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, typeof(string), 
+            Description = "This is a list of modules that you want to take effect in this" +
+            "arena. Not all modules need to be attached to arenas to function, but some do.")]
         private void DoAttach(Arena a)
         {
             string attachMods = _configManager.GetStr(a.Cfg, "Modules", "AttachModules");
@@ -1284,6 +1287,8 @@ namespace SS.Core.Modules
 
         #region IModuleLoaderAware Members
 
+        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, typeof(string), 
+            "A list of the names of arenas to permanently set up when the server is started.")]
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
             //_persist = mm.GetInterface<IPersist>();
@@ -1314,6 +1319,8 @@ namespace SS.Core.Modules
 
         #endregion
 
+        [ConfigHelp("Chat", "ForceFilter", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+            Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
         private void Packet_GotoArena(Player p, byte[] data, int len)
         {
             if (p == null)

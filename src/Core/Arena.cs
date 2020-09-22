@@ -127,7 +127,9 @@ namespace SS.Core
         /// the frequency for spectators in this arena.
         /// this setting is so commonly used, it deserves a spot here.
         /// </summary>
-	    public short SpecFreq;
+        [ConfigHelp("Team", "SpectatorFrequency", ConfigScope.Arena, typeof(int), Range = "0-9999", DefaultValue = "8025",
+            Description = "The frequency that spectators are assigned to, by default.")]
+        public short SpecFreq;
 
 	    /// <summary>
 	    /// how many players are in ships in this arena.
