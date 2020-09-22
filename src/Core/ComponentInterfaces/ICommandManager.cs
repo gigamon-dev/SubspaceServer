@@ -5,6 +5,38 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
+    [Flags]
+    public enum CommandTarget
+    {
+        None = 1,
+        Player = 2,
+        Team = 4,
+        Arena = 8,
+        Any = 15,
+    }
+
+    /// <summary>
+    /// Attribute for providing help information about a command.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
+    public class CommandHelpAttribute : Attribute
+    {
+        /// <summary>
+        /// Use this to specify the target or targets E.g., <code>CommandTarget.Player | CommandTarget.Team</code>
+        /// </summary>
+        public CommandTarget Targets { get; set; }
+
+        /// <summary>
+        /// Use this to describe the arguments the command accepts.
+        /// </summary>
+        public string Args { get; set; }
+
+        /// <summary>
+        /// Use this to describe what the command does and how the <see cref="Args"/> affect it.
+        /// </summary>
+        public string Description { get; set; }
+    }
+
     /// <summary>
     /// 
     /// </summary>
@@ -56,20 +88,23 @@ namespace SS.Core.ComponentInterfaces
         /// Registers a command handler.
         /// Be sure to use RemoveCommand to unregister this before unloading.
         /// </summary>
-        /// <param name="commandName">the name of the command being registered</param>
-        /// <param name="handler">the command handler</param>
-        /// <param name="arena"></param>
-        /// <param name="helptext">some help text for this command, or NULL for none</param>
-        void AddCommand(string commandName, CommandDelegate handler, Arena arena, string helptext);
+        /// <param name="commandName">The name of the command to register.</param>
+        /// <param name="handler">The command handler.</param>
+        /// <param name="arena">Arena to register the command for. <see langword="null"/> for all arenas.</param>
+        /// <param name="helpText">
+        /// Help text for this command, or <see langword="null"/> for none.
+        /// If <see langword="null"/>, it will look for a <see cref="CommandHelpAttribute"/> on the <paramref name="handler"/>.
+        /// </param>
+        void AddCommand(string commandName, CommandDelegate handler, Arena arena = null, string helpText = null);
 
         /// <summary>
         /// Unregisters a command handler.
         /// Use this to unregister handlers registered with AddCommand.
         /// </summary>
-        /// <param name="commandName"></param>
-        /// <param name="handler"></param>
-        /// <param name="arena"></param>
-        void RemoveCommand(string commandName, CommandDelegate handler, Arena arena);
+        /// <param name="commandName">The name of the command to unregister.</param>
+        /// <param name="handler">The command handler.</param>
+        /// <param name="arena">Arena to unregister the command for. <see langword="null"/> for all arenas.</param>
+        void RemoveCommand(string commandName, CommandDelegate handler, Arena arena = null);
 
         /// <summary>
         /// Dispatches an incoming command.

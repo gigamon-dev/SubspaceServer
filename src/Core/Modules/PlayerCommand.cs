@@ -12,17 +12,16 @@ namespace SS.Core.Modules
     public class PlayerCommand : IModule
     {
         private ComponentBroker _broker;
-        private IModuleManager _mm;
         private IArenaManager _arenaManager;
-        private IPlayerData _playerData;
         private IChat _chat;
-        private ICommandManager _commandManager;
-        //private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
-        //private IConfigManager _configManager;
-        private INetwork _net;
-        private IMainloop _mainloop;
+        private IConfigManager _configManager;
+        private ICommandManager _commandManager;
         private IGame _game;
+        private IMainloop _mainloop;
+        private IModuleManager _mm;
+        private INetwork _net;
+        private IPlayerData _playerData;
 
         private DateTime _startedAt;
 
@@ -30,67 +29,82 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IModuleManager mm,
             IArenaManager arenaManager,
-            IPlayerData playerData,
             IChat chat,
-            ICommandManager commandManager,
             ICapabilityManager capabilityManager,
-            INetwork net, 
+            IConfigManager configManager,
+            ICommandManager commandManager,
+            IGame game,
             IMainloop mainloop, 
-            IGame game)
+            IModuleManager mm,
+            INetwork net, 
+            IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _startedAt = DateTime.UtcNow;
 
             // TODO: do some sort of derivative of that command group thing asss does
-            _commandManager.AddCommand("arena", Command_arena, null, null);
-            _commandManager.AddCommand("shutdown", Command_shutdown, null, null);
-            _commandManager.AddCommand("recyclezone", Command_recyclezone, null, null);
-            _commandManager.AddCommand("uptime", Command_uptime, null, 
-@"Targets: none
-Args: none
-Displays how long the server has been running.");
+            _commandManager.AddCommand("arena", Command_arena);
+            _commandManager.AddCommand("shutdown", Command_shutdown);
+            _commandManager.AddCommand("recyclezone", Command_recyclezone);
+            _commandManager.AddCommand("uptime", Command_uptime);
+            _commandManager.AddCommand("version", Command_version);
+            _commandManager.AddCommand("sheep", Command_sheep);
+            _commandManager.AddCommand("netstats", Command_netstats);
+            _commandManager.AddCommand("info", Command_info);
+            _commandManager.AddCommand("lsmod", Command_lsmod);
+            _commandManager.AddCommand("modinfo", Command_modinfo);
+            _commandManager.AddCommand("insmod", Command_insmod);
+            _commandManager.AddCommand("rmmod", Command_rmmod);
+            _commandManager.AddCommand("attmod", Command_attmod);
+            _commandManager.AddCommand("detmod", Command_detmod);
+            _commandManager.AddCommand("where", Command_where);
 
-            _commandManager.AddCommand("version", Command_version, null, 
-@"Targets: none
-Args: none
-Displays version information about the server. It might also print out some information about the machine that it's running on.");
-
-            _commandManager.AddCommand("sheep", Command_sheep, null, null);
-            _commandManager.AddCommand("netstats", Command_netstats, null, null);
-            _commandManager.AddCommand("info", Command_info, null, null);
-
-            _commandManager.AddCommand("lsmod", Command_lsmod, null, null);
-            _commandManager.AddCommand("modinfo", Command_modinfo, null, null);
-            _commandManager.AddCommand("insmod", Command_insmod, null, null);
-            _commandManager.AddCommand("rmmod", Command_rmmod, null, null);
-            _commandManager.AddCommand("attmod", Command_attmod, null, null);
-            _commandManager.AddCommand("detmod", Command_detmod, null, null);
-
-            _commandManager.AddCommand("where", Command_where, null, null);
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            // TODO: 
-            //_commandManager.RemoveCommand()
+            _commandManager.RemoveCommand("arena", Command_arena);
+            _commandManager.RemoveCommand("shutdown", Command_shutdown);
+            _commandManager.RemoveCommand("recyclezone", Command_recyclezone);
+            _commandManager.RemoveCommand("uptime", Command_uptime);
+            _commandManager.RemoveCommand("version", Command_version);
+            _commandManager.RemoveCommand("sheep", Command_sheep);
+            _commandManager.RemoveCommand("netstats", Command_netstats);
+            _commandManager.RemoveCommand("info", Command_info);
+            _commandManager.RemoveCommand("lsmod", Command_lsmod);
+            _commandManager.RemoveCommand("modinfo", Command_modinfo);
+            _commandManager.RemoveCommand("insmod", Command_insmod);
+            _commandManager.RemoveCommand("rmmod", Command_rmmod);
+            _commandManager.RemoveCommand("attmod", Command_attmod);
+            _commandManager.RemoveCommand("detmod", Command_detmod);
+            _commandManager.RemoveCommand("where", Command_where);
+
             return true;
         }
 
         #endregion
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[{-a}] [{-t}]",
+            Description = 
+            "Lists the available arenas. Specifying {-a} will also include\n" +
+            "empty arenas that the server knows about. The {-t} switch forces\n" +
+            "the output to be in text even for regular clients (useful when using\n" +
+            "the Continuum chat window).")]
         private void Command_arena(string command, string parameters, Player p, ITarget target)
         {
             // TODO: add support for chat output
@@ -149,6 +163,14 @@ Displays version information about the server. It might also print out some info
             _net.SendToOne(p, bytes, length, NetSendFlags.Reliable);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[{-r}]",
+            Description = 
+            "Immediately shuts down the server, exiting with {EXIT_NONE}. If\n" + 
+            "{-r} is specified, exit with {EXIT_RECYCLE} instead. The {run-asss}\n" +
+            "script, if it is being used, will notice {EXIT_RECYCLE} and restart\n" +
+            "the server.\n")]
         private void Command_shutdown(string command, string parameters, Player p, ITarget target)
         {
             ExitCode code = string.Equals(parameters, "-r", StringComparison.OrdinalIgnoreCase)
@@ -158,11 +180,22 @@ Displays version information about the server. It might also print out some info
             _mainloop.Quit(code);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description =
+            "Immediately shuts down the server, exiting with {EXIT_RECYCLE}. The " +
+            "{run-asss} script, if it is being used, will notice {EXIT_RECYCLE} " +
+            "and restart the server.\n")]
         private void Command_recyclezone(string command, string parameters, Player p, ITarget target)
         {
             _mainloop.Quit(ExitCode.Recycle);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Displays how long the server has been running.")]
         private void Command_uptime(string command, string parameters, Player p, ITarget target)
         {
             TimeSpan ts = DateTime.UtcNow - _startedAt;
@@ -170,6 +203,13 @@ Displays version information about the server. It might also print out some info
             _chat.SendMessage(p, "uptime: {0} days {1} hours {2} minutes {3} seconds", ts.Days, ts.Hours, ts.Minutes, ts.Seconds);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[{-v}]",
+            Description = 
+            "Prints out information about the server." +
+            "For staff members, it will print more detailed version information." +
+            "If staff members specify the {-v} arg, it will print even more verbose information.")]
         private void Command_version(string command, string parameters, Player p, ITarget target)
         {
             _chat.SendMessage(p, $"Subspace Server .NET");
@@ -201,7 +241,7 @@ Displays version information about the server. It might also print out some info
             if (target.Type != TargetType.Arena)
                 return;
 
-            string sheepMessage = null;//_configManager.
+            string sheepMessage = _configManager.GetStr(p.Arena.Cfg, "Misc", "SheepMessage");
 
             if (sheepMessage != null)
                 _chat.SendSoundMessage(p, ChatSound.Sheep, sheepMessage);
@@ -209,6 +249,10 @@ Displays version information about the server. It might also print out some info
                 _chat.SendSoundMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Prints out some statistics from the network layer.")]
         private void Command_netstats(string command, string parameters, Player p, ITarget target)
         {
             ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
@@ -242,6 +286,13 @@ Displays version information about the server. It might also print out some info
                 stats.PriorityStats[4]);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = null,
+            Description =
+            "Displays various information on the target player, including which\n" +
+            "client they are using, their resolution, IP address, how long they have\n" +
+            "been connected, and bandwidth usage information.")]
         private void Command_info(string command, string parameters, Player p, ITarget target)
         {
             if (target == null 
@@ -297,6 +348,14 @@ Displays version information about the server. It might also print out some info
                 _chat.SendMessage(p, $"{prefix}: lag too high to carry flags or balls");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[{-a}] [{-s}] [<text>]",
+            Description =
+            "Lists all the modules currently loaded into the server. With {-a}, lists\n" +
+            "only modules attached to this arena. With {-s}, sorts by name.\n" +
+            "With optional `text`, limits modules displayed to those whose names\n" +
+            "contain the given text.")]
         private void Command_lsmod(string command, string parameters, Player p, ITarget target)
         {
             bool sort = false;
@@ -360,6 +419,13 @@ Displays version information about the server. It might also print out some info
             _chat.SendWrappedText(p, sb.ToString());
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<module name>",
+            Description =
+            "Displays information about the specified module. This might include a\n" +
+            "version number, contact information for the author, and a general\n" +
+            "description of the module.\n")]
         private void Command_modinfo(string command, string parameters, Player p, ITarget target)
         {
             if (string.IsNullOrWhiteSpace(parameters))
@@ -396,6 +462,10 @@ Displays version information about the server. It might also print out some info
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<module name>",
+            Description = "Immediately loads the specified module into the server.")]
         private void Command_insmod(string command, string parameters, Player p, ITarget target)
         {
             if (string.IsNullOrWhiteSpace(parameters))
@@ -427,6 +497,10 @@ Displays version information about the server. It might also print out some info
                 _chat.SendMessage(p, $"Failed to load module '{moduleTypeName}'.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<module name>",
+            Description = "Attempts to unload the specified module from the server.")]
         private void Command_rmmod(string command, string parameters, Player p, ITarget target)
         {
             if (string.IsNullOrWhiteSpace(parameters))
@@ -438,6 +512,12 @@ Displays version information about the server. It might also print out some info
                 _chat.SendMessage(p, $"Failed to unload module '{parameters}'.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[{-d}] <module name>",
+            Description =
+            "Attaches the specified module to this arena. Or with {-d},\n" +
+            "detaches the module from the arena.")]
         private void Command_attmod(string command, string parameters, Player p, ITarget target)
         {
             bool detach = false;
@@ -456,6 +536,10 @@ Displays version information about the server. It might also print out some info
             AttachDetachModule(p, module, detach);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<module name>",
+            Description = "Detaches the module from the arena.")]
         private void Command_detmod(string command, string parameters, Player p, ITarget target)
         {
             AttachDetachModule(p, parameters, true);
@@ -482,6 +566,10 @@ Displays version information about the server. It might also print out some info
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = null,
+            Description = "Displays the current location (on the map) of the target player.")]
         private void Command_where(string command, string parameters, Player p, ITarget target)
         {
             Player t = null;

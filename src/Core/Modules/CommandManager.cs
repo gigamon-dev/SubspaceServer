@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 using SS.Core.ComponentInterfaces;
@@ -77,13 +78,18 @@ namespace SS.Core.Modules
 
         #region ICommandManager Members
 
-        void ICommandManager.AddCommand(string commandName, CommandDelegate handler, Arena arena, string helptext)
+        void ICommandManager.AddCommand(string commandName, CommandDelegate handler, Arena arena, string helpText)
         {
             if (commandName == null)
                 _defaultHandler = handler;
             else
             {
-                CommandData cd = new CommandData(handler, arena, helptext);
+                if (string.IsNullOrWhiteSpace(helpText))
+                {
+                    TryGetHelpText(handler, out helpText);
+                }
+
+                CommandData cd = new CommandData(handler, arena, helpText);
 
                 lock (_cmdmtx)
                 {
@@ -96,6 +102,30 @@ namespace SS.Core.Modules
                     ll.AddLast(cd);
                 }
             }
+        }
+
+        private bool TryGetHelpText(CommandDelegate handler, out string helpText)
+        {
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            MethodInfo mi = handler.GetMethodInfo();
+            CommandHelpAttribute helpAttr = mi.GetCustomAttribute<CommandHelpAttribute>();
+            if (helpAttr == null)
+            {
+                helpText = null;
+                return false;
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.Append($"Targets: {helpAttr.Targets:F}\n");
+            sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
+
+            if (!string.IsNullOrWhiteSpace(helpAttr.Description))
+                sb.Append(helpAttr.Description);
+
+            helpText = sb.ToString();
+            return true;
         }
 
         void ICommandManager.RemoveCommand(string commandName, CommandDelegate handler, Arena arena)
