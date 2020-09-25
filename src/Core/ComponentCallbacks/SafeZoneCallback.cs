@@ -17,8 +17,8 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="p">The player that entered or exited a safe zone.</param>
         /// <param name="x">The x-coordinate of the player.</param>
         /// <param name="y">The y-coordinate of the player.</param>
-        /// <param name="status">Flags about the player's position. Note: <see cref="PlayerPositionStatus.Safezone"/> indicates whether the player is in a safe zone (entered or exited).</param>
-        public delegate void SafeZoneDelegate(Player p, int x, int y, PlayerPositionStatus status);
+        /// <param name="entering">True if the player is entering a safe zone.  False if the player is exiting a safe zone.</param>
+        public delegate void SafeZoneDelegate(Player p, int x, int y, bool entering);
 
         public static void Register(ComponentBroker broker, SafeZoneDelegate handler)
         {
@@ -30,12 +30,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, int x, int y, PlayerPositionStatus status)
+        public static void Fire(ComponentBroker broker, Player p, int x, int y, bool entering)
         {
-            broker?.GetCallback<SafeZoneDelegate>()?.Invoke(p, x, y, status);
+            broker?.GetCallback<SafeZoneDelegate>()?.Invoke(p, x, y, entering);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, x, y, status);
+                Fire(broker.Parent, p, x, y, entering);
         }
     }
 }

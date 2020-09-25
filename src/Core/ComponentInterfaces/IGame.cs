@@ -54,7 +54,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="p">the player to change</param>
         /// <param name="ship">the ship to change to</param>
         /// <param name="freq">the freq to change to</param>
-        void SetFreqAndShip(Player p, ShipType ship, short freq);
+        void SetShipAndFreq(Player p, ShipType ship, short freq);
 
         /// <summary>
         /// Moves a set of players to a specific location.
@@ -95,6 +95,13 @@ namespace SS.Core.ComponentInterfaces
         void Unlock(ITarget target, bool notify);
 
         /// <summary>
+        /// Checks if a player is locked to their ship/freq.
+        /// </summary>
+        /// <param name="p">The player to check.</param>
+        /// <returns>Whether the player is locked.</returns>
+        bool HasLock(Player p);
+
+        /// <summary>
         /// Locks all players in the arena to spectator mode, or to their current ships.
         /// This modifies the arena lock state, and also has the effect of calling Lock on all the players in the arena.
         /// </summary>
@@ -113,7 +120,16 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="onlyArenaState">whether to apply changes to the default</param>
         void UnlockArena(Arena arena, bool notify, bool onlyArenaState);
 
+        /// <summary>
+        /// Checks if thre is arena-wide ship/freq lock in affect.
+        /// </summary>
+        /// <param name="arena">The arena to check.</param>
+        /// <returns>Whether there is an arena-wide lock.</returns>
+        bool HasLock(Arena arena);
+
         // TODO: more
+        void FakePosition(Player p, C2SPositionPacket pos, int len);
+        void FakeKill(Player killer, Player killed, short pts, short flags);
 
         /// <summary>
         /// Gets the percentage of weapons that are being ignored for a given player.
@@ -144,6 +160,13 @@ namespace SS.Core.ComponentInterfaces
 
         // TODO: more
         //IncrementWeaponPacketCount
-        //DoWeaponChecksum
+
+        /// <summary>
+        /// Gets whether a player is being antiwarped by another player.
+        /// </summary>
+        /// <param name="p">The player to check.</param>
+        /// <param name="playersList">An optional list to populate with the players that are antiwarping.</param>
+        /// <returns>True if antiwarped, false otherwise.</returns>
+        bool IsAntiwarped(Player p, LinkedList<Player> playersList);
     }
 }

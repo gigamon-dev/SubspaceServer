@@ -7,7 +7,7 @@ namespace SS.Utilities
 {
     /// <summary>
     /// Represents a time, either absolute or relative.
-    /// Ticks are 31 bits in size. the value is stored in the lower 31 bits
+    /// Ticks are 31 bits in size. The value is stored in the lower 31 bits
     /// of an unsigned int. 
     /// 
     /// Don't do arithmetic on these directly, use this struct's methods.
@@ -51,6 +51,11 @@ namespace SS.Utilities
             return ((int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1);
         }
 
+        public static ServerTick operator +(ServerTick a, uint b)
+        {
+            return new ServerTick(makeTick(a.tickcount + b));
+        }
+
         public static bool operator ==(ServerTick a, ServerTick b)
         {
             return a.Equals(b);
@@ -69,6 +74,11 @@ namespace SS.Utilities
         private static uint makeTick(int a)
         {
             return (uint)((a) & 0x7fffffff);
+        }
+
+        private static uint makeTick(uint a)
+        {
+            return a & 0x7fffffff;
         }
 
         public override bool Equals(object obj)

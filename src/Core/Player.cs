@@ -252,6 +252,11 @@ namespace SS.Core
         /// current energy
         /// </summary>
         public int Energy;
+
+        /// <summary>
+        /// time of last position packet
+        /// </summary>
+        public ServerTick Time;
     };
 
     public class Player : IPlayerTarget
@@ -359,6 +364,10 @@ namespace SS.Core
         /// a text representation of the client connecting
         /// </summary>
         public string ClientName;
+
+        public ServerTick LastDeath;
+
+        public ServerTick NextRespawn;
 
         public class PlayerFlags
         {
@@ -470,6 +479,15 @@ namespace SS.Core
             {
                 get { return flagVector[BitVector32Masks.GetMask(11)]; }
                 set { flagVector[BitVector32Masks.GetMask(11)] = value; }
+            }
+
+            /// <summary>
+            /// if the player has died but not yet respawned
+            /// </summary>
+            public bool IsDead
+            {
+                get { return flagVector[BitVector32Masks.GetMask(12)]; }
+                set { flagVector[BitVector32Masks.GetMask(12)] = value; }
             }
         }
 

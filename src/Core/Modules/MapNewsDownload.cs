@@ -577,7 +577,7 @@ namespace SS.Core.Modules
                     {
                         try
                         {
-                            game.SetFreqAndShip(p, ShipType.Spec, arena.SpecFreq);
+                            game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                         }
                         finally
                         {

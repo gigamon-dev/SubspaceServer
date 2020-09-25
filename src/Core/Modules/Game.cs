@@ -32,12 +32,8 @@ namespace SS.Core.Modules
         private int _pdkey;
         private int _adkey;
 
-        private int cfg_bulletpix, cfg_wpnpix, cfg_pospix;
-        private int cfg_sendanti, cfg_changelimit;
-        private int[] wpnRange = new int[WeaponCount]; // these are bit positions for the personalgreen field
-
-        private object _specmtx = new object();
-        private object _freqshipmtx = new object();
+        private readonly object _specmtx = new object();
+        private readonly object _freqshipmtx = new object();
 
         private const int WeaponCount = 32;
 
@@ -45,7 +41,7 @@ namespace SS.Core.Modules
         private static readonly byte[] _clearSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 0 };
         private static readonly byte[] _shipResetBytes = new byte[] { (byte)S2CPacketType.ShipReset };
 
-        private Random random = new Random();
+        private readonly Random random = new Random();
 
         [Flags]
         private enum PersonalGreen
@@ -81,26 +77,6 @@ namespace SS.Core.Modules
             /// </summary>
             public int deathWithoutFiring;
 
-            public struct ShipChangeTracking
-            {
-                public int changes;
-                public DateTime lastCheck;
-
-                public void doExponentialDecay()
-                {
-                    // exponential decay by 1/2 every 10 seconds
-                    int seconds = (int)((DateTime.Now - lastCheck).TotalSeconds);
-                    if (seconds > 31)
-                        changes = 0;
-                    else if (seconds > 0)
-                        changes >>= seconds;
-
-                    lastCheck = lastCheck.AddSeconds(seconds);
-                }
-            }
-
-            public ShipChangeTracking changes;
-
             // extra position data/energy stuff
             public int epdQueries;
 
@@ -125,7 +101,16 @@ namespace SS.Core.Modules
 
             // some flags
             public bool lockship;
-            public bool rgnnoanti, rgnnoweapons;
+
+            /// <summary>
+            /// Whether the player is in a <see cref="MapRegion"/> that does not allow antiwarp.
+            /// </summary>
+            public bool MapRegionNoAnti;
+
+            /// <summary>
+            /// Whether the player is in a <see cref="MapRegion"/> that does not allow firing of weapons.
+            /// </summary>
+            public bool MapRegionNoWeapons;
 
             /// <summary>
             /// when the lock expires, or null for session-long lock
@@ -139,6 +124,8 @@ namespace SS.Core.Modules
 
             public Dictionary<MapRegion, bool> LastRegionSet = new Dictionary<MapRegion, bool>();
             //public LinkedList<object> lastrgnset = new LinkedList<object>();
+
+            public ShipType PlayerPostitionPacket_LastShip;
         }
 
         private class ArenaData
@@ -146,23 +133,30 @@ namespace SS.Core.Modules
             /// <summary>
             /// whether spectators in the arena can see extra data for the person they're spectating
             /// </summary>
-            public bool spec_epd;
+            public bool SpecSeeExtra;
 
             /// <summary>
             /// whose energy levels spectators can see
             /// </summary>
-            public SeeEnergy specNrg;
+            public SeeEnergy SpecSeeEnergy;
 
             /// <summary>
             /// whose energy levels everyone can see
             /// </summary>
-            public SeeEnergy allNrg;
+            public SeeEnergy AllSeeEnergy;
 
             public PersonalGreen personalGreen;
             public bool initLockship;
             public bool initSpec;
-            public int deathWithoutFiring;
-            public int regionCheckTime;
+            public int MaxDeathWithoutFiring;
+            public TimeSpan RegionCheckTime;
+            public bool NoSafeAntiwarp;
+            public int WarpThresholdDelta;
+            public int cfg_pospix;
+            public int cfg_sendanti;
+            public int cfg_AntiwarpRange;
+            public int cfg_EnterDelay;
+            public int[] wpnRange = new int[WeaponCount];
         }
 
         #region IModule Members
@@ -204,50 +198,26 @@ namespace SS.Core.Modules
             //if(_persist != null)
                 //_persist.
 
-            // How far away to always send bullets (in pixels).
-            cfg_bulletpix = _configManager.GetInt(_configManager.Global, "Net", "BulletPixels", 1500);
+            ArenaActionCallback.Register(_broker, Callback_ArenaAction);
+            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+            NewPlayerCallback.Register(_broker, Callback_NewPlayer);
 
-            // How far away to always send weapons (in pixels).
-            cfg_wpnpix = _configManager.GetInt(_configManager.Global, "Net", "WeaponPixels", 2000);
-
-            // How far away to send positions of players on radar.
-            cfg_pospix = _configManager.GetInt(_configManager.Global, "Net", "PositionExtraPixels", 8000);
-
-            // Percent of position packets with antiwarp enabled to send to the whole arena.
-            cfg_sendanti = _configManager.GetInt(_configManager.Global, "Net", "AntiwarpSendPercent", 5);
-            cfg_sendanti = 32767 / 100 * cfg_sendanti; // TODO: figure out why he is doing this!
-
-            // The number of ship changes in a short time (about 10 seconds) before ship changing is disabled (for about 30 seconds).
-            cfg_changelimit = _configManager.GetInt(_configManager.Global, "General", "ShipChangeLimit", 10);
-
-            for (int x = 0; x < wpnRange.Length; x++)
-                wpnRange[x] = cfg_wpnpix;
-
-            // exceptions
-            wpnRange[(int)WeaponCodes.Bullet] = cfg_bulletpix;
-            wpnRange[(int)WeaponCodes.BounceBullet] = cfg_bulletpix;
-            wpnRange[(int)WeaponCodes.Thor] = 30000;
-
-            ArenaActionCallback.Register(_broker, arenaAction);
-            PlayerActionCallback.Register(_broker, playerAction);
-            NewPlayerCallback.Register(_broker, newPlayer);
-
-            _net.AddPacket((int)C2SPacketType.Position, new PacketDelegate(recievedPositionPacket));
-            _net.AddPacket((int)C2SPacketType.SpecRequest, new PacketDelegate(recievedSpecRequestPacket));
-            _net.AddPacket((int)C2SPacketType.SetShip, new PacketDelegate(recievedSetShipPacket));
-            _net.AddPacket((int)C2SPacketType.SetFreq, new PacketDelegate(recievedSetFreqPacket));
-            _net.AddPacket((int)C2SPacketType.Die, new PacketDelegate(recievedDiePacket));
-            _net.AddPacket((int)C2SPacketType.Green, new PacketDelegate(recievedGreenPacket));
-            _net.AddPacket((int)C2SPacketType.AttachTo, new PacketDelegate(recievedAttachToPacket));
-            _net.AddPacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(recievedTurretKickoffPacket));
+            _net.AddPacket((int)C2SPacketType.Position, new PacketDelegate(Packet_Position));
+            _net.AddPacket((int)C2SPacketType.SpecRequest, new PacketDelegate(Packet_SpecRequest));
+            _net.AddPacket((int)C2SPacketType.SetShip, new PacketDelegate(Packet_SetShip));
+            _net.AddPacket((int)C2SPacketType.SetFreq, new PacketDelegate(Packet_SetFreq));
+            _net.AddPacket((int)C2SPacketType.Die, new PacketDelegate(Packet_Die));
+            _net.AddPacket((int)C2SPacketType.Green, new PacketDelegate(Packet_Green));
+            _net.AddPacket((int)C2SPacketType.AttachTo, new PacketDelegate(Packet_AttachTo));
+            _net.AddPacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(Packet_TurretKickoff));
 
             //if(_chatnet != null)
                 //_chatnet.
 
             if (_commandManager != null)
             {
-                _commandManager.AddCommand("spec", command_spec, null, commandSpecHelpText);
-                _commandManager.AddCommand("energy", command_energy, null, commandEnergyHelpText);
+                _commandManager.AddCommand("spec", Command_spec);
+                _commandManager.AddCommand("energy", Command_energy);
             }
 
             _iGameToken = _broker.RegisterInterface<IGame>(this);
@@ -262,24 +232,26 @@ namespace SS.Core.Modules
 
             //if(_chatnet != null)
 
-                if (_commandManager != null)
+            if (_commandManager != null)
             {
-                _commandManager.RemoveCommand("spec", command_spec, null);
-                _commandManager.RemoveCommand("energy", command_energy, null);
+                _commandManager.RemoveCommand("spec", Command_spec, null);
+                _commandManager.RemoveCommand("energy", Command_energy, null);
             }
 
-            _net.RemovePacket((int)C2SPacketType.Position, new PacketDelegate(recievedPositionPacket));
-            _net.RemovePacket((int)C2SPacketType.SpecRequest, new PacketDelegate(recievedSpecRequestPacket));
-            _net.RemovePacket((int)C2SPacketType.SetShip, new PacketDelegate(recievedSetShipPacket));
-            _net.RemovePacket((int)C2SPacketType.SetFreq, new PacketDelegate(recievedSetFreqPacket));
-            _net.RemovePacket((int)C2SPacketType.Die, new PacketDelegate(recievedDiePacket));
-            _net.RemovePacket((int)C2SPacketType.Green, new PacketDelegate(recievedGreenPacket));
-            _net.RemovePacket((int)C2SPacketType.AttachTo, new PacketDelegate(recievedAttachToPacket));
-            _net.RemovePacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(recievedTurretKickoffPacket));
+            _net.RemovePacket((int)C2SPacketType.Position, new PacketDelegate(Packet_Position));
+            _net.RemovePacket((int)C2SPacketType.SpecRequest, new PacketDelegate(Packet_SpecRequest));
+            _net.RemovePacket((int)C2SPacketType.SetShip, new PacketDelegate(Packet_SetShip));
+            _net.RemovePacket((int)C2SPacketType.SetFreq, new PacketDelegate(Packet_SetFreq));
+            _net.RemovePacket((int)C2SPacketType.Die, new PacketDelegate(Packet_Die));
+            _net.RemovePacket((int)C2SPacketType.Green, new PacketDelegate(Packet_Green));
+            _net.RemovePacket((int)C2SPacketType.AttachTo, new PacketDelegate(Packet_AttachTo));
+            _net.RemovePacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(Packet_TurretKickoff));
 
-            ArenaActionCallback.Unregister(_broker, arenaAction);
-            PlayerActionCallback.Unregister(_broker, playerAction);
-            NewPlayerCallback.Unregister(_broker, newPlayer);
+            ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
+            PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
+            NewPlayerCallback.Unregister(_broker, Callback_NewPlayer);
+
+            _mainloop.WaitForMainWorkItemDrain();
 
             //if(_persist != null)
 
@@ -298,7 +270,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            setFreq(p, freq);
+            SetFreq(p, freq);
         }
 
         void IGame.SetShip(Player p, ShipType ship)
@@ -306,12 +278,12 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            setFreqAndShip(p, ship, p.Freq);
+            SetShipAndFreq(p, ship, p.Freq);
         }
 
-        void IGame.SetFreqAndShip(Player p, ShipType ship, short freq)
+        void IGame.SetShipAndFreq(Player p, ShipType ship, short freq)
         {
-            setFreqAndShip(p, ship, freq);
+            SetShipAndFreq(p, ship, freq);
         }
 
         void IGame.WarpTo(ITarget target, short x, short y)
@@ -348,18 +320,25 @@ namespace SS.Core.Modules
 
         void IGame.Lock(ITarget target, bool notify, bool spec, int timeout)
         {
-            lockWork(target, true, notify, spec, timeout);
+            LockWork(target, true, notify, spec, timeout);
         }
 
         void IGame.Unlock(ITarget target, bool notify)
         {
-            lockWork(target, false, notify, false, 0);
+            LockWork(target, false, notify, false, 0);
+        }
+
+        bool IGame.HasLock(Player p)
+        {
+            if (p == null || !(p[_pdkey] is PlayerData pd))
+                return false;
+
+            return pd.lockship;
         }
 
         void IGame.LockArena(Arena arena, bool notify, bool onlyArenaState, bool initial, bool spec)
         {
-            ArenaData ad = arena[_adkey] as ArenaData;
-            if (ad == null)
+            if (!(arena[_adkey] is ArenaData ad))
                 return;
 
             ad.initLockship = true;
@@ -368,14 +347,13 @@ namespace SS.Core.Modules
 
             if (!onlyArenaState)
             {
-                lockWork(Target.ArenaTarget(arena), true, notify, spec, 0);
+                LockWork(Target.ArenaTarget(arena), true, notify, spec, 0);
             }
         }
 
         void IGame.UnlockArena(Arena arena, bool notify, bool onlyArenaState)
         {
-            ArenaData ad = arena[_adkey] as ArenaData;
-            if (ad == null)
+            if (!(arena[_adkey] is ArenaData ad))
                 return;
 
             ad.initLockship = false;
@@ -383,8 +361,26 @@ namespace SS.Core.Modules
 
             if (!onlyArenaState)
             {
-                lockWork(Target.ArenaTarget(arena), false, notify, false, 0);
+                LockWork(Target.ArenaTarget(arena), false, notify, false, 0);
             }
+        }
+
+        bool IGame.HasLock(Arena arena)
+        {
+            if (arena == null || !(arena[_adkey] is ArenaData ad))
+                return false;
+
+            return ad.initLockship;
+        }
+
+        void IGame.FakePosition(Player p, C2SPositionPacket pos, int len)
+        {
+            HandlePositionPacket(p, pos, len, true);
+        }
+
+        void IGame.FakeKill(Player killer, Player killed, short pts, short flags)
+        {
+            NotifyKill(killer, killed, pts, flags, 0);
         }
 
         float IGame.GetIgnoreWeapons(Player p)
@@ -392,8 +388,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return 0;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return 0;
 
             return pd.ignoreWeapons / (float)Constants.RandMax;
@@ -404,8 +399,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             pd.ignoreWeapons = (int)((float)Constants.RandMax * proportion);
@@ -417,6 +411,33 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException("target");
 
             _net.SendToTarget(target, _shipResetBytes, _shipResetBytes.Length, NetSendFlags.Reliable);
+
+            _playerData.Lock();
+
+            try
+            {
+
+                _playerData.TargetToSet(target, out LinkedList<Player> list);
+
+                foreach (Player p in list)
+                {
+                    if (p.Ship == ShipType.Spec)
+                        continue;
+
+                    SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipReset;
+                    if (p.Flags.IsDead)
+                    {
+                        p.Flags.IsDead = false;
+                        flags |= SpawnCallback.SpawnReason.AfterDeath;
+                    }
+
+                    DoSpawnCallback(p, flags);
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
         }
 
         void IGame.IncrementWeaponPacketCount(Player p, int packets)
@@ -424,8 +445,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             pd.wpnSent = (uint)(pd.wpnSent + packets);
@@ -436,8 +456,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             pd.pl_epd.seeNrg = value;
@@ -448,8 +467,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             pd.pl_epd.seeNrgSpec = value;
@@ -460,17 +478,15 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
-            ArenaData ad = p.Arena[_adkey] as ArenaData;
-            if (ad == null)
+            if (!(p.Arena[_adkey] is ArenaData ad))
                 return;
 
             SeeEnergy seeNrg = SeeEnergy.None;
-            if (ad.allNrg != SeeEnergy.None)
-                seeNrg = ad.allNrg;
+            if (ad.AllSeeEnergy != SeeEnergy.None)
+                seeNrg = ad.AllSeeEnergy;
 
             if (_capabilityManager != null &&
                 _capabilityManager.HasCapability(p, Constants.Capabilities.SeeEnergy))
@@ -486,17 +502,15 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
-            ArenaData ad = p.Arena[_adkey] as ArenaData;
-            if (ad == null)
+            if (!(p.Arena[_adkey] is ArenaData ad))
                 return;
 
             SeeEnergy seeNrgSpec = SeeEnergy.None;
-            if (ad.specNrg != SeeEnergy.None)
-                seeNrgSpec = ad.specNrg;
+            if (ad.SpecSeeEnergy != SeeEnergy.None)
+                seeNrgSpec = ad.SpecSeeEnergy;
 
             if (_capabilityManager != null &&
                 _capabilityManager.HasCapability(p, Constants.Capabilities.SeeEnergy))
@@ -507,10 +521,67 @@ namespace SS.Core.Modules
             pd.pl_epd.seeNrgSpec = seeNrgSpec;
         }
 
+        bool IGame.IsAntiwarped(Player p, LinkedList<Player> playersList)
+        {
+            if (p == null || !(p[_pdkey] is PlayerData pd))
+                return false;
+
+            if (!(p.Arena[_adkey] is ArenaData ad))
+                return false;
+
+            if (pd.MapRegionNoAnti)
+                return false;
+
+            bool antiwarped = false;
+            
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player i in _playerData.PlayerList)
+                {
+                    if (p == null || !(p[_pdkey] is PlayerData iData))
+                        continue;
+
+                    if (i.Arena == p.Arena
+                        && i.Freq != p.Freq
+                        && i.Ship != ShipType.Spec
+                        && (i.Position.Status & PlayerPositionStatus.Antiwarp) != 0
+                        && !iData.MapRegionNoAnti
+                        && ((i.Position.Status & PlayerPositionStatus.Safezone) != 0 || !ad.NoSafeAntiwarp))
+                    {
+                        int dx = i.Position.X - p.Position.X;
+                        int dy = i.Position.Y - p.Position.Y;
+                        int distSquared = dx * dx + dy * dy;
+
+                        if (distSquared < ad.cfg_AntiwarpRange)
+                        {
+                            antiwarped = true;
+
+                            if (playersList != null)
+                            {
+                                playersList.AddLast(i);
+                            }
+                            else
+                            {
+                                // we found one, but no list to populate, so we're done
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            return antiwarped;
+        }
+
         #endregion
 
-
-        private void arenaAction(Arena arena, ArenaAction action)
+        private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
@@ -520,21 +591,26 @@ namespace SS.Core.Modules
                 ArenaData ad = arena[_adkey] as ArenaData;
 
                 // How often to check for region enter/exit events (in ticks).
-                ad.regionCheckTime = _configManager.GetInt(arena.Cfg, "Misc", "RegionCheckInterval", 100) / 10; // asss has in centiseconds but we use milliseconds
+                ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "RegionCheckInterval", 100) * 10);
 
                 // Whether spectators can see extra data for the person they're spectating.
-                ad.spec_epd = _configManager.GetInt(arena.Cfg, "Misc", "SpecSeeExtra", 1) != 0;
+                ad.SpecSeeExtra = _configManager.GetInt(arena.Cfg, "Misc", "SpecSeeExtra", 1) != 0;
 
                 // Whose energy levels spectators can see. The options are the
                 // same as for Misc:SeeEnergy, with one addition: SEE_SPEC
                 // means only the player you're spectating.
-                ad.specNrg = (SeeEnergy)_configManager.GetInt(arena.Cfg, "Misc", "SpecSeeExtra", (int)SeeEnergy.All);
-
+                ad.SpecSeeEnergy = (SeeEnergy)_configManager.GetInt(arena.Cfg, "Misc", "SpecSeeEnergy", (int)SeeEnergy.All);
+                
                 // Whose energy levels everyone can see: SEE_NONE means nobody
                 // else's, SEE_ALL is everyone's, SEE_TEAM is only teammates.
-                ad.allNrg = (SeeEnergy)_configManager.GetInt(arena.Cfg, "Misc", "SeeEnergy", (int)SeeEnergy.None);
+                ad.AllSeeEnergy = (SeeEnergy)_configManager.GetInt(arena.Cfg, "Misc", "SeeEnergy", (int)SeeEnergy.None);
 
-                ad.deathWithoutFiring = _configManager.GetInt(arena.Cfg, "Security", "MaxDeathWithoutFiring", 5);
+                ad.MaxDeathWithoutFiring = _configManager.GetInt(arena.Cfg, "Security", "MaxDeathWithoutFiring", 5);
+
+                ad.NoSafeAntiwarp = _configManager.GetInt(arena.Cfg, "Misc", "NoSafeAntiwarp", 0) != 0;
+
+                ad.WarpThresholdDelta = _configManager.GetInt(arena.Cfg, "Misc", "WarpTresholdDelta", 320);
+                ad.WarpThresholdDelta *= ad.WarpThresholdDelta; // TODO: figure out why it's the value squared
 
                 PersonalGreen pg = PersonalGreen.None;
 
@@ -552,18 +628,50 @@ namespace SS.Core.Modules
 
                 ad.personalGreen = pg;
 
+                // How far away to always send bullets (in pixels).
+                int cfg_bulletpix = _configManager.GetInt(_configManager.Global, "Net", "BulletPixels", 1500);
+
+                // How far away to always send weapons (in pixels).
+                int cfg_wpnpix = _configManager.GetInt(_configManager.Global, "Net", "WeaponPixels", 2000);
+
+                // How far away to send positions of players on radar.
+                ad.cfg_pospix = _configManager.GetInt(_configManager.Global, "Net", "PositionExtraPixels", 8000);
+
+                // Percent of position packets with antiwarp enabled to send to the whole arena.
+                ad.cfg_sendanti = _configManager.GetInt(_configManager.Global, "Net", "AntiwarpSendPercent", 5);
+                ad.cfg_sendanti = Constants.RandMax / 100 * ad.cfg_sendanti;
+
+                int cfg_AntiwarpPixels = _configManager.GetInt(_configManager.Global, "Toggle", "AntiwarpPixels", 1);
+                ad.cfg_AntiwarpRange = cfg_AntiwarpPixels * cfg_AntiwarpPixels;
+
+                // continuum clients take EnterDelay + 100 ticks to respawn after death
+                ad.cfg_EnterDelay = _configManager.GetInt(_configManager.Global, "Kill", "EnterDelay", 0) + 100;
+                // setting of 0 or less means respawn in place, with 1 second delay
+                if (ad.cfg_EnterDelay <= 0)
+                    ad.cfg_EnterDelay = 100;
+
+
+                for (int x = 0; x < ad.wpnRange.Length; x++)
+                {
+                    ad.wpnRange[x] = cfg_wpnpix;
+                }
+
+                // exceptions
+                ad.wpnRange[(int)WeaponCodes.Bullet] = cfg_bulletpix;
+                ad.wpnRange[(int)WeaponCodes.BounceBullet] = cfg_bulletpix;
+                ad.wpnRange[(int)WeaponCodes.Thor] = 30000;
+
                 if (action == ArenaAction.Create)
                     ad.initLockship = ad.initSpec = false;
             }
         }
 
-        private void playerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             ArenaData ad = null;
@@ -576,7 +684,7 @@ namespace SS.Core.Modules
                 // position packets look like they're in the future. also set a
                 // bunch of other timers to now.
                 pd.pos.Time = ServerTick.Now;
-                pd.lastRgnCheck = pd.changes.lastCheck = DateTime.Now;
+                pd.lastRgnCheck = DateTime.UtcNow;
 
                 pd.LastRegionSet = new Dictionary<MapRegion, bool>(_mapData.GetRegionCount(arena));
 
@@ -588,6 +696,19 @@ namespace SS.Core.Modules
                 }
 
                 p.Attached = -1;
+
+                _playerData.Lock();
+
+                try
+                {
+                    p.Flags.IsDead = false;
+                    p.LastDeath = new ServerTick(); // TODO: review this, looks strange since 0 is a valid value, maybe need nullable?
+                    p.NextRespawn = new ServerTick(); // TODO: review this, looks strange since 0 is a valid value, maybe need nullable?
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
             }
             else if (action == PlayerAction.EnterArena)
             {
@@ -595,16 +716,16 @@ namespace SS.Core.Modules
                 SeeEnergy seeNrgSpec = SeeEnergy.None;
                 bool seeEpd = false;
 
-                if (ad.allNrg != SeeEnergy.None)
-                    seeNrg = ad.allNrg;
+                if (ad.AllSeeEnergy != SeeEnergy.None)
+                    seeNrg = ad.AllSeeEnergy;
 
-                if (ad.specNrg != SeeEnergy.None)
-                    seeNrgSpec = ad.specNrg;
+                if (ad.SpecSeeEnergy != SeeEnergy.None)
+                    seeNrgSpec = ad.SpecSeeEnergy;
 
-                if (ad.spec_epd)
+                if (ad.SpecSeeExtra)
                     seeEpd = true;
 
-                if(_capabilityManager != null)
+                if (_capabilityManager != null)
                 {
                     if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeEnergy))
                         seeNrg = seeNrgSpec = SeeEnergy.All;
@@ -631,12 +752,11 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.PlayerList)
                         {
-                            PlayerData idata = i[_pdkey] as PlayerData;
-                            if (idata == null)
+                            if (!(i[_pdkey] is PlayerData idata))
                                 continue;
 
                             if (idata.speccing == p)
-                                clearSpeccing(idata);
+                                ClearSpeccing(idata);
                         }
                     }
                     finally
@@ -647,15 +767,22 @@ namespace SS.Core.Modules
                     if (pd.epdQueries > 0)
                         _logManager.LogP(LogLevel.Error, nameof(Game), p, "extra position data queries is still nonzero");
 
-                    clearSpeccing(pd);
+                    ClearSpeccing(pd);
                 }
 
                 pd.LastRegionSet.Clear();
                 //pd.lastrgnset.Clear();
             }
+            else if(action == PlayerAction.EnterGame)
+            {
+                if (p.Ship != ShipType.Spec)
+                {
+                    DoSpawnCallback(p, SpawnCallback.SpawnReason.Initial);
+                }
+            }
         }
 
-        private void newPlayer(Player p, bool isNew)
+        private void Callback_NewPlayer(Player p, bool isNew)
         {
             if (p == null)
                 return;
@@ -672,12 +799,11 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.PlayerList)
                         {
-                            PlayerData idata = i[_pdkey] as PlayerData;
-                            if (idata == null)
+                            if (!(i[_pdkey] is PlayerData idata))
                                 continue;
 
                             if (idata.speccing == p)
-                                clearSpeccing(idata);
+                                ClearSpeccing(idata);
                         }
                     }
                     finally
@@ -688,7 +814,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void clearSpeccing(PlayerData data)
+        private void ClearSpeccing(PlayerData data)
         {
             if (data == null)
                 return;
@@ -702,8 +828,7 @@ namespace SS.Core.Modules
                 {
                     if (data.pl_epd.seeEpd)
                     {
-                        PlayerData odata = data.speccing[_pdkey] as PlayerData;
-                        if (odata == null)
+                        if (!(data.speccing[_pdkey] is PlayerData odata))
                             return;
 
                         if (--odata.epdQueries <= 0)
@@ -721,7 +846,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void addSpeccing(PlayerData data, Player t)
+        private void AddSpeccing(PlayerData data, Player t)
         {
             lock (_specmtx)
             {
@@ -729,8 +854,7 @@ namespace SS.Core.Modules
 
                 if (data.pl_epd.seeEpd)
                 {
-                    PlayerData tdata = t[_pdkey] as PlayerData;
-                    if (tdata == null)
+                    if (!(t[_pdkey] is PlayerData tdata))
                         return;
 
                     if (tdata.epdQueries++ == 0)
@@ -742,7 +866,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void recievedPositionPacket(Player p, byte[] data, int len)
+        private void Packet_Position(Player p, byte[] data, int len)
+        {
+            HandlePositionPacket(p, new C2SPositionPacket(data), len, false);
+        }
+
+        private void HandlePositionPacket(Player p, C2SPositionPacket pos, int len, bool isFake)
         {
             if (p == null || p.Status != PlayerState.Playing)
                 return;
@@ -750,7 +879,7 @@ namespace SS.Core.Modules
 #if CFG_RELAX_LENGTH_CHECKS
             if(len < C2SPositionPacket.Length)
 #else
-            if(len != C2SPositionPacket.Length && len != C2SPositionPacket.LengthWithExtra)
+            if (len != C2SPositionPacket.Length && len != C2SPositionPacket.LengthWithExtra)
 #endif
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet len={0}", len);
@@ -761,9 +890,10 @@ namespace SS.Core.Modules
             if (arena == null || arena.Status != ArenaState.Running)
                 return;
 
-            bool isFake = p.Type == ClientType.Fake;
             if (!isFake)
             {
+                // Verify checksum
+                byte[] data = pos.RawData;
                 byte checksum = 0;
                 int left = 22;
                 while ((left--) > 0)
@@ -776,7 +906,6 @@ namespace SS.Core.Modules
                 }
             }
 
-            C2SPositionPacket pos = new C2SPositionPacket(data);
             if (pos.X == -1 && pos.Y == -1)
             {
                 // position sent after death, before respawn. these aren't
@@ -787,328 +916,53 @@ namespace SS.Core.Modules
 
             Weapons weapon = pos.Weapon;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
-            ArenaData ad = arena[_adkey] as ArenaData;
-            if(ad == null)
+            if (!(arena[_adkey] is ArenaData ad))
                 return;
 
-            DateTime now = DateTime.Now;
+            DateTime now = DateTime.UtcNow;
             ServerTick gtc = ServerTick.Now;
-
-            bool isNewer = pos.Time > pd.pos.Time;
-
-            int latency = gtc - pos.Time;
-            if (latency < 0)
-                latency = 0;
-            else if (latency > 255)
-                latency = 255;
-
-            int randnum = rand();
-
-            // speccers don't get their position sent to anyone
-            if (p.Ship != ShipType.Spec)
-            {
-                int x1 = pos.X;
-                int y1 = pos.Y;
-                //WeaponCodes weaponType = weapon.Type;
-
-                // update region-based stuff once in a while, for real players only 
-                if (isNewer && !isFake &&
-                    (now - pd.lastRgnCheck).TotalMilliseconds >= ad.regionCheckTime)
-                {
-                    updateRegions(p, (short)(x1 >> 4), (short)(y1 >> 4));
-                    pd.lastRgnCheck = now;
-                }
-
-                // this check should be before the weapon ignore hook
-                if (pos.Weapon.Type != 0)
-                {
-                    p.Flags.SentWeaponPacket = true;
-                    pd.deathWithoutFiring = 0;
-                }
-
-                // this is the weapons ignore hook. also ignore weapons based on region
-                if ((pd.ignoreWeapons > 0 && rand() > pd.ignoreWeapons) ||
-                    pd.rgnnoweapons)
-                {
-                    weapon.Type = 0;
-                }
-
-                // also turn off anti based on region
-                if (pd.rgnnoanti)
-                {
-                    pos.Status &= ~PlayerPositionStatus.Antiwarp;
-                }
-
-                // if this is a plain position packet with no weapons, and is in
-                // the wrong order, there's no need to send it. but fake players
-                // never got data->pos.time initialized correctly, so do a
-                // little special case.
-                if (!isNewer && !isFake && weapon.Type == 0)
-                    return;
-
-                // by default, send unreliable droppable packets. weapons get a higher priority
-                NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Dropabble | 
-                    (weapon.Type != 0 ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
-
-                // there are several reasons to send a weapon packet (05) instead of just a position one (28)
-                bool sendWeapon = (
-                    (weapon.Type != WeaponCodes.Null) || // a real weapon
-                    (pos.Bounty > byte.MaxValue) || // bounty over 255
-                    (p.Id > byte.MaxValue)); //pid over 255
-
-                // send mines to everyone
-                bool sendToAll = true;
-                if ((weapon.Type == WeaponCodes.Bomb ||
-                    weapon.Type == WeaponCodes.ProxBomb) && weapon.Alternate)
-                {
-                    sendToAll = true;
-                }
-
-                // send some percent of antiwarp positions to everyone
-                if ((weapon.Type == WeaponCodes.Null) &&
-                    ((pos.Status & PlayerPositionStatus.Antiwarp) != 0) &&
-                    (rand() > cfg_sendanti))
-                {
-                    sendToAll = true;
-                }
-
-                // send safe zone enters to everyone, reliably
-                if (((pos.Status & PlayerPositionStatus.Safezone) != 0) &&
-                    ((p.Position.Status & PlayerPositionStatus.Safezone) != 0))
-                {
-                    sendToAll = true;
-                    nflags = NetSendFlags.Reliable;
-                }
-
-                // send flashes to everyone, reliably
-                if ((pos.Status & PlayerPositionStatus.Flash) != 0)
-                {
-                    sendToAll = true;
-                    nflags = NetSendFlags.Reliable;
-                }
-
-                if (sendWeapon)
-                {
-                    int range = wpnRange[(int)weapon.Type];
-                    using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-                    {
-                        S2CWeaponsPacket wpn = new S2CWeaponsPacket(buffer.Bytes);
-                        wpn.Type = (byte)S2CPacketType.Weapon;
-                        wpn.Rotation = pos.Rotation;
-                        wpn.Time = (ushort)(gtc & 0xFFFF);
-                        wpn.X = pos.X;
-                        wpn.YSpeed = pos.YSpeed;
-                        wpn.PlayerId = (ushort)p.Id;
-                        wpn.XSpeed = pos.XSpeed;
-                        wpn.Checksum = 0;
-                        wpn.Status = pos.Status;
-                        wpn.C2SLatency = (byte)latency;
-                        wpn.Y = pos.Y;
-                        wpn.Bounty = pos.Bounty;
-                        wpn.Weapon = pos.Weapon;
-                        wpn.Extra = pos.Extra;
-
-                        // move this field from the main packet to the extra data, in case they don't match.
-                        ExtraPositionData epd = wpn.Extra;
-                        epd.Energy = pos.Extra.Energy;
-
-                        wpn.DoChecksum();
-
-                        _playerData.Lock();
-                        try
-                        {
-                            foreach (Player i in _playerData.PlayerList)
-                            {
-                                PlayerData idata = i[_pdkey] as PlayerData;
-                                if (idata == null)
-                                    continue;
-
-                                if (i.Status == PlayerState.Playing &&
-                                    i.IsStandard &&
-                                    i.Arena == arena &&
-                                    (i != p || p.Flags.SeeOwnPosition))
-                                {
-                                    int dist = hypot(x1 - idata.pos.X, y1 - idata.pos.Y);
-
-                                    if (dist <= range ||
-                                        sendToAll ||
-                                        // send it always to specers
-                                        idata.speccing == p ||
-                                        // send it always to turreters
-                                        i.Attached == p.Id ||
-                                        // and send some radar packets
-                                        (wpn.Weapon.Type == WeaponCodes.Null &&
-                                            dist <= cfg_pospix &&
-                                            randnum > ((float)dist / (float)cfg_pospix * (Constants.RandMax + 1.0f))) ||
-                                        // bots
-                                        i.Flags.SeeAllPositionPackets)
-                                    {
-                                        int plainLen = S2CWeaponsPacket.Length;
-                                        int nrgLen = plainLen + 2;
-                                        int epdLen = S2CWeaponsPacket.LengthWithExtra;
-
-
-                                        if (wpn.Weapon.Type != WeaponCodes.Null)
-                                            idata.wpnSent++;
-
-                                        if (i.Ship == ShipType.Spec)
-                                        {
-                                            if ((idata.pl_epd.seeEpd) && (idata.speccing == p))
-                                            {
-                                                if (len >= 32)
-                                                    _net.SendToOne(i, buffer.Bytes, epdLen, nflags);
-                                                else
-                                                    _net.SendToOne(i, buffer.Bytes, nrgLen, nflags);
-                                            }
-                                            else if (idata.pl_epd.seeNrgSpec == SeeEnergy.All ||
-                                                (idata.pl_epd.seeNrgSpec == SeeEnergy.Team &&
-                                                p.Freq == i.Freq) ||
-                                                (idata.pl_epd.seeNrgSpec == SeeEnergy.Spec &&
-                                                pd.speccing == p))
-                                            {
-                                                _net.SendToOne(i, buffer.Bytes, nrgLen, nflags);
-                                            }
-                                            else
-                                            {
-                                                _net.SendToOne(i, buffer.Bytes, plainLen, nflags);
-                                            }
-                                        }
-                                        else if (idata.pl_epd.seeNrg == SeeEnergy.All ||
-                                            (idata.pl_epd.seeNrg == SeeEnergy.Team &&
-                                            p.Freq == i.Freq))
-                                        {
-                                            _net.SendToOne(i, buffer.Bytes, nrgLen, nflags);
-                                        }
-                                        else
-                                        {
-                                            _net.SendToOne(i, buffer.Bytes, plainLen, nflags);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            _playerData.Unlock();
-                        }
-                    }
-                }
-                else
-                {
-                    using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-                    {
-                        S2CPositionPacket sendpos = new S2CPositionPacket(buffer.Bytes);
-                        sendpos.Type = (byte)S2CPacketType.Position;
-                        sendpos.Rotation = pos.Rotation;
-                        sendpos.Time = (ushort)(gtc & 0xFFFF);
-                        sendpos.X = pos.X;
-                        sendpos.C2SLatency = (byte)latency;
-                        sendpos.Bounty = (byte)pos.Bounty;
-                        sendpos.PlayerId = (byte)p.Id;
-                        sendpos.Status = pos.Status;
-                        sendpos.YSpeed = pos.YSpeed;
-                        sendpos.Y = pos.Y;
-                        sendpos.XSpeed = pos.XSpeed;
-                        sendpos.Extra = pos.Extra;
-
-                        // move this field from the main packet to the extra data, in case they don't match.
-                        ExtraPositionData extra = sendpos.Extra;
-                        extra.Energy = (ushort)pos.Energy;
-
-                        _playerData.Lock();
-                        try
-                        {
-                            foreach (Player i in _playerData.PlayerList)
-                            {
-                                PlayerData idata = i[_pdkey] as PlayerData;
-                                if (idata == null)
-                                    continue;
-
-                                if (i.Status == PlayerState.Playing &&
-                                    i.IsStandard &&
-                                    i.Arena == arena &&
-                                    (i != p || p.Flags.SeeAllPositionPackets))
-                                {
-                                    int dist = hypot(x1 - idata.pos.X, y1 - idata.pos.Y);
-                                    int res = i.Xres + i.Yres;
-
-                                    if( dist<res ||
-                                        sendToAll ||
-                                        // send it always to speccers
-                                        idata.speccing == p ||
-                                        // send it always to turreters
-                                        i.Attached == p.Id ||
-                                        // and send some radar packets
-                                        (dist <= cfg_pospix &&
-                                        (randnum > ((float)dist / (float)cfg_pospix * (Constants.RandMax+1.0)))) ||
-                                        // bots
-                                        i.Flags.SeeAllPositionPackets)
-                                    {
-                                        int plainLen = S2CPositionPacket.Length;
-                                        int nrgLen = plainLen + 2;
-                                        int epdLen = S2CPositionPacket.LengthWithExtra;
-
-                                        if (i.Ship == ShipType.Spec)
-                                        {
-                                            if (!(idata.pl_epd.seeEpd) && idata.speccing == p)
-                                            {
-                                                if(len >= 32)
-                                                    _net.SendToOne(i, buffer.Bytes, epdLen, nflags);
-                                                else
-                                                    _net.SendToOne(i, buffer.Bytes, nrgLen, nflags);
-                                            }
-                                            else if (idata.pl_epd.seeNrgSpec == SeeEnergy.All ||
-                                                (idata.pl_epd.seeNrgSpec == SeeEnergy.Team && p.Freq == i.Freq) ||
-                                                (idata.pl_epd.seeNrgSpec == SeeEnergy.Spec && pd.speccing == p))
-                                            {
-                                                _net.SendToOne(i, buffer.Bytes, nrgLen, nflags);
-                                            }
-                                            else
-                                            {
-                                                _net.SendToOne(i, buffer.Bytes, plainLen, nflags);
-                                            }
-                                        }
-                                        else if (idata.pl_epd.seeNrg == SeeEnergy.All ||
-                                            (idata.pl_epd.seeNrg == SeeEnergy.Team && p.Freq == i.Freq))
-                                        {
-                                            _net.SendToOne(i, buffer.Bytes, nrgLen, nflags);
-                                        }
-                                        else
-                                        {
-                                            _net.SendToOne(i, buffer.Bytes, plainLen, nflags);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            _playerData.Unlock();
-                        }
-                    }
-                }
-            }
 
             // lag data
             if (_lagCollect != null && !isFake)
             {
                 _lagCollect.Position(
-                    p, 
-                    (ServerTick.Now - pos.Time) * 10,
+                    p,
+                    (gtc - pos.Time) * 10,
                     len >= 26 ? pos.Extra.S2CPing * 10 : -1,
                     pd.wpnSent);
             }
 
+            bool isNewer = pos.Time > pd.pos.Time;
+
             // only copy if the new one is later
             if (isNewer || isFake)
             {
-                // TODO: make this asynchronous?
-                if(((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Safezone) != 0 && !isFake)
-                    fireSafeZoneEvent(arena, p, pos.X, pos.Y, pos.Status);
+                // Safe zone
+                if (((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone && !isFake)
+                {
+                    SafeZoneCallback.Fire(arena, p, pos.X, pos.Y, (pos.Status & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone);
+                }
+
+                // Warp
+                if(((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Flash) == PlayerPositionStatus.Flash
+                    && !isFake
+                    && p.Ship != ShipType.Spec
+                    && p.Ship == pd.PlayerPostitionPacket_LastShip
+                    && p.Flags.SentPositionPacket
+                    && !p.Flags.IsDead
+                    && ad.WarpThresholdDelta > 0)
+                {
+                    int dx = pd.pos.X - pos.X;
+                    int dy = pd.pos.Y - pos.Y;
+
+                    if (dx * dx + dy * dy > ad.WarpThresholdDelta)
+                    {
+                        WarpCallback.Fire(arena, p, pd.pos.X, pd.pos.Y, pos.X, pos.Y);
+                    }
+                }
 
                 // copy the whole thing. this will copy the epd, or, if the client
                 // didn't send any epd, it will copy zeros because the buffer was
@@ -1123,56 +977,325 @@ namespace SS.Core.Modules
                     p.Position.X = pos.X;
                     p.Position.Y = pos.Y;
                 }
+
                 p.Position.XSpeed = pos.XSpeed;
                 p.Position.YSpeed = pos.YSpeed;
                 p.Position.Rotation = pos.Rotation;
                 p.Position.Bounty = pos.Bounty;
                 p.Position.Status = pos.Status;
+                p.Position.Energy = pos.Energy;
+                p.Position.Time = pos.Time;
             }
 
+            // check if it's the player's first position packet
             if (p.Flags.SentPositionPacket == false && !isFake)
             {
                 p.Flags.SentPositionPacket = true;
-                //_mainLoop.SetTimer<Player>(new TimerDelegate<Player>(runEnterGameCB), 0, 0, p, null);
-                _mainloop.QueueMainWorkItem(runEnterGameCB, p);
+                PlayerActionCallback.Fire(arena, p, PlayerAction.EnterGame, arena);
             }
+
+            int latency = gtc - pos.Time;
+            if (latency < 0)
+                latency = 0;
+            else if (latency > 255)
+                latency = 255;
+
+            int randnum = Rand();
+
+            // spectators don't get their position sent to anyone
+            if (p.Ship != ShipType.Spec)
+            {
+                int x1 = pos.X;
+                int y1 = pos.Y;
+
+                // update region-based stuff once in a while, for real players only
+                if (isNewer 
+                    && !isFake 
+                    && (now - pd.lastRgnCheck) >= ad.RegionCheckTime)
+                {
+                    UpdateRegions(p, (short)(x1 >> 4), (short)(y1 >> 4));
+                    pd.lastRgnCheck = now;
+                }
+
+                // this check should be before the weapon ignore hook
+                if (pos.Weapon.Type != WeaponCodes.Null)
+                {
+                    p.Flags.SentWeaponPacket = true;
+                    pd.deathWithoutFiring = 0;
+                }
+
+                // this is the weapons ignore hook.
+                // also ignore weapons based on region
+                if ((Rand() < pd.ignoreWeapons) 
+                    || pd.MapRegionNoWeapons)
+                {
+                    weapon.Type = 0;
+                }
+
+                // also turn off anti based on region
+                if (pd.MapRegionNoAnti)
+                {
+                    pos.Status &= ~PlayerPositionStatus.Antiwarp;
+                }
+
+                // if this is a plain position packet with no weapons, and is in
+                // the wrong order, there's no need to send it. but fake players
+                // never got data->pos.time initialized correctly, so do a
+                // little special case.
+                if (!isNewer && !isFake && weapon.Type == 0)
+                    return;
+
+                // TODO: PPK advisers - EditPPK
+
+                // by default, send unreliable droppable packets. 
+                // weapons get a higher priority.
+                NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Dropabble | 
+                    (weapon.Type != WeaponCodes.Null ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
+
+                // there are several reasons to send a weapon packet (05) instead of just a position one (28)
+                bool sendWeapon = (
+                    (weapon.Type != WeaponCodes.Null) // a real weapon
+                    || (pos.Bounty > byte.MaxValue) // bounty over 255
+                    || (p.Id > byte.MaxValue)); //pid over 255
+
+                // TODO: for arenas designed for a small # of players (e.g. 4v4 league), a way to always send to all? or is boosting weapon range settings to max good enough?
+                bool sendToAll = false;
+
+                // TODO: if a player is far away from the mine, how would that player know if the mine was cleared (detonated by another player outside of their range or repelled)?
+                // would need a module to keep track of mine locations and do pseudo-region like comparisons? and use that know when to send a position packet to all?
+                // what about bombs fired at low velocity? need wall collision detection?
+                // TODO: a way for the server to keep track of where mines are currently placed so that it can replay packets to players that enter the arena? or does something like this exist already?
+
+                // send mines to everyone
+                if ((weapon.Type == WeaponCodes.Bomb || weapon.Type == WeaponCodes.ProxBomb) 
+                    && weapon.Alternate)
+                {
+                    sendToAll = true;
+                }
+
+                // disable antiwarp if they're in a safe and NoSafeAntiwarp is on
+                if ((pos.Status & PlayerPositionStatus.Antiwarp) == PlayerPositionStatus.Antiwarp
+                    && (pos.Status & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone
+                    && ad.NoSafeAntiwarp)
+                {
+                    pos.Status &= ~PlayerPositionStatus.Antiwarp;
+                }
+
+                // send some percent of antiwarp positions to everyone
+                if ((weapon.Type == WeaponCodes.Null)
+                    && ((pos.Status & PlayerPositionStatus.Antiwarp) == PlayerPositionStatus.Antiwarp)
+                    && (Rand() < ad.cfg_sendanti))
+                {
+                    sendToAll = true;
+                }
+
+                // send safe zone enters to everyone, reliably
+                // TODO: why? proposed send damage protocol? what about safe zone exits?
+                if (((pos.Status & PlayerPositionStatus.Safezone) != 0) 
+                    && ((p.Position.Status & PlayerPositionStatus.Safezone) == 0))
+                {
+                    sendToAll = true;
+                    nflags = NetSendFlags.Reliable;
+                }
+
+                // send flashes to everyone, reliably
+                if ((pos.Status & PlayerPositionStatus.Flash) != 0)
+                {
+                    sendToAll = true;
+                    nflags = NetSendFlags.Reliable;
+                }
+
+                using DataBuffer copyBuffer = Pool<DataBuffer>.Default.Get();
+                C2SPositionPacket copy = new C2SPositionPacket(copyBuffer.Bytes);
+
+                using DataBuffer wpnBuffer = Pool<DataBuffer>.Default.Get();
+                S2CWeaponsPacket wpn = new S2CWeaponsPacket(wpnBuffer.Bytes);
+
+                using DataBuffer sendposBuffer = Pool<DataBuffer>.Default.Get();
+                S2CPositionPacket sendpos = new S2CPositionPacket(sendposBuffer.Bytes);
+
+                // ensure that all packets get build before use
+                bool modified = true;
+                bool wpnDirty = true;
+                bool posDirty = true;
+
+                _playerData.Lock();
+
+                try
+                {
+                    // have to do this check inside pd->Lock();
+                    // ignore packets from the first 500ms of death, and accept packets up to 500ms
+                    // before their expected respawn. 
+                    if (p.Flags.IsDead && gtc - p.LastDeath >= 50 && p.NextRespawn - gtc <= 50)
+                    {
+                        p.Flags.IsDead = false;
+                        DoSpawnCallback(p, SpawnCallback.SpawnReason.AfterDeath);
+                    }
+
+                    foreach (Player i in _playerData.PlayerList)
+                    {
+                        if (!(i[_pdkey] is PlayerData idata))
+                            continue;
+
+                        if (i.Status == PlayerState.Playing
+                            && i.IsStandard
+                            && i.Arena == arena
+                            && (i != p || p.Flags.SeeOwnPosition))
+                        {
+                            int dist = Hypot(x1 - idata.pos.X, y1 - idata.pos.Y);
+                            int range;
+
+                            // determine the packet range
+                            if (sendWeapon && pos.Weapon.Type != WeaponCodes.Null)
+                                range = ad.wpnRange[(int)pos.Weapon.Type];
+                            else
+                                range = i.Xres + i.Yres;
+
+                            if (dist <= range
+                                || sendToAll
+                                || idata.speccing == p // always send to spectators of the player
+                                || i.Attached == p.Id // always send to turreters
+                                || (pos.Weapon.Type == WeaponCodes.Null
+                                    && dist < ad.cfg_pospix
+                                    && randnum > ((double)dist / (double)ad.cfg_pospix * Constants.RandMax + 1d)) // send some radar packets
+                                || i.Flags.SeeAllPositionPackets) // bots
+                            {
+                                int extralen;
+
+                                const int plainlen = 0;
+                                const int nrglen = 2;
+                                int epdlen = ExtraPositionData.Length;
+
+                                if (i.Ship == ShipType.Spec)
+                                {
+                                    if (idata.pl_epd.seeEpd && idata.speccing == p)
+                                    {
+                                        extralen = (len >= C2SPositionPacket.LengthWithExtra) ? epdlen : nrglen;
+                                    }
+                                    else if (idata.pl_epd.seeNrgSpec == SeeEnergy.All
+                                        || (idata.pl_epd.seeNrgSpec == SeeEnergy.Team
+                                            && p.Freq == i.Freq)
+                                        || (idata.pl_epd.seeNrgSpec == SeeEnergy.Spec
+                                            && idata.speccing == p)) // TODO: I think ASSS has a bug which is fixed here
+                                    {
+                                        extralen = nrglen;
+                                    }
+                                    else
+                                    {
+                                        extralen = plainlen;
+                                    }
+                                }
+                                else if (idata.pl_epd.seeNrg == SeeEnergy.All
+                                    || (idata.pl_epd.seeNrg == SeeEnergy.Team
+                                        && p.Freq == i.Freq))
+                                {
+                                    extralen = nrglen;
+                                }
+                                else
+                                {
+                                    extralen = plainlen;
+                                }
+
+                                if (modified)
+                                {
+                                    pos.CopyTo(copy);
+                                    modified = false;
+                                }
+
+                                bool drop = false;
+
+                                // TODO: PPK advisers - EditIndividualPPK
+
+                                wpnDirty = wpnDirty || modified;
+                                posDirty = posDirty || modified;
+
+                                if (!drop)
+                                {
+                                    if ((!modified && sendWeapon)
+                                        || copy.Weapon.Type > 0
+                                        || (copy.Bounty & 0xFF00) != 0
+                                        || (p.Id & 0xFF00) != 0)
+                                    {
+                                        int length = S2CWeaponsPacket.Length + extralen;
+
+                                        if (wpnDirty)
+                                        {
+                                            wpn.Type = (byte)S2CPacketType.Weapon;
+                                            wpn.Rotation = copy.Rotation;
+                                            wpn.Time = (ushort)(gtc & 0xFFFF);
+                                            wpn.X = copy.X;
+                                            wpn.YSpeed = copy.YSpeed;
+                                            wpn.PlayerId = (ushort)p.Id;
+                                            wpn.XSpeed = copy.XSpeed;
+                                            wpn.Checksum = 0;
+                                            wpn.Status = copy.Status;
+                                            wpn.C2SLatency = (byte)latency;
+                                            wpn.Y = copy.Y;
+                                            wpn.Bounty = copy.Bounty;
+                                            wpn.Weapon = pos.Weapon;
+                                            wpn.Extra = copy.Extra;
+
+                                            // move this field from the main packet to the extra data, in case they don't match.
+                                            ExtraPositionData epd = wpn.Extra;
+                                            epd.Energy = (ushort)copy.Energy;
+
+                                            wpnDirty = modified;
+
+                                            wpn.DoChecksum();
+                                        }
+
+                                        if (wpn.Weapon.Type != 0)
+                                            idata.wpnSent++;
+
+                                        _net.SendToOne(i, wpnBuffer.Bytes, length, nflags);
+                                    }
+                                    else
+                                    {
+                                        int length = S2CPositionPacket.Length + extralen;
+                                        if (posDirty)
+                                        {
+                                            sendpos.Type = (byte)S2CPacketType.Position;
+                                            sendpos.Rotation = copy.Rotation;
+                                            sendpos.Time = (ushort)(gtc & 0xFFFF);
+                                            sendpos.X = copy.X;
+                                            sendpos.C2SLatency = (byte)latency;
+                                            sendpos.Bounty = (byte)copy.Bounty;
+                                            sendpos.PlayerId = (byte)p.Id;
+                                            sendpos.Status = copy.Status;
+                                            sendpos.YSpeed = copy.YSpeed;
+                                            sendpos.Y = copy.Y;
+                                            sendpos.XSpeed = copy.XSpeed;
+                                            sendpos.Extra = copy.Extra;
+
+                                            // move this field from the main packet to the extra data, in case they don't match.
+                                            ExtraPositionData epd = copy.Extra;
+                                            epd.Energy = (ushort)copy.Energy;
+
+                                            posDirty = modified;
+                                        }
+
+                                        _net.SendToOne(i, sendposBuffer.Bytes, length, nflags);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+            }
+
+            pd.PlayerPostitionPacket_LastShip = p.Ship;
         }
 
-        private void fireSafeZoneEvent(Arena arena, Player p, int x, int y, PlayerPositionStatus status)
+        private void UpdateRegions(Player p, short x, short y)
         {
             if (p == null)
                 return;
 
-            if (arena != null)
-                SafeZoneCallback.Fire(arena, p, x, y, status);
-            else
-                SafeZoneCallback.Fire(_broker, p, x, y, status);
-        }
-
-        private void runEnterGameCB(Player p)
-        {
-            if (p.Status == PlayerState.Playing)
-                firePlayerActionEvent(p, PlayerAction.EnterGame, p.Arena);
-        }
-
-        private void firePlayerActionEvent(Player p, PlayerAction action, Arena arena)
-        {
-            if (p == null)
-                return;
-
-            if (arena != null)
-                PlayerActionCallback.Fire(arena, p, action, arena);
-            else
-                PlayerActionCallback.Fire(_broker, p, action, arena);
-        }
-
-        private void updateRegions(Player p, short x, short y)
-        {
-            if (p == null)
-                return;
-
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             Arena arena = p.Arena;
@@ -1185,10 +1308,10 @@ namespace SS.Core.Modules
             foreach(MapRegion region in _mapData.RegionsAt(p.Arena, x, y))
             {
                 if (region.NoAntiwarp)
-                    pd.rgnnoanti = true;
+                    pd.MapRegionNoAnti = true;
 
                 if (region.NoWeapons)
-                    pd.rgnnoweapons = true;
+                    pd.MapRegionNoWeapons = true;
 
                 //if (!pd.LastRegionSet.ContainsKey(region))
                 //{
@@ -1214,7 +1337,7 @@ namespace SS.Core.Modules
             // TODO: region enter and leave callbacks
         }
 
-        private void recievedSpecRequestPacket(Player p, byte[] data, int len)
+        private void Packet_SpecRequest(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
@@ -1231,8 +1354,7 @@ namespace SS.Core.Modules
             if (p.Status != PlayerState.Playing || p.Ship != ShipType.Spec)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             SimplePacket pkt = new SimplePacket(data);
@@ -1240,18 +1362,18 @@ namespace SS.Core.Modules
 
             lock (_specmtx)
             {
-                clearSpeccing(pd);
+                ClearSpeccing(pd);
 
                 if (tpid >= 0)
                 {
                     Player t = _playerData.PidToPlayer(tpid);
                     if (t != null && t.Status == PlayerState.Playing && t.Ship != ShipType.Spec && t.Arena == p.Arena)
-                        addSpeccing(pd, t);
+                        AddSpeccing(pd, t);
                 }
             }
         }
 
-        private void recievedSetShipPacket(Player p, byte[] data, int len)
+        private void Packet_SetShip(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
@@ -1272,8 +1394,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             ShipType ship = (ShipType)data[1];
@@ -1282,6 +1403,8 @@ namespace SS.Core.Modules
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad ship number: {0}", ship);
                 return;
             }
+
+            short freq = p.Freq;
 
             lock (_freqshipmtx)
             {
@@ -1297,25 +1420,8 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                pd.changes.doExponentialDecay();
-
-                if (pd.changes.changes > cfg_changelimit && cfg_changelimit > 0)
-                {
-                    _logManager.LogP(LogLevel.Info, nameof(Game), p, "too many ship changes");
-
-                    // disable for at least 30 seconds
-                    pd.changes.changes |= (cfg_changelimit << 3);
-
-                    if (_chat != null)
-                        _chat.SendMessage(p, "You're changing ships too often, disabling for 30 seconds.");
-
-                    return;
-                }
-
-                pd.changes.changes++;
-
                 // do this bit while holding the mutex. it's ok to check the flag afterwards, though.
-                expireLock(p);
+                ExpireLock(p);
             }
 
             // checked lock state (but always allow switching to spec)
@@ -1329,12 +1435,13 @@ namespace SS.Core.Modules
                 return;
             }
 
-            short freq = p.Freq;
+            
             IFreqManager fm = _broker.GetInterface<IFreqManager>();
             if (fm != null)
             {
                 try
                 {
+                    // TODO: IFreqManager has changed in ASSS
                     fm.ShipChange(p, ref ship, ref freq);
                 }
                 finally
@@ -1343,10 +1450,10 @@ namespace SS.Core.Modules
                 }
             }
 
-            setFreqAndShip(p, ship, freq);
+            SetShipAndFreq(p, ship, freq);
         }
 
-        private void recievedSetFreqPacket(Player p, byte[] data, int len)
+        private void Packet_SetFreq(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
@@ -1358,20 +1465,20 @@ namespace SS.Core.Modules
             else
             {
                 SimplePacket pkt = new SimplePacket(data);
-                freqChangeRequest(p, pkt.D1);
+                FreqChangeRequest(p, pkt.D1);
             }
         }
 
-        private void freqChangeRequest(Player p, short freq)
+        private void FreqChangeRequest(Player p, short freq)
         {
             if(p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             Arena arena = p.Arena;
+            ShipType ship = p.Ship;
 
             if (p.Status != PlayerState.Playing || arena == null)
             {
@@ -1382,7 +1489,7 @@ namespace SS.Core.Modules
             // check lock state
             lock (_freqshipmtx)
             {
-                expireLock(p);
+                ExpireLock(p);
             }
 
             if (pd.lockship &&
@@ -1393,12 +1500,12 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ShipType ship = p.Ship;
             IFreqManager fm = _broker.GetInterface<IFreqManager>();
-            if(fm != null)
+            if (fm != null)
             {
                 try
                 {
+                    // TODO: IFreqManager changed in ASSS
                     fm.FreqChange(p, ref ship, ref freq);
                 }
                 finally
@@ -1406,14 +1513,13 @@ namespace SS.Core.Modules
                     _broker.ReleaseInterface(ref fm);
                 }
             }
-
-            if(ship == p.Ship)
-                setFreq(p, freq);
             else
-                setFreqAndShip(p, ship, freq);
+            {
+                SetFreq(p, freq);
+            }
         }
 
-        private void setFreqAndShip(Player p, ShipType ship, short freq)
+        private void SetShipAndFreq(Player p, ShipType ship, short freq)
         {
             if (p == null)
                 return;
@@ -1422,9 +1528,12 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
+
+            ShipType oldShip = p.Ship;
+            short oldFreq = p.Freq;
+            SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipChange;
 
             if (p.Type == ClientType.Chat && ship != ShipType.Spec)
             {
@@ -1452,7 +1561,7 @@ namespace SS.Core.Modules
 
                 lock (_specmtx)
                 {
-                    clearSpeccing(pd);
+                    ClearSpeccing(pd);
                 }
             }
 
@@ -1467,7 +1576,7 @@ namespace SS.Core.Modules
                 if (p.IsStandard)
                 {
                     // send it to him, with a callback
-                    _net.SendWithCallback(p, buffer.Bytes, ShipChangePacket.Length, resetDuringChange);
+                    _net.SendWithCallback(p, buffer.Bytes, ShipChangePacket.Length, ResetDuringChange);
                 }
 
                 // send it to everyone else
@@ -1475,24 +1584,44 @@ namespace SS.Core.Modules
 
                 //if(_chatnet != null)
 
-                fireShipChangeEvent(arena, p, ship, freq);
             }
 
-            _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "changed ship/freq to ship {0}, freq {1}", ship, freq);
+            PreShipFreqChangeCallback.Fire(arena, p, ship, oldShip, freq, oldFreq);
+            DoShipFreqChangeCallback(p, ship, oldShip, freq, oldFreq);
+
+            // now setup for the CB_SPAWN callback
+            _playerData.Lock();
+
+            try
+            {
+                if (p.Flags.IsDead)
+                {
+                    flags |= SpawnCallback.SpawnReason.AfterDeath;
+                }
+
+                // a shipchange will revive a dead player
+                p.Flags.IsDead = false;
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            if (ship != ShipType.Spec)
+            {
+                // flags = SPAWN_SHIPCHANGE set at the top of the function
+                if (oldShip == ShipType.Spec)
+                {
+                    flags |= SpawnCallback.SpawnReason.Initial;
+                }
+
+                DoSpawnCallback(p, flags);
+            }
+
+            _logManager.LogP(LogLevel.Info, nameof(Game), p, "changed ship/freq to ship {0}, freq {1}", ship, freq);
         }
 
-        private void fireShipChangeEvent(Arena arena, Player p, ShipType ship, short freq)
-        {
-            if(p == null)
-                return;
-
-            if (arena != null)
-                ShipChangeCallback.Fire(arena, p, ship, freq);
-            else
-                ShipChangeCallback.Fire(_broker, p, ship, freq);
-        }
-
-        private void setFreq(Player p, short freq)
+        private void SetFreq(Player p, short freq)
         {
             if (p == null)
                 return;
@@ -1503,6 +1632,8 @@ namespace SS.Core.Modules
             Arena arena = p.Arena;
             if(arena == null)
                 return;
+
+            short oldFreq = p.Freq;
 
             lock (_freqshipmtx)
             {
@@ -1526,20 +1657,22 @@ namespace SS.Core.Modules
 
                 // him with callback
                 if (p.IsStandard)
-                    _net.SendWithCallback(p, buffer.Bytes, 6, resetDuringChange);
+                    _net.SendWithCallback(p, buffer.Bytes, 6, ResetDuringChange);
                 
                 // everyone else
                 _net.SendToArena(arena, p, buffer.Bytes, 6, NetSendFlags.Reliable);
 
                 //if(_chatNet != null)
 
-                fireFreqChangeEvent(arena, p, freq);
             }
 
-            _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "changed freq to {0}", freq);
+            PreShipFreqChangeCallback.Fire(arena, p, p.Ship, p.Ship, freq, oldFreq);
+            DoShipFreqChangeCallback(p, p.Ship, p.Ship, freq, oldFreq);
+
+            _logManager.LogP(LogLevel.Info, nameof(Game), p, "changed freq to {0}", freq);
         }
 
-        private void resetDuringChange(Player p, bool success)
+        private void ResetDuringChange(Player p, bool success)
         {
             if (p == null)
                 return;
@@ -1550,30 +1683,18 @@ namespace SS.Core.Modules
             }
         }
 
-        private void fireFreqChangeEvent(Arena arena, Player p, short freq)
-        {
-            if (arena == null)
-                return;
-
-            if (p == null)
-                return;
-
-            FreqChangeCallback.Fire(arena, p, freq);
-        }
-
-        private void expireLock(Player p)
+        private void ExpireLock(Player p)
         {
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (!(p[_pdkey] is PlayerData pd))
                 return;
 
             lock (_freqshipmtx)
             {
                 if(pd.expires != null)
-                    if (DateTime.Now > pd.expires)
+                    if (DateTime.UtcNow > pd.expires)
                     {
                         pd.lockship = false;
                         pd.expires = null;
@@ -1582,7 +1703,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void recievedDiePacket(Player p, byte[] data, int len)
+        private void Packet_Die(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
@@ -1603,6 +1724,9 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
+            if (!(arena[_adkey] is ArenaData ad))
+                return;
+
             SimplePacket dead = new SimplePacket(data);
             short bty = dead.D2;
 
@@ -1614,6 +1738,22 @@ namespace SS.Core.Modules
             }
 
             short flagCount = p.pkt.FlagsCarried;
+
+            // these flags are primarily for the benefit of other modules
+            _playerData.Lock();
+
+            try
+            {
+                p.Flags.IsDead = true;
+                p.LastDeath = ServerTick.Now;
+                p.NextRespawn = p.LastDeath + (uint)ad.cfg_EnterDelay;
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            // TODO: kill adviser EditDeath
 
             Prize green;
 
@@ -1641,6 +1781,8 @@ namespace SS.Core.Modules
                 }
             }
 
+            // TODO: kill adviser KillPoints
+
             // this will figure out how many points to send in the packet
             // NOTE: asss uses the event to set the points and green, i think it's best to keep it split between an interface call and event
             short pts = 0;
@@ -1649,13 +1791,25 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    Prize g;
-                    kp.GetKillPoints(arena, killer, p, bty, flagCount, out pts, out g);
+                    kp.GetKillPoints(arena, killer, p, bty, flagCount, out pts, out Prize g);
                     green = g;
                 }
                 finally
                 {
                     arena.ReleaseInterface(ref kp);
+                }
+            }
+
+            // allow a module to modify the green sent in the packet
+            IKillGreen killGreen = arena.GetInterface<IKillGreen>();
+            if (killGreen != null)
+            {
+                try
+                {
+                    killGreen.KillGreen(arena, killer, p, bty, flagCount, pts, green);
+                }
+                finally
+                {
                 }
             }
 
@@ -1677,27 +1831,22 @@ namespace SS.Core.Modules
                 }
             }
 
-            fireKillEvent(arena, killer, p, bty, flagCount, pts, green);
+            FireKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
-            notifyKill(killer, p, pts, flagCount, green);
+            NotifyKill(killer, p, pts, flagCount, green);
 
-            firePostKillEvent(arena, killer, p, bty, flagCount, pts, green);
+            FirePostKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
-            _logManager.LogA(LogLevel.Drivel, nameof(Game), arena, "{0} killed by {1} (bty={2},flags={3},pts={4}", p.Name, killer.Name, bty, flagCount, pts);
+            _logManager.LogA(LogLevel.Info, nameof(Game), arena, "{0} killed by {1} (bty={2},flags={3},pts={4})", p.Name, killer.Name, bty, flagCount, pts);
 
             if (p.Flags.SentWeaponPacket == false)
             {
-                PlayerData pd = p[_pdkey] as PlayerData;
-                if (pd != null)
+                if (p[_pdkey] is PlayerData pd)
                 {
-                    ArenaData ad = arena[_adkey] as ArenaData;
-                    if (ad != null)
+                    if (pd.deathWithoutFiring++ == ad.MaxDeathWithoutFiring)
                     {
-                        if (pd.deathWithoutFiring++ == ad.deathWithoutFiring)
-                        {
-                            _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "specced for too many deaths without firing");
-                            setFreqAndShip(p, ShipType.Spec, arena.SpecFreq);
-                        }
+                        _logManager.LogP(LogLevel.Info, nameof(Game), p, "specced for too many deaths without firing");
+                        SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                     }
                 }
             }
@@ -1706,7 +1855,7 @@ namespace SS.Core.Modules
             p.Flags.SentWeaponPacket = false;
         }
 
-        private void fireKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
+        private void FireKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
             if (arena == null || killer == null || killed == null)
                 return;
@@ -1714,7 +1863,7 @@ namespace SS.Core.Modules
             KillCallback.Fire(arena, arena, killer, killed, bty, flagCount, pts, green);
         }
 
-        private void firePostKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
+        private void FirePostKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
             if (arena == null || killer == null || killed == null)
                 return;
@@ -1722,7 +1871,7 @@ namespace SS.Core.Modules
             PostKillCallback.Fire(arena, arena, killer, killed, bty, flagCount, pts, green);
         }
 
-        private void notifyKill(Player killer, Player killed, short pts, short flagCount, Prize green)
+        private void NotifyKill(Player killer, Player killed, short pts, short flagCount, Prize green)
         {
             if (killer == null || killed == null)
                 return;
@@ -1743,7 +1892,7 @@ namespace SS.Core.Modules
             //if(_chatnet != null)
         }
 
-        private void recievedGreenPacket(Player p, byte[] data, int len)
+        private void Packet_Green(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
@@ -1764,8 +1913,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            ArenaData ad = arena[_adkey] as ArenaData;
-            if (ad == null)
+            if (!(arena[_adkey] is ArenaData ad))
                 return;
 
             GreenPacket g = new GreenPacket(data);
@@ -1782,10 +1930,10 @@ namespace SS.Core.Modules
                 //g.Type = C2SPacketType.Green; // asss sets it back, i dont think this is necessary though
             }
 
-            fireGreenEvent(arena, p, g.X, g.Y, prize);
+            FireGreenEvent(arena, p, g.X, g.Y, prize);
         }
 
-        private void fireGreenEvent(Arena arena, Player p, int x, int y, Prize prize)
+        private void FireGreenEvent(Arena arena, Player p, int x, int y, Prize prize)
         {
             if(p == null)
                 return;
@@ -1796,7 +1944,7 @@ namespace SS.Core.Modules
                 GreenCallback.Fire(_broker, p, x, y, prize);
         }
 
-        private void recievedAttachToPacket(Player p, byte[] data, int len)
+        private void Packet_AttachTo(Player p, byte[] data, int len)
         {
             if (p == null || data == null)
                 return;
@@ -1847,7 +1995,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void recievedTurretKickoffPacket(Player p, byte[] data, int len)
+        private void Packet_TurretKickoff(Player p, byte[] data, int len)
         {
             if (p == null || data == null)
                 return;
@@ -1866,7 +2014,7 @@ namespace SS.Core.Modules
             _net.SendToArena(arena, null, data, 3, NetSendFlags.Reliable);
         }
 
-        private int hypot(int dx, int dy)
+        private int Hypot(int dx, int dy)
         {
             uint dd = (uint)((dx * dx) + (dy * dy));
 
@@ -1886,29 +2034,27 @@ namespace SS.Core.Modules
             return (int)r;
         }
 
-        private int rand()
+        private int Rand()
         {
             lock (random)
             {
-                return random.Next(Constants.RandMax);
+                return random.Next(Constants.RandMax + 1); // +1 since it's exclusive
             }
         }
 
-        private void lockWork(ITarget target, bool nval, bool notify, bool spec, int timeout)
+        private void LockWork(ITarget target, bool nval, bool notify, bool spec, int timeout)
         {
-            LinkedList<Player> set;
-            _playerData.TargetToSet(target, out set);
+            _playerData.TargetToSet(target, out LinkedList<Player> set);
             if (set == null)
                 return;
 
             foreach (Player p in set)
             {
-                PlayerData pd = p[_pdkey] as PlayerData;
-                if (pd == null)
+                if (!(p[_pdkey] is PlayerData pd))
                     continue;
 
                 if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
-                    setFreqAndShip(p, ShipType.Spec, p.Arena.SpecFreq);
+                    SetShipAndFreq(p, ShipType.Spec, p.Arena.SpecFreq);
 
                 if (notify && (pd.lockship != nval) && (_chat != null))
                 {
@@ -1923,16 +2069,17 @@ namespace SS.Core.Modules
                 if(nval == false || timeout == 0)
                     pd.expires = null;
                 else
-                    pd.expires =  DateTime.Now.AddSeconds(timeout);
+                    pd.expires =  DateTime.UtcNow.AddSeconds(timeout);
             }
         }
 
-        private string commandSpecHelpText = @"Targets: any
-Args: none
-Displays players spectating you. When private, displays players
-spectating the target.";
-
-        private void command_spec(string command, string parameters, Player p, ITarget target)
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = null,
+            Description =
+            "Displays players spectating you. When private, displays players\n" +
+            "spectating the target.")]
+        private void Command_spec(string command, string parameters, Player p, ITarget target)
         {
             Player targetPlayer = null;
             
@@ -1983,24 +2130,25 @@ spectating the target.";
             }
             else if (p == targetPlayer)
             {
-                _chat.SendMessage(p, "No players spectating you.");
+                _chat.SendMessage(p, "No players are spectating you.");
             }
             else
             {
-                _chat.SendMessage(p, "No players spectating {0}.", targetPlayer.Name);
+                _chat.SendMessage(p, "No players are spectating {0}.", targetPlayer.Name);
             }
         }
 
-        private string commandEnergyHelpText = @"Targets: arena or player
-Args: [-t] [-n] [-s]
-If sent as a priv message, turns energy viewing on for that player.
-If sent as a pub message, turns energy viewing on for the whole arena
-(note that this will only affect new players entering the arena).
-If {-t} is given, turns energy viewing on for teammates only.
-If {-n} is given, turns energy viewing off.
-If {-s} is given, turns energy viewing on/off for spectator mode.";
-
-        private void command_energy(string command, string parameters, Player p, ITarget target)
+        [CommandHelp(
+            Targets = CommandTarget.Arena | CommandTarget.Player,
+            Args = "[-t] [-n] [-s]",
+            Description =
+            "If sent as a priv message, turns energy viewing on for that player.\n" +
+            "If sent as a pub message, turns energy viewing on for the whole arena\n" +
+            "(note that this will only affect new players entering the arena).\n" +
+            "If {-t} is given, turns energy viewing on for teammates only.\n" +
+            "If {-n} is given, turns energy viewing off.\n" + 
+            "If {-s} is given, turns energy viewing on/off for spectator mode.\n")]
+        private void Command_energy(string command, string parameters, Player p, ITarget target)
         {
             Player targetPlayer = null;
 
@@ -2032,14 +2180,73 @@ If {-s} is given, turns energy viewing on/off for spectator mode.";
             }
             else
             {
-                ArenaData ad = p.Arena[_adkey] as ArenaData;
-                if (ad == null)
+                if (!(p.Arena[_adkey] is ArenaData ad))
                     return;
 
                 if (spec)
-                    ad.specNrg = nval;
+                    ad.SpecSeeEnergy = nval;
                 else
-                    ad.specNrg = nval;
+                    ad.SpecSeeEnergy = nval;
+            }
+        }
+
+        private void DoSpawnCallback(Player p, SpawnCallback.SpawnReason reason)
+        {
+            _mainloop.QueueMainWorkItem(
+                MainloopWork_RunSpawnCallback,
+                new SpawnDTO()
+                {
+                    Arena = p.Arena,
+                    Player = p,
+                    Reason = reason,
+                });
+        }
+
+        private struct SpawnDTO
+        {
+            public Arena Arena;
+            public Player Player;
+            public SpawnCallback.SpawnReason Reason;
+        }
+
+        private void MainloopWork_RunSpawnCallback(SpawnDTO dto)
+        {
+            if (dto.Arena == dto.Player.Arena)
+            {
+                SpawnCallback.Fire(dto.Arena, dto.Player, dto.Reason);
+            }
+        }
+
+        private struct ShipFreqChangeDTO
+        {
+            public Arena Arena;
+            public Player Player;
+            public ShipType NewShip;
+            public ShipType OldShip;
+            public short NewFreq;
+            public short OldFreq;
+        }
+
+        private void DoShipFreqChangeCallback(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        {
+            _mainloop.QueueMainWorkItem(
+                MainloopWork_RunShipFreqChangeCallback,
+                new ShipFreqChangeDTO()
+                {
+                    Arena = p.Arena,
+                    Player = p,
+                    NewShip = newShip,
+                    OldShip = oldShip,
+                    NewFreq = newFreq,
+                    OldFreq = oldFreq,
+                });
+        }
+
+        private void MainloopWork_RunShipFreqChangeCallback(ShipFreqChangeDTO dto)
+        {
+            if (dto.Arena == dto.Player.Arena)
+            {
+                ShipFreqChangeCallback.Fire(dto.Arena, dto.Player, dto.NewShip, dto.OldShip, dto.NewFreq, dto.OldFreq);
             }
         }
     }

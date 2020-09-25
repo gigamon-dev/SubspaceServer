@@ -60,7 +60,12 @@ namespace SS.Core.Packets
         /// <summary>
         /// used in watch damage packet only
         /// </summary>
-        Wormhole = 0
+        Wormhole = 0,
+
+        /// <summary>
+        /// used in watch damage packet only
+        /// </summary>
+        Shrapnel = 15,
     }
 
     public readonly struct Weapons
@@ -571,6 +576,8 @@ namespace SS.Core.Packets
         public static readonly int LengthWithExtra;
 
         private readonly byte[] data;
+
+        public byte[] RawData => data;
 
         public C2SPositionPacket(byte[] data)
         {
