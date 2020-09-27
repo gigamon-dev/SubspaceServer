@@ -17,7 +17,13 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>length of the resulting data</returns>
         int Encrypt(Player p, byte[] data, int len);
 
-        int Encrypt(Player p, ArraySegment<byte> data);
+        /// <summary>
+        /// data is encrypted in place
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="data"></param>
+        /// <returns>length of the resulting data</returns>
+        int Encrypt(Player p, Span<byte> data);
 
         /// <summary>
         /// data is decrypted in place

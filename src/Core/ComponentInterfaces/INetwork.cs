@@ -84,13 +84,21 @@ namespace SS.Core.ComponentInterfaces
     public interface INetwork : IComponentInterface
     {
         /// <summary>
-        /// To send data to a single player
+        /// To send data to a single player.
         /// </summary>
         /// <param name="p">player to send to</param>
         /// <param name="data">data to send</param>
         /// <param name="len">length of data to send</param>
         /// <param name="flags">flags specifying options for the send</param>
         void SendToOne(Player p, byte[] data, int len, NetSendFlags flags);
+
+        /// <summary>
+        /// To send data to a single player.
+        /// </summary>
+        /// <param name="p">player to send to</param>
+        /// <param name="data">data to send</param>
+        /// <param name="flags">flags specifying options for the send</param>
+        void SendToOne(Player p, Span<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// To send data to players in a specific arena or

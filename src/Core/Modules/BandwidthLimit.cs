@@ -17,7 +17,6 @@ namespace SS.Core.Modules
         UnreliableHigh, 
         Reliable, 
         Ack, 
-        NumPriorities
     }
 
     [CoreModuleInfo]
@@ -116,7 +115,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// this array represents the percentage of traffic that is allowed to be at or lower than each priority level
             /// </summary>
-            public static int[] PriorityLimits = new int[Enum.GetNames(typeof(BandwidthPriorities)).Length];
+            public static int[] PriorityLimits = new int[(int)((BandwidthPriorities[])Enum.GetValues(typeof(BandwidthPriorities))).Max() + 1];
 
             /// <summary>
             /// we need to know how many packets the client is able to buffer
@@ -130,7 +129,7 @@ namespace SS.Core.Modules
             #endregion
 
             private int _limit;
-            private int[] _avail = new int[Enum.GetNames(typeof(BandwidthPriorities)).Length];
+            private int[] _avail = new int[(int)((BandwidthPriorities[])Enum.GetValues(typeof(BandwidthPriorities))).Max() + 1];
             private int _maxavail;
             private bool _hitlimit;
             private DateTime _sincetime;

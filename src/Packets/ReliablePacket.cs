@@ -61,11 +61,11 @@ namespace SS.Core.Packets
         {
             Array.Copy(d.Array, d.Offset, data, dataStartIndex, d.Count);
         }
-        /*
-        public static int DataStartIndex
+
+        public void SetData(Span<byte> d)
         {
-            get { return dataStartIndex; }
-        }*/
+            d.CopyTo(new Span<byte>(data, dataStartIndex, d.Length));
+        }
 
         public ArraySegment<byte> GetData(int len)
         {
