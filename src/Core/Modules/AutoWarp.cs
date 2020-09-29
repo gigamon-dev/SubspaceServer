@@ -10,7 +10,7 @@ using SS.Utilities;
 namespace SS.Core.Modules
 {
     [CoreModuleInfo]
-    public class AutoWarpModule : IModule
+    public class AutoWarp : IModule
     {
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
