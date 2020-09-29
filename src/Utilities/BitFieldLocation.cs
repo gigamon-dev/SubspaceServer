@@ -18,37 +18,6 @@ namespace SS.Utilities
             LowestOrderBit = lowestOrderBit;
             NumBits = numBits;
         }
-        /*
-        public byte GetByte(uint source)
-        {
-            return BitFieldConverter.GetByte(source, LowestOrderBit, NumBits);
-        }
-
-        public byte SetByte(byte value, byte source)
-        {
-            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
-        }
-
-        public ushort SetByte(byte value, ushort source)
-        {
-            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
-        }
-
-        public uint SetByte(byte value, uint source)
-        {
-            return BitFieldConverter.SetByte(value, source, LowestOrderBit, NumBits);
-        }
-
-        public uint SetUInt16(ushort value, uint source)
-        {
-            return BitFieldConverter.SetUInt16(value, source, LowestOrderBit, NumBits);
-        }
-
-        public uint SetUInt32(uint value, uint source)
-        {
-            return BitFieldConverter.SetUInt32(value, source, LowestOrderBit, NumBits);
-        }
-        */
     }
 
     public struct BoolBitFieldLocation
@@ -159,55 +128,56 @@ namespace SS.Utilities
         }
     }
 
-    public struct SByteBitFieldLocation
-    {
-        public readonly byte LowestOrderBit;
-        public readonly byte NumBits;
+    // TODO: two's complement
+    //public struct SByteBitFieldLocation
+    //{
+    //    public readonly byte LowestOrderBit;
+    //    public readonly byte NumBits;
 
-        public SByteBitFieldLocation(byte lowestOrderBit, byte numBits)
-        {
-            if (numBits <= 0 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
+    //    public SByteBitFieldLocation(byte lowestOrderBit, byte numBits)
+    //    {
+    //        if (numBits <= 0 || numBits > 16)
+    //            throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
 
-            LowestOrderBit = lowestOrderBit;
-            NumBits = numBits;
-        }
+    //        LowestOrderBit = lowestOrderBit;
+    //        NumBits = numBits;
+    //    }
 
-        public static explicit operator SByteBitFieldLocation(BitFieldLocation location)
-        {
-            return new SByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
-        }
+    //    public static explicit operator SByteBitFieldLocation(BitFieldLocation location)
+    //    {
+    //        return new SByteBitFieldLocation(location.LowestOrderBit, location.NumBits);
+    //    }
 
-        public sbyte GetValue(byte source)
-        {
-            return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
-        }
+    //    public sbyte GetValue(byte source)
+    //    {
+    //        return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
+    //    }
 
-        public sbyte GetValue(ushort source)
-        {
-            return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
-        }
+    //    public sbyte GetValue(ushort source)
+    //    {
+    //        return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
+    //    }
 
-        public sbyte GetValue(uint source)
-        {
-            return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
-        }
+    //    public sbyte GetValue(uint source)
+    //    {
+    //        return BitFieldConverter.GetSByte(source, LowestOrderBit, NumBits);
+    //    }
 
-        public byte SetValue(sbyte value, byte source)
-        {
-            return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
-        }
+    //    public byte SetValue(sbyte value, byte source)
+    //    {
+    //        return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+    //    }
 
-        public ushort SetValue(sbyte value, ushort source)
-        {
-            return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
-        }
+    //    public ushort SetValue(sbyte value, ushort source)
+    //    {
+    //        return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+    //    }
 
-        public uint SetValue(sbyte value, uint source)
-        {
-            return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
-        }
-    }
+    //    public uint SetValue(sbyte value, uint source)
+    //    {
+    //        return BitFieldConverter.SetSByte(value, source, LowestOrderBit, NumBits);
+    //    }
+    //}
 
     public struct UInt32BitFieldLocation
     {
