@@ -1,11 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using System.IO;
 using SS.Core.Packets;
-using SS.Core.ComponentCallbacks;
+using System;
+using System.IO;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -27,14 +25,8 @@ namespace SS.Core.Modules
 
             public DownloadDataContext(FileStream stream, string filename, string deletePath)
             {
-                if (stream == null)
-                    throw new ArgumentNullException("stream");
-
-                if (filename == null) // can be empty
-                    throw new ArgumentNullException("filename");
-
-                Stream = stream;
-                Filename = filename;
+                Stream = stream ?? throw new ArgumentNullException(nameof(stream));
+                Filename = filename ?? throw new ArgumentNullException(nameof(filename)); // can be empty
                 DeletePath = deletePath;
             }
         }
@@ -62,7 +54,8 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _udKey = _playerData.AllocatePlayerData<UploadDataContext>();
-            PlayerActionCallback.Register(_broker, playerAction);
+            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+
             _iFileTransferToken = _broker.RegisterInterface<IFileTransfer>(this);
             return true;
         }
@@ -72,7 +65,7 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<IFileTransfer>(ref _iFileTransferToken) != 0)
                 return false;
 
-            PlayerActionCallback.Unregister(_broker, playerAction);
+            PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
             _playerData.FreePlayerData(_udKey);
 
             return true;
@@ -101,7 +94,7 @@ namespace SS.Core.Modules
 
                 FileStream fileStream = fileInfo.OpenRead();
                 DownloadDataContext dd = new DownloadDataContext(fileStream, filename, deleteAfter ? path : null);
-                _network.SendSized<DownloadDataContext>(p, dd, (int)fileInfo.Length + 17, getSizedSendData);
+                _network.SendSized(p, (int)fileInfo.Length + 17, GetSizedSendData, dd);
                 return true;
             }
             catch(Exception ex)
@@ -113,14 +106,14 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void playerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (p == null)
                 return;
 
-            UploadDataContext ud = p[_udKey] as UploadDataContext;
-            if (ud == null)
-                return;
+            // TODO:
+            //if (!(p[_udKey] is UploadDataContext ud))
+                //return;
 
             if (action == PlayerAction.Connect)
             {
@@ -132,12 +125,15 @@ namespace SS.Core.Modules
             }
         }
 
-        private void getSizedSendData(DownloadDataContext dd, int offset, byte[] buf, int bufStartIndex, int bytesNeeded)
+        private void GetSizedSendData(DownloadDataContext dd, int offset, Span<byte> dataSpan)
         {
             if (dd == null)
-                return;
+                throw new ArgumentNullException(nameof(dd));
 
-            if (bytesNeeded == 0)
+            if (offset < 0)
+                throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be less than zero.");
+
+            if (dataSpan.IsEmpty)
             {
                 _logManager.LogM(LogLevel.Info, nameof(FileTransferModule), "completed send of {0}", dd.Filename);
                 dd.Stream.Dispose();
@@ -148,22 +144,50 @@ namespace SS.Core.Modules
                         File.Delete(dd.DeletePath);
                         _logManager.LogM(LogLevel.Info, nameof(FileTransferModule), "deleted {0} after completed send", dd.Filename);
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "failed to delete {0} after completed send.  {1}", dd.Filename, ex.Message);
                     }
                 }
+
+                return;
             }
-            else if (offset == 0 && bytesNeeded >= 17)
+
+            if (offset <= 16)
             {
-                buf[bufStartIndex++] = (byte)S2CPacketType.IncomingFile;
-                Encoding.ASCII.GetBytes(dd.Filename, 0, 16, buf, bufStartIndex);
-                bufStartIndex += 16;
-                dd.Stream.Read(buf, bufStartIndex, bytesNeeded - 17);
+                // needs all or part of the header, create the header
+                Span<byte> headerSpan = stackalloc byte[17];
+                headerSpan[0] = (byte)S2CPacketType.IncomingFile;
+                Encoding.ASCII.GetBytes(dd.Filename, headerSpan.Slice(1));
+
+                if (offset != 0)
+                {
+                    // move to the data we need
+                    headerSpan = headerSpan.Slice(offset);
+                }
+
+                if (dataSpan.Length < headerSpan.Length)
+                {
+                    headerSpan.Slice(0, dataSpan.Length).CopyTo(dataSpan);
+                    return;
+                }
+                else
+                {
+                    headerSpan.CopyTo(dataSpan);
+
+                    if (dataSpan.Length == headerSpan.Length)
+                        return;
+
+                    // needs data from the file too, move to the spot for the data
+                    dataSpan = dataSpan.Slice(headerSpan.Length);
+                }
             }
-            else if(offset > 0)
+
+            // the stream's position should already be where we want to start reading from
+            int bytesRead = dd.Stream.Read(dataSpan);
+            if (bytesRead != dataSpan.Length)
             {
-                dd.Stream.Read(buf, bufStartIndex, bytesNeeded);
+                _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), $"Needed to retrieve sized data of {dataSpan.Length} bytes, but was only able to read {bytesRead} bytes.");
             }
         }
     }

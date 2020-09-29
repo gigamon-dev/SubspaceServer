@@ -64,10 +64,11 @@ namespace SS.Core.Modules
 
         string IMapData.GetMapFilename(Arena arena, string mapname)
         {
-            return getMapFilename(arena, mapname);
+            return GetMapFilename(arena, mapname);
         }
 
-        private string getMapFilename(Arena arena, string mapname)
+        [ConfigHelp("General", "Map", ConfigScope.Arena, typeof(string), Description = "The name of the level file for the arena.")]
+        private string GetMapFilename(Arena arena, string mapname)
         {
             if (arena == null)
                 return null;
@@ -87,7 +88,7 @@ namespace SS.Core.Modules
             {
                 repls['m'] = mapname;
 
-                if (string.Compare(Path.GetExtension(mapname), ".lvl", true) == 0)
+                if (string.Equals(Path.GetExtension(mapname), ".lvl", StringComparison.OrdinalIgnoreCase))
                     isLvl = true;
             }
 
@@ -103,31 +104,47 @@ namespace SS.Core.Modules
             return null;
         }
 
+        [ConfigHelp("General", "LevelFiles", ConfigScope.Arena, typeof(string), 
+            "The list of lvz files for the arena. LevelFiles1 through LevelFiles15 are also supported.")]
         IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
         {
             if (arena == null)
                 throw new ArgumentNullException("arena");
 
-            string lvz = _configManager.GetStr(arena.Cfg, "General", "LevelFiles");
-            if(string.IsNullOrEmpty(lvz))
-                lvz = _configManager.GetStr(arena.Cfg, "Misc", "LevelFiles");
-
-            if(string.IsNullOrEmpty(lvz))
-                yield break;
-
             int count = 0;
-            string[] lvzNameArray = lvz.Split(",: ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
-            foreach (string lvzName in lvzNameArray)
+
+            for (int x = 0; x <= 15; x++)
             {
-                string real = lvzName[0] == '+' ? lvzName.Substring(1) : lvzName;
-                string fname = getMapFilename(arena, real);
-                if (string.IsNullOrEmpty(fname))
+                string lvz;
+
+                if (x == 0)
+                {
+                    lvz = _configManager.GetStr(arena.Cfg, "General", "LevelFiles");
+
+                    if (string.IsNullOrWhiteSpace(lvz))
+                        lvz = _configManager.GetStr(arena.Cfg, "Misc", "LevelFiles");
+                }
+                else
+                {
+                    lvz = _configManager.GetStr(arena.Cfg, "General", "LevelFiles" + x);
+                }
+
+                if (string.IsNullOrWhiteSpace(lvz))
                     continue;
 
-                if (++count > Constants.MaxLvzFiles) // asss counts all filenames listed, instead we count only the files we can actually find
-                    break;
+                string[] lvzNameArray = lvz.Split(",: ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+                foreach (string lvzName in lvzNameArray)
+                {
+                    string real = lvzName[0] == '+' ? lvzName.Substring(1) : lvzName;
+                    string fname = GetMapFilename(arena, real);
+                    if (string.IsNullOrWhiteSpace(fname))
+                        continue;
 
-                yield return new LvzFileInfo(fname, (lvzName[0] == '+'));
+                    yield return new LvzFileInfo(fname, (lvzName[0] == '+'));
+
+                    if (++count >= Constants.MaxLvzFiles)
+                        yield break;
+                }
             }
         }
 
@@ -348,7 +365,7 @@ namespace SS.Core.Modules
                     // on create, do work
                     if (arena.Status < ArenaState.Running)
                     {
-                        string mapname = getMapFilename(arena, null);
+                        string mapname = GetMapFilename(arena, null);
 
                         if (!string.IsNullOrEmpty(mapname) &&
                             lvl.LoadFromFile(mapname))

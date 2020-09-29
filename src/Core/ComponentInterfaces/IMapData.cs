@@ -14,6 +14,9 @@ namespace SS.Core.ComponentInterfaces
 
         public LvzFileInfo(string filename, bool isOptional)
         {
+            if (string.IsNullOrWhiteSpace(filename))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
+
             Filename = filename;
             IsOptional = isOptional;
         }

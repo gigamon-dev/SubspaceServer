@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -95,13 +96,24 @@ namespace SS.Core.Modules
 
         private interface ISizedSendData
         {
-            void RequestData(int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
+            /// <summary>
+            /// Requests the sender to provide data.
+            /// </summary>
+            /// <param name="offset">The position of the data to retrieve.</param>
+            /// <param name="dataSpan">The buffer to fill.</param>
+            void RequestData(int offset, Span<byte> dataSpan);
 
+            /// <summary>
+            /// Total # of bytes of the data to send.
+            /// </summary>
             int TotalLength
             {
                 get;
             }
 
+            /// <summary>
+            /// The current position within the data.
+            /// </summary>
             int Offset
             {
                 get;
@@ -124,9 +136,9 @@ namespace SS.Core.Modules
                 _offset = offset;
             }
 
-            void ISizedSendData.RequestData(int offset, byte[] buf, int bufStartIndex, int bytesNeeded)
+            void ISizedSendData.RequestData(int offset, Span<byte> dataSpan)
             {
-                _requestDataCallback(_clos, offset, buf, bufStartIndex, bytesNeeded);
+                _requestDataCallback(_clos, offset, dataSpan);
             }
 
             int ISizedSendData.TotalLength
@@ -369,9 +381,15 @@ namespace SS.Core.Modules
             public int maxretries;
 
             /// <summary>
-            /// threshold to start queuing up more packets, and packets to queue up, for sending files
+            /// For sized sends (sending files), the threshold to start queuing up more packets.
             /// </summary>
-            public int queue_threshold, queue_packets;
+            public int PresizedQueueThreshold;
+
+            /// <summary>
+            /// # of additional packets that can be queued up when below the <see cref="PresizedQueueThreshold"/>.
+            /// Note: This means, the maximum # of packets that will be queued up at a given time is <see cref="PresizedQueueThreshold"/> - 1 + <see cref="PresizedQueuePackets"/>.
+            /// </summary>
+            public int PresizedQueuePackets;
 
             /// <summary>
             /// ip/udp overhead, in bytes per physical packet
@@ -936,22 +954,29 @@ namespace SS.Core.Modules
         private byte[] _queueDataBuffer = null;
         private readonly byte[] _queueDataHeader = new byte[6] { 0x00, 0x0A, 0, 0, 0, 0 }; // size of a presized data packet header
 
-        // NOTE: this is optimized slightly more than asss in the sense that it doesn't copy the array to another buffer just to send it off to bufferPacket()
-        private bool QueueMoreData()
+        /// <summary>
+        /// Attempts to queue up sized send data for each UDP player.
+        /// <para>
+        /// For each player, it will check if there is sized send work that can be processed (work exists and is not past sized queue limits).
+        /// If so, it will retrieve data from the sized send callback (can be partial data), 
+        /// break the data into sized send packets (0x0A), 
+        /// and add those packets to player's outgoing reliable queue.
+        /// </para>
+        /// <para>Sized packets are sent reliably so that the other end can reconstruct the data properly.</para>
+        /// </summary>
+        /// <returns>True, meaning it wants the timer to call it again.</returns>
+        private bool MainloopTimer_QueueSizedData()
         {
-            int requestAtOnce = _config.queue_packets * Constants.ChunkSize;
+            int requestAtOnce = _config.PresizedQueuePackets * Constants.ChunkSize;
 
             byte[] buffer = _queueDataBuffer;
             if (buffer == null || buffer.Length < requestAtOnce + _queueDataHeader.Length)
                 buffer = _queueDataBuffer = new byte[requestAtOnce + _queueDataHeader.Length];
 
-            // NOTE: asss allocates the buffer on the stack, which can be done here as well using stackalloc in an unsafe context
-            // however, i don't see much of a benefit to using unsafe code here
-            // if performance becomes a problem, then this can be changed
-
-            ReliablePacket packet = new ReliablePacket(_queueDataHeader);
+            ref int sizedLength = ref MemoryMarshal.AsRef<int>(new Span<byte>(_queueDataHeader, 2, 4));
 
             _playerData.Lock();
+
             try
             {
                 foreach (Player p in _playerData.PlayerList)
@@ -965,52 +990,46 @@ namespace SS.Core.Modules
                     if (Monitor.TryEnter(conn.olmtx) == false)
                         continue;
 
-                    if (conn.sizedsends.First != null &&
-                        conn.outlist[(int)BandwidthPriorities.Reliable].Count < _config.queue_threshold)
+                    if (conn.sizedsends.First != null
+                        && conn.outlist[(int)BandwidthPriorities.Reliable].Count < _config.PresizedQueueThreshold)
                     {
                         ISizedSendData sd = conn.sizedsends.First.Value;
 
                         // unlock while we get the data
                         Monitor.Exit(conn.olmtx);
 
-                        // prepare packet
-                        //packet.T1 = 0x00;
-                        //packet.T2 = 0x0A; // this is really a sized packet
-                        packet.SeqNum = sd.TotalLength; // header packet already has type bytes set, only need to set the length field
+                        // prepare the header (already has type bytes set, only need to set the length field)
+                        sizedLength = sd.TotalLength;
 
                         // get needed bytes
                         int needed = requestAtOnce;
                         if (sd.TotalLength - sd.Offset < needed)
                             needed = sd.TotalLength - sd.Offset;
 
-                        sd.RequestData(sd.Offset, buffer, 6, needed); // skipping the first 6 bytes for the header
+                        sd.RequestData(sd.Offset, new Span<byte>(buffer, 6, needed)); // skipping the first 6 bytes for the header
                         sd.Offset += needed;
 
                         // now lock while we buffer it
                         Monitor.Enter(conn.olmtx);
 
-                        // put data in outlist, in 480 byte chunks
+                        // break the data into sized send (0x0A) packets and queue them up
                         int bufferIndex = 0;
                         while (needed > Constants.ChunkSize)
                         {
-                            // copy the header
-                            Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
-
-                            // queue the the header + chunk to be sent reliably (which gives the sequence to keep ordering of chunks)
+                            Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6); // write the header in front of the data
                             BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
                             bufferIndex += Constants.ChunkSize;
                             needed -= Constants.ChunkSize;
                         }
 
-                        // copy the header
-                        Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6);
+                        Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6); // write the header in front of the data
                         BufferPacket(conn, new ArraySegment<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
 
                         // check if we need more
                         if (sd.Offset >= sd.TotalLength)
                         {
                             // notify sender that this is the end
-                            sd.RequestData(sd.Offset, null, 0, 0);
+                            sd.RequestData(sd.Offset, Span<byte>.Empty);
                             conn.sizedsends.RemoveFirst();
                         }
                     }
@@ -1066,7 +1085,7 @@ namespace SS.Core.Modules
 
             foreach (ISizedSendData sd in conn.sizedsends)
             {
-                sd.RequestData(0, null, 0, 0);
+                sd.RequestData(0, Span<byte>.Empty);
             }
             conn.sizedsends.Clear();
 
@@ -1847,7 +1866,7 @@ namespace SS.Core.Modules
 
             SubspaceBuffer buf = _bufferPool.Get();
             buf.Conn = conn;
-            buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 100));
+            buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
             buf.Tries = 0;
             buf.CallbackInvoker = callbackInvoker;
             buf.Flags = flags;
@@ -1940,7 +1959,7 @@ namespace SS.Core.Modules
 
             SubspaceBuffer buf = _bufferPool.Get();
             buf.Conn = conn;
-            buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 100));
+            buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
             buf.Tries = 0;
             buf.CallbackInvoker = callbackInvoker;
             buf.Flags = flags;
@@ -2411,7 +2430,7 @@ namespace SS.Core.Modules
                         ISizedSendData sd = node.Value;
                         if (sd != null)
                         {
-                            sd.RequestData(0, null, 0, 0); // notify transfer complete
+                            sd.RequestData(0, Span<byte>.Empty); // notify transfer complete
                         }
                         conn.sizedsends.RemoveFirst();
                     }
@@ -2569,8 +2588,8 @@ namespace SS.Core.Modules
 
             // (deliberately) undocumented settings
             _config.maxretries = _configManager.GetInt(_configManager.Global, "Net", "MaxRetries", 15);
-            _config.queue_threshold = _configManager.GetInt(_configManager.Global, "Net", "PresizedQueueThreshold", 5);
-            _config.queue_packets = _configManager.GetInt(_configManager.Global, "Net", "PresizedQueuePackets", 25);
+            _config.PresizedQueueThreshold = _configManager.GetInt(_configManager.Global, "Net", "PresizedQueueThreshold", 5);
+            _config.PresizedQueuePackets = _configManager.GetInt(_configManager.Global, "Net", "PresizedQueuePackets", 25);
             int reliableThreadCount = _configManager.GetInt(_configManager.Global, "Net", "ReliableThreads", 1);
             _config.overhead = _configManager.GetInt(_configManager.Global, "Net", "PerPacketOverhead", 28);
             _config.PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200));
@@ -2604,7 +2623,7 @@ namespace SS.Core.Modules
             }
 
             // queue more data thread (sends sized data)
-            _mainloopTimer.SetTimer(QueueMoreData, 200, 110, null); // TODO: maybe change it to be in its own thread?
+            _mainloopTimer.SetTimer(MainloopTimer_QueueSizedData, 200, 110, null); // TODO: maybe change it to be in its own thread?
 
             _iNetworkToken = broker.RegisterInterface<INetwork>(this);
             _iNetworkClientToken = broker.RegisterInterface<INetworkClient>(this);
@@ -2623,7 +2642,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface<INetworkEncryption>(ref _iNetworkEncryptionToken) != 0)
                 return false;
 
-            _mainloopTimer.ClearTimer(QueueMoreData, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_QueueSizedData, null);
 
             // stop threads
             _stopCancellationTokenSource.Cancel();
@@ -3089,8 +3108,18 @@ namespace SS.Core.Modules
             SendToSet(set, data, len, flags);
         }
 
-        bool INetwork.SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback)
+        bool INetwork.SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestCallback, T clos)
         {
+            if (p == null)
+            {
+                return false;
+            }
+
+            if (len <= 0)
+            {
+                return false;
+            }
+
             if (!IsOurs(p))
             {
                 _logManager.LogP(LogLevel.Drivel, nameof(Network), p, "tried to send sized data to non-udp client");

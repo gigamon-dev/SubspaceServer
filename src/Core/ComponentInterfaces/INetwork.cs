@@ -36,7 +36,18 @@ namespace SS.Core.ComponentInterfaces
     public delegate void SizedPacketDelegate(Player p, ArraySegment<byte>? data, int offset, int totallen);
     public delegate void ReliableDelegate(Player p, bool success);
     public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
-    public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, byte[] buf, int bufStartIndex, int bytesNeeded);
+
+    /// <summary>
+    /// Delegate for retrieving sized send data.
+    /// This is used to request the sender to provide data for the transfer.
+    /// </summary>
+    /// <typeparam name="T">The type of the argument for passing state.</typeparam>
+    /// <param name="clos">The state to pass (provides a way to identify the data to retrieve).</param>
+    /// <param name="offset">The starting position of the data to retrieve.</param>
+    /// <param name="dataSpan">
+    /// The <see cref="Span{byte}"/> to fill with data. 
+    /// <see cref="Span{T}.Empty"/> indicates the end of a transfer and can be used to perform any necessary cleanup.</param>
+    public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, Span<byte> dataSpan);
 
     public interface IReadOnlyNetStats
     {
@@ -151,15 +162,15 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// To send sized data to a player.
-        /// <remarks>used for sending files to players such as map/news/updates</remarks>
+        /// Used for sending files to players such as map/news/updates.
         /// </summary>
-        /// <typeparam name="T">type of the argument used in the callback to retrieve data to send</typeparam>
-        /// <param name="p">player sending data to</param>
-        /// <param name="clos">argument to use when calling the callback</param>
-        /// <param name="len">total number of bytes to send in the transfer</param>
-        /// <param name="requestCallback">callback that is used to retrieve data for each piece of the transfer</param>
+        /// <typeparam name="T">The type of the argument used in the callback to retrieve data to send.</typeparam>
+        /// <param name="p">The player to send data to.</param>
+        /// <param name="len">The total number of bytes to send in the transfer.</param>
+        /// <param name="requestData">The delegate to call back for retrieving pieces of data for the transfer.</param>
+        /// <param name="clos">The argument to pass when calling <paramref name="requestData"/>.</param>
         /// <returns></returns>
-        bool SendSized<T>(Player p, T clos, int len, GetSizedSendDataDelegate<T> requestCallback);
+        bool SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestData, T clos);
 
         /// <summary>
         /// To add a handler for a packet of a certain type.
