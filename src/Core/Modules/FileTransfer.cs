@@ -8,7 +8,7 @@ using System.Text;
 namespace SS.Core.Modules
 {
     [CoreModuleInfo]
-    public class FileTransferModule : IModule, IFileTransfer
+    public class FileTransfer : IModule, IFileTransfer
     {
         private ComponentBroker _broker;
         private INetwork _network;
@@ -88,7 +88,7 @@ namespace SS.Core.Modules
                 FileInfo fileInfo = new FileInfo(path);
                 if (!fileInfo.Exists)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "file '{0}' does not exist", path);
+                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "file '{0}' does not exist", path);
                     return false;
                 }
 
@@ -99,7 +99,7 @@ namespace SS.Core.Modules
             }
             catch(Exception ex)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "error opening file '{0}' - {1}", path, ex.Message);
+                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "error opening file '{0}' - {1}", path, ex.Message);
                 return false;
             }
         }
@@ -135,18 +135,18 @@ namespace SS.Core.Modules
 
             if (dataSpan.IsEmpty)
             {
-                _logManager.LogM(LogLevel.Info, nameof(FileTransferModule), "completed send of {0}", dd.Filename);
+                _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "completed send of {0}", dd.Filename);
                 dd.Stream.Dispose();
                 if (!string.IsNullOrEmpty(dd.DeletePath))
                 {
                     try
                     {
                         File.Delete(dd.DeletePath);
-                        _logManager.LogM(LogLevel.Info, nameof(FileTransferModule), "deleted {0} after completed send", dd.Filename);
+                        _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "deleted {0} after completed send", dd.Filename);
                     }
                     catch (Exception ex)
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), "failed to delete {0} after completed send.  {1}", dd.Filename, ex.Message);
+                        _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "failed to delete {0} after completed send.  {1}", dd.Filename, ex.Message);
                     }
                 }
 
@@ -187,7 +187,7 @@ namespace SS.Core.Modules
             int bytesRead = dd.Stream.Read(dataSpan);
             if (bytesRead != dataSpan.Length)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(FileTransferModule), $"Needed to retrieve sized data of {dataSpan.Length} bytes, but was only able to read {bytesRead} bytes.");
+                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Needed to retrieve sized data of {dataSpan.Length} bytes, but was only able to read {bytesRead} bytes.");
             }
         }
     }
