@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -973,8 +972,7 @@ namespace SS.Core.Modules
             if (buffer == null || buffer.Length < requestAtOnce + _queueDataHeader.Length)
                 buffer = _queueDataBuffer = new byte[requestAtOnce + _queueDataHeader.Length];
 
-            ref int sizedLength = ref MemoryMarshal.AsRef<int>(new Span<byte>(_queueDataHeader, 2, 4));
-
+            Span<byte> sizedLengthSpan = new Span<byte>(_queueDataHeader, 2, 4);
             _playerData.Lock();
 
             try
@@ -999,7 +997,7 @@ namespace SS.Core.Modules
                         Monitor.Exit(conn.olmtx);
 
                         // prepare the header (already has type bytes set, only need to set the length field)
-                        sizedLength = sd.TotalLength;
+                        LittleEndianBitConverter.TryWriteBytes(sizedLengthSpan, sd.TotalLength);
 
                         // get needed bytes
                         int needed = requestAtOnce;
@@ -1755,12 +1753,12 @@ namespace SS.Core.Modules
                     if (string.IsNullOrWhiteSpace(ld.ConnectAs))
                     {
                         // global
-                        BitConverter.TryWriteBytes(span, _pingData.GlobalTotal);
+                        LittleEndianBitConverter.TryWriteBytes(span, _pingData.GlobalTotal);
                     }
                     else
                     {
                         // specific arena/zone
-                        BitConverter.TryWriteBytes(span, ld.PlayersTotal);
+                        LittleEndianBitConverter.TryWriteBytes(span, ld.PlayersTotal);
                     }
 
                     int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);

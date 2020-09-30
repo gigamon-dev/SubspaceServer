@@ -46,7 +46,7 @@ namespace SS.Utilities
             if (byteOffset < 0 || byteOffset + 1 >= source.Length)
                 throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
                 return BitConverter.ToInt16(source, byteOffset);
             else
                 return (short)(source[byteOffset] | (source[byteOffset + 1] << 8));
@@ -60,7 +60,7 @@ namespace SS.Utilities
             if (byteOffset < 0 || byteOffset + 1 >= source.Length)
                 throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
                 return BitConverter.ToUInt16(source, byteOffset);
             else
                 return (ushort)(source[byteOffset] | (source[byteOffset + 1] << 8));
@@ -78,7 +78,7 @@ namespace SS.Utilities
             if (byteOffset < 0 || byteOffset + 3 >= source.Length)
                 throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
                 return BitConverter.ToInt32(source, byteOffset);
             else
                 return source[byteOffset]
@@ -95,7 +95,7 @@ namespace SS.Utilities
             if (byteOffset < 0 || byteOffset + 3 >= source.Length)
                 throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
                 return BitConverter.ToUInt32(source, byteOffset);
             else
                 return (uint)(source[byteOffset]
@@ -116,7 +116,7 @@ namespace SS.Utilities
             if (byteOffset < 0 || byteOffset + 7 >= source.Length)
                 throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
                 return BitConverter.ToInt64(source, byteOffset);
             else
                 return (long)source[byteOffset]
@@ -137,7 +137,7 @@ namespace SS.Utilities
             if (byteOffset < 0 || byteOffset + 7 >= source.Length)
                 throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
                 return BitConverter.ToUInt64(source, byteOffset);
             else
                 return ((ulong)source[byteOffset]
@@ -205,7 +205,7 @@ namespace SS.Utilities
             if (dest == null || dest.IsEmpty || dest.Length < 2)
                 return false;
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
             {
                 return BitConverter.TryWriteBytes(dest, val);
             }
@@ -233,7 +233,7 @@ namespace SS.Utilities
             if (dest == null || dest.IsEmpty || dest.Length < 2)
                 return false;
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
             {
                 return BitConverter.TryWriteBytes(dest, val);
             }
@@ -265,7 +265,7 @@ namespace SS.Utilities
             if (dest == null || dest.IsEmpty || dest.Length < 4)
                 return false;
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
             {
                 return BitConverter.TryWriteBytes(dest, val);
             }
@@ -295,7 +295,7 @@ namespace SS.Utilities
             if (dest == null || dest.IsEmpty || dest.Length < 4)
                 return false;
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
             {
                 return BitConverter.TryWriteBytes(dest, val);
             }
@@ -329,7 +329,7 @@ namespace SS.Utilities
             if (dest == null || dest.IsEmpty || dest.Length < 8)
                 return false;
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
             {
                 return BitConverter.TryWriteBytes(dest, val);
             }
@@ -363,7 +363,7 @@ namespace SS.Utilities
             if (dest == null || dest.IsEmpty || dest.Length < 8)
                 return false;
 
-            if (BitConverter.IsLittleEndian)
+            if (UseBitConverter)
             {
                 return BitConverter.TryWriteBytes(dest, val);
             }
@@ -393,5 +393,21 @@ namespace SS.Utilities
         }
 
         #endregion
+
+        /// <summary>
+        /// By default, allow use of the <see cref="BitConverter"/>.
+        /// </summary>
+        private static bool _useBitConverter = true;
+
+        /// <summary>
+        /// Whether methods of the <see cref="LittleEndianBitConverter"/> use the <see cref="BitConverter"/> to perform operations.
+        /// When running on little-endian architecture, use of <see cref="BitConverter"/> can be disabled by setting this to false.
+        /// When running on big-endian architeture, this will always return false.  Setting it will have no effect.
+        /// </summary>
+        public static bool UseBitConverter
+        {
+            get { return BitConverter.IsLittleEndian && _useBitConverter; }
+            set { _useBitConverter = value; }
+        }
     }
 }
