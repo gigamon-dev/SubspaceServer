@@ -6,808 +6,392 @@ using System.Text;
 namespace SS.Utilities
 {
     /// <summary>
-    /// Similiar to the System.BitConverter class except it will always do Little-Endian regardless of what architecture being run on.
-    /// This class provides methods for writing data into existing byte arrays whereas System.BitConverter only has methods which create new byte arrays.
-    /// 
-    /// TODO: support floating point numbers
-    /// TODO: support 64 bit bitfields
+    /// Similiar to the <see cref="BitConverter"/> class except it will always do Little-Endian regardless of what architecture being run on.
     /// </summary>
     public static class LittleEndianBitConverter
     {
-        #region Masks
-#if false
-        private static readonly byte[] _bitOffsetMasks = 
+        #region Read 8-bit
+
+        public static sbyte ToSByte(byte[] source, int byteOffset)
         {
-            0xFF, // 11111111 - 255
-            0x7F, // 01111111 - 127
-            0x3F, // 00111111 - 63
-            0x1F, // 00011111 - 31
-            0x0F, // 00001111 - 15
-            0x07, // 00000111 - 7
-            0x03, // 00000011 - 3
-            0x01  // 00000001 - 1
-        };
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
 
-        private static byte getBitOffsetMask(int bitOffset)
+            if (byteOffset < 0 || byteOffset >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            return (sbyte)source[byteOffset];
+        }
+
+        public static byte ToByte(byte[] source, int byteOffset)
         {
-            if (bitOffset < 0 || bitOffset > 7)
-                throw new ArgumentOutOfRangeException("bitOffset", "must be in the range of [0-7]");
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
 
-            //return (byte)((uint)0xFF >> bitOffset);
-            return _bitOffsetMasks[bitOffset]; // guessing that the array lookup is fastest
+            if (byteOffset < 0 || byteOffset >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
 
-            /*
-            switch (bitOffset)
+            return source[byteOffset];
+        }
+
+        #endregion
+
+        #region Read 16-bit
+
+        public static short ToInt16(byte[] source, int byteOffset)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (byteOffset < 0 || byteOffset + 1 >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            if (BitConverter.IsLittleEndian)
+                return BitConverter.ToInt16(source, byteOffset);
+            else
+                return (short)(source[byteOffset] | (source[byteOffset + 1] << 8));
+        }
+
+        public static ushort ToUInt16(byte[] source, int byteOffset)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (byteOffset < 0 || byteOffset + 1 >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            if (BitConverter.IsLittleEndian)
+                return BitConverter.ToUInt16(source, byteOffset);
+            else
+                return (ushort)(source[byteOffset] | (source[byteOffset + 1] << 8));
+        }
+
+        #endregion
+
+        #region Read 32-bit
+
+        public static int ToInt32(byte[] source, int byteOffset)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (byteOffset < 0 || byteOffset + 3 >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            if (BitConverter.IsLittleEndian)
+                return BitConverter.ToInt32(source, byteOffset);
+            else
+                return source[byteOffset]
+                    | (source[byteOffset + 1] << 8)
+                    | (source[byteOffset + 2] << 16)
+                    | (source[byteOffset + 3] << 24);
+        }
+
+        public static uint ToUInt32(byte[] source, int byteOffset)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (byteOffset < 0 || byteOffset + 3 >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            if (BitConverter.IsLittleEndian)
+                return BitConverter.ToUInt32(source, byteOffset);
+            else
+                return (uint)(source[byteOffset]
+                    | (source[byteOffset + 1] << 8)
+                    | (source[byteOffset + 2] << 16)
+                    | (source[byteOffset + 3] << 24));
+        }
+
+        #endregion
+
+        #region Read 64-bit
+
+        public static long ToInt64(byte[] source, int byteOffset)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (byteOffset < 0 || byteOffset + 7 >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            if (BitConverter.IsLittleEndian)
+                return BitConverter.ToInt64(source, byteOffset);
+            else
+                return (long)source[byteOffset]
+                    | ((long)source[byteOffset + 1] << 8)
+                    | ((long)source[byteOffset + 2] << 16)
+                    | ((long)source[byteOffset + 3] << 24)
+                    | ((long)source[byteOffset + 4] << 32)
+                    | ((long)source[byteOffset + 5] << 40)
+                    | ((long)source[byteOffset + 6] << 48)
+                    | ((long)source[byteOffset + 7] << 56);
+        }
+
+        public static ulong ToUInt64(byte[] source, int byteOffset)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            if (byteOffset < 0 || byteOffset + 7 >= source.Length)
+                throw new ArgumentException($"{nameof(byteOffset)} is not a valid position to read from {nameof(source)}.");
+
+            if (BitConverter.IsLittleEndian)
+                return BitConverter.ToUInt64(source, byteOffset);
+            else
+                return ((ulong)source[byteOffset]
+                    | ((ulong)source[byteOffset + 1] << 8)
+                    | ((ulong)source[byteOffset + 2] << 16)
+                    | ((ulong)source[byteOffset + 3] << 24)
+                    | ((ulong)source[byteOffset + 4] << 32)
+                    | ((ulong)source[byteOffset + 5] << 40)
+                    | ((ulong)source[byteOffset + 6] << 48)
+                    | ((ulong)source[byteOffset + 7] << 56));
+        }
+
+        #endregion
+
+        #region Write 8-bit
+
+        public static bool TryWriteBytes(Span<byte> dest, byte val)
+        {
+            if (dest == null || dest.IsEmpty || dest.Length < 1)
+                return false;
+
+            dest[0] = val;
+            return true;
+        }
+
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, byte val)
+        {
+            if (dest == null)
+                return false;
+
+            if (byteOffset < 0 || byteOffset >= dest.Length)
+                return false;
+
+            dest[byteOffset] = val;
+            return true;
+        }
+
+        public static bool TryWriteBytes(Span<byte> dest, sbyte val)
+        {
+            if (dest == null || dest.IsEmpty || dest.Length < 1)
+                return false;
+
+            dest[0] = (byte)val;
+            return true;
+        }
+
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, sbyte val)
+        {
+            if (dest == null)
+                return false;
+
+            if (byteOffset < 0 || byteOffset >= dest.Length)
+                return false;
+
+            dest[byteOffset] = (byte)val;
+            return true;
+        }
+
+        #endregion
+
+        #region Write 16-bit
+
+        public static bool TryWriteBytes(Span<byte> dest, ushort val)
+        {
+            if (dest == null || dest.IsEmpty || dest.Length < 2)
+                return false;
+
+            if (BitConverter.IsLittleEndian)
             {
-                case 0: return 0xFF;
-                case 1: return 0x7F;
-                case 2: return 0x3F;
-                case 3: return 0x1F;
-                case 4: return 0x0F;
-                case 5: return 0x07;
-                case 6: return 0x03;
-                case 7: return 0x01;
-                default: throw new ArgumentOutOfRangeException("bitOffset", "must be in the range of [0-7]");
+                return BitConverter.TryWriteBytes(dest, val);
             }
-            */
+            else
+            {
+                dest[0] = (byte)val;
+                dest[1] = (byte)(val >> 8);
+                return true;
+            }
         }
 
-        private static readonly uint[] _signExtensionMasks =
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, ushort val)
         {
-            0xFFFFFFFF,
-            0xFFFFFFFE,
-            0xFFFFFFFC,
-            0xFFFFFFF8,
-            0xFFFFFFF0,
-            0xFFFFFFE0,
-            0xFFFFFFC0,
-            0xFFFFFF80,
-            0xFFFFFF00,
-            0xFFFFFE00,
-            0xFFFFFC00,
-            0xFFFFF800,
-            0xFFFFF000,
-            0xFFFFE000,
-            0xFFFFC000,
-            0xFFFF8000,
-            0xFFFF0000,
-            0xFFFE0000,
-            0xFFFC0000,
-            0xFFF80000,
-            0xFFF00000,
-            0xFFE00000,
-            0xFFC00000,
-            0xFF800000,
-            0xFF000000,
-            0xFE000000,
-            0xFC000000,
-            0xF8000000,
-            0xF0000000,
-            0xE0000000,
-            0xC0000000,
-            0x80000000,
-        };
+            if (dest == null)
+                return false;
 
-        private static uint getSignExtensionMask(int numBits)
-        {
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be in the range [1-32]");
+            if (byteOffset < 0 || byteOffset + 1 >= dest.Length)
+                return false;
 
-            //return 0xFFFFFFFF << (32 - numBits);
-            return _signExtensionMasks[numBits]; // i'm guessing that the array lookup is faster
+            return TryWriteBytes(new Span<byte>(dest, byteOffset, 2), val);
         }
 
-        private static uint[] _trimmingMasks =
+        public static bool TryWriteBytes(Span<byte> dest, short val)
         {
-            0x00000000,
-            0x00000001,
-            0x00000003,
-            0x00000007,
-            0x0000000F,
-            0x0000001F,
-            0x0000003F,
-            0x0000007F,
-            0x000000FF,
-            0x000001FF,
-            0x000003FF,
-            0x000007FF,
-            0x00000FFF,
-            0x00001FFF,
-            0x00003FFF,
-            0x00007FFF,
-            0x0000FFFF,
-            0x0001FFFF,
-            0x0003FFFF,
-            0x0007FFFF,
-            0x000FFFFF,
-            0x001FFFFF,
-            0x003FFFFF,
-            0x007FFFFF,
-            0x00FFFFFF,
-            0x01FFFFFF,
-            0x03FFFFFF,
-            0x07FFFFFF,
-            0x0FFFFFFF,
-            0x1FFFFFFF,
-            0x3FFFFFFF,
-            0x7FFFFFFF,
-            0xFFFFFFFF,
-        };
-
-        /// <summary>
-        /// To zero out bits that are not in use
-        /// </summary>
-        /// <param name="val">value to trim</param>
-        /// <param name="numBits"># of used bits</param>
-        /// <returns></returns>
-        private static uint trimBits(uint val, int numBits)
-        {
-            if (numBits < 0 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [0-32]");
-
-            return val & _trimmingMasks[numBits];
-        }
-#endif
-        #endregion
-
-        #region Byte/SByte
-
-        public static sbyte ToSByte(byte[] data, int byteOffset)
-        {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
-            return (sbyte)data[byteOffset];
-        }
-
-        public static byte ToByte(byte[] data, int byteOffset)
-        {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
-            return data[byteOffset];
-        }
-
-        #endregion
-
-        #region Int16/UInt16
-
-        public static short ToInt16(byte[] data, int byteOffset)
-        {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            if (dest == null || dest.IsEmpty || dest.Length < 2)
+                return false;
 
             if (BitConverter.IsLittleEndian)
-                return BitConverter.ToInt16(data, byteOffset);
+            {
+                return BitConverter.TryWriteBytes(dest, val);
+            }
             else
-                return (short)(data[byteOffset] | (data[byteOffset + 1] << 8));
+            {
+                dest[0] = (byte)val;
+                dest[1] = (byte)(val >> 8);
+                return true;
+            }
         }
 
-        public static ushort ToUInt16(byte[] data, int byteOffset)
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, short val)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            if (dest == null)
+                return false;
 
-            if (BitConverter.IsLittleEndian)
-                return BitConverter.ToUInt16(data, byteOffset);
-            else
-                return (ushort)(data[byteOffset] | (data[byteOffset + 1] << 8));
+            if (byteOffset < 0 || byteOffset + 1 >= dest.Length)
+                return false;
+
+            return TryWriteBytes(new Span<byte>(dest, byteOffset, 2), val);
         }
 
         #endregion
 
-        #region Int32/UInt32
+        #region Write 32-bit
 
-        public static int ToInt32(byte[] data, int byteOffset)
+        public static bool TryWriteBytes(Span<byte> dest, uint val)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            if (dest == null || dest.IsEmpty || dest.Length < 4)
+                return false;
 
             if (BitConverter.IsLittleEndian)
-                return BitConverter.ToInt32(data, byteOffset);
+            {
+                return BitConverter.TryWriteBytes(dest, val);
+            }
             else
-                return (int)(data[byteOffset] | 
-                    (data[byteOffset + 1] << 8) | 
-                    (data[byteOffset + 2] << 16) | 
-                    (data[byteOffset + 3] << 24));
+            {
+                dest[0] = (byte)val;
+                dest[1] = (byte)(val >> 8);
+                dest[2] = (byte)(val >> 16);
+                dest[3] = (byte)(val >> 24);
+                return true;
+            }
         }
 
-        public static uint ToUInt32(byte[] data, int byteOffset)
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, uint val)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            if (dest == null)
+                return false;
+
+            if (byteOffset < 0 || byteOffset + 3 >= dest.Length)
+                return false;
+
+            return TryWriteBytes(new Span<byte>(dest, byteOffset, 4), val);
+        }
+
+        public static bool TryWriteBytes(Span<byte> dest, int val)
+        {
+            if (dest == null || dest.IsEmpty || dest.Length < 4)
+                return false;
 
             if (BitConverter.IsLittleEndian)
-                return BitConverter.ToUInt32(data, byteOffset);
+            {
+                return BitConverter.TryWriteBytes(dest, val);
+            }
             else
-                return (uint)(data[byteOffset] | 
-                    (data[byteOffset + 1] << 8) | 
-                    (data[byteOffset + 2] << 16) | 
-                    (data[byteOffset + 3] << 24));
+            {
+                dest[0] = (byte)val;
+                dest[1] = (byte)(val >> 8);
+                dest[2] = (byte)(val >> 16);
+                dest[3] = (byte)(val >> 24);
+                return true;
+            }
+        }
+
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, int val)
+        {
+            if (dest == null)
+                return false;
+
+            if (byteOffset < 0 || byteOffset + 3 >= dest.Length)
+                return false;
+
+            return TryWriteBytes(new Span<byte>(dest, byteOffset, 4), val);
         }
 
         #endregion
 
-        #region Int64/Uint64
+        #region Write 64-bit
 
-        public static long ToInt64(byte[] data, int byteOffset)
+        public static bool TryWriteBytes(Span<byte> dest, ulong val)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            if (dest == null || dest.IsEmpty || dest.Length < 8)
+                return false;
 
             if (BitConverter.IsLittleEndian)
-                return BitConverter.ToInt64(data, byteOffset);
+            {
+                return BitConverter.TryWriteBytes(dest, val);
+            }
             else
-                return (long)((ulong)data[byteOffset] |
-                    ((ulong)data[byteOffset + 1] << 8) |
-                    ((ulong)data[byteOffset + 2] << 16) |
-                    ((ulong)data[byteOffset + 3] << 24) |
-                    ((ulong)data[byteOffset + 4] << 32) |
-                    ((ulong)data[byteOffset + 5] << 40) |
-                    ((ulong)data[byteOffset + 6] << 48) |
-                    ((ulong)data[byteOffset + 7] << 56));
+            {
+                dest[0] = (byte)val;
+                dest[1] = (byte)(val >> 8);
+                dest[2] = (byte)(val >> 16);
+                dest[3] = (byte)(val >> 24);
+                dest[4] = (byte)(val >> 32);
+                dest[5] = (byte)(val >> 40);
+                dest[6] = (byte)(val >> 48);
+                dest[7] = (byte)(val >> 56);
+                return true;
+            }
         }
 
-        public static ulong ToUInt64(byte[] data, int byteOffset)
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, ulong val)
         {
-            if (data == null)
-                throw new ArgumentNullException("data");
+            if (dest == null)
+                return false;
+
+            if (byteOffset < 0 || byteOffset + 7 >= dest.Length)
+                return false;
+
+            return TryWriteBytes(new Span<byte>(dest, byteOffset, 8), val);
+        }
+
+        public static bool TryWriteBytes(Span<byte> dest, long val)
+        {
+            if (dest == null || dest.IsEmpty || dest.Length < 8)
+                return false;
 
             if (BitConverter.IsLittleEndian)
-                return BitConverter.ToUInt64(data, byteOffset);
+            {
+                return BitConverter.TryWriteBytes(dest, val);
+            }
             else
-                return ((ulong)data[byteOffset] |
-                    ((ulong)data[byteOffset + 1] << 8) |
-                    ((ulong)data[byteOffset + 2] << 16) |
-                    ((ulong)data[byteOffset + 3] << 24) |
-                    ((ulong)data[byteOffset + 4] << 32) |
-                    ((ulong)data[byteOffset + 5] << 40) |
-                    ((ulong)data[byteOffset + 6] << 48) |
-                    ((ulong)data[byteOffset + 7] << 56));
+            {
+                dest[0] = (byte)val;
+                dest[1] = (byte)(val >> 8);
+                dest[2] = (byte)(val >> 16);
+                dest[3] = (byte)(val >> 24);
+                dest[4] = (byte)(val >> 32);
+                dest[5] = (byte)(val >> 40);
+                dest[6] = (byte)(val >> 48);
+                dest[7] = (byte)(val >> 56);
+                return true;
+            }
+        }
+
+        public static bool TryWriteBytes(byte[] dest, int byteOffset, long val)
+        {
+            if (dest == null)
+                return false;
+
+            if (byteOffset < 0 || byteOffset + 7 >= dest.Length)
+                return false;
+
+            return TryWriteBytes(new Span<byte>(dest, byteOffset, 8), val);
         }
 
         #endregion
-
-        #region WriteBits
-
-        public static void WriteByteBits(byte val, byte[] data, int byteOffset)
-        {
-            if (data == null)
-                throw new ArgumentNullException("data");
-
-            data[byteOffset] = val;
-        }
-
-        public static void WriteSByteBits(sbyte val, byte[] data, int byteOffset)
-        {
-            WriteByteBits((byte)val, data, byteOffset);
-        }
-
-        public static void WriteUInt16Bits(ushort val, byte[] data, int byteOffset)
-        {
-            WriteByteBits((byte)val, data, byteOffset);
-            WriteByteBits((byte)(val >> 8), data, byteOffset + 1);
-        }
-
-        public static void WriteInt16Bits(short val, byte[] data, int byteOffset)
-        {
-            WriteUInt16Bits((ushort)val, data, byteOffset);
-        }
-
-        public static void WriteUInt32Bits(uint val, byte[] data, int byteOffset)
-        {
-            WriteByteBits((byte)val, data, byteOffset);
-            WriteByteBits((byte)(val >> 8), data, byteOffset + 1);
-            WriteByteBits((byte)(val >> 16), data, byteOffset + 2);
-            WriteByteBits((byte)(val >> 24), data, byteOffset + 3);
-        }
-
-        public static void WriteInt32Bits(int val, byte[] data, int byteOffset)
-        {
-            WriteUInt32Bits((uint)val, data, byteOffset);
-        }
-
-        public static void WriteUInt64Bits(ulong val, byte[] data, int byteOffset)
-        {
-            WriteByteBits((byte)val, data, byteOffset);
-            WriteByteBits((byte)(val >> 8), data, byteOffset + 1);
-            WriteByteBits((byte)(val >> 16), data, byteOffset + 2);
-            WriteByteBits((byte)(val >> 24), data, byteOffset + 3);
-            WriteByteBits((byte)(val >> 32), data, byteOffset + 4);
-            WriteByteBits((byte)(val >> 40), data, byteOffset + 5);
-            WriteByteBits((byte)(val >> 48), data, byteOffset + 6);
-            WriteByteBits((byte)(val >> 56), data, byteOffset + 7);
-        }
-
-        public static void WriteInt64Bits(long val, byte[] data, int byteOffset)
-        {
-            WriteUInt64Bits((ulong)val, data, byteOffset);
-        }
-
-        #endregion
-
-        #region Bit Field Utility Methods
-        /*
-        private static uint getUInt32BitFieldMask(byte lowestOrderBit, byte numBits)
-        {
-            return (uint.MaxValue << (32 - numBits)) >> (32 - (lowestOrderBit + numBits));
-        }
-
-        /// <summary>
-        /// To read a byte value from an 8 bit field.
-        /// </summary>
-        /// <param name="source">The value to read bits from.</param>
-        /// <param name="lowestOrderBit">The lowest order bit to read.</param>
-        /// <param name="numBits">The number of bits to read.</param>
-        /// <returns>The value of the bit field.</returns>
-        public static byte GetByte(byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            return (byte)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        /// <summary>
-        /// To read a byte value from a 16 bit field.
-        /// </summary>
-        /// <param name="source">The value to read bits from.</param>
-        /// <param name="lowestOrderBit">The lowest order bit to read.</param>
-        /// <param name="numBits">The number of bits to read.</param>
-        /// <returns>The value of the bit field.</returns>
-        public static byte GetByte(ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            return (byte)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        /// <summary>
-        /// To read a byte value from a 32 bit field.
-        /// </summary>
-        /// <param name="source">The value to read bits from.</param>
-        /// <param name="lowestOrderBit">The lowest order bit to read.</param>
-        /// <param name="numBits">The number of bits to read.</param>
-        /// <returns>The value of the bit field.</returns>
-        public static byte GetByte(uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            return (byte)((source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        /// <summary>
-        /// To read an sbyte value from an 8 bit field.
-        /// </summary>
-        /// <param name="source">The value to read bits from.</param>
-        /// <param name="lowestOrderBit">The lowest order bit to read.</param>
-        /// <param name="numBits">The number of bits to read.</param>
-        /// <returns>The value of the bit field.</returns>
-        public static sbyte GetSByte(byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            return (sbyte)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        /// <summary>
-        /// To read an sbyte value from a 16 bit field.
-        /// </summary>
-        /// <param name="source">The value to read bits from.</param>
-        /// <param name="lowestOrderBit">The lowest order bit to read.</param>
-        /// <param name="numBits">The number of bits to read.</param>
-        /// <returns>The value of the bit field.</returns>
-        public static sbyte GetSByte(ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            return (sbyte)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        /// <summary>
-        /// To read an sbyte value from a 32 bit field.
-        /// </summary>
-        /// <param name="source">The value to read bits from.</param>
-        /// <param name="lowestOrderBit">The lowest order bit to read.</param>
-        /// <param name="numBits">The number of bits to read.</param>
-        /// <returns>The value of the bit field.</returns>
-        public static sbyte GetSByte(uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            return (sbyte)((source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static ushort GetUInt16(byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            return (ushort)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static ushort GetUInt16(ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            return (ushort)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static ushort GetUInt16(uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            return (ushort)((source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static short GetInt16(byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            return (short)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static short GetInt16(ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            return (short)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static short GetInt16(uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            return (short)((source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static uint GetUInt32(byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            return (uint)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static uint GetUInt32(ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            return (uint)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static uint GetUInt32(uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            return (uint)((source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static int GetInt32(byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            return (int)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static int GetInt32(ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            return (int)(((uint)source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static int GetInt32(uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            return (int)((source << (32 - (numBits + lowestOrderBit))) >> (32 - numBits));
-        }
-
-        public static byte SetByte(byte value, byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (byte)((((uint)value << lowestOrderBit) & mask) | (source & ~mask));
-        }
-
-        public static ushort SetByte(byte value, ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (ushort)((((uint)value << lowestOrderBit) & mask) | (source & ~mask));
-        }
-
-        public static uint SetByte(byte value, uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | (source & ~mask);
-        }
-
-        public static byte SetSByte(sbyte value, byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (byte)((((uint)value << lowestOrderBit) & mask) | (source & ~mask));
-        }
-
-        public static ushort SetSByte(sbyte value, ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (ushort)((((uint)value << lowestOrderBit) & mask) | (source & ~mask));
-        }
-
-        public static uint SetSByte(sbyte value, uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 8)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-8]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | (source & ~mask);
-        }
-
-        public static uint SetUInt16(ushort value, byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | (source & ~mask);
-        }
-
-        public static uint SetUInt16(ushort value, ushort source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | (source & ~mask);
-        }
-
-        public static uint SetUInt16(ushort value, uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 16)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-16]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | (source & ~mask);
-        }
-
-        public static uint SetUInt32(uint value, byte source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 7)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-7]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 8)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | ((uint)source & ~mask);
-        }
-
-        public static uint SetUInt32(uint value, short source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 15)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-15]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 16)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | ((uint)source & ~mask);
-        }
-
-        public static uint SetUInt32(uint value, uint source, byte lowestOrderBit, byte numBits)
-        {
-            if (lowestOrderBit < 0 || lowestOrderBit > 31)
-                throw new ArgumentOutOfRangeException("lowestOrderBit", "must be [0-31]");
-
-            if (numBits < 1 || numBits > 32)
-                throw new ArgumentOutOfRangeException("numBits", "must be [1-32]");
-
-            if ((numBits + lowestOrderBit) > 32)
-                throw new ArgumentException("position specified is invalid");
-
-            uint mask = getUInt32BitFieldMask(lowestOrderBit, numBits);
-            return (((uint)value << lowestOrderBit) & mask) | (source & ~mask);
-        }
-        */
-        #endregion
-
     }
 }

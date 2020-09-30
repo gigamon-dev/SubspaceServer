@@ -415,7 +415,7 @@ namespace SS.Core.Packets
                 private uint BitField
                 {
                     get { return LittleEndianBitConverter.ToUInt32(segment.Array, segment.Offset); }
-                    set { LittleEndianBitConverter.WriteUInt32Bits(value, segment.Array, segment.Offset); }
+                    set { LittleEndianBitConverter.TryWriteBytes(segment.Array, segment.Offset, value); }
                 }
 
                 public byte ShrapnelMax

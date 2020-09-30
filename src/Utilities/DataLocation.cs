@@ -38,12 +38,12 @@ namespace SS.Utilities
 
         public void SetByte(byte[] data, byte value)
         {
-            LittleEndianBitConverter.WriteByteBits(value, data, ByteOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset, value);
         }
 
         public void SetByte(byte[] data, byte value, int additionalOffset)
         {
-            LittleEndianBitConverter.WriteByteBits(value, data, ByteOffset + additionalOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset + additionalOffset, value);
         }
 
         #endregion
@@ -62,12 +62,12 @@ namespace SS.Utilities
 
         public void SetSByte(byte[] data, sbyte value)
         {
-            LittleEndianBitConverter.WriteSByteBits(value, data, ByteOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset, value);
         }
 
         public void SetSByte(byte[] data, sbyte value, int additionalOffset)
         {
-            LittleEndianBitConverter.WriteSByteBits(value, data, ByteOffset + additionalOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset + additionalOffset, value);
         }
 
         #endregion
@@ -86,12 +86,12 @@ namespace SS.Utilities
 
         public void SetUInt16(byte[] data, ushort value)
         {
-            LittleEndianBitConverter.WriteUInt16Bits(value, data, ByteOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset, value);
         }
 
         public void SetUInt16(byte[] data, ushort value, int additionalOffset)
         {
-            LittleEndianBitConverter.WriteUInt16Bits(value, data, ByteOffset + additionalOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset + additionalOffset, value);
         }
 
         #endregion
@@ -110,12 +110,12 @@ namespace SS.Utilities
 
         public void SetInt16(byte[] data, short value)
         {
-            LittleEndianBitConverter.WriteInt16Bits(value, data, ByteOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset, value);
         }
 
         public void SetInt16(byte[] data, short value, int additionalOffset)
         {
-            LittleEndianBitConverter.WriteInt16Bits(value, data, ByteOffset + additionalOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset + additionalOffset, value);
         }
 
         #endregion
@@ -134,12 +134,12 @@ namespace SS.Utilities
 
         public void SetUInt32(byte[] data, uint value)
         {
-            LittleEndianBitConverter.WriteUInt32Bits(value, data, ByteOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset, value);
         }
 
         public void SetUInt32(byte[] data, uint value, int additionalOffset)
         {
-            LittleEndianBitConverter.WriteUInt32Bits(value, data, ByteOffset + additionalOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset + additionalOffset, value);
         }
 
         #endregion
@@ -158,12 +158,12 @@ namespace SS.Utilities
 
         public void SetInt32(byte[] data, int value)
         {
-            LittleEndianBitConverter.WriteInt32Bits(value, data, ByteOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset, value);
         }
 
         public void SetInt32(byte[] data, int value, int additionalOffset)
         {
-            LittleEndianBitConverter.WriteInt32Bits(value, data, ByteOffset + additionalOffset);
+            LittleEndianBitConverter.TryWriteBytes(data, ByteOffset + additionalOffset, value);
         }
 
         #endregion

@@ -104,7 +104,7 @@ namespace SS.Core.Packets
         private ushort BitField
         {
             get { return LittleEndianBitConverter.ToUInt16(data, byteOffset); }
-            set { LittleEndianBitConverter.WriteUInt16Bits(value, data, byteOffset); }
+            set { LittleEndianBitConverter.TryWriteBytes(data, byteOffset, value); }
         }
 
         public WeaponCodes Type
