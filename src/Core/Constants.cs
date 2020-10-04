@@ -33,8 +33,14 @@ namespace SS.Core
         /// </summary>
         public const int CFG_INCOMING_BUFFER = 32;
 
+        /// <summary>
+        /// Maximum size a game packet can be.
+        /// </summary>
         public const int MaxPacket = 512;
 
+        /// <summary>
+        /// Maximum size for receiving packets (due to the size of a "Connection Init" packets).
+        /// </summary>
         public const int MaxConnInitPacket = 2048;
 
         public const int MaxLvzFiles = 16;

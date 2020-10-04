@@ -28,9 +28,14 @@ namespace SS.Core.ComponentInterfaces
         void AdjustForRetry();
 
         /// <summary>
-        /// to get how many reliable packets can be buffered
+        /// Gets the max range of reliable packets that can be buffered.
+        /// <para>
+        /// E.g., if X is the lowest pending (not yet sent OR sent but not yet acknolwedged) reliable sequence # for a connection, 
+        /// then only allow sending of reliable packets with a sequence # less than or equal to:
+        /// X + <see cref="GetCanBufferPackets"/>.
+        /// </para>
         /// </summary>
-        /// <returns></returns>
+        /// <returns>The range.</returns>
         int GetCanBufferPackets();
         string GetInfo();
     }
