@@ -17,26 +17,10 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private InterfaceRegistrationToken _iFileTransferToken;
 
-        private class DownloadDataContext
-        {
-            public readonly FileStream Stream;
-            public readonly string Filename;
-            public readonly string DeletePath;
-
-            public DownloadDataContext(FileStream stream, string filename, string deletePath)
-            {
-                Stream = stream ?? throw new ArgumentNullException(nameof(stream));
-                Filename = filename ?? throw new ArgumentNullException(nameof(filename)); // can be empty
-                DeletePath = deletePath;
-            }
-        }
-
+        /// <summary>
+        /// Per Player Data key to <see cref="UploadDataContext"/>.
+        /// </summary>
         private int _udKey;
-
-        private class UploadDataContext
-        {
-
-        }
 
         #region IModule Members
 
@@ -55,6 +39,9 @@ namespace SS.Core.Modules
 
             _udKey = _playerData.AllocatePlayerData<UploadDataContext>();
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+
+            _network.AddPacket((byte)C2SPacketType.UploadFile, Packet_UploadFile);
+            _network.AddSizedPacket((byte)C2SPacketType.UploadFile, SizedPacket_UploadFile);
 
             _iFileTransferToken = _broker.RegisterInterface<IFileTransfer>(this);
             return true;
@@ -80,7 +67,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return false;
 
-            if (string.IsNullOrEmpty(path))
+            if (string.IsNullOrWhiteSpace(path))
                 return false;
 
             try
@@ -88,7 +75,7 @@ namespace SS.Core.Modules
                 FileInfo fileInfo = new FileInfo(path);
                 if (!fileInfo.Exists)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "file '{0}' does not exist", path);
+                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "File '{0}' does not exist.", path);
                     return false;
                 }
 
@@ -97,11 +84,69 @@ namespace SS.Core.Modules
                 _network.SendSized(p, (int)fileInfo.Length + 17, GetSizedSendData, dd);
                 return true;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "error opening file '{0}' - {1}", path, ex.Message);
+                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "Error opening file '{0}'. {1}", path, ex.Message);
                 return false;
             }
+        }
+
+        bool IFileTransfer.RequestFile<T>(Player p, string path, FileUploadedDelegate<T> uploaded, T arg)
+        {
+            if (p == null)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            if (!(p[_udKey] is UploadDataContext ud))
+                return false;
+
+            if (path.Length > 256)
+                return false;
+
+            if (ud.Stream != null || !string.IsNullOrWhiteSpace(ud.FileName) || !p.IsStandard)
+                return false;
+
+            ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
+
+            Span<byte> bytes = stackalloc byte[RequestFilePacketSpan.Length];
+            RequestFilePacketSpan pkt = new RequestFilePacketSpan(bytes);
+            pkt.Initialize(path, "unused-field");
+
+            _network.SendToOne(p, bytes, NetSendFlags.Reliable);
+
+            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Requesting file '{0}'.", path);
+
+            if (path.Contains(".."))
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, "Sent file request with '..' in the path.");
+
+            return true;
+        }
+
+        void IFileTransfer.SetWorkingDirectory(Player p, string path)
+        {
+            if (p == null)
+                throw new ArgumentNullException(nameof(p));
+
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+
+            if (!(p[_udKey] is UploadDataContext ud))
+                return;
+
+            ud.WorkingDirectory = path;
+        }
+
+        string IFileTransfer.GetWorkingDirectory(Player p)
+        {
+            if (p == null)
+                throw new ArgumentNullException(nameof(p));
+
+            if (!(p[_udKey] is UploadDataContext ud))
+                return null;
+
+            return ud.WorkingDirectory;
         }
 
         #endregion
@@ -111,17 +156,103 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            // TODO:
-            //if (!(p[_udKey] is UploadDataContext ud))
-                //return;
+            if (!(p[_udKey] is UploadDataContext ud))
+                return;
 
             if (action == PlayerAction.Connect)
             {
-                
+                ud.WorkingDirectory = ".";
             }
             else if(action == PlayerAction.Disconnect)
             {
-                
+                ud.Cleanup(false);
+            }
+        }
+
+        private void Packet_UploadFile(Player p, byte[] data, int length)
+        {
+            if (p == null)
+                return;
+
+            if (!(p[_udKey] is UploadDataContext ud))
+                return;
+
+            if (!_capabilityManager.HasCapability(p, Constants.Capabilities.UploadFile))
+            {
+                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Denied file upload");
+                return;
+            }
+
+            bool success = false;
+
+            try
+            {
+                ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
+                ud.FileName = ud.Stream.Name;
+                ud.Stream.Write(new Span<byte>(data, 17, length - 17));
+                success = true;
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Can't create temp file for upload. {ex.Message}");
+            }
+
+            ud.Cleanup(success);
+        }
+
+        private void SizedPacket_UploadFile(Player p, Span<byte> data, int offset, int totalLength)
+        {
+            if (p == null)
+                return;
+
+            if (!(p[_udKey] is UploadDataContext ud))
+                return;
+
+            if (offset == -1)
+            {
+                // cancelled
+                ud.Cleanup(false);
+                return;
+            }
+
+            if (offset == 0 && data.Length > 17 && ud.Stream == null)
+            {
+                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.UploadFile))
+                {
+                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Denied file upload");
+                    return;
+                }
+
+                try
+                {
+                    ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Can't create temp file for upload. {ex.Message}");
+                    return;
+                }
+
+                ud.FileName = ud.Stream.Name;
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Accepted file for upload (to '{ud.FileName}').");
+
+                ud.Stream.Write(data.Slice(17));
+            }
+            else if (offset > 0 && ud.Stream != null)
+            {
+                if (offset < totalLength)
+                {
+                    ud.Stream.Write(data);
+                }
+                else
+                {
+                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Completed upload.");
+                    ud.Cleanup(true);
+                }
+            }
+            else
+            {
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, "UploadFile with unexpected parameters.");
             }
         }
 
@@ -135,18 +266,18 @@ namespace SS.Core.Modules
 
             if (dataSpan.IsEmpty)
             {
-                _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "completed send of {0}", dd.Filename);
+                _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "Completed send of '{0}'.", dd.Filename);
                 dd.Stream.Dispose();
                 if (!string.IsNullOrEmpty(dd.DeletePath))
                 {
                     try
                     {
                         File.Delete(dd.DeletePath);
-                        _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "deleted {0} after completed send", dd.Filename);
+                        _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "Deleted '{0}' after completed send.", dd.Filename);
                     }
                     catch (Exception ex)
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "failed to delete {0} after completed send.  {1}", dd.Filename, ex.Message);
+                        _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "Failed to delete '{0}' after completed send. {1}", dd.Filename, ex.Message);
                     }
                 }
 
@@ -188,6 +319,118 @@ namespace SS.Core.Modules
             if (bytesRead != dataSpan.Length)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Needed to retrieve sized data of {dataSpan.Length} bytes, but was only able to read {bytesRead} bytes.");
+            }
+        }
+
+        private class DownloadDataContext
+        {
+            public readonly FileStream Stream;
+            public readonly string Filename;
+            public readonly string DeletePath;
+
+            public DownloadDataContext(FileStream stream, string filename, string deletePath)
+            {
+                Stream = stream ?? throw new ArgumentNullException(nameof(stream));
+                Filename = filename ?? throw new ArgumentNullException(nameof(filename)); // can be empty
+                DeletePath = deletePath;
+            }
+        }
+
+        private class UploadDataContext : IDisposable
+        {
+            public FileStream Stream;
+
+            public string FileName
+            {
+                get;
+                set;
+            }
+
+            public FileUploadedDelegateInvoker UploadedInvoker
+            {
+                get;
+                set;
+            }
+
+            public string WorkingDirectory
+            {
+                get;
+                set;
+            }
+
+            public void Cleanup(bool success)
+            {
+                if (Stream != null)
+                {
+                    Stream.Dispose();
+                    Stream = null;
+                }
+
+                if (success)
+                {
+                    if (UploadedInvoker != null)
+
+                    {
+                        // Invoke the callback, it will handle cleaning up the file
+                        UploadedInvoker.Invoke(FileName);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(FileName))
+                    {
+                        // Nothing to invoke, get rid of the file as there's no use for it.
+                        try
+                        {
+                            File.Delete(FileName);
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+                else
+                {
+                    UploadedInvoker?.Invoke(null);
+
+                    if (!string.IsNullOrWhiteSpace(FileName))
+                    {
+                        try
+                        {
+                            File.Delete(FileName);
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+
+                FileName = null;
+                UploadedInvoker = null;
+            }
+
+            public void Dispose()
+            {
+                Cleanup(false); // TODO: might not want to invoke callbacks
+            }
+        }
+
+        private abstract class FileUploadedDelegateInvoker
+        {
+            public abstract void Invoke(string filename);
+        }
+
+        private class FileUploadedDelegateInvoker<T> : FileUploadedDelegateInvoker
+        {
+            private readonly FileUploadedDelegate<T> callback;
+            private readonly T state;
+
+            public FileUploadedDelegateInvoker(FileUploadedDelegate<T> callback, T state)
+            {
+                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                this.state = state;
+            }
+
+            public override void Invoke(string filename)
+            {
+                callback(filename, state);
             }
         }
     }

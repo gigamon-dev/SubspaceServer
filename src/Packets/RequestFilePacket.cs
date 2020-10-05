@@ -6,6 +6,72 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
+    public readonly ref struct RequestFilePacketSpan
+    {
+        private readonly Span<byte> bytes;
+
+        public RequestFilePacketSpan(Span<byte> bytes)
+        {
+            this.bytes = bytes;
+        }
+
+        public static int Length = 
+            1 // Type
+            + 256 // Path
+            + 16; // Filename
+
+        public void Initialize(string path, string filename)
+        {
+            bytes[0] = (byte)S2CPacketType.RequestForFile;
+
+            Path = path;
+            Filename = filename;
+        }
+
+        public string Path
+        {
+            get { return Encoding.ASCII.GetString(bytes.Slice(1, 256)); }
+            set
+            {
+                Span<byte> span = bytes.Slice(1, 256);
+                int bytesWritten = 0;
+
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    if (value.Length > 256)
+                        throw new ArgumentException("Length cannot be longer than 256.");
+
+                    bytesWritten = Encoding.ASCII.GetBytes(value, span);
+                }
+
+                if (bytesWritten < 256)
+                    span.Slice(bytesWritten).Clear(); // null terminate, including all remaining bytes
+            }
+        }
+
+        public string Filename
+        {
+            get { return Encoding.ASCII.GetString(bytes.Slice(257, 16)); }
+            set
+            {
+                Span<byte> span = bytes.Slice(257, 16);
+                int bytesWritten = 0;
+
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    if (value.Length > 16)
+                        throw new ArgumentException("Length cannot be longer than 16.");
+
+                    bytesWritten = Encoding.ASCII.GetBytes(value, span);
+                }
+
+                if (bytesWritten < 16)
+                    span.Slice(bytesWritten).Clear(); // null terminate, including all remaining bytes
+            }
+        }
+
+    }
+
     // packet sent by the server requesting the client to send a file.
     public readonly struct RequestFilePacket
     {

@@ -24,12 +24,12 @@ namespace SS.Core.ComponentInterfaces
     public struct ReliableLagData
     {
         /// <summary>
-        /// the total number of duplicates that have been recieved
+        /// the total number of duplicates that have been received
         /// </summary>
         public uint reldups;
             
         /// <summary>
-        /// the reliable seqnum so far (i.e., the number of reliable packets that should have been recieved, excluding dups
+        /// the reliable seqnum so far (i.e., the number of reliable packets that should have been received, excluding dups
         /// </summary>
         public uint c2sn;
         

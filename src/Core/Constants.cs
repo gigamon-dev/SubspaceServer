@@ -46,7 +46,7 @@ namespace SS.Core
         public const int MaxLvzFiles = 16;
 
         /// <summary>
-        /// maximum size of a "big packet" allowed to recieve
+        /// Maximum size of a "big packet" allowed to receive.
         /// </summary>
         public const int CFG_MAX_BIG_PACKET = 65536;
         public const int MaxBigPacket = CFG_MAX_BIG_PACKET;

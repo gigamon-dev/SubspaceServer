@@ -9,7 +9,7 @@ namespace SS.Core
     /// However, the server can be set up listen on multiple ListenData pairs, 
     /// with each pair representing a particular "Arena" within the "Zone".
     /// 
-    /// The <see cref="GameSocket"/> is the UDP socket used to send and recieve game data over the "subspace" game protocol.
+    /// The <see cref="GameSocket"/> is the UDP socket used to send and receive game data over the "subspace" game protocol.
     /// 
     /// The <see cref="PingSocket"/> is the UDP socket used to check if a server is up and tell how many players there are.
     /// The port of the ping socket is the game socket + 1.

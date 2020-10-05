@@ -79,7 +79,7 @@ namespace SS.Core.Modules
             public ReliableLagData ReliableLayerData;
 
             public uint WeaponSendCount;
-            public uint WeaponRecieveCount;
+            public uint WeaponReceiveCount;
             public uint LastWeaponSentCount;
 
             public void Reset()
@@ -90,7 +90,7 @@ namespace SS.Core.Modules
             public void UpdateClientLatencyStats(ref ClientLatencyData data)
             {
                 ClientReportedPing = data;
-                WeaponRecieveCount = data.weaponcount;
+                WeaponReceiveCount = data.weaponcount;
                 WeaponSendCount = LastWeaponSentCount;
             }
         }

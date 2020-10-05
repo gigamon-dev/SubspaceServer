@@ -32,9 +32,44 @@ namespace SS.Core.ComponentInterfaces
         Ack = 0x0100,
     }
 
+    /// <summary>
+    /// Delegate for a handler to an incoming regular packet.
+    /// </summary>
+    /// <param name="p">The player that sent the packet.</param>
+    /// <param name="data">The buffer containing the packet data that was received.</param>
+    /// <param name="length">Number of bytes in the data.</param>
     public delegate void PacketDelegate(Player p, byte[] data, int length);
-    public delegate void SizedPacketDelegate(Player p, ArraySegment<byte>? data, int offset, int totallen);
+
+    /// <summary>
+    /// Delegate for a handler to an incoming sized packet (file transfer).
+    /// </summary>
+    /// <param name="p">The player that sent the packet.</param>
+    /// <param name="data">The buffer containing the packet data that was received.</param>
+    /// <param name="offset">
+    /// Starting position of the data being transmitted.
+    /// -1 indicates that the transfer was cancelled.
+    /// </param>
+    /// <param name="totalLength">
+    /// Overall size of the transfer in bytes.
+    /// -1 indicates that the transfer was cancelled.
+    /// </param>
+    public delegate void SizedPacketDelegate(Player p, Span<byte> data, int offset, int totalLength);
+
+    /// <summary>
+    /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.
+    /// </summary>
+    /// <param name="p">The player the packet was being sent to.</param>
+    /// <param name="success">Whether the packet was sucessfully sent.</param>
     public delegate void ReliableDelegate(Player p, bool success);
+
+    /// <summary>
+    /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.
+    /// The callback includes a parameter for state.
+    /// </summary>
+    /// <typeparam name="T">The type of state object.</typeparam>
+    /// <param name="p">The player the packet was being sent to.</param>
+    /// <param name="success">Whether the packet was sucessfully sent.</param>
+    /// <param name="clos">The state object.</param>
     public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
 
     /// <summary>
@@ -142,7 +177,7 @@ namespace SS.Core.ComponentInterfaces
         void SendToTarget(ITarget target, byte[] data, int len, NetSendFlags flags);
 
         /// <summary>
-        /// To send data to a player and recieve a callback after the data has been sent.
+        /// To send data to a player and receive a callback after the data has been sent.
         /// </summary>
         /// <param name="p">player sending data to</param>
         /// <param name="data">array conaining the data</param>
@@ -151,7 +186,7 @@ namespace SS.Core.ComponentInterfaces
         void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback);
 
         /// <summary>
-        /// To send data to a player and recieve a callback after the data has been sent.
+        /// To send data to a player and receive a callback after the data has been sent.
         /// </summary>
         /// <param name="p">player sending data to</param>
         /// <param name="data">array conaining the data</param>
@@ -173,14 +208,14 @@ namespace SS.Core.ComponentInterfaces
         bool SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestData, T clos);
 
         /// <summary>
-        /// To add a handler for a packet of a certain type.
+        /// To register a handler for a regular packet.
         /// <remarks>
         /// This is usually used to register handlers for game packets.
         /// Note, this can also be used to register a handler for 'core' network level packets.  
         /// However, registering 'core' handlers doesn't appear to be used in asss.</remarks>
         /// </summary>
-        /// <param name="pktype">type of packet</param>
-        /// <param name="func">the handler to call when a packet is recieved</param>
+        /// <param name="pktype">The type of packet to register.</param>
+        /// <param name="func">The handler to call when a packet is received.</param>
         void AddPacket(int pktype, PacketDelegate func);
 
         /// <summary>
@@ -191,8 +226,8 @@ namespace SS.Core.ComponentInterfaces
         void RemovePacket(int pktype, PacketDelegate func);
 
         /// <summary>
-        /// To add a handler for a sized packet recieved from a client.
-        /// <remarks>This is used for recieving file uploads.  Includes voices (wave messages in macros).</remarks>
+        /// To register a handler for a sized packet.
+        /// <remarks>This is used for receiving file uploads.  Includes voices (wave messages in macros).</remarks>
         /// </summary>
         /// <param name="pktype"></param>
         /// <param name="func"></param>

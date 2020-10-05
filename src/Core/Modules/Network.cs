@@ -195,9 +195,9 @@ namespace SS.Core.Modules
             public uint pktSent;
 
             /// <summary>
-            /// # of packets recieved
+            /// # of packets received
             /// </summary>
-            public uint pktRecieved;
+            public uint pktReceived;
 
             /// <summary>
             /// # of bytes sent
@@ -205,9 +205,9 @@ namespace SS.Core.Modules
             public ulong bytesSent;
 
             /// <summary>
-            /// # of bytes recieved
+            /// # of bytes received
             /// </summary>
-            public ulong bytesRecieved;
+            public ulong bytesReceived;
 
             /// <summary>
             /// # of duplicate reliable packets
@@ -261,7 +261,7 @@ namespace SS.Core.Modules
             /// </summary>
             public string iEncryptName;
 
-            internal class SizedRecieve
+            internal class SizedReceive
             {
                 public int type;
                 public int totallen, offset;
@@ -270,9 +270,9 @@ namespace SS.Core.Modules
             /// <summary>
             /// For receiving sized packets, protected by <see cref="bigmtx"/>
             /// </summary>
-            public SizedRecieve sizedrecv = new SizedRecieve();
+            public SizedReceive sizedrecv = new SizedReceive();
 
-            internal class BigRecieve
+            internal class BigReceive
             {
                 public int size, room;
                 public byte[] buf; //byte *buf; in asss
@@ -288,7 +288,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// stuff for recving big packets, protected by <see cref="bigmtx"/>
             /// </summary>
-            public readonly BigRecieve bigrecv = new BigRecieve();
+            public readonly BigReceive bigrecv = new BigReceive();
 
             /// <summary>
             /// stuff for sending sized packets, protected by <see cref="olmtx"/>
@@ -936,13 +936,13 @@ namespace SS.Core.Modules
                         if (endpointLookup.TryGetValue(socket.LocalEndPoint, out var tuple))
                         {
                             if (tuple.Type == 'G')
-                                HandleGamePacketRecieved(tuple.ListenData);
+                                HandleGamePacketReceived(tuple.ListenData);
                             else if (tuple.Type == 'P')
-                                HandlePingPacketRecieved(tuple.ListenData);
+                                HandlePingPacketReceived(tuple.ListenData);
                         }
                         else if (socket == _clientSocket)
                         {
-                            HandleClientPacketRecieved();
+                            HandleClientPacketReceived();
                         }
                     }
                 }
@@ -1559,14 +1559,14 @@ namespace SS.Core.Modules
             return p.Type == ClientType.Continuum || p.Type == ClientType.VIE;
         }
 
-        private void HandleGamePacketRecieved(ListenData ld)
+        private void HandleGamePacketReceived(ListenData ld)
         {
             SubspaceBuffer buffer = _bufferPool.Get();
-            EndPoint recievedFrom = new IPEndPoint(IPAddress.Any, 0);
+            EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
 
             try
             {
-                buffer.NumBytes = ld.GameSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref recievedFrom);
+                buffer.NumBytes = ld.GameSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref receivedFrom);
             }
             catch (SocketException ex)
             {
@@ -1586,7 +1586,7 @@ namespace SS.Core.Modules
             DumpPk(string.Format("RECV: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
-            if (!(recievedFrom is IPEndPoint remoteEndPoint))
+            if (!(receivedFrom is IPEndPoint remoteEndPoint))
             {
                 buffer.Dispose();
                 return;
@@ -1660,7 +1660,7 @@ namespace SS.Core.Modules
 
             if (p.Status > PlayerState.TimeWait)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(Network), "[pid={0}] packet recieved from bad state {1}", p.Id, p.Status);
+                _logManager.LogM(LogLevel.Warn, nameof(Network), "[pid={0}] packet received from bad state {1}", p.Id, p.Status);
 
                 // don't set lastpkt time here
 
@@ -1670,8 +1670,8 @@ namespace SS.Core.Modules
 
             buffer.Conn = conn;
             conn.lastPkt = DateTime.UtcNow;
-            conn.bytesRecieved += (ulong)buffer.NumBytes;
-            conn.pktRecieved++;
+            conn.bytesReceived += (ulong)buffer.NumBytes;
+            conn.pktReceived++;
             _globalStats.byterecvd += (ulong)buffer.NumBytes;
             _globalStats.pktrecvd++;
 
@@ -1809,7 +1809,7 @@ namespace SS.Core.Modules
             return (rp.T1 == 0x00) && ((rp.T2 == 0x01) || (rp.T2 == 0x11));
         }
 
-        private void HandlePingPacketRecieved(ListenData ld)
+        private void HandlePingPacketReceived(ListenData ld)
         {
             if (ld == null)
                 return;
@@ -1817,10 +1817,10 @@ namespace SS.Core.Modules
             using (SubspaceBuffer buffer = _bufferPool.Get())
             {
                 Socket s = ld.PingSocket;
-                EndPoint recievedFrom = new IPEndPoint(IPAddress.Any, 0);
-                buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref recievedFrom);
+                EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
+                buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref receivedFrom);
 
-                if (!(recievedFrom is IPEndPoint remoteEndPoint))
+                if (!(receivedFrom is IPEndPoint remoteEndPoint))
                     return;
 
                 if (buffer.NumBytes <= 0)
@@ -1883,7 +1883,7 @@ namespace SS.Core.Modules
 
                 if (buffer.NumBytes == 4)
                 {
-                    // bytes from recieve
+                    // bytes from receive
                     buffer.Bytes[4] = buffer.Bytes[0];
                     buffer.Bytes[5] = buffer.Bytes[1];
                     buffer.Bytes[6] = buffer.Bytes[2];
@@ -1913,12 +1913,12 @@ namespace SS.Core.Modules
             _globalStats.pcountpings++;
         }
 
-        private void HandleClientPacketRecieved()
+        private void HandleClientPacketReceived()
         {
             SubspaceBuffer buffer = _bufferPool.Get();
 
-            EndPoint recievedFrom = new IPEndPoint(IPAddress.Any, 0);
-            buffer.NumBytes = _clientSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref recievedFrom);
+            EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
+            buffer.NumBytes = _clientSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref receivedFrom);
 
             if (buffer.NumBytes < 1)
             {
@@ -2366,7 +2366,7 @@ namespace SS.Core.Modules
                     if (_lagCollect != null && conn.p != null)
                     {
                         TimeSyncData data;
-                        data.s_pktrcvd = conn.pktRecieved;
+                        data.s_pktrcvd = conn.pktReceived;
                         data.s_pktsent = conn.pktSent;
                         data.c_pktrcvd = cts.PktRecvd;
                         data.c_pktsent = cts.PktSent;
@@ -2574,7 +2574,7 @@ namespace SS.Core.Modules
                         conn.sizedrecv.offset += rpData.Count;
 
                         if (conn.sizedrecv.offset >= size)
-                            EndSized(conn.p, true); // sized recieve is complete
+                            EndSized(conn.p, true); // sized receive is complete
                     }
                 }
             }
@@ -2670,7 +2670,7 @@ namespace SS.Core.Modules
                 // tell listeners that they're cancelled
                 if (type < MAXTYPES)
                 {
-                    _sizedhandlers[type]?.Invoke(p, null, arg, arg);
+                    _sizedhandlers[type]?.Invoke(p, Span<byte>.Empty, arg, arg);
                 }
 
                 conn.sizedrecv.type = 0;
@@ -2778,7 +2778,7 @@ namespace SS.Core.Modules
 
             _stopToken = _stopCancellationTokenSource.Token;
 
-            // recieve thread
+            // receive thread
             Thread thread = new Thread(ReceiveThread);
             thread.Name = "network-recv";
             thread.Start();
@@ -3394,9 +3394,9 @@ namespace SS.Core.Modules
             stats.s2cn = conn.s2cn;
             stats.c2sn = conn.c2sn;
             stats.PacketsSent = conn.pktSent;
-            stats.PacketsReceived = conn.pktRecieved;
+            stats.PacketsReceived = conn.pktReceived;
             stats.BytesSent = conn.bytesSent;
-            stats.BytesReceived = conn.bytesRecieved;
+            stats.BytesReceived = conn.bytesReceived;
             stats.PacketsDropped = conn.pktdropped;
 
             if (conn.enc != null)

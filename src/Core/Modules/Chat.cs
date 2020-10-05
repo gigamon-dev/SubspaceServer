@@ -107,7 +107,7 @@ namespace SS.Core.Modules
             _cfg.cmdlimit = _configManager.GetInt(_configManager.Global, "Chat", "CommandLimit", 5);
 
             if (_net != null)
-                _net.AddPacket((int)C2SPacketType.Chat, onRecievePlayerChatPacket);
+                _net.AddPacket((int)C2SPacketType.Chat, Packet_Chat);
 
             //if(_chatNet != null)
             //_chatNet.
@@ -123,7 +123,7 @@ namespace SS.Core.Modules
                 return false;
 
             if (_net != null)
-                _net.RemovePacket((int)C2SPacketType.Chat, onRecievePlayerChatPacket);
+                _net.RemovePacket((int)C2SPacketType.Chat, Packet_Chat);
 
             //if(_chatNet != null)
                 //_chatNet.
@@ -391,7 +391,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void onRecievePlayerChatPacket(Player p, byte[] data, int len)
+        private void Packet_Chat(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
@@ -422,7 +422,7 @@ namespace SS.Core.Modules
             switch ((ChatMessageType)from.Type)
             {
                 case ChatMessageType.Arena:
-                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "recieved arena message");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "received arena message");
                     break;
 
                 case ChatMessageType.PubMacro:
@@ -464,7 +464,7 @@ namespace SS.Core.Modules
                     break;
 
                 case ChatMessageType.SysopWarning:
-                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "recieved sysop message");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "received sysop message");
                     break;
 
                 case ChatMessageType.Chat:
@@ -472,7 +472,7 @@ namespace SS.Core.Modules
                     break;
 
                 default:
-                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "recieved undefined type {0} chat message", from.Type);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "received undefined type {0} chat message", from.Type);
                     break;
             }
 
