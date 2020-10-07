@@ -1,7 +1,6 @@
 ﻿using SS.Core.ComponentInterfaces;
 using System;
-using System.Collections.Generic;
-using System.Text;
+using System.IO;
 
 namespace SS.Core.Modules
 {
@@ -28,8 +27,9 @@ namespace SS.Core.Modules
             this.fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
             this.logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
-
+            commandManager.AddCommand("getfile", Command_getfile);
             commandManager.AddCommand("putfile", Command_putfile);
+            commandManager.AddCommand("cd", Command_cd);
             commandManager.AddCommand("pwd", Command_pwd);
 
             return true;
@@ -37,9 +37,51 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
+            commandManager.RemoveCommand("getfile", Command_getfile);
+            commandManager.RemoveCommand("putfile", Command_putfile);
+            commandManager.RemoveCommand("cd", Command_cd);
             commandManager.RemoveCommand("pwd", Command_pwd);
 
             return true;
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<filename>",
+            Description =
+                "Transfers the specified file from the server to the client. The filename\n" +
+                "is considered relative to the current working directory.")]
+        private void Command_getfile(string command, string parameters, Player p, ITarget target)
+        {
+            if (!p.IsStandard)
+            {
+                chat.SendMessage(p, "Your client does not support file transfers.");
+                return;
+            }
+
+            string workingDir = fileTransfer.GetWorkingDirectory(p);
+            string path = Path.Combine(workingDir, parameters);
+
+            string fullPath = Path.GetFullPath(path);
+            string currentDir = Directory.GetCurrentDirectory();
+
+            if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
+            {
+                chat.SendMessage(p, "Invalid path.");
+            }
+            else
+            {
+                string relativePath = Path.GetRelativePath(currentDir, fullPath);
+
+                if (!fileTransfer.SendFile(
+                    p,
+                    relativePath,
+                    Path.GetFileName(fullPath),
+                    false))
+                {
+                    chat.SendMessage(p, "Error sending '{0}'.", relativePath);
+                }
+            }
         }
 
         [CommandHelp(
@@ -58,10 +100,74 @@ namespace SS.Core.Modules
                 return;
             }
 
-            // TODO: implement this fully, for now just for testing
+            string workingDir = fileTransfer.GetWorkingDirectory(p);
+            string clientFilename;
+            string serverFilename;
 
-            UploadContext uploadContext = new UploadContext(p);
-            fileTransfer.RequestFile(p, parameters, FileUploaded, uploadContext);
+            int colonIndex = parameters.IndexOf(':');
+            if (colonIndex != -1)
+            {
+                clientFilename = parameters.Substring(0, colonIndex);
+                serverFilename = (colonIndex == parameters.Length - 1)
+                    ? null
+                    : parameters.Substring(colonIndex + 1);
+            }
+            else
+            {
+                clientFilename = parameters;
+                serverFilename = null;
+            }
+
+            string serverPath = Path.Combine(workingDir, serverFilename ?? Path.GetFileName(clientFilename));
+            string fullPath = Path.GetFullPath(serverPath);
+            string currentDir = Directory.GetCurrentDirectory();
+
+            if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
+            {
+                chat.SendMessage(p, "Invalid server path.");
+            }
+            else
+            {
+                fileTransfer.RequestFile(
+                    p, 
+                    clientFilename, 
+                    FileUploaded,
+                    new UploadContext(
+                        p,
+                        Path.GetRelativePath(currentDir, fullPath),
+                        false));
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[<server directory>]",
+            Description =
+                "Changes working directory for file transfer. Note that the specified path\n" +
+                "must be an absolute path; it is not considered relative to the previous\n" +
+                "working directory. If no arguments are specified, return to the server's\n" +
+                "root directory.")]
+        private void Command_cd(string command, string parameters, Player p, ITarget target)
+        {
+            if (string.IsNullOrWhiteSpace(parameters))
+                parameters = ".";
+
+            string fullPath = Path.GetFullPath(parameters);
+            string currentDir = Directory.GetCurrentDirectory();
+
+            if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
+            {
+                chat.SendMessage(p, "Invalid path.");
+            }
+            else if (!Directory.Exists(parameters))
+            {
+                chat.SendMessage(p, "The specified path doesn't exist.");
+            }
+            else
+            {
+                fileTransfer.SetWorkingDirectory(p, Path.GetRelativePath(currentDir, fullPath));
+                chat.SendMessage(p, "Changed working directory.");
+            }
         }
 
         [CommandHelp(
@@ -77,18 +183,55 @@ namespace SS.Core.Modules
 
         private void FileUploaded(string filename, UploadContext context)
         {
-            chat.SendMessage(context.Player, "File received: '{0}'", filename);
+            if (string.IsNullOrWhiteSpace(filename))
+                return;
+
+            if (context.Unzip)
+            {
+            }
+            else
+            {
+                try
+                {
+                    File.Move(filename, context.ServerPath);
+                }
+                catch (Exception ex)
+                {
+                    logManager.LogP(LogLevel.Warn, nameof(AdminCommand), context.Player,
+                        "Couldn't move file '{0}' to '{1}'. {2}", filename, context.ServerPath, ex.Message);
+
+                    chat.SendMessage(context.Player, "Couldn't upload file to '{0}'", context.ServerPath);
+
+                    try
+                    {
+                        File.Delete(filename);
+                    }
+                    catch
+                    {
+                    }
+
+                    return;
+                }
+
+                chat.SendMessage(context.Player, "File received: {0}", context.ServerPath);
+            }   
         }
 
         private class UploadContext
         {
-            public Player Player;
-            public bool Unzip = false;
-
-            public UploadContext(Player p)
+            public UploadContext(Player player, string serverPath, bool unzip)
             {
-                Player = p;
+                if (string.IsNullOrWhiteSpace(serverPath))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(serverPath));
+
+                Player = player ?? throw new ArgumentNullException(nameof(player));
+                ServerPath = serverPath;
+                Unzip = unzip;
             }
+
+            public Player Player { get; }
+            public string ServerPath { get; }
+            public bool Unzip { get; }
         }
     }
 }

@@ -110,8 +110,8 @@ namespace SS.Core.Modules
 
             ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
 
-            Span<byte> bytes = stackalloc byte[RequestFilePacketSpan.Length];
-            RequestFilePacketSpan pkt = new RequestFilePacketSpan(bytes);
+            Span<byte> bytes = stackalloc byte[RequestFilePacket.Length];
+            RequestFilePacket pkt = new RequestFilePacket(bytes);
             pkt.Initialize(path, "unused-field");
 
             _network.SendToOne(p, bytes, NetSendFlags.Reliable);

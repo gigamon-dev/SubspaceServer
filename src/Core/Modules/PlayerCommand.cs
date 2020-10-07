@@ -113,8 +113,7 @@ namespace SS.Core.Modules
             //bool isChatOutput = p.Type == ClientType.Chat || parameters.Contains("-t");
             bool includePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
 
-            byte[] bytes = new byte[1024];
-            Span<byte> bufferSpan = bytes; // TODO: stackalloc byte[1024];
+            Span<byte> bufferSpan = stackalloc byte[1024];
 
             // Write header
             bufferSpan[0] = (byte)S2CPacketType.Arena;
@@ -142,8 +141,7 @@ namespace SS.Core.Modules
                     {
                         // arena name
                         Span<byte> remainingSpan = bufferSpan.Slice(length);
-                        Encoding.ASCII.GetBytes(arena.Name, remainingSpan);
-                        remainingSpan[arena.Name.Length] = 0; // null terminate
+                        remainingSpan.Slice(remainingSpan.WriteNullTerminatedASCII(arena.Name));
 
                         // player count (a negative value denotes the player's current arena)
                         Span<byte> playerCountSpan = remainingSpan.Slice(nameLength, 2);
@@ -158,10 +156,9 @@ namespace SS.Core.Modules
                 _arenaManager.Unlock();
             }
 
-            // TODO: when Microsoft adds span support to Socket methods for UDP the buffer could be stackalloc'd and passed ot the network module.
-            //_net.SendToOne(p, bufferSpan.Slice(0, length), NetSendFlags.Reliable);
+            // TODO: additional arena list logic (-a argument)
 
-            _net.SendToOne(p, bytes, length, NetSendFlags.Reliable);
+            _net.SendToOne(p, bufferSpan.Slice(0, length), NetSendFlags.Reliable);
         }
 
         [CommandHelp(
