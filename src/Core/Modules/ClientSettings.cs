@@ -13,19 +13,18 @@ namespace SS.Core.Modules
     public class ClientSettings : IModule, IClientSettings
     {
         private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private INetwork _net;
-        private ILogManager _logManager;
-        private IConfigManager _configManager;
         private IArenaManager _arenaManager;
+        private IConfigManager _configManager;
+        private ILogManager _logManager;
+        private INetwork _net;
+        private IPlayerData _playerData;
+        private IPrng _prng;
         private InterfaceRegistrationToken _iClientSettingsToken;
 
         private int _adkey;
         private int _pdkey;
 
         private object _setMtx = new object();
-
-        private Random _random = new Random();
 
         private class ArenaClientSettingsData
         {
@@ -47,18 +46,20 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IPlayerData playerData,
-            INetwork net,
-            ILogManager logManager,
+            IArenaManager arenaManager,
             IConfigManager configManager,
-            IArenaManager arenaManager)
+            ILogManager logManager,
+            INetwork net,
+            IPlayerData playerData,
+            IPrng prng)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             _adkey = _arenaManager.AllocateArenaData<ArenaClientSettingsData>();
             _pdkey = _playerData.AllocatePlayerData<PlayerClientSettingsData>();
@@ -129,10 +130,7 @@ namespace SS.Core.Modules
 
             int r;
 
-            lock (_random)
-            {
-                r = _random.Next(0, max);
-            }
+            r = _prng.Number(0, max - 1);
 
             // binary search
             while (r >= ad.pwps[i])

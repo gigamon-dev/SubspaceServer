@@ -14,19 +14,20 @@ namespace SS.Core.Modules
     public class Game : IModule, IGame
     {
         private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private IConfigManager _configManager;
-        private IMainloop _mainloop;
-        private ILogManager _logManager;
-        private INetwork _net;
-        //private IChatNet _chatnet;
         private IArenaManager _arenaManager;
         private ICapabilityManager _capabilityManager;
-        private IMapData _mapData;
-        private ILagCollect _lagCollect;
         private IChat _chat;
+        //private IChatNet _chatnet;
         private ICommandManager _commandManager;
+        private IConfigManager _configManager;
+        private ILagCollect _lagCollect;
+        private ILogManager _logManager;
+        private IMainloop _mainloop;
+        private IMapData _mapData;
+        private INetwork _net;
+        private IPlayerData _playerData;
         //private IPersist _persist;
+        private IPrng _prng;
         private InterfaceRegistrationToken _iGameToken;
 
         private int _pdkey;
@@ -40,8 +41,6 @@ namespace SS.Core.Modules
         private static readonly byte[] _addSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 1 };
         private static readonly byte[] _clearSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 0 };
         private static readonly byte[] _shipResetBytes = new byte[] { (byte)S2CPacketType.ShipReset };
-
-        private readonly Random random = new Random();
 
         [Flags]
         private enum PersonalGreen
@@ -163,34 +162,36 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IPlayerData playerData,
-            IConfigManager configManager,
-            IMainloop mainloop,
-            ILogManager logManager,
-            INetwork net,
-            //IChatNet chatnet,
             IArenaManager arenaManager,
             ICapabilityManager capabilityManager,
-            IMapData mapData,
-            ILagCollect lagCollect,
             IChat chat,
-            ICommandManager commandManager)
-            //IPersist persist)
+            //IChatNet chatnet,
+            ICommandManager commandManager, 
+            IConfigManager configManager,
+            ILagCollect lagCollect,
+            ILogManager logManager,
+            IMainloop mainloop,
+            IMapData mapData,
+            INetwork net,
+            IPlayerData playerData,
+            //IPersist persist,
+            IPrng prng)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
-            //_chatnet = chatnet ?? throw new ArgumentNullException(nameof(chatnet));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            //_chatnet = chatnet ?? throw new ArgumentNullException(nameof(chatnet));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             //_persist = persist ?? throw new ArgumentNullException(nameof(persist));
+            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
@@ -1000,7 +1001,7 @@ namespace SS.Core.Modules
             else if (latency > 255)
                 latency = 255;
 
-            int randnum = Rand();
+            int randnum = _prng.Rand();
 
             // spectators don't get their position sent to anyone
             if (p.Ship != ShipType.Spec)
@@ -1026,7 +1027,7 @@ namespace SS.Core.Modules
 
                 // this is the weapons ignore hook.
                 // also ignore weapons based on region
-                if ((Rand() < pd.ignoreWeapons) 
+                if ((_prng.Rand() < pd.ignoreWeapons) 
                     || pd.MapRegionNoWeapons)
                 {
                     weapon.Type = 0;
@@ -1084,7 +1085,7 @@ namespace SS.Core.Modules
                 // send some percent of antiwarp positions to everyone
                 if ((weapon.Type == WeaponCodes.Null)
                     && ((pos.Status & PlayerPositionStatus.Antiwarp) == PlayerPositionStatus.Antiwarp)
-                    && (Rand() < ad.cfg_sendanti))
+                    && (_prng.Rand() < ad.cfg_sendanti))
                 {
                     sendToAll = true;
                 }
@@ -2032,14 +2033,6 @@ namespace SS.Core.Modules
             r = (dd / r + r) >> 1;
 
             return (int)r;
-        }
-
-        private int Rand()
-        {
-            lock (random)
-            {
-                return random.Next(Constants.RandMax + 1); // +1 since it's exclusive
-            }
         }
 
         private void LockWork(ITarget target, bool nval, bool notify, bool spec, int timeout)
