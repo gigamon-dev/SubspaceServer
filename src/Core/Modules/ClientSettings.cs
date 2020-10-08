@@ -108,6 +108,7 @@ namespace SS.Core.Modules
 
         uint IClientSettings.GetChecksum(Player p, uint key)
         {
+            // TODO: implement this.  For now, 0 means skip checks for settings checksum.
             return 0;
         }
 

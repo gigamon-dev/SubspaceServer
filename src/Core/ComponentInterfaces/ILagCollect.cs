@@ -7,16 +7,16 @@ namespace SS.Core.ComponentInterfaces
 {
     public struct ClientLatencyData
     {
-        public uint weaponcount;
-        public uint s2cslowtotal;
-        public uint s2cfasttotal;
-        public ushort s2cslowcurrent;
-        public ushort s2cfastcurrent;
-        public ushort unknown1;
-        public short lastping;
-        public short averageping;
-        public short lowestping;
-        public short highestping;
+        public uint WeaponCount;
+        public uint S2CSlowTotal;
+        public uint S2CFastTotal;
+        public ushort S2CSlowCurrent;
+        public ushort S2CFastCurrent;
+        public ushort Unknown1;
+        public ushort LastPing;
+        public ushort AveragePing;
+        public ushort LowestPing;
+        public ushort HighestPing;
     }
 
     public struct TimeSyncData
@@ -51,11 +51,47 @@ namespace SS.Core.ComponentInterfaces
 
     public interface ILagCollect : IComponentInterface
     {
+        /// <summary>
+        /// For collecting information when a client sends a position packet.
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="ms"></param>
+        /// <param name="clipping"></param>
+        /// <param name="wpnSent"></param>
         void Position(Player p, int ms, int clipping, uint wpnSent);
+
+        /// <summary>
+        /// For collecting information when a reliable acknowledgement packet arrives.
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="ms"></param>
         void RelDelay(Player p, int ms);
+
+        /// <summary>
+        /// For collecting information when a client responds to a security check.
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="data"></param>
         void ClientLatency(Player p, ref ClientLatencyData data);
+
+        /// <summary>
+        /// For collecting information when a time sync request arrives (0x00 0x05 core packet).
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="data"></param>
         void TimeSync(Player p, ref TimeSyncData data);
+
+        /// <summary>
+        /// For collecting information after processing the outgoing network queues.
+        /// </summary>
+        /// <param name="p"></param>
+        /// <param name="data"></param>
         void RelStats(Player p, ref ReliableLagData data);
+
+        /// <summary>
+        /// Clears previously collected data for a player.
+        /// </summary>
+        /// <param name="p"></param>
         void Clear(Player p);
     }
 }

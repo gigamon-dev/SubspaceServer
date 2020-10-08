@@ -90,7 +90,7 @@ namespace SS.Core.Modules
             public void UpdateClientLatencyStats(ref ClientLatencyData data)
             {
                 ClientReportedPing = data;
-                WeaponReceiveCount = data.weaponcount;
+                WeaponReceiveCount = data.WeaponCount;
                 WeaponSendCount = LastWeaponSentCount;
             }
         }

@@ -168,6 +168,14 @@ namespace SS.Core.ComponentInterfaces
         void SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags);
 
         /// <summary>
+        /// To send data to a set of players.
+        /// </summary>
+        /// <param name="set">The players to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="flags">Flag(s) specifying options for the send.</param>
+        void SendToSet(IEnumerable<Player> set, Span<byte> data, NetSendFlags flags);
+
+        /// <summary>
         /// To send data to a target of players
         /// </summary>
         /// <param name="target">target describing what players to send data to</param>

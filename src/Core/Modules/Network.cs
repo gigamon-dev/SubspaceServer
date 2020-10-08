@@ -3135,6 +3135,11 @@ namespace SS.Core.Modules
             SendToSet(set, data, len, flags);
         }
 
+        void INetwork.SendToSet(IEnumerable<Player> set, Span<byte> data, NetSendFlags flags)
+        {
+            SendToSet(set, data, flags);
+        }
+
         private void SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags)
         {
             if (set == null)

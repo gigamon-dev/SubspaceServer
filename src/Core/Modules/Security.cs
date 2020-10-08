@@ -3,8 +3,10 @@ using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -15,6 +17,7 @@ namespace SS.Core.Modules
         private ICapabilityManager capabilityManager;
         private IClientSettings clientSettings;
         private IConfigManager configManager;
+        private ILagCollect lagCollect;
         private ILogManager logManager;
         private IMainloopTimer mainloopTimer;
         private IMapData mapData;
@@ -22,16 +25,54 @@ namespace SS.Core.Modules
         private IPlayerData playerData;
         private IPrng prng;
 
+        /// <summary>
+        /// Arena data key for accessing <see cref="ArenaData"/>.
+        /// </summary>
         private int adKey;
+
+        /// <summary>
+        /// Player data key for accessing <see cref="PlayerData"/>.
+        /// </summary>
         private int pdKey;
 
+        /// <summary>
+        /// The expected length of the scrty data.
+        /// </summary>
         private const int ScrtyLength = 1000;
+
+        /// <summary>
+        /// scrty contains pairs of 32-bit unsigned integers.
+        /// <para>
+        /// The first pair is special:
+        /// scrty[0] is 0, scrty[1] is the continuum checksum
+        /// </para>
+        /// <para>
+        /// The remaining data consists of pairs that are: seed and checksum.
+        /// In other words, 
+        /// scrty[2] and scrty[3] are the 1st pair with scrty[2] being the seed and scrty[3] the checksum,
+        /// scrty[4] and scrty[5] are the 2nd pair, and so on...
+        /// </para>
+        /// </summary>
         private uint[] scrty;
 
+        /// <summary>
+        /// The packet to send to players.
+        /// </summary>
         private S2CSecurity packet;
 
+        /// <summary>
+        /// The continuum exe checksum from <see cref="scrty"/>.
+        /// </summary>
         private uint continuumExeChecksum;
+
+        /// <summary>
+        /// The VIE exe checksum. See <see cref="GetVieExeChecksum(uint)"/>.
+        /// </summary>
         private uint vieExeChecksum;
+
+        /// <summary>
+        /// For synchronizing access to this class' data.
+        /// </summary>
         private readonly object lockObj = new object();
 
         [ConfigHelp("Security", "SecurityKickoff", ConfigScope.Global, typeof(bool), DefaultValue = "false", 
@@ -49,6 +90,7 @@ namespace SS.Core.Modules
             ICapabilityManager capabilityManager,
             IClientSettings clientSettings,
             IConfigManager configManager,
+            ILagCollect lagCollect,
             ILogManager logManager,
             IMainloopTimer mainloopTimer,
             IMapData mapData,
@@ -60,6 +102,7 @@ namespace SS.Core.Modules
             this.capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             this.clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             this.configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            this.lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
             this.logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             this.mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             this.mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
@@ -78,7 +121,7 @@ namespace SS.Core.Modules
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
 
-            mainloopTimer.SetTimer(MainloopTimer_Send, 2500, 6000, null);
+            mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(),null);
 
             network.AddPacket((int)C2SPacketType.SecurityResponse, Packet_SecurityResponse);
 
@@ -88,11 +131,12 @@ namespace SS.Core.Modules
         public bool Unload(ComponentBroker broker)
         {
             network.RemovePacket((int)C2SPacketType.SecurityResponse, Packet_SecurityResponse);
-            mainloopTimer.ClearTimer(MainloopTimer_Send, null);
+            mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
             mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             arenaManager.FreeArenaData(adKey);
             playerData.FreePlayerData(pdKey);
+
             return true;
         }
 
@@ -293,9 +337,11 @@ namespace SS.Core.Modules
                         "send seeds: green={0:X}, door={1:X}, timestamp={2:X}",
                         packet.GreenSeed, packet.DoorSeed, packet.Timestamp);
 
+                    
                     uint key = packet.Key;
                     packet.Key = 0;
 
+                    // Send the packet without a key (just syncing the client, not requesting the client to respond).
                     Span<byte> packetSpan = MemoryMarshal.Cast<S2CSecurity, byte>(MemoryMarshal.CreateSpan(ref packet, 1));
                     network.SendToOne(p, packetSpan, NetSendFlags.Reliable);
 
@@ -305,30 +351,278 @@ namespace SS.Core.Modules
                 {
                     if ((p[pdKey] is PlayerData pd))
                     {
-                        pd.Sent = false;
+                        if (pd.Sent)
+                        {
+                            pd.Sent = false;
+                            pd.Cancelled = true;
+                        }
                     }
                 }
             }
         }
 
-        private bool MainloopTimer_Send()
+        private bool MainloopTimer_Send(SendTimerData sendTimerData)
         {
-            // TODO:
+            List<Player> sendPlayerList = sendTimerData.SendPlayerList;
+
+            SwitchChecksums();
+
+            sendPlayerList.Clear();
+
+            lock (lockObj)
+            {
+                //
+                // Determine which players to check/sync
+                //
+
+                playerData.Lock();
+
+                try
+                {
+                    foreach (Player p in playerData.PlayerList)
+                    {
+                        if (!(p[pdKey] is PlayerData pd))
+                            continue;
+
+                        if (p.Status == PlayerState.Playing
+                            && p.IsStandard
+                            && p.Flags.SentPositionPacket) // having sent a position packet means the player has the map and settings
+                        {
+                            sendPlayerList.Add(p);
+                            pd.SettingsChecksum = clientSettings.GetChecksum(p, packet.Key);
+                            pd.Sent = true;
+                            pd.Cancelled = false;
+                        }
+                        else
+                        {
+                            pd.Sent = false;
+                        }
+                    }
+                }
+                finally
+                {
+                    playerData.Unlock();
+                }
+
+                //
+                // Send the requests
+                //
+
+                Span<byte> packetSpan = MemoryMarshal.Cast<S2CSecurity, byte>(MemoryMarshal.CreateSpan(ref packet, 1));
+                network.SendToSet(sendPlayerList, packetSpan, NetSendFlags.Reliable);
+            }
+
+            logManager.LogM(LogLevel.Drivel, nameof(Security),
+                "Sent security packet to {0} players: green={1:X}, door={2:X}, timestamp={3:X}",
+                sendPlayerList.Count,
+                packet.GreenSeed,
+                packet.DoorSeed,
+                packet.Timestamp);
+
+            sendPlayerList.Clear();
+
+            // Set a timer to check in 15 seconds.
+            mainloopTimer.SetTimer(MainloopTimer_Check, 15000, Timeout.Infinite, null);
+
             return true;
         }
 
         private bool MainloopTimer_Check()
         {
-            // TODO:
-            return true;
+            lock (lockObj)
+            {
+                playerData.Lock();
+
+                try
+                {
+                    foreach (Player p in playerData.PlayerList)
+                    {
+                        if (!(p[pdKey] is PlayerData pd))
+                            continue;
+
+                        if (pd.Sent)
+                        {
+                            // Did not get a response to the security packet we sent.
+                            if (capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                            {
+                                logManager.LogP(LogLevel.Malicious, nameof(Security), p, "No security packet response.");
+                            }
+
+                            KickPlayer(p);
+                        }
+                    }
+                }
+                finally
+                {
+                    playerData.Unlock();
+                }
+            }
+
+            return false; // don't run again
+        }
+
+        private void KickPlayer(Player p)
+        {
+            if (p == null)
+                throw new ArgumentNullException(nameof(p));
+
+            if (cfg_SecurityKickoff)
+            {
+                if (!capabilityManager.HasCapability(p, Constants.Capabilities.BypassSecurity))
+                {
+                    logManager.LogP(LogLevel.Info, nameof(Security), p, "Kicking off for security violation.");
+                    playerData.KickPlayer(p);
+                }
+            }
         }
 
         private void Packet_SecurityResponse(Player p, byte[] data, int length)
         {
-            // TODO:
-            logManager.LogP(LogLevel.Drivel, nameof(Security), p, $"received C2S security response of length {length}");
+            if (p == null)
+                return;
+
+            if (data == null)
+                return;
+
+            if (length < 0 || length < C2SSecurity.Length)
+            {
+                if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                {
+                    logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response with a bad packet length={0}.", length);
+                }
+
+                return;
+            }
+
+            Arena arena = p.Arena;
+
+            if (arena == null)
+            {
+                if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                {
+                    logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but is not in an arena.");
+                }
+
+                return;
+            }
+
+            logManager.LogP(LogLevel.Drivel, nameof(Security), p, "Got a security response.");
+
+            if (!(p[pdKey] is PlayerData pd))
+                return;
+
+            if (!(arena[adKey] is ArenaData ad))
+                return;
+
+            ref C2SSecurity pkt = ref MemoryMarshal.AsRef<C2SSecurity>(new Span<byte>(data, 0, length));
+
+            lock (lockObj)
+            {
+                if (!pd.Sent)
+                {
+                    if (pd.Cancelled)
+                    {
+                        pd.Cancelled = false;
+                    }
+                    else
+                    {
+                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        {
+                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but wasn't expecting one.");
+                        }
+                    }
+                }
+                else
+                {
+                    pd.Sent = false;
+
+                    bool kick = false;
+
+                    if (pd.SettingsChecksum != 0 && pkt.SettingChecksum != pd.SettingsChecksum)
+                    {
+                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        {
+                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Settings checksum mismatch.");
+                        }
+
+                        kick = true;
+                    }
+
+                    if (ad.MapChecksum != 0 && pkt.MapChecksum != ad.MapChecksum)
+                    {
+                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        {
+                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Map checksum mismatch.");
+                        }
+
+                        kick = true;
+                    }
+
+                    bool exeOk = false;
+
+                    if (p.Type == ClientType.VIE)
+                    {
+                        if (vieExeChecksum == pkt.ExeChecksum)
+                        {
+                            exeOk = true;
+                        }
+                    }
+                    else if (p.Type == ClientType.Continuum)
+                    {
+                        if (continuumExeChecksum != 0)
+                        {
+                            if (continuumExeChecksum == pkt.ExeChecksum)
+                            {
+                                exeOk = true;
+                            }
+                        }
+                        else
+                        {
+                            exeOk = true;
+                        }
+                    }
+                    else
+                    {
+                        exeOk = true;
+                    }
+
+                    if (!exeOk)
+                    {
+                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        {
+                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Exe checksum mismatch.");
+                        }
+
+                        kick = true;
+                    }
+
+                    if (kick)
+                    {
+                        KickPlayer(p);
+                    }
+                }
+            }
+
+            // submit info to the lag data collector
+            ClientLatencyData cld = new ClientLatencyData()
+            {
+                WeaponCount = pkt.WeaponCount,
+                S2CSlowTotal = pkt.S2CSlowTotal,
+                S2CFastTotal = pkt.S2CFastTotal,
+                S2CSlowCurrent = pkt.S2CSlowCurrent,
+                S2CFastCurrent = pkt.S2CFastCurrent,
+                Unknown1 = pkt.Unknown1,
+                LastPing = pkt.LastPing,
+                AveragePing = pkt.AveragePing,
+                LowestPing = pkt.LowestPing,
+                HighestPing = pkt.HighestPing,
+            };
+            lagCollect.ClientLatency(p, ref cld);
         }
 
+        /// <summary>
+        /// Per arena data
+        /// </summary>
         private class ArenaData
         {
             /// <summary>
@@ -337,17 +631,35 @@ namespace SS.Core.Modules
             public uint MapChecksum;
         }
 
+        /// <summary>
+        /// Per player data
+        /// </summary>
         private class PlayerData
         {
             /// <summary>
-            /// whether we went a security request or not
+            /// Whether a security request was sent and is still pending (hasn't been fulfilled with a valid response yet).
             /// </summary>
             public bool Sent;
+
+            /// <summary>
+            /// Whether to consider a request as cancelled due to the player having changed arenas mid-request/response.
+            /// Changing arenas means map and settings checksums will likely change too.
+            /// </summary>
+            public bool Cancelled;
 
             /// <summary>
             /// individual checksums
             /// </summary>
             public uint SettingsChecksum;
+        }
+
+        /// <summary>
+        /// Timer local data.
+        /// To reuse objects without having to reallocate on each iteration of the timer.
+        /// </summary>
+        private class SendTimerData
+        {
+            public readonly List<Player> SendPlayerList = new List<Player>();
         }
     }
 }
