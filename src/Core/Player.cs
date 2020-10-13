@@ -86,124 +86,121 @@ namespace SS.Core
     {
         /// <summary>
         /// player was just created, and isn't ready to do anything yet
-        /// transitions to: connected
+        /// <para>transitions to: connected</para>
         /// </summary>
-        Uninitialized = 0, 
+        Uninitialized = 0,
 
         /// <summary>
         /// player is connected (key exchange completed) but has not logged in yet
-        /// transitions to: need_auth or leaving_zone
+        /// <para>transitions to: need_auth or leaving_zone</para>
         /// </summary>
-        Connected, 
+        Connected,
 
         /// <summary>
         /// player sent login, auth request will be sent
-        /// transitions to: wait_auth
+        /// <para>transitions to: wait_auth</para>
         /// </summary>
-        NeedAuth, 
+        NeedAuth,
 
         /// <summary>
         /// waiting for auth response
-        /// transitions to: connected or need_global_sync
+        /// <para>transitions to: connected or need_global_sync</para>
         /// </summary>
-        WaitAuth, 
+        WaitAuth,
 
         /// <summary>
         /// auth done, will request global sync
-        /// transitions to: wait_global_sync1
+        /// <para>transitions to: wait_global_sync1</para>
         /// </summary>
-        NeedGlobalSync, 
+        NeedGlobalSync,
 
         /// <summary>
         /// waiting for sync global persistent data to complete
-        /// transitions to: do_global_callbacks
+        /// <para>transitions to: do_global_callbacks</para>
         /// </summary>
-        WaitGlobalSync1, 
+        WaitGlobalSync1,
 
         /// <summary>
         /// global sync done, will call global player connecting callbacks
-        /// transitions to: send_login_response
+        /// <para>transitions to: send_login_response</para>
         /// </summary>
-        DoGlobalCallbacks, 
+        DoGlobalCallbacks,
 
         /// <summary>
         /// callbacks done, will send arena response
-        /// transitions to: loggedin
+        /// <para>transitions to: loggedin</para>
         /// </summary>
-        SendLoginResponse, 
+        SendLoginResponse,
 
         /// <summary>
-        /// player is finished logging in but is not in an arena yet status
-        /// returns here after leaving an arena, also
-        /// transitions to: do_freq_and_arena_sync or leaving_zone
+        /// Player is finished logging in but is not in an arena yet.
+        /// Also, status returns here after leaving an arena.
+        /// <para>transitions to: do_freq_and_arena_sync or leaving_zone</para>
         /// </summary>
-        LoggedIn, 
+        LoggedIn,
 
         // p->arena is valid starting here
 
         /// <summary>
-        /// player has requested entering an arena, needs to be assigned a
-        /// freq and have arena data syched
-        /// transitions to: wait_arena_sync1 (or loggedin)
+        /// player has requested entering an arena, needs to be assigned a freq and have arena data syched
+        /// <para>transitions to: wait_arena_sync1 (or loggedin)</para>
         /// </summary>
-        DoFreqAndArenaSync, 
+        DoFreqAndArenaSync,
 
         /// <summary>
         /// waiting for scores sync
-        /// transitions to: send_arena_response (or do_arena_sync2)
+        /// <para>transitions to: send_arena_response (or do_arena_sync2)</para>
         /// </summary>
-        WaitArenaSync1, 
+        WaitArenaSync1,
 
         /// <summary>
         /// done with scores, needs to send arena response and run arena
         /// entering callbacks
-        /// transitions to: playing (or do_arena_sync2)
+        /// <para>transitions to: playing (or do_arena_sync2)</para>
         /// </summary>
-        ArenaRespAndCBS, 
+        ArenaRespAndCBS,
 
         /// <summary>
         /// player is playing in an arena. typically the longest state
-        /// transitions to: leaving_arena
+        /// <para>transitions to: leaving_arena</para>
         /// </summary>
-        Playing, 
+        Playing,
 
         /// <summary>
         /// player has left arena, callbacks need to be called
-        /// transitions to: do_arena_sync2
+        /// <para>transitions to: do_arena_sync2</para>
         /// </summary>
-        LeavingArena, 
+        LeavingArena,
 
         /// <summary>
         /// need to sync in the other direction
-        /// transitions to: wait_arena_sync2
+        /// <para>transitions to: wait_arena_sync2</para>
         /// </summary>
-        DoArenaSync2, 
+        DoArenaSync2,
 
         /// <summary>
         /// waiting for scores sync, other direction
-        /// transitions to: loggedin
+        /// <para>transitions to: loggedin</para>
         /// </summary>
-        WaitArenaSync2, 
+        WaitArenaSync2,
 
         // p->arena is no longer valid after this point
 
         /// <summary>
-        /// player is leaving zone, call disconnecting callbacks and start
-        /// global sync
-        /// transitions to: wait_global_sync2
+        /// player is leaving zone, call disconnecting callbacks and start global sync
+        /// <para>transitions to: wait_global_sync2</para>
         /// </summary>
-        LeavingZone, 
+        LeavingZone,
 
         /// <summary>
         /// waiting for global sync, other direction
-        /// transitions to: timewait
+        /// <para>transitions to: timewait</para>
         /// </summary>
-        WaitGlobalSync2, 
+        WaitGlobalSync2,
 
         /// <summary>
-        /// the connection is all set to be ended. the network layer will
-        /// free the player after this.
-        /// transitions to: (none)
+        /// the connection is all set to be ended. the network layer will free the player after this.
+        /// <para>transitions to: (none)</para>
         /// </summary>
         TimeWait
     };

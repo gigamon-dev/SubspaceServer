@@ -74,54 +74,26 @@ namespace SS.Core.Packets
             set { acceptaudio.SetValue(data, value); }
         }
 
+        private Span<byte> NameSpan
+        {
+            get { return new Span<byte>(data, name.ByteOffset, name.NumBytes); }
+        }
+
         public string Name
         {
-            get { return Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBytes); }
-            set
-            {
-                if (string.IsNullOrEmpty(value))
-                    throw new ArgumentException("cannot be null or emmpty", "value");
-                
-                int fieldLength = name.NumBytes;
-                if (value.Length < fieldLength)
-                {
-                    int bytesWritten = Encoding.ASCII.GetBytes(value, 0, value.Length, data, name.ByteOffset);
-                    while (bytesWritten < fieldLength)
-                    {
-                        data[name.ByteOffset + bytesWritten] = 0;
-                        bytesWritten++;
-                    }
-                }
-                else
-                {
-                    Encoding.ASCII.GetBytes(value, 0, fieldLength, data, name.ByteOffset);
-                }
-            }
+            get { return NameSpan.ReadNullTerminatedASCII(); }
+            set { NameSpan.WriteNullPaddedASCII(value, false); }
+        }
+
+        private Span<byte> SquadSpan
+        {
+            get { return new Span<byte>(data, squad.ByteOffset, squad.NumBytes); }
         }
 
         public string Squad
         {
-            get { return Encoding.ASCII.GetString(data, squad.ByteOffset, squad.NumBytes); }
-            set
-            {
-                if (value == null)
-                    value = string.Empty;
-                
-                int fieldLength = squad.NumBytes;
-                if (value.Length < fieldLength)
-                {
-                    int bytesWritten = Encoding.ASCII.GetBytes(value, 0, value.Length, data, squad.ByteOffset);
-                    while (bytesWritten < fieldLength)
-                    {
-                        data[squad.ByteOffset + bytesWritten] = 0;
-                        bytesWritten++;
-                    }
-                }
-                else
-                {
-                    Encoding.ASCII.GetBytes(value, 0, fieldLength, data, squad.ByteOffset);
-                }
-            }
+            get { return SquadSpan.ReadNullTerminatedASCII(); }
+            set { SquadSpan.WriteNullPaddedASCII(value, false); }
         }
 
         public int KillPoints

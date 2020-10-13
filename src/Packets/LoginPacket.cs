@@ -56,21 +56,19 @@ namespace SS.Core.Packets
             this.data = data ?? throw new ArgumentNullException(nameof(data));
         }
 
+        public Span<byte> NameSpan
+        {
+            get { return new Span<byte>(data, name.ByteOffset, name.NumBytes); }
+        }
+
         public string Name
         {
-            get
-            {
-                // Encoding.ASCII only supports 7 bit, which is exactly what is needed.
-                // asss allows all printable characters except for colon
-                // considering: Encoding.GetEncoding("us-ascii", new EncoderReplacementFallback(string.Empty), new DecoderReplacementFallback(string.Empty);
-                string str = Encoding.ASCII.GetString(data, name.ByteOffset, name.NumBytes);
-                int index = str.IndexOf('\0');
-                if (index != -1)
-                {
-                    return str.Substring(0, index);
-                }
-                return str;
-            }
+            get { return NameSpan.ReadNullTerminatedASCII(); }
+        }
+
+        public Span<byte> PasswordSpan
+        {
+            get { return new Span<byte>(data, password.ByteOffset, name.NumBytes); }
         }
 
         public uint MacId
@@ -86,14 +84,6 @@ namespace SS.Core.Packets
         public uint D2
         {
             get { return d2.GetValue(data); }
-        }
-
-        public static int Copy(LoginPacket sourcePacket, LoginPacket destinationPacket)
-        {
-            int minDataLength = Math.Min(sourcePacket.data.Length, destinationPacket.data.Length);
-            Array.Copy(sourcePacket.data, destinationPacket.data, minDataLength);
-
-            return minDataLength;
         }
     }
 }

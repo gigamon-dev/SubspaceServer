@@ -6,9 +6,9 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public readonly struct ContinuumChecksumPacket
+    public readonly struct ContinuumVersionPacket
     {
-        static ContinuumChecksumPacket()
+        static ContinuumVersionPacket()
         {
             DataLocationBuilder locationBuilder = new DataLocationBuilder();
             type = locationBuilder.CreateByteDataLocation();
@@ -24,7 +24,7 @@ namespace SS.Core.Packets
 
         private readonly byte[] data;
 
-        public ContinuumChecksumPacket(byte[] data)
+        public ContinuumVersionPacket(byte[] data)
         {
             this.data = data ?? throw new ArgumentNullException(nameof(data));
         }

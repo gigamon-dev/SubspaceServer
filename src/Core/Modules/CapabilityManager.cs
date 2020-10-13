@@ -289,6 +289,7 @@ namespace SS.Core.Modules
                 // biller or password file, don't assign groups based on name.
                 pd.Group = Group_Default;
                 pd.Source = CapSource.Default;
+                return;
             }
 
             string g;

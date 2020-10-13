@@ -1,29 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
-using SS.Core.ComponentInterfaces;
+using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Diagnostics;
-using SS.Core.ComponentCallbacks;
+using System.Text;
 
 namespace SS.Core.Modules
 {
-    public static class AuthCodeExtension
-    {
-        /// <summary>
-        /// which authentication result codes result in the player moving forward in the login process
-        /// </summary>
-        /// <param name="authCode"></param>
-        /// <returns></returns>
-        public static bool AuthIsOK(this AuthCode authCode)
-        {
-            return authCode == AuthCode.OK || authCode == AuthCode.SpecOnly || authCode == AuthCode.NoScores;
-        }
-    }
-
     /// <summary>
     /// this module handles player login process
     /// and transitioning the player object through its various states
@@ -33,20 +18,20 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Core : IModule, IAuth
     {
-        private static readonly byte[] _keepAlive = new byte[1] { (byte)Packets.S2CPacketType.KeepAlive };
+        private static readonly byte[] _keepAlive = new byte[1] { (byte)S2CPacketType.KeepAlive };
 
         private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private INetwork _net;
-        private IChatNet _chatnet;
-        private ILogManager _logManager;
-        private IConfigManager _configManager;
-        private IMainloopTimer _mainloopTimer;
-        private IMapNewsDownload _map;
         private IArenaManager _arenaManager;
         private ICapabilityManager _capabiltyManager;
-        private IPersist _persist;
-        private IStats _stats;
+        //private IChatNet _chatnet;
+        private IConfigManager _configManager;
+        private ILogManager _logManager;
+        private IMainloopTimer _mainloopTimer;
+        private IMapNewsDownload _map;
+        private INetwork _net;
+        //private IPersist _persist;
+        private IPlayerData _playerData;
+        //private IStats _stats;
         private InterfaceRegistrationToken _iAuthToken;
 
         private int _pdkey;
@@ -63,8 +48,7 @@ namespace SS.Core.Modules
         private class CorePlayerData
         {
             public AuthData authdata;
-            public LoginPacket? loginpkt;
-            public int lplen;
+            public DataBuffer LoginPacketBuffer;
             public Player replacedBy;
 
             // TODO: maybe use BitVector
@@ -73,37 +57,33 @@ namespace SS.Core.Modules
             public bool hasdonegcallbacks; // global callbacks
         }
 
-        private uint getChecksum(string file)
+        private uint GetChecksum(string file)
         {
             try
             {
-                using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
-                {
-                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
-                    return (uint)crc32.GetCrc32(fs);
-                }
+                using FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read);
+                Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                return (uint)crc32.GetCrc32(fs);
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "error getting checksum to [{0}]: {1}", file, ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting checksum to '{0}'. {1}", file, ex.Message);
                 return uint.MaxValue;
             }
         }
 
-        private uint getU32(string file, int offset)
+        private uint GetUInt32(string file, int offset)
         {
             try
             {
-                using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
-                using (BinaryReader br = new BinaryReader(fs))
-                {
-                    fs.Seek(offset, SeekOrigin.Begin);
-                    return br.ReadUInt32();
-                }
+                using FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read);
+                using BinaryReader br = new BinaryReader(fs);
+                fs.Seek(offset, SeekOrigin.Begin);
+                return br.ReadUInt32();
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "error getting u32 from '{0}' at offset {1}: {2}", file, offset, ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting UInt32 from '{0}' at offset {1}. {2}", file, offset, ex.Message);
                 return uint.MaxValue;
             }
         }
@@ -112,45 +92,44 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IPlayerData playerData,
-            INetwork net,
-            ILogManager logManager,
+            IArenaManager arenaManager,
+            ICapabilityManager capabilityManager,
             IConfigManager configManager,
+            ILogManager logManager,
             IMainloopTimer mainloopTimer,
             IMapNewsDownload map,
-            IArenaManager arenaManager,
-            ICapabilityManager capabilityManager)
+            INetwork net,
+            IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
-            //_chatnet = 
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _map = map ?? throw new ArgumentNullException(nameof(map));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+            _map = map ?? throw new ArgumentNullException(nameof(map));
+            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            _continuumChecksum = getChecksum(ContinuumExeFile);
-            _codeChecksum = getU32(ContinuumChecksumFile, 4);
+            _continuumChecksum = GetChecksum(ContinuumExeFile);
+            _codeChecksum = GetUInt32(ContinuumChecksumFile, 4);
 
             _pdkey = _playerData.AllocatePlayerData<CorePlayerData>();
 
             // set up callbacks
-            _net.AddPacket((int)Packets.C2SPacketType.Login, playerLogin);
-            _net.AddPacket((int)Packets.C2SPacketType.ContLogin, playerLogin);
+            _net.AddPacket((int)C2SPacketType.Login, Packet_Login);
+            _net.AddPacket((int)C2SPacketType.ContLogin, Packet_Login);
 
             //if(_chatnet != null)
                 //_chatnet.AddHandler("LOGIN", chatLogin);
 
-            _mainloopTimer.SetTimer(processPlayerStates, 100, 100, null);
+            _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerStates, 100, 100, null);
 
-            // register default interfaces which may be replaced later
+            // register default interface which may be replaced later
             _iAuthToken = broker.RegisterInterface<IAuth>(this);
 
             // set up periodic events
-            _mainloopTimer.SetTimer(sendKeepAlive, 5000, 5000, null); // every 5 seconds
+            _mainloopTimer.SetTimer(MainloopTimer_SendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             return true;
         }
@@ -160,13 +139,13 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
                 return false;
 
-            _mainloopTimer.ClearTimer(sendKeepAlive, null);
-            _mainloopTimer.ClearTimer(processPlayerStates, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_ProcessPlayerStates, null);
             
             if (_net != null)
             {
-                _net.RemovePacket((int)Packets.C2SPacketType.Login, playerLogin);
-                _net.RemovePacket((int)Packets.C2SPacketType.ContLogin, playerLogin);
+                _net.RemovePacket((int)C2SPacketType.Login, Packet_Login);
+                _net.RemovePacket((int)C2SPacketType.ContLogin, Packet_Login);
             }
 
             //if (_chatnet != null)
@@ -184,7 +163,7 @@ namespace SS.Core.Modules
             public PlayerState OldStatus;
         }
 
-        private bool processPlayerStates()
+        private bool MainloopTimer_ProcessPlayerStates()
         {
             // put pending actions here while processing the player list
             LinkedList<PlayerStateChange> actions = null; // only allocate if we need to
@@ -251,7 +230,7 @@ namespace SS.Core.Modules
                         case PlayerState.LeavingZone: ns = PlayerState.WaitGlobalSync2; break;
 
                         default: // catch any other state
-                            _logManager.LogM(LogLevel.Error, nameof(Core), "[pid={0}] internal error: unknown player status {1}", player.Id, oldstatus);
+                            _logManager.LogM(LogLevel.Error, nameof(Core), "[pid={0}] Internal error: unknown player status {1}", player.Id, oldstatus);
                             continue;
                     }
 
@@ -280,8 +259,8 @@ namespace SS.Core.Modules
             {
                 Player player = action.Player;
                 PlayerState oldstatus = action.OldStatus;
-                CorePlayerData pdata = player[_pdkey] as CorePlayerData;
-                if (pdata == null)
+
+                if (!(player[_pdkey] is CorePlayerData pdata))
                     continue;
 
                 switch (oldstatus)
@@ -291,19 +270,18 @@ namespace SS.Core.Modules
                             IAuth auth = _broker.GetInterface<IAuth>();
                             try
                             {
-                                if (auth != null && pdata.loginpkt != null && pdata.lplen > 0)
+                                if (auth != null && pdata.LoginPacketBuffer != null && pdata.LoginPacketBuffer.NumBytes > 0)
                                 {
-                                    _logManager.LogM(LogLevel.Drivel, nameof(Core), "authenticating with '{0}'", auth.GetType().ToString());
-                                    auth.Authenticate(player, pdata.loginpkt.Value, pdata.lplen, authDone);
+                                    _logManager.LogM(LogLevel.Drivel, nameof(Core), "Authenticating with '{0}'", auth.GetType().ToString());
+                                    auth.Authenticate(player, new LoginPacket(pdata.LoginPacketBuffer.Bytes), pdata.LoginPacketBuffer.NumBytes, AuthDone);
                                 }
                                 else
                                 {
-                                    _logManager.LogM(LogLevel.Warn, nameof(Core), "can't authenticate player!");
+                                    _logManager.LogM(LogLevel.Warn, nameof(Core), "Can't authenticate player!");
                                     _playerData.KickPlayer(player);
                                 }
 
-                                pdata.loginpkt = null;
-                                pdata.lplen = 0;
+                                pdata.LoginPacketBuffer?.Dispose();
                             }
                             finally
                             {
@@ -317,18 +295,18 @@ namespace SS.Core.Modules
                         //if (_persist)
                             //_persist.GetPlayer(player, null, playerSyncDone);
                         //else
-                            playerSyncDone(player);
+                            PlayerSyncDone(player);
                         pdata.hasdonegsync = true;
                         break;
 
                     case PlayerState.DoGlobalCallbacks:
-                        firePlayerActionEvent(player, PlayerAction.Connect, null);
+                        FirePlayerActionEvent(player, PlayerAction.Connect, null);
                         pdata.hasdonegcallbacks = true;
                         break;
 
                     case PlayerState.SendLoginResponse:
-                        sendLoginResponse(player);
-                        _logManager.LogM(LogLevel.Info, nameof(Core), "[{0}] [pid={1}] player logged in", player.Name, player.Id);
+                        SendLoginResponse(player);
+                        _logManager.LogM(LogLevel.Info, nameof(Core), "[{0}] [pid={1}] Player logged in from ip={2} macid={3:X}", player.Name, player.Id, player.IpAddress, player.MacId);
                         break;
 
                     case PlayerState.DoFreqAndArenaSync:
@@ -339,7 +317,7 @@ namespace SS.Core.Modules
 
                         // do pre-callbacks
                         arena = player.Arena;
-                        firePlayerActionEvent(player, PlayerAction.PreEnterArena, arena);
+                        FirePlayerActionEvent(player, PlayerAction.PreEnterArena, arena);
 
                         // get a freq
                         if ((int)player.Ship == -1 || player.Freq == -1)
@@ -369,7 +347,7 @@ namespace SS.Core.Modules
                         //if (persist)
                             //persist.GetPlayer(player, player.Arena, playerSyncDone);
                         //else
-                            playerSyncDone(player);
+                            PlayerSyncDone(player);
                         pdata.hasdonegsync = true;
                         break;
 
@@ -391,30 +369,30 @@ namespace SS.Core.Modules
                         player.Flags.SentWeaponPacket = false;
 
                         arena = player.Arena;
-                        firePlayerActionEvent(player, PlayerAction.EnterArena, arena);
+                        FirePlayerActionEvent(player, PlayerAction.EnterArena, arena);
 
                         break;
 
                     case PlayerState.LeavingArena:
-                        firePlayerActionEvent(player, PlayerAction.LeaveArena, player.Arena);
+                        FirePlayerActionEvent(player, PlayerAction.LeaveArena, player.Arena);
                         break;
 
                     case PlayerState.DoArenaSync2:
                         /*if (persist != null && pdata.hasdonegsync)
                             persist.PutPlayer(player, player.Arena, playerSyncDone);
                         else*/
-                            playerSyncDone(player);
+                            PlayerSyncDone(player);
                         pdata.hasdoneasync = false;
                         break;
 
                     case PlayerState.LeavingZone:
                         if (pdata.hasdonegcallbacks)
-                            firePlayerActionEvent(player, PlayerAction.Disconnect, null);
+                            FirePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
                         /*if (_persist != null && pdata.hasdonegsync)
                             _persist.PutPlayer(player, null, playerSyncDone);
                         else*/
-                            playerSyncDone(player);
+                            PlayerSyncDone(player);
 
                         pdata.hasdonegsync = false;
                         break;
@@ -424,7 +402,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void firePlayerActionEvent(Player p, PlayerAction action, Arena arena)
+        private void FirePlayerActionEvent(Player p, PlayerAction action, Arena arena)
         {
             if (p == null)
                 return;
@@ -435,17 +413,19 @@ namespace SS.Core.Modules
                 PlayerActionCallback.Fire(_broker, p, action, arena);
         }
 
-        private void failLoginWith(Player p, AuthCode authCode, string text, string logmsg)
+        private void FailLoginWith(Player p, AuthCode authCode, string text, string logmsg)
         {
             AuthData auth = new AuthData();
 
-            if (p.Type == ClientType.Continuum && text != null)
+            if (p.Type == ClientType.Continuum && !string.IsNullOrWhiteSpace(text))
             {
-                auth.code = AuthCode.CustomText;
-                auth.customtext = text;
+                auth.Code = AuthCode.CustomText;
+                auth.CustomText = text;
             }
             else
-                auth.code = authCode;
+            {
+                auth.Code = authCode;
+            }
 
             _playerData.WriteLock();
             try
@@ -457,43 +437,47 @@ namespace SS.Core.Modules
                 _playerData.WriteUnlock();
             }
 
-            authDone(p, auth);
+            AuthDone(p, auth);
 
-            _logManager.LogM(LogLevel.Drivel, nameof(Core), "[pid={0}] login request denied: {1}", p.Id, logmsg);
+            _logManager.LogM(LogLevel.Drivel, nameof(Core), "[pid={0}] Login request denied: {1}", p.Id, logmsg);
         }
 
-        private void playerLogin(Player p, byte[] data, int len)
+        private void Packet_Login(Player p, byte[] data, int len)
         {
             if (p == null)
                 return;
 
-            CorePlayerData pdata = p[_pdkey] as CorePlayerData;
-            if (pdata == null)
+            if (!(p[_pdkey] is CorePlayerData pdata))
                 return;
 
             if (!p.IsStandard)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] login packet from wrong client type ({1})", p.Id, p.Type);
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Login packet from wrong client type ({1})", p.Id, p.Type);
             }
 #if CFG_RELAX_LENGTH_CHECKS
-            else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) ||
-                (p.Type == ClientType.Continuum && len < LoginPacket.LengthContinuum))
+            else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) 
+                || (p.Type == ClientType.Continuum && len < LoginPacket.LengthContinuum))
+#else
+            else if ((p.Type == ClientType.VIE && len != LoginPacket.LengthVIE)
+                || (p.Type == ClientType.Continuum && len != LoginPacket.LengthContinuum))
 #endif
-            else if ((p.Type == ClientType.VIE && len != LoginPacket.LengthVIE) ||
-                (p.Type == ClientType.Continuum && len != LoginPacket.LengthContinuum))
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] bad login packet length ({1})", p.Id, len);
+            {
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Bad login packet length ({1})", p.Id, len);
+            }
             else if (p.Status != PlayerState.Connected)
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] login request from wrong stage: {1}", p.Id, p.Status);
+            {
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Login request from wrong stage: {1}", p.Id, p.Status);
+            }
             else
             {
                 LoginPacket pkt = new LoginPacket(data);
 
 #if !CFG_RELAX_LENGTH_CHECKS
                 // VIE clients can only have one version. 
-                // Continuum clients will need to ask for an update
-                if(p.Type == ClientType.VIE && pkt.CVersion != ClientVersion_VIE)
+                // Continuum clients will need to ask for an update.
+                if (p.Type == ClientType.VIE && pkt.CVersion != ClientVersion_VIE)
                 {
-                    failLoginWith(p, AuthCode.LockedOut, null, "bad VIE client version");
+                    FailLoginWith(p, AuthCode.LockedOut, null, "Bad VIE client version");
                     return;
                 }
 #endif
@@ -502,36 +486,31 @@ namespace SS.Core.Modules
                 if (len > 512)
                     len = 512;
 
-                pdata.loginpkt = new LoginPacket(new byte[len]); // consider getting byte[] from a pool
-                LoginPacket lp = pdata.loginpkt.Value;
-                LoginPacket.Copy(pkt, lp);
-                pdata.lplen = len;
+                pdata.LoginPacketBuffer = Pool<DataBuffer>.Default.Get();
+                Array.Copy(data, pdata.LoginPacketBuffer.Bytes, len);
+                pdata.LoginPacketBuffer.NumBytes = len;
+                pkt = new LoginPacket(pdata.LoginPacketBuffer.Bytes);
 
-                // name must be nul-terminated, also set name length limit at 19 characters
-                string name = lp.Name.Trim();
-                if (name.Length > 19)
-                    name = name.Substring(0, 19); // TODO: asss cuts at 19 b/c of null termination, but i think we could potentially do 20
-
-                // only allow printable characters in names, excluding colon.
-                // while we're at it, remove leading, trailing, and series of spaces
-                // TODO:
-                name = name.Replace(":", string.Empty);
+                // name
+                CleanupName(pkt.NameSpan); // first, manipulate name as bytes (fewer string object allocations)
+                string name = pkt.Name;
 
                 // if nothing could be salvaged from their name, disconnect them
-                if (name == string.Empty)
+                if (string.IsNullOrWhiteSpace(name))
                 {
-                    failLoginWith(p, AuthCode.BadName, "Your player name contains no valid characters", "all invalid chars");
+                    FailLoginWith(p, AuthCode.BadName, "Your player name contains no valid characters", "all invalid chars");
                     return;
                 }
 
                 // must start with number or letter
                 if (!char.IsLetterOrDigit(name[0]))
                 {
-                    failLoginWith(p, AuthCode.BadName, "Your player name must start with a letter or number", "name doesn't start with alphanumeric");
+                    FailLoginWith(p, AuthCode.BadName, "Your player name must start with a letter or number", "name doesn't start with alphanumeric");
                     return;
                 }
 
                 // pass must be nul-terminated
+                pkt.PasswordSpan[^1] = 0;
 
                 // fill misc data
                 p.MacId = pkt.MacId;
@@ -539,7 +518,7 @@ namespace SS.Core.Modules
 
                 if (p.Type == ClientType.VIE)
                     p.ClientName = string.Format("<ss/vie client, v. {0}>", pkt.CVersion);
-                else if(p.Type == ClientType.Continuum)
+                else if (p.Type == ClientType.Continuum)
                     p.ClientName = string.Format("<continuum, v. {0}>", pkt.CVersion);
 
                 // set up status
@@ -553,15 +532,44 @@ namespace SS.Core.Modules
                     _playerData.WriteUnlock();
                 }
 
-                _logManager.LogM(LogLevel.Drivel, nameof(Core), "[pid={0}] login request: '{1}'", p.Id, lp.Name);
+                _logManager.LogM(LogLevel.Drivel, nameof(Core), "[pid={0}] login request: '{1}'", p.Id, name);
+            }
+
+            static void CleanupName(Span<byte> nameSpan)
+            {
+                // limit name to 20 bytes
+                // the last byte must be the nul-terminator
+                nameSpan.Slice(19).Fill(0);
+                nameSpan = nameSpan.Slice(0, 20);
+
+                // only allow printable characters in names, excluding colon.
+                // while we're at it, remove leading, trailing, and series of spaces
+                byte c, cc = (byte)' ';
+                int s = 0;
+                int l = 0;
+
+                while ((c = nameSpan[s++]) != 0)
+                {
+                    if (c >= 32 && c <= 126 && c != (byte)':')
+                    {
+                        if (c == (byte)' ' && cc == (byte)' ')
+                            continue;
+
+                        nameSpan[l++] = cc = c;
+                    }
+                }
+
+                // check for a trailing space
+                if (l > 0 && nameSpan[l - 1] == (byte)' ')
+                    l--;
+
+                nameSpan.Slice(l).Fill(0);
             }
         }
 
-
-        private void authDone(Player p, AuthData auth)
+        private void AuthDone(Player p, AuthData auth)
         {
-            CorePlayerData pdata = p[_pdkey] as CorePlayerData;
-            if (pdata == null)
+            if (!(p[_pdkey] is CorePlayerData pdata))
                 return;
 
             if (p.Status != PlayerState.WaitAuth)
@@ -573,30 +581,29 @@ namespace SS.Core.Modules
             // copy the authdata
             pdata.authdata = auth;
 
-            p.Flags.Authenticated = auth.authenticated;
+            p.Flags.Authenticated = auth.Authenticated;
 
-            if (auth.code.AuthIsOK())
+            if (auth.Code.AuthIsOK())
             {
                 // login succeeded
 
                 // try to locate existing player with the same name
-                Player oldp = _playerData.FindPlayer(auth.name);
+                Player oldp = _playerData.FindPlayer(auth.Name);
 
                 // set new player's name
-                p.pkt.Name = auth.sendname;
-                p.Name = auth.name;
-                p.pkt.Squad = auth.squad;
-                p.Squad = auth.squad;
+                p.pkt.Name = auth.SendName;
+                p.Name = auth.Name;
+                p.pkt.Squad = auth.Squad;
+                p.Squad = auth.Squad;
 
                 // make sure we don't have two identical players. if so, do not
                 // increment stage yet. we'll do it when the other player leaves
                 if (oldp != null && oldp != p)
                 {
-                    CorePlayerData oldd = p[_pdkey] as CorePlayerData;
-                    if (oldd == null)
+                    if (!(p[_pdkey] is CorePlayerData oldd))
                         return;
 
-                    _logManager.LogM(LogLevel.Drivel, nameof(Core), "[{0}] player already on, kicking him off (pid {1} replacing {2})", auth.name, p.Id, oldp.Id);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Core), "[{0}] player already on, kicking him off (pid {1} replacing {2})", auth.Name, p.Id, oldp.Id);
                     oldd.replacedBy = p;
                     _playerData.KickPlayer(oldp);
                 }
@@ -610,10 +617,9 @@ namespace SS.Core.Modules
             }
             else
             {
-                // if the login didn't succeed status should go to S_CONNECTED
-                // instead of moving forward, and send the login response now,
-                // since we won't do it later.
-                sendLoginResponse(p);
+                // if the login didn't succeed status should go to PlayerState.Connected
+                // instead of moving forward, and send the login response now, since we won't do it later.
+                SendLoginResponse(p);
                 _playerData.WriteLock();
                 try
                 {
@@ -626,7 +632,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void playerSyncDone(Player player)
+        private void PlayerSyncDone(Player player)
         {
             if (player == null)
                 return;
@@ -676,112 +682,104 @@ namespace SS.Core.Modules
             }
         }
 
-        private static string getAuthCodeMessage(AuthCode code)
+        private static string GetAuthCodeMessage(AuthCode code)
         {
-            switch (code)
+            return code switch
             {
-                case AuthCode.OK: return "ok";
-                case AuthCode.NewName: return "new user";
-                case AuthCode.BadPassword: return "incorrect password";
-                case AuthCode.ArenaFull: return "arena full";
-                case AuthCode.LockedOut: return "you have been locked out";
-                case AuthCode.NoPermission: return "no permission";
-                case AuthCode.SpecOnly: return "you can spec only";
-                case AuthCode.TooManyPoints: return "you have too many points";
-                case AuthCode.TooSlow: return "too slow (?)";
-                case AuthCode.NoPermission2: return "no permission (2)";
-                case AuthCode.NoNewConn: return "the server is not accepting new connections";
-                case AuthCode.BadName: return "bad player name";
-                case AuthCode.OffensiveName: return "offensive player name";
-                case AuthCode.NoScores: return "the server is not recordng scores";
-                case AuthCode.ServerBusy: return "the server is busy";
-                case AuthCode.TooLowUsage: return "too low usage";
-                case AuthCode.NoName: return "no name sent";
-                case AuthCode.TooManyDemo: return "too many demo players";
-                case AuthCode.NoDemo: return "no demo players allowed";
-
-                case AuthCode.CustomText:
-                default: 
-                    return "???";
-            }
+                AuthCode.OK => "ok",
+                AuthCode.NewName => "new user",
+                AuthCode.BadPassword => "incorrect password",
+                AuthCode.ArenaFull => "arena full",
+                AuthCode.LockedOut => "you have been locked out",
+                AuthCode.NoPermission => "no permission",
+                AuthCode.SpecOnly => "you can spec only",
+                AuthCode.TooManyPoints => "you have too many points",
+                AuthCode.TooSlow => "too slow (?)",
+                AuthCode.NoPermission2 => "no permission (2)",
+                AuthCode.NoNewConn => "the server is not accepting new connections",
+                AuthCode.BadName => "bad player name",
+                AuthCode.OffensiveName => "offensive player name",
+                AuthCode.NoScores => "the server is not recordng scores",
+                AuthCode.ServerBusy => "the server is busy",
+                AuthCode.TooLowUsage => "too low usage",
+                AuthCode.AskDemographics => "need demographics",
+                AuthCode.TooManyDemo => "too many demo players",
+                AuthCode.NoDemo => "no demo players allowed",
+                _ => "???",
+            };
         }
 
-        private void sendLoginResponse(Player player)
+        private void SendLoginResponse(Player player)
         {
-            CorePlayerData pdata = player[_pdkey] as CorePlayerData;
-            if (pdata == null)
+            if (!(player[_pdkey] is CorePlayerData pdata))
                 return;
 
             AuthData auth = pdata.authdata;
 
             if (auth == null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "missing authdata for pid {0}", player.Id);
+                _logManager.LogM(LogLevel.Error, nameof(Core), "Missing authdata for pid {0}", player.Id);
                 _playerData.KickPlayer(player);
             }
             else if (player.IsStandard)
             {
-                using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-                {
-                    LoginResponsePacket lr = new LoginResponsePacket(buffer.Bytes);
-                    lr.Initialize();
-                    lr.Code = (byte)auth.code;
-                    lr.DemoData = auth.demodata ? (byte)1 : (byte)0;
-                    lr.NewsChecksum = _map.GetNewsChecksum();
+                using DataBuffer buffer = Pool<DataBuffer>.Default.Get();
+                LoginResponsePacket lr = new LoginResponsePacket(buffer.Bytes);
+                lr.Initialize();
+                lr.Code = (byte)auth.Code;
+                lr.DemoData = auth.DemoData ? (byte)1 : (byte)0;
+                lr.NewsChecksum = _map.GetNewsChecksum();
 
+                if (player.Type == ClientType.Continuum)
+                {
+                    using (DataBuffer contVersionBuffer = Pool<DataBuffer>.Default.Get())
+                    {
+                        ContinuumVersionPacket pkt = new ContinuumVersionPacket(contVersionBuffer.Bytes);
+                        pkt.Type = (byte)S2CPacketType.ContVersion;
+                        pkt.ContVersion = ClientVersion_Cont;
+                        pkt.Checksum = _continuumChecksum;
+
+                        _net.SendToOne(player, contVersionBuffer.Bytes, ContinuumVersionPacket.Length, NetSendFlags.Reliable);
+                    }
+
+                    lr.ExeChecksum = _continuumChecksum;
+                    lr.CodeChecksum = _codeChecksum;
+                }
+                else
+                {
+                    // old VIE exe checksums
+                    lr.ExeChecksum = 0xF1429CE8;
+                    lr.CodeChecksum = 0x281CC948;
+                }
+
+                if (_capabiltyManager != null && _capabiltyManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
+                {
+                    // to make the client think it's a mod
+                    lr.ExeChecksum = uint.MaxValue;
+                    lr.CodeChecksum = uint.MaxValue;
+                }
+
+                if (lr.Code == (byte)AuthCode.CustomText)
+                {
                     if (player.Type == ClientType.Continuum)
                     {
-                        using (DataBuffer contVersionBuffer = Pool<DataBuffer>.Default.Get())
-                        {
-                            ContinuumChecksumPacket pkt = new ContinuumChecksumPacket(contVersionBuffer.Bytes);
-                            pkt.Type = (byte)Packets.S2CPacketType.ContVersion;
-                            pkt.ContVersion = ClientVersion_Cont;
-                            pkt.Checksum = _continuumChecksum;
+                        // send custom rejection text
+                        using DataBuffer loginTextBuffer = Pool<DataBuffer>.Default.Get();
+                        loginTextBuffer.Bytes[0] = (byte)Packets.S2CPacketType.LoginText;
+                        int numCharacters = auth.CustomText.Length <= 255 ? auth.CustomText.Length : 255;
+                        Encoding.ASCII.GetBytes(auth.CustomText, 0, numCharacters, loginTextBuffer.Bytes, 1);
 
-                            _net.SendToOne(player, contVersionBuffer.Bytes, ContinuumChecksumPacket.Length, NetSendFlags.Reliable);
-                        }
-
-                        lr.ExeChecksum = _continuumChecksum;
-                        lr.CodeChecksum = _codeChecksum;
+                        // not sure why +2 instead of +1
+                        _net.SendToOne(player, loginTextBuffer.Bytes, numCharacters + 2, NetSendFlags.Reliable);
                     }
                     else
                     {
-                        // old VIE exe checksums
-                        lr.ExeChecksum = 0xF1429CE8;
-                        lr.CodeChecksum = 0x281CC948;
+                        // VIE doesn't understand that packet
+                        lr.Code = (byte)AuthCode.LockedOut;
                     }
-
-                    if (_capabiltyManager != null && _capabiltyManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
-                    {
-                        // to make the client think it's a mod
-                        lr.ExeChecksum = uint.MaxValue;
-                        lr.CodeChecksum = uint.MaxValue;
-                    }
-
-                    if (lr.Code == (byte)AuthCode.CustomText)
-                    {
-                        if (player.Type == ClientType.Continuum)
-                        {
-                            // send custom rejection text
-                            using (DataBuffer loginTextBuffer = Pool<DataBuffer>.Default.Get())
-                            {
-                                loginTextBuffer.Bytes[0] = (byte)Packets.S2CPacketType.LoginText;
-                                int numCharacters = auth.customtext.Length <= 255 ? auth.customtext.Length : 255;
-                                Encoding.ASCII.GetBytes(auth.customtext, 0, numCharacters, loginTextBuffer.Bytes, 1);
-                                
-                                // not sure why +2 instead of +1
-                                _net.SendToOne(player, loginTextBuffer.Bytes, numCharacters + 2, NetSendFlags.Reliable);
-                            }
-                        }
-                        else
-                        {
-                            // VIE doesn't understand that packet
-                            lr.Code = (byte)AuthCode.LockedOut;
-                        }
-                    }
-
-                    _net.SendToOne(player, buffer.Bytes, LoginResponsePacket.Length, NetSendFlags.Reliable);
                 }
+
+                _net.SendToOne(player, buffer.Bytes, LoginResponsePacket.Length, NetSendFlags.Reliable);
             }
             else if (player.IsChat)
             {
@@ -791,32 +789,32 @@ namespace SS.Core.Modules
             pdata.authdata = null;
         }
 
-        #region IAuth Members
+#region IAuth Members
 
         void IAuth.Authenticate(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
-            defaultAuth(p, lp, lplen, done);   
+            DefaultAuth(p, lp, lplen, done);   
         }
 
-        #endregion
+#endregion
 
-        private void defaultAuth(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done)
+        private void DefaultAuth(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
             AuthData auth = new AuthData();
 
-            auth.demodata = false;
-            auth.code = AuthCode.OK;
-            auth.authenticated = false;
+            auth.DemoData = false;
+            auth.Code = AuthCode.OK;
+            auth.Authenticated = true; //false; // HACK: until I have time to add the AuthFile module
 
             string name = lp.Name;
-            auth.name = name.Length > 23 ? name.Substring(0, 23) : name;
-            auth.sendname = name.Length > 19 ? name.Substring(0, 19) : name;
-            auth.squad = null;
+            auth.Name = name.Length > 23 ? name.Substring(0, 23) : name;
+            auth.SendName = name.Length > 19 ? name.Substring(0, 19) : name;
+            auth.Squad = null;
 
             done(p, auth);
         }
 
-        private bool sendKeepAlive()
+        private bool MainloopTimer_SendKeepAlive()
         {
             if (_net != null)
             {

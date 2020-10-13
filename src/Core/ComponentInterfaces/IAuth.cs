@@ -24,24 +24,73 @@ namespace SS.Core.ComponentInterfaces
         NoNewConn = 0x0A,// fail
         BadName = 0x0B,// fail
         OffensiveName = 0x0C, // fail
-        NoScores = 0x0D, // sucess
+        NoScores = 0x0D, // success
         ServerBusy = 0x0E, // fail
         TooLowUsage = 0x0F, // fail
-        NoName = 0x10, // fail
+        AskDemographics = 0x10, // success
         TooManyDemo = 0x11, // fail
         NoDemo = 0x12, // fail
-        CustomText = 0x13, // fail
+        CustomText = 0x13, // fail, cont only
     }
 
+    public static class AuthCodeExtension
+    {
+        /// <summary>
+        /// which authentication result codes result in the player moving forward in the login process
+        /// </summary>
+        /// <param name="authCode"></param>
+        /// <returns></returns>
+        public static bool AuthIsOK(this AuthCode authCode)
+        {
+            return authCode == AuthCode.OK
+                || authCode == AuthCode.SpecOnly
+                || authCode == AuthCode.NoScores
+                || authCode == AuthCode.AskDemographics;
+        }
+    }
+
+    /// <summary>
+    /// An authentication module must fill in one of these structs to return an authentication response.
+    /// If code is a failure code, none of the other fields matter (except maybe customtext, if you want to return a custom error message).
+    /// </summary>
     public class AuthData
     {
-        public bool demodata;
-        public AuthCode code;
-        public bool authenticated;
-        public string name;
-        public string sendname;
-        public string squad;
-        public string customtext;
+        /// <summary>
+        /// Whether registration data is requested.
+        /// </summary>
+        public bool DemoData;
+
+        /// <summary>
+        /// The authentication code.
+        /// </summary>
+        public AuthCode Code;
+
+        /// <summary>
+        /// Whether the player should be considered as having been authenticated.
+        /// True if the user was authenticated by a billing server or a local password file.
+        /// This is used to determine if the player can be placed into a group by <see cref="ICapabilityManager"/>.
+        /// </summary>
+        public bool Authenticated;
+
+        /// <summary>
+        /// The name to assign to the player.
+        /// </summary>
+        public string Name;
+
+        /// <summary>
+        /// The client visible name (not null-terminated).
+        /// </summary>
+        public string SendName;
+
+        /// <summary>
+        /// The squad to assign the player.
+        /// </summary>
+        public string Squad;
+
+        /// <summary>
+        /// Custom text to return to the player if <see cref="Code"/> is <see cref="AuthCode.CustomText"/>.
+        /// </summary>
+        public string CustomText;
     }
 
     public delegate void AuthDoneDelegate(Player p, AuthData data);

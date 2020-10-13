@@ -288,20 +288,21 @@ namespace SS.Core.Modules
 
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    if ((string.Compare(player.Name, name, true) == 0) &&
-                        player.Status < PlayerState.LeavingZone &&
-                        player.WhenLoggedIn < PlayerState.LeavingZone)
+                    if (string.Equals(player.Name, name, StringComparison.OrdinalIgnoreCase)
+                        // this is a sort of hackish way of not returning players who are on their way out.
+                        && player.Status < PlayerState.LeavingZone 
+                        && player.WhenLoggedIn < PlayerState.LeavingZone)
                     {
                         return player;
                     }
                 }
-
-                return null;
             }
             finally
             {
                 _globalPlayerDataRwLock.ReleaseReaderLock();
             }
+
+            return null;
         }
 
         void IPlayerData.TargetToSet(ITarget target, out LinkedList<Player> list)
