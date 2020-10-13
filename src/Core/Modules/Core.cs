@@ -711,6 +711,9 @@ namespace SS.Core.Modules
 
         private void SendLoginResponse(Player player)
         {
+            if (player == null)
+                return;
+
             if (!(player[_pdkey] is CorePlayerData pdata))
                 return;
 
@@ -729,7 +732,7 @@ namespace SS.Core.Modules
                 lr.Code = (byte)auth.Code;
                 lr.DemoData = auth.DemoData ? (byte)1 : (byte)0;
                 lr.NewsChecksum = _map.GetNewsChecksum();
-
+                                         
                 if (player.Type == ClientType.Continuum)
                 {
                     using (DataBuffer contVersionBuffer = Pool<DataBuffer>.Default.Get())
@@ -764,13 +767,10 @@ namespace SS.Core.Modules
                     if (player.Type == ClientType.Continuum)
                     {
                         // send custom rejection text
-                        using DataBuffer loginTextBuffer = Pool<DataBuffer>.Default.Get();
-                        loginTextBuffer.Bytes[0] = (byte)Packets.S2CPacketType.LoginText;
-                        int numCharacters = auth.CustomText.Length <= 255 ? auth.CustomText.Length : 255;
-                        Encoding.ASCII.GetBytes(auth.CustomText, 0, numCharacters, loginTextBuffer.Bytes, 1);
-
-                        // not sure why +2 instead of +1
-                        _net.SendToOne(player, loginTextBuffer.Bytes, numCharacters + 2, NetSendFlags.Reliable);
+                        Span<byte> customSpan = stackalloc byte[256];
+                        customSpan[0] = (byte)S2CPacketType.LoginText;
+                        int bytes = customSpan.Slice(1).WriteNullTerminatedASCII(auth.CustomText.AsSpan(0, Math.Min(auth.CustomText.Length, 254)));
+                        _net.SendToOne(player, customSpan.Slice(0, 1 + bytes), NetSendFlags.Reliable);
                     }
                     else
                     {

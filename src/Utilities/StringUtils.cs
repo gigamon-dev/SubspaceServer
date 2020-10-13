@@ -59,7 +59,7 @@ namespace SS.Utilities
         /// <param name="destination">The buffer to write the string bytes into.</param>
         /// <param name="value">The string to write.</param>
         /// <returns>The number of bytes written, including the null terminator.</returns>
-        public static int WriteNullTerminatedASCII(this Span<byte> destination, string value)
+        public static int WriteNullTerminatedASCII(this Span<byte> destination, ReadOnlySpan<char> value)
         {
             return WriteNullTerminatedString(destination, value, Encoding.ASCII);
         }
@@ -73,7 +73,7 @@ namespace SS.Utilities
         /// <param name="destination">The buffer to write the string bytes into.</param>
         /// <param name="value">The string to write.</param>
         /// <returns>The number of bytes written, including the null terminator.</returns>
-        public static int WriteNullTerminatedUTF8(this Span<byte> destination, string value)
+        public static int WriteNullTerminatedUTF8(this Span<byte> destination, ReadOnlySpan<char> value)
         {
             return WriteNullTerminatedString(destination, value, Encoding.UTF8);
         }
@@ -88,14 +88,14 @@ namespace SS.Utilities
         /// <param name="value">The string to write.</param>
         /// <param name="encoding">The encoding to use.</param>
         /// <returns>The number of bytes written, including the null terminator.</returns>
-        public static int WriteNullTerminatedString(this Span<byte> destination, string value, Encoding encoding)
+        public static int WriteNullTerminatedString(this Span<byte> destination, ReadOnlySpan<char> value, Encoding encoding)
         {
             if (encoding == null)
                 throw new ArgumentNullException(nameof(encoding));
 
-            if (!string.IsNullOrEmpty(value))
+            if (value.Length > 0)
             {
-                // not null or empty, but can be white-space characters only
+                // has characters (not null or empty), but can be white-space characters only
 
                 // make sure it will fit
                 if (encoding.GetByteCount(value) + 1 > destination.Length)
@@ -132,7 +132,7 @@ namespace SS.Utilities
         /// </summary>
         /// <param name="destination"></param>
         /// <param name="value"></param>
-        public static void WriteNullPaddedASCII(this Span<byte> destination, string value, bool nullTerminatorRequired = true)
+        public static void WriteNullPaddedASCII(this Span<byte> destination, ReadOnlySpan<char> value, bool nullTerminatorRequired = true)
         {
             WriteNullPaddedString(destination, value, Encoding.ASCII, nullTerminatorRequired);
         }
@@ -143,7 +143,7 @@ namespace SS.Utilities
         /// </summary>
         /// <param name="destination"></param>
         /// <param name="value"></param>
-        public static void WriteNullPaddedUTF8(this Span<byte> destination, string value, bool nullTerminatorRequired = true)
+        public static void WriteNullPaddedUTF8(this Span<byte> destination, ReadOnlySpan<char> value, bool nullTerminatorRequired = true)
         {
             WriteNullPaddedString(destination, value, Encoding.UTF8, nullTerminatorRequired);
         }
@@ -159,7 +159,7 @@ namespace SS.Utilities
         /// True if the buffer's last byte must be a null terminator.
         /// False if the buffer can be completely filled, such that there is no null terminating byte at the end.
         /// </param>
-        public static void WriteNullPaddedString(this Span<byte> destination, string value, Encoding encoding, bool nullTerminatorRequired = true)
+        public static void WriteNullPaddedString(this Span<byte> destination, ReadOnlySpan<char> value, Encoding encoding, bool nullTerminatorRequired = true)
         {
             if (encoding == null)
                 throw new ArgumentNullException(nameof(encoding));
@@ -173,9 +173,9 @@ namespace SS.Utilities
 
             int bytesWritten = 0;
 
-            if (!string.IsNullOrEmpty(value))
+            if (value.Length > 0)
             {
-                // not null or empty, but can be white-space characters only
+                // has characters (not null or empty), but can be white-space characters only
                 if (encoding.GetByteCount(value) > destination.Length)
                     throw new ArgumentException("Encoded bytes do not fit into the buffer.", nameof(value));
 
