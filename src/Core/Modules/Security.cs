@@ -123,14 +123,14 @@ namespace SS.Core.Modules
 
             mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(),null);
 
-            network.AddPacket((int)C2SPacketType.SecurityResponse, Packet_SecurityResponse);
+            network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
 
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
-            network.RemovePacket((int)C2SPacketType.SecurityResponse, Packet_SecurityResponse);
+            network.RemovePacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
             mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
             mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);

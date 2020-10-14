@@ -222,9 +222,9 @@ namespace SS.Core.Modules
 
             _dlKey = _arenaManager.AllocateArenaData<LinkedList<MapDownloadData>>();
 
-            _net.AddPacket((int)C2SPacketType.UpdateRequest, Packet_UpdateRequest);
-            _net.AddPacket((int)C2SPacketType.MapRequest, Packet_MapNewsRequest);
-            _net.AddPacket((int)C2SPacketType.NewsRequest, Packet_MapNewsRequest);
+            _net.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
+            _net.AddPacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
+            _net.AddPacket(C2SPacketType.NewsRequest, Packet_MapNewsRequest);
 
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
 
@@ -245,9 +245,9 @@ namespace SS.Core.Modules
 
             _newsManager.Dispose();
 
-            _net.RemovePacket((int)C2SPacketType.UpdateRequest, Packet_UpdateRequest);
-            _net.RemovePacket((int)C2SPacketType.MapRequest, Packet_MapNewsRequest);
-            _net.RemovePacket((int)C2SPacketType.NewsRequest, Packet_MapNewsRequest);
+            _net.RemovePacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
+            _net.RemovePacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
+            _net.RemovePacket(C2SPacketType.NewsRequest, Packet_MapNewsRequest);
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
 

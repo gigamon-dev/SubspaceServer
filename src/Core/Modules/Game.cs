@@ -203,14 +203,14 @@ namespace SS.Core.Modules
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
 
-            _net.AddPacket((int)C2SPacketType.Position, new PacketDelegate(Packet_Position));
-            _net.AddPacket((int)C2SPacketType.SpecRequest, new PacketDelegate(Packet_SpecRequest));
-            _net.AddPacket((int)C2SPacketType.SetShip, new PacketDelegate(Packet_SetShip));
-            _net.AddPacket((int)C2SPacketType.SetFreq, new PacketDelegate(Packet_SetFreq));
-            _net.AddPacket((int)C2SPacketType.Die, new PacketDelegate(Packet_Die));
-            _net.AddPacket((int)C2SPacketType.Green, new PacketDelegate(Packet_Green));
-            _net.AddPacket((int)C2SPacketType.AttachTo, new PacketDelegate(Packet_AttachTo));
-            _net.AddPacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(Packet_TurretKickoff));
+            _net.AddPacket(C2SPacketType.Position, new PacketDelegate(Packet_Position));
+            _net.AddPacket(C2SPacketType.SpecRequest, new PacketDelegate(Packet_SpecRequest));
+            _net.AddPacket(C2SPacketType.SetShip, new PacketDelegate(Packet_SetShip));
+            _net.AddPacket(C2SPacketType.SetFreq, new PacketDelegate(Packet_SetFreq));
+            _net.AddPacket(C2SPacketType.Die, new PacketDelegate(Packet_Die));
+            _net.AddPacket(C2SPacketType.Green, new PacketDelegate(Packet_Green));
+            _net.AddPacket(C2SPacketType.AttachTo, new PacketDelegate(Packet_AttachTo));
+            _net.AddPacket(C2SPacketType.TurretKickOff, new PacketDelegate(Packet_TurretKickoff));
 
             //if(_chatnet != null)
                 //_chatnet.
@@ -239,14 +239,14 @@ namespace SS.Core.Modules
                 _commandManager.RemoveCommand("energy", Command_energy, null);
             }
 
-            _net.RemovePacket((int)C2SPacketType.Position, new PacketDelegate(Packet_Position));
-            _net.RemovePacket((int)C2SPacketType.SpecRequest, new PacketDelegate(Packet_SpecRequest));
-            _net.RemovePacket((int)C2SPacketType.SetShip, new PacketDelegate(Packet_SetShip));
-            _net.RemovePacket((int)C2SPacketType.SetFreq, new PacketDelegate(Packet_SetFreq));
-            _net.RemovePacket((int)C2SPacketType.Die, new PacketDelegate(Packet_Die));
-            _net.RemovePacket((int)C2SPacketType.Green, new PacketDelegate(Packet_Green));
-            _net.RemovePacket((int)C2SPacketType.AttachTo, new PacketDelegate(Packet_AttachTo));
-            _net.RemovePacket((int)C2SPacketType.TurretKickOff, new PacketDelegate(Packet_TurretKickoff));
+            _net.RemovePacket(C2SPacketType.Position, new PacketDelegate(Packet_Position));
+            _net.RemovePacket(C2SPacketType.SpecRequest, new PacketDelegate(Packet_SpecRequest));
+            _net.RemovePacket(C2SPacketType.SetShip, new PacketDelegate(Packet_SetShip));
+            _net.RemovePacket(C2SPacketType.SetFreq, new PacketDelegate(Packet_SetFreq));
+            _net.RemovePacket(C2SPacketType.Die, new PacketDelegate(Packet_Die));
+            _net.RemovePacket(C2SPacketType.Green, new PacketDelegate(Packet_Green));
+            _net.RemovePacket(C2SPacketType.AttachTo, new PacketDelegate(Packet_AttachTo));
+            _net.RemovePacket(C2SPacketType.TurretKickOff, new PacketDelegate(Packet_TurretKickoff));
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);

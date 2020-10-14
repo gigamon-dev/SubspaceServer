@@ -3322,14 +3322,22 @@ namespace SS.Core.Modules
             return true;
         }
 
-        void INetwork.AddPacket(int pktype, PacketDelegate func)
+        void INetwork.AddPacket(C2SPacketType pktype, PacketDelegate func)
         {
+            AddPacket((int)pktype, func);
+        }
+
+        private void AddPacket(int pktype, PacketDelegate func)
+        {
+            if (func == null)
+                return;
+
             if (pktype >= 0 && pktype < MAXTYPES)
             {
                 PacketDelegate d = _handlers[pktype];
                 _handlers[pktype] = (d == null) ? func : (d += func);
             }
-            else if((pktype & 0xFF) == 0)
+            else if ((pktype & 0xFF) == 0)
             {
                 int b2 = pktype >> 8;
 
@@ -3340,8 +3348,16 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.RemovePacket(int pktype, PacketDelegate func)
+        void INetwork.RemovePacket(C2SPacketType pktype, PacketDelegate func)
         {
+            RemovePacket((int)pktype, func);
+        }
+
+        private void RemovePacket(int pktype, PacketDelegate func)
+        {
+            if (func == null)
+                return;
+
             if (pktype >= 0 && pktype < MAXTYPES)
             {
                 PacketDelegate d = _handlers[pktype];
@@ -3361,8 +3377,16 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.AddSizedPacket(int pktype, SizedPacketDelegate func)
+        void INetwork.AddSizedPacket(C2SPacketType pktype, SizedPacketDelegate func)
         {
+            AddSizedPacket((int)pktype, func);
+        }
+
+        private void AddSizedPacket(int pktype, SizedPacketDelegate func)
+        {
+            if (func == null)
+                return;
+
             if (pktype >= 0 && pktype < MAXTYPES)
             {
                 SizedPacketDelegate d = _sizedhandlers[pktype];
@@ -3370,8 +3394,16 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.RemoveSizedPacket(int pktype, SizedPacketDelegate func)
+        void INetwork.RemoveSizedPacket(C2SPacketType pktype, SizedPacketDelegate func)
         {
+            RemoveSizedPacket((int)pktype, func);
+        }
+
+        private void RemoveSizedPacket(int pktype, SizedPacketDelegate func)
+        {
+            if (func == null)
+                return;
+
             if (pktype >= 0 && pktype < MAXTYPES)
             {
                 SizedPacketDelegate d = _sizedhandlers[pktype];

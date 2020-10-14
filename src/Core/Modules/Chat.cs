@@ -106,8 +106,7 @@ namespace SS.Core.Modules
             _cfg.floodshutup = _configManager.GetInt(_configManager.Global, "Chat", "FloodShutup", 60);
             _cfg.cmdlimit = _configManager.GetInt(_configManager.Global, "Chat", "CommandLimit", 5);
 
-            if (_net != null)
-                _net.AddPacket((int)C2SPacketType.Chat, Packet_Chat);
+            _net.AddPacket(C2SPacketType.Chat, Packet_Chat);
 
             //if(_chatNet != null)
             //_chatNet.
@@ -122,8 +121,7 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<IChat>(ref _iChatToken) != 0)
                 return false;
 
-            if (_net != null)
-                _net.RemovePacket((int)C2SPacketType.Chat, Packet_Chat);
+            _net.RemovePacket(C2SPacketType.Chat, Packet_Chat);
 
             //if(_chatNet != null)
                 //_chatNet.

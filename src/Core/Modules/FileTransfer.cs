@@ -40,8 +40,8 @@ namespace SS.Core.Modules
             _udKey = _playerData.AllocatePlayerData<UploadDataContext>();
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
 
-            _network.AddPacket((byte)C2SPacketType.UploadFile, Packet_UploadFile);
-            _network.AddSizedPacket((byte)C2SPacketType.UploadFile, SizedPacket_UploadFile);
+            _network.AddPacket(C2SPacketType.UploadFile, Packet_UploadFile);
+            _network.AddSizedPacket(C2SPacketType.UploadFile, SizedPacket_UploadFile);
 
             _iFileTransferToken = _broker.RegisterInterface<IFileTransfer>(this);
             return true;
@@ -51,6 +51,9 @@ namespace SS.Core.Modules
         {
             if (_broker.UnregisterInterface<IFileTransfer>(ref _iFileTransferToken) != 0)
                 return false;
+
+            _network.RemovePacket(C2SPacketType.UploadFile, Packet_UploadFile);
+            _network.RemoveSizedPacket(C2SPacketType.UploadFile, SizedPacket_UploadFile);
 
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
             _playerData.FreePlayerData(_udKey);

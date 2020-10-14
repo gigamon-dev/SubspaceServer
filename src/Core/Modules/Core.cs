@@ -117,8 +117,8 @@ namespace SS.Core.Modules
             _pdkey = _playerData.AllocatePlayerData<CorePlayerData>();
 
             // set up callbacks
-            _net.AddPacket((int)C2SPacketType.Login, Packet_Login);
-            _net.AddPacket((int)C2SPacketType.ContLogin, Packet_Login);
+            _net.AddPacket(C2SPacketType.Login, Packet_Login);
+            _net.AddPacket(C2SPacketType.ContLogin, Packet_Login);
 
             //if(_chatnet != null)
                 //_chatnet.AddHandler("LOGIN", chatLogin);
@@ -142,11 +142,8 @@ namespace SS.Core.Modules
             _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessPlayerStates, null);
             
-            if (_net != null)
-            {
-                _net.RemovePacket((int)C2SPacketType.Login, Packet_Login);
-                _net.RemovePacket((int)C2SPacketType.ContLogin, Packet_Login);
-            }
+            _net.RemovePacket(C2SPacketType.Login, Packet_Login);
+            _net.RemovePacket(C2SPacketType.ContLogin, Packet_Login);
 
             //if (_chatnet != null)
                 //_chatnet.RemoveHandler("LOGIN", chatLogin);

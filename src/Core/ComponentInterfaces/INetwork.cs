@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Core.Packets;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -224,14 +225,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="pktype">The type of packet to register.</param>
         /// <param name="func">The handler to call when a packet is received.</param>
-        void AddPacket(int pktype, PacketDelegate func);
+        void AddPacket(C2SPacketType pktype, PacketDelegate func);
 
         /// <summary>
         /// To unregister a handler for a given packet type.
         /// </summary>
         /// <param name="pktype"></param>
         /// <param name="func"></param>
-        void RemovePacket(int pktype, PacketDelegate func);
+        void RemovePacket(C2SPacketType pktype, PacketDelegate func);
 
         /// <summary>
         /// To register a handler for a sized packet.
@@ -239,14 +240,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="pktype"></param>
         /// <param name="func"></param>
-        void AddSizedPacket(int pktype, SizedPacketDelegate func);
+        void AddSizedPacket(C2SPacketType pktype, SizedPacketDelegate func);
 
         /// <summary>
         /// To unregister a handler for a sized packet.
         /// </summary>
         /// <param name="pktype"></param>
         /// <param name="func"></param>
-        void RemoveSizedPacket(int pktype, SizedPacketDelegate func);
+        void RemoveSizedPacket(C2SPacketType pktype, SizedPacketDelegate func);
 
         /// <summary>
         /// Gets statistics about the Network module.

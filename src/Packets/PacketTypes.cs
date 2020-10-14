@@ -99,7 +99,7 @@ namespace SS.Core.Packets
         Redirect = 0x3B, 
     }
 
-    public enum C2SPacketType : byte
+    public enum C2SPacketType : int
     {
         GotoArena = 0x01, 
         LeaveArena = 0x02, 
