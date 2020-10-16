@@ -1339,7 +1339,7 @@ namespace SS.Core.Modules
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "<arenaman> [{0}] bad shiptype in arena request", p.Name);
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "bad shiptype in arena request");
                 return;
             }
 
