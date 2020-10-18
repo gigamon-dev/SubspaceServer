@@ -9,32 +9,63 @@ namespace SS.Utilities
         #region Read Null Terminated
 
         /// <summary>
-        /// Reads a string from a Span&lt;byte&gt; that is null terminated or all bytes contain characters, as ASCII.
+        /// Reads a string that is null terminated or all bytes contain characters, as ASCII.
         /// </summary>
         /// <param name="source">The bytes to read from.</param>
         /// <returns>The string.</returns>
         public static string ReadNullTerminatedASCII(this Span<byte> source)
         {
+            return ReadNullTerminatedString((ReadOnlySpan<byte>)source, Encoding.ASCII);
+        }
+
+        /// <summary>
+        /// Reads a string that is null terminated or all bytes contain characters, as ASCII.
+        /// </summary>
+        /// <param name="source">The bytes to read from.</param>
+        /// <returns>The string.</returns>
+        public static string ReadNullTerminatedASCII(this ReadOnlySpan<byte> source)
+        {
             return ReadNullTerminatedString(source, Encoding.ASCII);
         }
 
         /// <summary>
-        /// Reads a string from a Span&lt;byte&gt; that is null terminated or all bytes contain characters, as UTF-8.
+        /// Reads a string that is null terminated or all bytes contain characters, as UTF-8.
         /// </summary>
         /// <param name="source">The bytes to read from.</param>
         /// <returns>The string.</returns>
         public static string ReadNullTerminatedUTF8(this Span<byte> source)
         {
+            return ReadNullTerminatedString((ReadOnlySpan<byte>)source, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Reads a string that is null terminated or all bytes contain characters, as UTF-8.
+        /// </summary>
+        /// <param name="source">The bytes to read from.</param>
+        /// <returns>The string.</returns>
+        public static string ReadNullTerminatedUTF8(this ReadOnlySpan<byte> source)
+        {
             return ReadNullTerminatedString(source, Encoding.UTF8);
         }
 
         /// <summary>
-        /// Reads a string from a Span&lt;byte&gt; that is null terminated or all bytes contain characters, with a specified encoding.
+        /// Reads a string that is null terminated or all bytes contain characters, with a specified encoding.
         /// </summary>
         /// <param name="source">The bytes to read from.</param>
         /// <param name="encoding">The encoding to use.</param>
         /// <returns>The string.</returns>
         public static string ReadNullTerminatedString(this Span<byte> source, Encoding encoding)
+        {
+            return ReadNullTerminatedString((ReadOnlySpan<byte>)source, encoding);
+        }
+
+        /// <summary>
+        /// Reads a string that is null terminated or all bytes contain characters, with a specified encoding.
+        /// </summary>
+        /// <param name="source">The bytes to read from.</param>
+        /// <param name="encoding">The encoding to use.</param>
+        /// <returns>The string.</returns>
+        public static string ReadNullTerminatedString(this ReadOnlySpan<byte> source, Encoding encoding)
         {
             if (encoding == null)
                 throw new ArgumentNullException(nameof(encoding));
