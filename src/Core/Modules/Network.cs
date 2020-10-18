@@ -2209,17 +2209,13 @@ namespace SS.Core.Modules
                 Monitor.Exit(conn.relmtx);
 
                 // send the ack
-                using (SubspaceBuffer ackBuffer = _bufferPool.Get())
-                {
-                    AckPacket ap = new AckPacket(ackBuffer.Bytes);
-                    ap.T1 = 0x00;
-                    ap.T2 = 0x04;
-                    ap.SeqNum = sn;
+                Span<byte> bytes = stackalloc byte[AckPacket.Length];
+                AckPacket ap = new AckPacket(bytes);
+                ap.Initialize(sn);
 
-                    lock (conn.olmtx)
-                    {
-                        BufferPacket(conn, ackBuffer.Bytes, AckPacket.Length, NetSendFlags.Ack);
-                    }
+                lock (conn.olmtx)
+                {
+                    BufferPacket(conn, bytes, NetSendFlags.Ack);
                 }
 
                 // add to global rel list for processing

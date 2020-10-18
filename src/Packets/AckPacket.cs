@@ -6,7 +6,7 @@ using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public readonly struct AckPacket
+    public readonly ref struct AckPacket
     {
         // static constructor to initialize packet's info
         static AckPacket()
@@ -25,29 +25,39 @@ namespace SS.Core.Packets
         public static readonly int Length;
 
         // data members
-        private readonly byte[] data;
+        private readonly Span<byte> bytes;
 
-        public AckPacket(byte[] data)
+        public AckPacket(Span<byte> bytes)
         {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
+            if (bytes.Length < Length)
+                throw new ArgumentException($"Length is too small to contain a {nameof(AckPacket)}.", nameof(bytes));
+
+            this.bytes = bytes;
+        }
+
+        public void Initialize(int seqNum)
+        {
+            T1 = 0x00;
+            T2 = 0x04;
+            SeqNum = seqNum;
         }
 
         public byte T1
         {
-            get { return t1.GetValue(data); }
-            set { t1.SetValue(data, value); }
+            get { return t1.GetValue(bytes); }
+            set { t1.SetValue(bytes, value); }
         }
 
         public byte T2
         {
-            get { return t2.GetValue(data); }
-            set { t2.SetValue(data, value); }
+            get { return t2.GetValue(bytes); }
+            set { t2.SetValue(bytes, value); }
         }
 
         public int SeqNum
         {
-            get { return seqNum.GetValue(data); }
-            set { seqNum.SetValue(data, value); }
+            get { return seqNum.GetValue(bytes); }
+            set { seqNum.SetValue(bytes, value); }
         }
     }
 }
