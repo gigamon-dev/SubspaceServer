@@ -147,26 +147,12 @@ namespace SS.Core.Modules
                 scrty = new uint[ScrtyLength];
 
                 using FileStream fs = File.OpenRead("scrty");
-                Span<byte> scrtyByteSpan = MemoryMarshal.Cast<uint, byte>(scrty);
-                int bytesRead = fs.Read(scrtyByteSpan);
-                if (bytesRead != ScrtyLength * sizeof(uint))
-                {
-                    throw new Exception($"Expected to read {ScrtyLength * sizeof(uint)} bytes but only got {bytesRead} bytes.");
-                }
+                using BinaryReader br = new BinaryReader(fs);
 
-                /*
-                // TODO: a version that would work on big endian architecture too
-                using FileStream fs = File.OpenRead("scrty");
-                Span<byte> data = stackalloc byte[4];
                 for (int i = 0; i < ScrtyLength; i++)
                 {
-                    int numBytes = fs.Read(data);
-                    if (numBytes != 4)
-                        throw new Exception($"Expected to read 4 bytes but only got {numBytes} bytes.");
-
-                    //scrty[i] = LittleEndianBitConverter.ToUInt32(data); // TODO: need to implement an overload that takes Span<byte>
+                    scrty[i] = br.ReadUInt32(); // reads bytes as little-endian
                 }
-                */
             }
             catch (Exception ex)
             {
