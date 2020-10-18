@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -19,21 +20,37 @@ namespace SS.Core.Packets
         /// 0x18
         /// </summary>
         public byte Type;
+        private uint greenSeed;
+        private uint doorSeed;
+        private uint timestamp;
+        private uint key;
 
         /// <summary>
         /// Seed for greens.
         /// </summary>
-        public uint GreenSeed;
+        public uint GreenSeed
+        {
+            get { return BitConverter.IsLittleEndian ? greenSeed : BinaryPrimitives.ReverseEndianness(greenSeed); }
+            set { greenSeed = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+        }
 
         /// <summary>
         /// Seed for doors.
         /// </summary>
-        public uint DoorSeed;
+        public uint DoorSeed
+        {
+            get { return BitConverter.IsLittleEndian ? doorSeed : BinaryPrimitives.ReverseEndianness(doorSeed); }
+            set { doorSeed = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+        }
 
         /// <summary>
         /// Timestamp
         /// </summary>
-        public uint Timestamp;
+        public uint Timestamp
+        {
+            get { return BitConverter.IsLittleEndian ? timestamp : BinaryPrimitives.ReverseEndianness(timestamp); }
+            set { timestamp = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+        }
 
         /// <summary>
         /// Key for checksum use.
@@ -44,7 +61,11 @@ namespace SS.Core.Packets
         /// Non-zero for requesting that the client respond to a security check.
         /// </para>
         /// </summary>
-        public uint Key;
+        public uint Key
+        {
+            get { return BitConverter.IsLittleEndian ? key : BinaryPrimitives.ReverseEndianness(key); }
+            set { key = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+        }
 
         /// <summary>
         /// Number of bytes in a packet.
