@@ -54,7 +54,7 @@ namespace SS.Core.ComponentInterfaces
     /// Overall size of the transfer in bytes.
     /// -1 indicates that the transfer was cancelled.
     /// </param>
-    public delegate void SizedPacketDelegate(Player p, Span<byte> data, int offset, int totalLength);
+    public delegate void SizedPacketDelegate(Player p, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
     /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.

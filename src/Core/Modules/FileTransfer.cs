@@ -203,7 +203,7 @@ namespace SS.Core.Modules
             ud.Cleanup(success);
         }
 
-        private void SizedPacket_UploadFile(Player p, Span<byte> data, int offset, int totalLength)
+        private void SizedPacket_UploadFile(Player p, ReadOnlySpan<byte> data, int offset, int totalLength)
         {
             if (p == null)
                 return;
