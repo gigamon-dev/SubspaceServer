@@ -1,26 +1,21 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Utilities
 {
     public class DataLocationBuilder
     {
-        private int _nextByte = 0;
-
         public DataLocation CreateDataLocation(int numBytes)
         {
-            if(numBytes < 1)
-                throw new ArgumentOutOfRangeException("must be >= 1", "numBytes");
+            if (numBytes < 1)
+                throw new ArgumentOutOfRangeException("Must be >= 1.", nameof(numBytes));
 
             try
             {
-                return new DataLocation(_nextByte, numBytes);
+                return new DataLocation(NumBytes, numBytes);
             }
             finally
             {
-                _nextByte += numBytes;
+                NumBytes += numBytes;
             }
         }
 
@@ -54,9 +49,16 @@ namespace SS.Utilities
             return (Int32DataLocation)CreateDataLocation(4);
         }
 
-        public int NumBytes
+        public UInt64DataLocation CreateUInt64DataLocation()
         {
-            get { return _nextByte; }
+            return (UInt64DataLocation)CreateDataLocation(8);
         }
+
+        public Int64DataLocation CreateInt64DataLocation()
+        {
+            return (Int64DataLocation)CreateDataLocation(8);
+        }
+
+        public int NumBytes { get; private set; } = 0;
     }
 }
