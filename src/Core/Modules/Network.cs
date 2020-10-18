@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -743,13 +744,15 @@ namespace SS.Core.Modules
         {
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
-#if NETFRAMEWORK
-            // to prevent the exception "An existing connection was forcibly closed by the remote host"
-            // http://support.microsoft.com/kb/263823
-            const int SIO_UDP_CONNRESET = -1744830452;  // since IOControl() takes int instead of uint
-            byte[] optionInValue = new byte[] { 0, 0, 0, 0 };
-            socket.IOControl(SIO_UDP_CONNRESET, optionInValue, null);
-#endif
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // For Windows (Winsock) only,
+                // to prevent the exception "An existing connection was forcibly closed by the remote host"
+                // http://support.microsoft.com/kb/263823
+                const int SIO_UDP_CONNRESET = -1744830452;  // since IOControl() takes int instead of uint
+                byte[] optionInValue = new byte[] { 0, 0, 0, 0 };
+                socket.IOControl(SIO_UDP_CONNRESET, optionInValue, null);
+            }
 
             try
             {
