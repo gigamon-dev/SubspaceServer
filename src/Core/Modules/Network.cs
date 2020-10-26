@@ -156,12 +156,12 @@ namespace SS.Core.Modules
         private class ConnData
         {
             /// <summary>
-            /// the player this connection is for, or NULL for a client connection
+            /// The player this connection is for, or NULL for a client connection
             /// </summary>
             public Player p;
 
             /// <summary>
-            /// the client this is a part of, or NULL for a player connection
+            /// The client this is a part of, or NULL for a player connection
             /// </summary>
             public ClientConnection cc;
 
@@ -302,12 +302,12 @@ namespace SS.Core.Modules
             public IBWLimit bw;
 
             /// <summary>
-            /// array of outgoing lists, one for each priority
+            /// Array of outgoing lists.  Indexed by <see cref="BandwidthPriorities"/>.
             /// </summary>
             public LinkedList<SubspaceBuffer>[] outlist;
 
             /// <summary>
-            /// incoming reliable packets
+            /// Incoming reliable packets
             /// </summary>
             public SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
 
@@ -642,14 +642,18 @@ namespace SS.Core.Modules
         private delegate void oohandler(SubspaceBuffer buffer);
 
         /// <summary>
-        /// handlers for 'core' packets (ss protocol's network/transport layer)
+        /// Handlers for 'core' packets (ss protocol's network/transport layer).
         /// </summary>
+        /// <remarks>
+        /// The first byte of these packets is 0x00.
+        /// The second byte identifies the type and is the index into this array.
+        /// </remarks>
         private readonly oohandler[] _oohandlers;
 
         private const int MAXTYPES = 64;
 
         /// <summary>
-        /// handlers for 'game' packets
+        /// Handlers for 'game' packets.
         /// </summary>
         private readonly PacketDelegate[] _handlers = new PacketDelegate[MAXTYPES];
         private readonly PacketDelegate[] _nethandlers = new PacketDelegate[0x14];
@@ -1075,13 +1079,15 @@ namespace SS.Core.Modules
 
                 lock (conn.relmtx)
                 {
+                    int processedCount = 0;
                     SubspaceBuffer buf;
                     for (int spot = conn.c2sn % Constants.CFG_INCOMING_BUFFER;
-                        (buf = conn.relbuf[spot]) != null;
-                        spot = (spot + 1) % Constants.CFG_INCOMING_BUFFER)
+                        (buf = conn.relbuf[spot]) != null && processedCount <= Constants.CFG_INCOMING_BUFFER;
+                        spot = conn.c2sn % Constants.CFG_INCOMING_BUFFER)
                     {
                         conn.c2sn++;
                         conn.relbuf[spot] = null;
+                        processedCount++;
 
                         // don't need the mutex while doing the actual processing
                         Monitor.Exit(conn.relmtx);
@@ -1092,6 +1098,16 @@ namespace SS.Core.Modules
                         ProcessBuffer(buf);
 
                         Monitor.Enter(conn.relmtx);
+                    }
+
+                    if (processedCount > Constants.CFG_INCOMING_BUFFER)
+                    {
+                        if (conn.relbuf[conn.c2sn % Constants.CFG_INCOMING_BUFFER] != null)
+                        {
+                            // there is more to process, but we don't want to hog all the processing time on 1 connection
+                            // re-queue and we'll get back to it
+                            _relqueue.Enqueue(conn);
+                        }
                     }
                 }
             }
@@ -1621,11 +1637,6 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (buffer.NumBytes > Constants.MaxPacket)
-            {
-                buffer.NumBytes = Constants.MaxPacket;
-            }
-
             ConnData conn = p[_connKey] as ConnData;
 
             if (IsConnectionInitPacket(buffer.Bytes))
@@ -1652,6 +1663,11 @@ namespace SS.Core.Modules
 
                 buffer.Dispose();
                 return;
+            }
+
+            if (buffer.NumBytes > Constants.MaxPacket)
+            {
+                buffer.NumBytes = Constants.MaxPacket;
             }
 
             // we shouldn't get packets in this state, but it's harmless if we do
@@ -2192,6 +2208,7 @@ namespace SS.Core.Modules
             else
             {
                 // store it and ack
+                bool canProcess = false;
 
                 // add to rel stuff to be processed
                 int spot = sn % Constants.CFG_INCOMING_BUFFER;
@@ -2204,6 +2221,7 @@ namespace SS.Core.Modules
                 else
                 {
                     conn.relbuf[spot] = buffer;
+                    canProcess = (sn == conn.c2sn);
                 }
 
                 Monitor.Exit(conn.relmtx);
@@ -2218,8 +2236,11 @@ namespace SS.Core.Modules
                     BufferPacket(conn, bytes, NetSendFlags.Ack);
                 }
 
-                // add to global rel list for processing
-                _relqueue.Enqueue(conn);
+                if (canProcess)
+                {
+                    // add to global rel list for processing
+                    _relqueue.Enqueue(conn);
+                }
             }
         }
 
@@ -2948,9 +2969,11 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(ld));
 
             // certain ports may have restrictions on client types
-            if ((clientType == ClientType.VIE && !ld.AllowVIE) ||
-                (clientType == ClientType.Continuum && !ld.AllowContinuum))
+            if ((clientType == ClientType.VIE && !ld.AllowVIE)
+                || (clientType == ClientType.Continuum && !ld.AllowContinuum))
+            {
                 return null;
+            }
 
             // try to find a matching player for the endpoint
             if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out Player p))
