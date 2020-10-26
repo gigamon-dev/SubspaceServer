@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System;
+using System.Buffers.Binary;
 
 namespace SS.Core.Packets
 {
@@ -414,8 +412,8 @@ namespace SS.Core.Packets
 
                 private uint BitField
                 {
-                    get { return LittleEndianBitConverter.ToUInt32(segment.Array, segment.Offset); }
-                    set { LittleEndianBitConverter.TryWriteBytes(segment.Array, segment.Offset, value); }
+                    get { return BinaryPrimitives.ReadUInt32LittleEndian(segment); }
+                    set { BinaryPrimitives.WriteUInt32LittleEndian(segment, value); }
                 }
 
                 public byte ShrapnelMax

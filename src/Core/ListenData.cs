@@ -46,12 +46,12 @@ namespace SS.Core
         /// <summary>
         /// Total # of players for the 'virtual' zone.
         /// </summary>
-        public int PlayersTotal;
+        public uint PlayersTotal;
 
         /// <summary>
         /// Total # of players for the 'virtual' zone.
         /// </summary>
-        public int PlayersPlaying;
+        public uint PlayersPlaying;
 
         public ListenData(Socket gameSocket, Socket pingSocket)
         {

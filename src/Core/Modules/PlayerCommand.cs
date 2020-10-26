@@ -2,6 +2,7 @@
 using SS.Core.Packets;
 using SS.Utilities;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -145,7 +146,7 @@ namespace SS.Core.Modules
 
                         // player count (a negative value denotes the player's current arena)
                         Span<byte> playerCountSpan = remainingSpan.Slice(nameLength, 2);
-                        bool success = LittleEndianBitConverter.TryWriteBytes(playerCountSpan, arena == p.Arena ? (short)-arena.Total : (short)arena.Total);
+                        BinaryPrimitives.WriteInt16LittleEndian(playerCountSpan, arena == p.Arena ? (short)-arena.Total : (short)arena.Total);
 
                         length += additionalLength;
                     }

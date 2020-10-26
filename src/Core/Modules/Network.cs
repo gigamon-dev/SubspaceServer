@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -1160,7 +1161,7 @@ namespace SS.Core.Modules
                         Monitor.Exit(conn.olmtx);
 
                         // prepare the header (already has type bytes set, only need to set the length field)
-                        LittleEndianBitConverter.TryWriteBytes(sizedLengthSpan, sd.TotalLength);
+                        BinaryPrimitives.WriteInt32LittleEndian(sizedLengthSpan, sd.TotalLength);
 
                         // get needed bytes
                         int needed = requestAtOnce;
@@ -1878,8 +1879,8 @@ namespace SS.Core.Modules
                             {
                                 if (_listenConnectAsLookup.TryGetValue(arena.BaseName, out ListenData listenData))
                                 {
-                                    listenData.PlayersTotal += arena.Total;
-                                    listenData.PlayersPlaying += arena.Playing;
+                                    listenData.PlayersTotal += (uint)arena.Total;
+                                    listenData.PlayersPlaying += (uint)arena.Playing;
                                 }
                             }
 
@@ -1908,17 +1909,19 @@ namespace SS.Core.Modules
                     buffer.Bytes[6] = buffer.Bytes[2];
                     buffer.Bytes[7] = buffer.Bytes[3];
 
+                    // # of clients
+                    // Note: ASSS documentation says it's a UInt32, but it appears Continuum looks at only the first 2 bytes as an UInt16.
                     Span<byte> span = new Span<byte>(buffer.Bytes, 0, 4);
 
                     if (string.IsNullOrWhiteSpace(ld.ConnectAs))
                     {
                         // global
-                        LittleEndianBitConverter.TryWriteBytes(span, _pingData.GlobalTotal);
+                        BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.GlobalTotal);
                     }
                     else
                     {
                         // specific arena/zone
-                        LittleEndianBitConverter.TryWriteBytes(span, ld.PlayersTotal);
+                        BinaryPrimitives.WriteUInt32LittleEndian(span, ld.PlayersTotal);
                     }
 
                     int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);

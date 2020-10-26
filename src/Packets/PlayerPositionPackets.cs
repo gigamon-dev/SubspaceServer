@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System;
+using System.Buffers.Binary;
 
 namespace SS.Core.Packets
 {
@@ -103,8 +101,8 @@ namespace SS.Core.Packets
 
         private ushort BitField
         {
-            get { return LittleEndianBitConverter.ToUInt16(data, byteOffset); }
-            set { LittleEndianBitConverter.TryWriteBytes(data, byteOffset, value); }
+            get { return BinaryPrimitives.ReadUInt16LittleEndian(new Span<byte>(data, byteOffset, 2)); }
+            set { BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(data, byteOffset, 2), value); }
         }
 
         public WeaponCodes Type

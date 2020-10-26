@@ -1,12 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Net;
-using SS.Utilities;
-using SS.Core.Packets;
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.ComponentCallbacks;
+using SS.Utilities;
+using System;
+using System.Buffers.Binary;
+using System.Net;
 
 namespace SS.Core.Modules
 {
@@ -118,8 +115,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            //int key = BitConverter.ToInt32(buffer, 2);
-            int key = LittleEndianBitConverter.ToInt32(buffer, 2);
+            int key = BinaryPrimitives.ReadInt32LittleEndian(new Span<byte>(buffer, 2, 4));
 
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
             // note: reusing the buffer (asss creates a new buffer on the stack)
