@@ -133,10 +133,27 @@ namespace SS.Core.Map
         public Bitmap ToBitmap()
         {
             Bitmap bitmap = new Bitmap(1024, 1024);
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.Clear(Color.Black);
+            }
+
             foreach (KeyValuePair<MapCoordinate, MapTile> kvp in _tileLookup)
             {
-                bitmap.SetPixel(kvp.Key.X, kvp.Key.Y, Color.Black);
+                Color color = kvp.Value switch {
+                    MapTile { IsDoor : true} => Color.Blue,
+                    MapTile { IsSafe: true } => Color.LightGreen,
+                    MapTile { IsTurfFlag: true } => Color.Yellow,
+                    MapTile { IsGoal : true } => Color.Red,
+                    MapTile { IsWormhole : true } => Color.Purple,
+                    MapTile { IsFlyOver: true } => Color.DarkGray,
+                    MapTile { IsFlyUnder: true } => Color.DarkGray,
+                    _ => Color.White
+                };
+
+                bitmap.SetPixel(kvp.Key.X, kvp.Key.Y, color);
             }
+
             return bitmap;
         }
     }

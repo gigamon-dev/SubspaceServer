@@ -376,7 +376,10 @@ namespace SS.Core.Modules
                             // useful check to see that we are in fact loading correctly
                             using (Bitmap bmp = lvl.ToBitmap())
                             {
-                                bmp.Save("C:\\mapimage.bmp");
+                                bmp.Save(
+                                    Path.ChangeExtension(
+                                        Path.GetFileNameWithoutExtension(mapname),
+                                        ".bmp"));
                             }
                             */
                         }
