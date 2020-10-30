@@ -1233,7 +1233,7 @@ namespace SS.Core.Modules
                                             wpn.C2SLatency = (byte)latency;
                                             wpn.Y = copy.Y;
                                             wpn.Bounty = copy.Bounty;
-                                            wpn.Weapon = pos.Weapon;
+                                            wpn.Weapon = copy.Weapon;
                                             wpn.Extra = copy.Extra;
 
                                             // move this field from the main packet to the extra data, in case they don't match.
