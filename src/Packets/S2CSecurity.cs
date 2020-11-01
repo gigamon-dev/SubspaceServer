@@ -1,8 +1,5 @@
-﻿using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
+﻿using SS.Utilities;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace SS.Core.Packets
 {
@@ -30,8 +27,8 @@ namespace SS.Core.Packets
         /// </summary>
         public uint GreenSeed
         {
-            get { return BitConverter.IsLittleEndian ? greenSeed : BinaryPrimitives.ReverseEndianness(greenSeed); }
-            set { greenSeed = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+            get { return LittleEndianConverter.Convert(greenSeed); }
+            set { greenSeed = LittleEndianConverter.Convert(value); }
         }
 
         /// <summary>
@@ -39,8 +36,8 @@ namespace SS.Core.Packets
         /// </summary>
         public uint DoorSeed
         {
-            get { return BitConverter.IsLittleEndian ? doorSeed : BinaryPrimitives.ReverseEndianness(doorSeed); }
-            set { doorSeed = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+            get { return LittleEndianConverter.Convert(doorSeed); }
+            set { doorSeed = LittleEndianConverter.Convert(value); }
         }
 
         /// <summary>
@@ -48,8 +45,8 @@ namespace SS.Core.Packets
         /// </summary>
         public uint Timestamp
         {
-            get { return BitConverter.IsLittleEndian ? timestamp : BinaryPrimitives.ReverseEndianness(timestamp); }
-            set { timestamp = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+            get { return LittleEndianConverter.Convert(timestamp); }
+            set { timestamp = LittleEndianConverter.Convert(value); }
         }
 
         /// <summary>
@@ -63,8 +60,8 @@ namespace SS.Core.Packets
         /// </summary>
         public uint Key
         {
-            get { return BitConverter.IsLittleEndian ? key : BinaryPrimitives.ReverseEndianness(key); }
-            set { key = BitConverter.IsLittleEndian ? value : BinaryPrimitives.ReverseEndianness(value); }
+            get { return LittleEndianConverter.Convert(key); }
+            set { key = LittleEndianConverter.Convert(value); }
         }
 
         /// <summary>

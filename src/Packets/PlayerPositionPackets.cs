@@ -1,6 +1,6 @@
 ﻿using SS.Utilities;
 using System;
-using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
@@ -66,603 +66,436 @@ namespace SS.Core.Packets
         Shrapnel = 15,
     }
 
-    public readonly struct Weapons
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct WeaponData
     {
-        static Weapons()
-        {
-            // TODO: maybe split this into 2 separate bitfields, might be slightly faster
-            BitFieldBuilder builder = new BitFieldBuilder(16);
-            type = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
-            level = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-            shrapBouncing = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-            shrapLevel = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-            shrap = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
-            alternate = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
+        private byte bitfield1;
+        private byte bitfield2;
 
-            Length = 2;   
-        }
+        public const int Length = 2;
 
-        private static readonly ByteBitFieldLocation type;
-        private static readonly ByteBitFieldLocation level;
-        private static readonly BoolBitFieldLocation shrapBouncing;
-        private static readonly ByteBitFieldLocation shrapLevel;
-        private static readonly ByteBitFieldLocation shrap;
-        private static readonly BoolBitFieldLocation alternate;
-        public static readonly int Length;
+        // bitfield1 masks
+        private const byte TypeMask = 0b00011111;
+        private const byte LevelMask = 0b01100000;
+        private const byte SharpBouncingMask = 0b10000000;
 
-        private readonly byte[] data;
-        private readonly int byteOffset;
-
-        public Weapons(byte[] data, int byteOffset)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-            this.byteOffset = byteOffset;
-        }
-
-        private ushort BitField
-        {
-            get { return BinaryPrimitives.ReadUInt16LittleEndian(new Span<byte>(data, byteOffset, 2)); }
-            set { BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(data, byteOffset, 2), value); }
-        }
+        // bitfield2 masks
+        private const byte ShrapLevelMask = 0b00000011;
+        private const byte ShrapMask = 0b01111100;
+        private const byte AlternateMask = 0b10000000;
 
         public WeaponCodes Type
         {
-            get { return (WeaponCodes)type.GetValue(BitField); }
-            set { BitField = type.SetValue((byte)value, BitField); }
+            get { return (WeaponCodes)(bitfield1 & TypeMask); }
+            set { bitfield1 = (byte)((bitfield1 & ~TypeMask) | ((byte)value & TypeMask)); }
         }
 
         public byte Level
         {
-            get { return level.GetValue(BitField); }
-            set { BitField = level.SetValue(value, BitField); }
+            get { return (byte)((bitfield1 & LevelMask) >> 5); }
+            set { bitfield1 = (byte)((bitfield1 & ~LevelMask) | (value << 5 & LevelMask)); }
         }
-
+        
         public bool ShrapBouncing
         {
-            get { return shrapBouncing.GetValue(BitField); }
-            set { BitField = shrapBouncing.SetValue(value, BitField); }
+            get { return ((bitfield1 & SharpBouncingMask) >> 7) != 0; }
+            set { bitfield1 = (byte)((bitfield1 & ~SharpBouncingMask) | ((value ? 1 : 0) << 7 & SharpBouncingMask)); }
         }
 
         public byte ShrapLevel
         {
-            get { return shrapLevel.GetValue(BitField); }
-            set { BitField = shrapLevel.SetValue(value, BitField); }
+            get { return (byte)(bitfield2 & ShrapLevelMask); }
+            set { bitfield2 = (byte)((bitfield2 & ~ShrapLevelMask) | (value & ShrapLevelMask)); }
         }
-
+        
         public byte Shrap
         {
-            get { return shrap.GetValue(BitField); }
-            set { BitField = shrap.SetValue(value, BitField); }
+            get { return (byte)((bitfield2 & ShrapMask) >> 2); }
+            set { bitfield2 = (byte)((bitfield2 & ~ShrapMask) | (value << 2 & ShrapMask)); }
         }
 
         public bool Alternate
         {
-            get { return alternate.GetValue(BitField); }
-            set { BitField = alternate.SetValue(value, BitField); }
-        }
-
-        public void CopyTo(Weapons dest)
-        {
-            Array.Copy(data, byteOffset, dest.data, dest.byteOffset, Length);
+            get { return (byte)((bitfield2 & AlternateMask) >> 7) != 0; }
+            set { bitfield2 = (byte)((bitfield2 & ~AlternateMask) | ((value ? 1 : 0) << 7 & AlternateMask)); }
         }
     }
 
-    public readonly struct ExtraPositionData
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct ExtraPositionData
     {
-        static ExtraPositionData()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            energy = locationBuilder.CreateUInt16DataLocation();
-            s2cPing = locationBuilder.CreateUInt16DataLocation();
-            timer = locationBuilder.CreateUInt16DataLocation();
-            bitField = locationBuilder.CreateUInt32DataLocation();
-            Length = locationBuilder.NumBytes;
+        private ushort energy;
+        private ushort s2cping;
+        private ushort timer;
+        private uint bitfield;
 
-            BitFieldBuilder builder = new BitFieldBuilder(32);
-            shields = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-            super = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-            bursts = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-            repels = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-            thors = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-            bricks = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-            decoys = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-            rockets = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-            portals = (ByteBitFieldLocation)builder.CreateBitFieldLocation(4);
-        }
+        public const int Length = 10;
 
-        private static readonly UInt16DataLocation energy;
-        private static readonly UInt16DataLocation s2cPing;
-        private static readonly UInt16DataLocation timer;
-
-        private static readonly UInt32DataLocation bitField;
-        private static readonly BoolBitFieldLocation shields;
-        private static readonly BoolBitFieldLocation super;
-        private static readonly ByteBitFieldLocation bursts;
-        private static readonly ByteBitFieldLocation repels;
-        private static readonly ByteBitFieldLocation thors;
-        private static readonly ByteBitFieldLocation bricks;
-        private static readonly ByteBitFieldLocation decoys;
-        private static readonly ByteBitFieldLocation rockets;
-        private static readonly ByteBitFieldLocation portals;
-        public static readonly int Length;
-
-        private readonly byte[] data;
-        private readonly int byteOffset;
-
-        public ExtraPositionData(byte[] data, int byteOffset)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-            this.byteOffset = byteOffset;
-        }
+        // bitfield masks
+        private const uint ShieldsMask = 0b00000000_00000000_00000000_00000001;
+        private const uint SuperMask = 0b00000000_00000000_00000000_00000010;
+        private const uint BurstsMask = 0b00000000_00000000_00000000_00111100;
+        private const uint RepelsMask = 0b00000000_00000000_00000011_11000000;
+        private const uint ThorsMask = 0b00000000_00000000_00111100_00000000;
+        private const uint BricksMask = 0b00000000_00000011_11000000_00000000;
+        private const uint DecoysMask = 0b00000000_00111100_00000000_00000000;
+        private const uint RocketsMask = 0b00000011_11000000_00000000_00000000;
+        private const uint PortalsMask = 0b00111100_00000000_00000000_00000000;
+        private const uint PaddingMask = 0b11000000_00000000_00000000_00000000; // unused bits?
 
         public ushort Energy
         {
-            get { return energy.GetValue(data, byteOffset); }
-            set { energy.SetValue(data, value, byteOffset); }
+            readonly get { return LittleEndianConverter.Convert(energy); }
+            set { energy = LittleEndianConverter.Convert(value); }
         }
 
         public ushort S2CPing
         {
-            get { return s2cPing.GetValue(data, byteOffset); }
-            set { s2cPing.SetValue(data, value, byteOffset); }
-        }
-
-        private uint BitField
-        {
-            get { return bitField.GetValue(data, byteOffset); }
-            set { bitField.SetValue(data, value, byteOffset); }
+            readonly get { return LittleEndianConverter.Convert(s2cping); }
+            set { s2cping = LittleEndianConverter.Convert(value); }
         }
 
         public ushort Timer
         {
-            get { return timer.GetValue(data, byteOffset); }
-            set { timer.SetValue(data, value, byteOffset); }
+            readonly get { return LittleEndianConverter.Convert(timer); }
+            set { timer = LittleEndianConverter.Convert(value); }
         }
 
         public bool Shields
         {
-            get { return shields.GetValue(BitField); }
-            set { BitField = shields.SetValue(value, BitField); }
+            get { return (byte)(bitfield & ShieldsMask) != 0; }
+            set { bitfield = (bitfield & ~ShieldsMask) | ((value ? 1u : 0u) & ShieldsMask); }
         }
 
         public bool Super
         {
-            get { return super.GetValue(BitField); }
-            set { BitField = super.SetValue(value, BitField); }
+            get { return (byte)(bitfield & SuperMask) >> 1 != 0; }
+            set { bitfield = (bitfield & ~SuperMask) | ((value ? 1u : 0u) << 1 & SuperMask); }
         }
 
         public byte Bursts
         {
-            get { return bursts.GetValue(BitField); }
-            set { BitField = bursts.SetValue(value, BitField); }
+            get { return (byte)((bitfield & BurstsMask) >> 2); }
+            set { bitfield = (bitfield & ~BurstsMask) | ((uint)value << 2 & BurstsMask); }
         }
 
         public byte Repels
         {
-            get { return repels.GetValue(BitField); }
-            set { BitField = repels.SetValue(value, BitField); }
+            get { return (byte)((bitfield & RepelsMask) >> 6); }
+            set { bitfield = (bitfield & ~RepelsMask) | ((uint)value << 6 & RepelsMask); }
         }
 
         public byte Thors
         {
-            get { return thors.GetValue(BitField); }
-            set { BitField = thors.SetValue(value, BitField); }
+            get { return (byte)((bitfield & ThorsMask) >> 10); }
+            set { bitfield = (bitfield & ~ThorsMask) | ((uint)value << 10 & ThorsMask); }
         }
 
         public byte Bricks
         {
-            get { return bricks.GetValue(BitField); }
-            set { BitField = bricks.SetValue(value, BitField); }
+            get { return (byte)((bitfield & BricksMask) >> 14); }
+            set { bitfield = (bitfield & ~BricksMask) | ((uint)value << 14 & BricksMask); }
         }
 
         public byte Decoys
         {
-            get { return decoys.GetValue(BitField); }
-            set { BitField = decoys.SetValue(value, BitField); }
+            get { return (byte)((bitfield & DecoysMask) >> 18); }
+            set { bitfield = (bitfield & ~DecoysMask) | ((uint)value << 18 & DecoysMask); }
         }
 
         public byte Rockets
         {
-            get { return rockets.GetValue(BitField); }
-            set { BitField = rockets.SetValue(value, BitField); }
+            get { return (byte)((bitfield & RocketsMask) >> 22); }
+            set { bitfield = (bitfield & ~RocketsMask) | ((uint)value << 22 & RocketsMask); }
         }
 
         public byte Portals
         {
-            get { return portals.GetValue(BitField); }
-            set { BitField = portals.SetValue(value, BitField); }
-        }
-
-        public void CopyTo(ExtraPositionData dest)
-        {
-            Array.Copy(data, byteOffset, dest.data, dest.byteOffset, Length);
+            get { return (byte)((bitfield & PortalsMask) >> 26); }
+            set { bitfield = (bitfield & ~PortalsMask) | ((uint)value << 26 & PortalsMask); }
         }
     }
 
-    public readonly struct S2CWeaponsPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct S2CWeaponsPacket
     {
-        static S2CWeaponsPacket()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateByteDataLocation();
-            rotation = locationBuilder.CreateSByteDataLocation();
-            time = locationBuilder.CreateUInt16DataLocation();
-            x = locationBuilder.CreateInt16DataLocation();
-            ySpeed = locationBuilder.CreateInt16DataLocation();
-            playerId = locationBuilder.CreateUInt16DataLocation();
-            xSpeed = locationBuilder.CreateInt16DataLocation();
-            checksum = locationBuilder.CreateByteDataLocation();
-            status = locationBuilder.CreateByteDataLocation();
-            c2sLatency = locationBuilder.CreateByteDataLocation();
-            y = locationBuilder.CreateInt16DataLocation();
-            bounty = locationBuilder.CreateUInt16DataLocation();
-            weapon = locationBuilder.CreateDataLocation(2); // 2 bytes
-            Length = locationBuilder.NumBytes;
-            extra = locationBuilder.CreateDataLocation(10); // 10 bytes
-            LengthWithExtra = locationBuilder.NumBytes;
-        }
+        /// <summary>
+        /// 0x05
+        /// </summary>
+        public byte Type;
 
-        private static readonly ByteDataLocation type;
-        private static readonly SByteDataLocation rotation;
-        private static readonly UInt16DataLocation time;
-        private static readonly Int16DataLocation x;
-        private static readonly Int16DataLocation ySpeed;
-        private static readonly UInt16DataLocation playerId;
-        private static readonly Int16DataLocation xSpeed;
-        private static readonly ByteDataLocation checksum;
-        private static readonly ByteDataLocation status;
-        private static readonly ByteDataLocation c2sLatency;
-        private static readonly Int16DataLocation y;
-        private static readonly UInt16DataLocation bounty;
-        private static readonly DataLocation weapon;
-        private static readonly DataLocation extra;
-        public static readonly int Length;
-        public static readonly int LengthWithExtra;
+        /// <summary>
+        /// Ship rotation [0-39]. Where 0 is 12:00, 10 is 3:00, 20 is 6:00, and 30 is 9:00.
+        /// </summary>
+        public sbyte Rotation;
+        private ushort time;
+        private short x;
+        private short ySpeed;
+        private ushort playerId;
+        private short xSpeed;
+        public byte Checksum;
+        private byte status;
+        public byte C2SLatency;
+        private short y;
+        private ushort bounty;
+        public WeaponData Weapon;
+        public ExtraPositionData Extra;
 
-        private readonly byte[] data;
+        /// <summary>
+        /// Length without extra position data.
+        /// </summary>
+        public const int Length = 19 + WeaponData.Length;
 
-        public S2CWeaponsPacket(byte[] data)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-        }
-
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
-        }
-
-        public sbyte Rotation
-        {
-            get { return rotation.GetValue(data); }
-            set { rotation.SetValue(data, value); }
-        }
+        /// <summary>
+        /// Length with extra position data.
+        /// </summary>
+        public const int LengthWithExtra = Length + ExtraPositionData.Length;
 
         public ushort Time
         {
-            get { return time.GetValue(data); }
-            set { time.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(time); }
+            set { time = LittleEndianConverter.Convert(value); }
         }
 
         public short X
         {
-            get { return x.GetValue(data); }
-            set { x.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(x); }
+            set { x = LittleEndianConverter.Convert(value); }
         }
 
         public short YSpeed
         {
-            get { return ySpeed.GetValue(data); }
-            set { ySpeed.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(ySpeed); }
+            set { ySpeed = LittleEndianConverter.Convert(value); }
         }
 
         public ushort PlayerId
         {
-            get { return playerId.GetValue(data); }
-            set { playerId.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(playerId); }
+            set { playerId = LittleEndianConverter.Convert(value); }
         }
 
         public short XSpeed
         {
-            get { return xSpeed.GetValue(data); }
-            set { xSpeed.SetValue(data, value); }
-        }
-
-        public byte Checksum
-        {
-            get { return checksum.GetValue(data); }
-            set { checksum.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(xSpeed); }
+            set { xSpeed = LittleEndianConverter.Convert(value); }
         }
 
         public PlayerPositionStatus Status
         {
-            get { return (PlayerPositionStatus)status.GetValue(data); }
-            set { status.SetValue(data, (byte)value); }
-        }
-
-        public byte C2SLatency
-        {
-            get { return c2sLatency.GetValue(data); }
-            set { c2sLatency.SetValue(data, value); }
+            readonly get { return (PlayerPositionStatus)LittleEndianConverter.Convert(status); }
+            set { status = (byte)value; }
         }
 
         public short Y
         {
-            get { return y.GetValue(data); }
-            set { y.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(y); }
+            set { y = LittleEndianConverter.Convert(value); }
         }
 
         public ushort Bounty
         {
-            get { return bounty.GetValue(data); }
-            set { bounty.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(bounty); }
+            set { bounty = LittleEndianConverter.Convert(value); }
         }
 
-        public Weapons Weapon
+        public void Initialize()
         {
-            get { return new Weapons(data, weapon.ByteOffset); }
-            set { value.CopyTo(Weapon); }
+            Type = 0x05;
         }
 
-        public ExtraPositionData Extra
+        public void SetChecksum()
         {
-            get { return new ExtraPositionData(data, extra.ByteOffset); }
-            set { value.CopyTo(Extra); }
-        }
+            Checksum = 0;
 
-        public void DoChecksum()
-        {
+            Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
             byte ck = 0;
-            for (int i = 0; i < S2CWeaponsPacket.Length; i++)
+            for (int i = 0; i < Length; i++)
                 ck ^= data[i];
+
             Checksum = ck;
         }
     }
 
-    public readonly struct S2CPositionPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct S2CPositionPacket
     {
-        static S2CPositionPacket()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateByteDataLocation();
-            rotation = locationBuilder.CreateSByteDataLocation();
-            time = locationBuilder.CreateUInt16DataLocation();
-            x = locationBuilder.CreateInt16DataLocation();
-            c2sLatency = locationBuilder.CreateByteDataLocation();
-            bounty = locationBuilder.CreateByteDataLocation();
-            playerId = locationBuilder.CreateByteDataLocation();
-            status = locationBuilder.CreateByteDataLocation();
-            ySpeed = locationBuilder.CreateInt16DataLocation();
-            y = locationBuilder.CreateInt16DataLocation();
-            xSpeed = locationBuilder.CreateInt16DataLocation();
-            Length = locationBuilder.NumBytes;
-            extra = locationBuilder.CreateDataLocation(10); // 10 bytes
-            LengthWithExtra = locationBuilder.NumBytes;
-        }
+        /// <summary>
+        /// 0x28
+        /// </summary>
+        public byte Type;
 
-        private static readonly ByteDataLocation type;
-        private static readonly SByteDataLocation rotation;
-        private static readonly UInt16DataLocation time;
-        private static readonly Int16DataLocation x;
-        private static readonly ByteDataLocation c2sLatency;
-        private static readonly ByteDataLocation bounty;
-        private static readonly ByteDataLocation playerId;
-        private static readonly ByteDataLocation status;
-        private static readonly Int16DataLocation ySpeed;
-        private static readonly Int16DataLocation y;
-        private static readonly Int16DataLocation xSpeed;
-        private static readonly DataLocation extra;
-        public static readonly int Length;
-        public static readonly int LengthWithExtra;
+        /// <summary>
+        /// Ship rotation [0-39]. Where 0 is 12:00, 10 is 3:00, 20 is 6:00, and 30 is 9:00.
+        /// </summary>
+        public sbyte Rotation;
+        private ushort time;
+        private short x;
+        public byte C2SLatency;
+        public byte Bounty;
+        public byte PlayerId;
+        private byte status;
+        private short ySpeed;
+        private short y;
+        private short xSpeed;
+        public ExtraPositionData Extra;
 
-        private readonly byte[] data;
-
-        public S2CPositionPacket(byte[] data)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-        }
-
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
-        }
-
-        public sbyte Rotation
-        {
-            get { return rotation.GetValue(data); }
-            set { rotation.SetValue(data, value); }
-        }
+        public const int Length = 16;
+        public const int LengthWithExtra = Length + ExtraPositionData.Length;
 
         public ushort Time
         {
-            get { return time.GetValue(data); }
-            set { time.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(time); }
+            set { time = LittleEndianConverter.Convert(value); }
         }
 
         public short X
         {
-            get { return x.GetValue(data); }
-            set { x.SetValue(data, value); }
-        }
-
-        public byte C2SLatency
-        {
-            get { return c2sLatency.GetValue(data); }
-            set { c2sLatency.SetValue(data, value); }
-        }
-
-        public byte Bounty
-        {
-            get { return bounty.GetValue(data); }
-            set { bounty.SetValue(data, value); }
-        }
-
-        public byte PlayerId
-        {
-            get { return playerId.GetValue(data); }
-            set { playerId.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(x); }
+            set { x = LittleEndianConverter.Convert(value); }
         }
 
         public PlayerPositionStatus Status
         {
-            get { return (PlayerPositionStatus)status.GetValue(data); }
-            set { status.SetValue(data, (byte)value); }
+            readonly get { return (PlayerPositionStatus)LittleEndianConverter.Convert(status); }
+            set { status = (byte)value; }
         }
 
         public short YSpeed
         {
-            get { return ySpeed.GetValue(data); }
-            set { ySpeed.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(ySpeed); }
+            set { ySpeed = LittleEndianConverter.Convert(value); }
         }
 
         public short Y
         {
-            get { return y.GetValue(data); }
-            set { y.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(y); }
+            set { y = LittleEndianConverter.Convert(value); }
         }
 
         public short XSpeed
         {
-            get { return xSpeed.GetValue(data); }
-            set { xSpeed.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(xSpeed); }
+            set { xSpeed = LittleEndianConverter.Convert(value); }
         }
 
-        public ExtraPositionData Extra
+        public void Initialize()
         {
-            get { return new ExtraPositionData(data, extra.ByteOffset); }
-            set { value.CopyTo(Extra); }
+            Type = 0x28;
         }
     }
 
-    public readonly struct C2SPositionPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct C2SPositionPacket
     {
-        static C2SPositionPacket()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateByteDataLocation();
-            rotation = locationBuilder.CreateSByteDataLocation();
-            time = locationBuilder.CreateUInt32DataLocation();
-            xSpeed = locationBuilder.CreateInt16DataLocation();
-            y = locationBuilder.CreateInt16DataLocation();
-            checksum = locationBuilder.CreateByteDataLocation();
-            status = locationBuilder.CreateByteDataLocation();
-            x = locationBuilder.CreateInt16DataLocation();
-            ySpeed = locationBuilder.CreateInt16DataLocation();
-            bounty = locationBuilder.CreateUInt16DataLocation();
-            energy = locationBuilder.CreateInt16DataLocation();
-            weapon = locationBuilder.CreateDataLocation(2); // 2 bytes
-            Length = locationBuilder.NumBytes;
-            extra = locationBuilder.CreateDataLocation(10); // 10 bytes
-            LengthWithExtra = locationBuilder.NumBytes;
-        }
+        /// <summary>
+        /// 0x03
+        /// </summary>
+        public byte Type;
 
-        private static readonly ByteDataLocation type;
-        private static readonly SByteDataLocation rotation;
-        private static readonly UInt32DataLocation time;
-        private static readonly Int16DataLocation xSpeed;
-        private static readonly Int16DataLocation y;
-        private static readonly ByteDataLocation checksum;
-        private static readonly ByteDataLocation status;
-        private static readonly Int16DataLocation x;
-        private static readonly Int16DataLocation ySpeed;
-        private static readonly UInt16DataLocation bounty;
-        private static readonly Int16DataLocation energy;
-        private static readonly DataLocation weapon;
-        private static readonly DataLocation extra; // optional
-        public static readonly int Length;
-        public static readonly int LengthWithExtra;
+        /// <summary>
+        /// Ship rotation [0-39]. Where 0 is 12:00, 10 is 3:00, 20 is 6:00, and 30 is 9:00.
+        /// </summary>
+        public sbyte Rotation;
+        private uint time;
+        private short xSpeed;
+        private short y;
+        public byte Checksum;
+        private byte status;
+        private short x;
+        private short ySpeed;
+        private ushort bounty;
+        private short energy;
+        public WeaponData Weapon;
+        public ExtraPositionData Extra;
 
-        private readonly byte[] data;
+        /// <summary>
+        /// Length without extra position data.
+        /// </summary>
+        public const int Length = 20 + WeaponData.Length;
 
-        public byte[] RawData => data;
-
-        public C2SPositionPacket(byte[] data)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-        }
-
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
-        }
-
-        public sbyte Rotation
-        {
-            get { return rotation.GetValue(data); }
-            set { rotation.SetValue(data, value); }
-        }
+        /// <summary>
+        /// Length with extra position data.
+        /// </summary>
+        public const int LengthWithExtra = Length + ExtraPositionData.Length;
 
         public ServerTick Time
         {
-            get { return new ServerTick(time.GetValue(data)); }
-            set { time.SetValue(data, (uint)value); }
+            readonly get { return new ServerTick(LittleEndianConverter.Convert(time)); }
+            set { time = LittleEndianConverter.Convert(value); }
         }
 
         public short XSpeed
         {
-            get { return xSpeed.GetValue(data); }
-            set { xSpeed.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(xSpeed); }
+            set { xSpeed = LittleEndianConverter.Convert(value); }
         }
 
         public short Y
         {
-            get { return y.GetValue(data); }
-            set { y.SetValue(data, value); }
-        }
-
-        public byte Checksum
-        {
-            get { return checksum.GetValue(data); }
-            set { checksum.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(y); }
+            set { y = LittleEndianConverter.Convert(value); }
         }
 
         public PlayerPositionStatus Status
         {
-            get { return (PlayerPositionStatus)status.GetValue(data); }
-            set { status.SetValue(data, (byte)value); }
+            readonly get { return (PlayerPositionStatus)status; }
+            set { status = (byte)value; }
         }
 
         public short X
         {
-            get { return x.GetValue(data); }
-            set { x.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(x); }
+            set { x = LittleEndianConverter.Convert(value); }
         }
 
         public short YSpeed
         {
-            get { return ySpeed.GetValue(data); }
-            set { ySpeed.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(ySpeed); }
+            set { ySpeed = LittleEndianConverter.Convert(value); }
         }
 
         public ushort Bounty
         {
-            get { return bounty.GetValue(data); }
-            set { bounty.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(bounty); }
+            set { bounty = LittleEndianConverter.Convert(value); }
         }
 
         public short Energy
         {
-            get { return energy.GetValue(data); }
-            set { energy.SetValue(data, value); }
+            readonly get { return LittleEndianConverter.Convert(energy); }
+            set { energy = LittleEndianConverter.Convert(value); }
         }
 
-        public Weapons Weapon
+        public void Initialize()
         {
-            get { return new Weapons(data, weapon.ByteOffset); }
-            set { value.CopyTo(Weapon); }
+            Type = 0x03;
         }
 
-        public ExtraPositionData Extra
+        public void SetChecksum()
         {
-            get { return new ExtraPositionData(data, extra.ByteOffset); }
-            set { value.CopyTo(Extra); }
+            Checksum = 0;
+
+            Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+            byte ck = 0;
+            for (int i = 0; i < Length; i++)
+                ck ^= data[i];
+
+            Checksum = ck;
         }
-        
-        public void CopyTo(C2SPositionPacket dest)
+
+        public bool IsValidChecksum
         {
-            Array.Copy(data, 0, dest.data, 0, LengthWithExtra);
+            get
+            {
+                Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+                byte checksum = 0;
+                int left = Length;
+                while ((left--) > 0)
+                    checksum ^= data[left];
+
+                return checksum == 0;
+            }
         }
     }
 }

@@ -1,12 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Core.ComponentCallbacks;
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Map;
 using SS.Core.Packets;
 using SS.Utilities;
-using SS.Core.Map;
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -53,7 +53,7 @@ namespace SS.Core.Modules
 
         private class PlayerData
         {
-            public C2SPositionPacket pos = new C2SPositionPacket(new byte[C2SPositionPacket.LengthWithExtra]);
+            public C2SPositionPacket pos = new C2SPositionPacket();
 
             /// <summary>
             /// who the player is spectating, null means not spectating
@@ -374,9 +374,9 @@ namespace SS.Core.Modules
             return ad.initLockship;
         }
 
-        void IGame.FakePosition(Player p, C2SPositionPacket pos, int len)
+        void IGame.FakePosition(Player p, ref C2SPositionPacket pos, int len)
         {
-            HandlePositionPacket(p, pos, len, true);
+            HandlePositionPacket(p, ref pos, len, true);
         }
 
         void IGame.FakeKill(Player killer, Player killed, short pts, short flags)
@@ -869,10 +869,11 @@ namespace SS.Core.Modules
 
         private void Packet_Position(Player p, byte[] data, int len)
         {
-            HandlePositionPacket(p, new C2SPositionPacket(data), len, false);
+            ref C2SPositionPacket pos = ref MemoryMarshal.AsRef<C2SPositionPacket>(new Span<byte>(data, 0, C2SPositionPacket.LengthWithExtra));
+            HandlePositionPacket(p, ref pos, len, false);
         }
 
-        private void HandlePositionPacket(Player p, C2SPositionPacket pos, int len, bool isFake)
+        private void HandlePositionPacket(Player p, ref C2SPositionPacket pos, int len, bool isFake)
         {
             if (p == null || p.Status != PlayerState.Playing)
                 return;
@@ -891,20 +892,11 @@ namespace SS.Core.Modules
             if (arena == null || arena.Status != ArenaState.Running)
                 return;
 
-            if (!isFake)
+            // Verify checksum
+            if (!isFake && !pos.IsValidChecksum)
             {
-                // Verify checksum
-                byte[] data = pos.RawData;
-                byte checksum = 0;
-                int left = 22;
-                while ((left--) > 0)
-                    checksum ^= data[left];
-
-                if (checksum != 0)
-                {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet checksum");
-                    return;
-                }
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet checksum");
+                return;
             }
 
             if (pos.X == -1 && pos.Y == -1)
@@ -914,8 +906,6 @@ namespace SS.Core.Modules
                 // knows the client hasn't dropped, so just ignore them.
                 return;
             }
-
-            Weapons weapon = pos.Weapon;
 
             if (!(p[_pdkey] is PlayerData pd))
                 return;
@@ -968,7 +958,7 @@ namespace SS.Core.Modules
                 // copy the whole thing. this will copy the epd, or, if the client
                 // didn't send any epd, it will copy zeros because the buffer was
                 // zeroed before data was recvd into it.
-                pos.CopyTo(pd.pos);
+                pd.pos = pos;
 
                 // update position in global player object.
                 // only copy x/y if they are nonzero, so we keep track of last
@@ -1030,7 +1020,7 @@ namespace SS.Core.Modules
                 if ((_prng.Rand() < pd.ignoreWeapons) 
                     || pd.MapRegionNoWeapons)
                 {
-                    weapon.Type = 0;
+                    pos.Weapon.Type = WeaponCodes.Null;
                 }
 
                 // also turn off anti based on region
@@ -1043,7 +1033,7 @@ namespace SS.Core.Modules
                 // the wrong order, there's no need to send it. but fake players
                 // never got data->pos.time initialized correctly, so do a
                 // little special case.
-                if (!isNewer && !isFake && weapon.Type == 0)
+                if (!isNewer && !isFake && pos.Weapon.Type == WeaponCodes.Null)
                     return;
 
                 // TODO: PPK advisers - EditPPK
@@ -1051,11 +1041,11 @@ namespace SS.Core.Modules
                 // by default, send unreliable droppable packets. 
                 // weapons get a higher priority.
                 NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Dropabble | 
-                    (weapon.Type != WeaponCodes.Null ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
+                    (pos.Weapon.Type != WeaponCodes.Null ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
 
                 // there are several reasons to send a weapon packet (05) instead of just a position one (28)
                 bool sendWeapon = (
-                    (weapon.Type != WeaponCodes.Null) // a real weapon
+                    (pos.Weapon.Type != WeaponCodes.Null) // a real weapon
                     || (pos.Bounty > byte.MaxValue) // bounty over 255
                     || (p.Id > byte.MaxValue)); //pid over 255
 
@@ -1068,8 +1058,8 @@ namespace SS.Core.Modules
                 // TODO: a way for the server to keep track of where mines are currently placed so that it can replay packets to players that enter the arena? or does something like this exist already?
 
                 // send mines to everyone
-                if ((weapon.Type == WeaponCodes.Bomb || weapon.Type == WeaponCodes.ProxBomb) 
-                    && weapon.Alternate)
+                if ((pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb) 
+                    && pos.Weapon.Alternate)
                 {
                     sendToAll = true;
                 }
@@ -1083,7 +1073,7 @@ namespace SS.Core.Modules
                 }
 
                 // send some percent of antiwarp positions to everyone
-                if ((weapon.Type == WeaponCodes.Null)
+                if ((pos.Weapon.Type == WeaponCodes.Null)
                     && ((pos.Status & PlayerPositionStatus.Antiwarp) == PlayerPositionStatus.Antiwarp)
                     && (_prng.Rand() < ad.cfg_sendanti))
                 {
@@ -1106,14 +1096,9 @@ namespace SS.Core.Modules
                     nflags = NetSendFlags.Reliable;
                 }
 
-                using DataBuffer copyBuffer = Pool<DataBuffer>.Default.Get();
-                C2SPositionPacket copy = new C2SPositionPacket(copyBuffer.Bytes);
-
-                using DataBuffer wpnBuffer = Pool<DataBuffer>.Default.Get();
-                S2CWeaponsPacket wpn = new S2CWeaponsPacket(wpnBuffer.Bytes);
-
-                using DataBuffer sendposBuffer = Pool<DataBuffer>.Default.Get();
-                S2CPositionPacket sendpos = new S2CPositionPacket(sendposBuffer.Bytes);
+                C2SPositionPacket copy = new C2SPositionPacket();
+                S2CWeaponsPacket wpn = new S2CWeaponsPacket();
+                S2CPositionPacket sendpos = new S2CPositionPacket();
 
                 // ensure that all packets get build before use
                 bool modified = true;
@@ -1165,13 +1150,12 @@ namespace SS.Core.Modules
 
                                 const int plainlen = 0;
                                 const int nrglen = 2;
-                                int epdlen = ExtraPositionData.Length;
 
                                 if (i.Ship == ShipType.Spec)
                                 {
                                     if (idata.pl_epd.seeEpd && idata.speccing == p)
                                     {
-                                        extralen = (len >= C2SPositionPacket.LengthWithExtra) ? epdlen : nrglen;
+                                        extralen = (len >= C2SPositionPacket.LengthWithExtra) ? ExtraPositionData.Length : nrglen;
                                     }
                                     else if (idata.pl_epd.seeNrgSpec == SeeEnergy.All
                                         || (idata.pl_epd.seeNrgSpec == SeeEnergy.Team
@@ -1199,7 +1183,7 @@ namespace SS.Core.Modules
 
                                 if (modified)
                                 {
-                                    pos.CopyTo(copy);
+                                    copy = pos;
                                     modified = false;
                                 }
 
@@ -1237,22 +1221,26 @@ namespace SS.Core.Modules
                                             wpn.Extra = copy.Extra;
 
                                             // move this field from the main packet to the extra data, in case they don't match.
-                                            ExtraPositionData epd = wpn.Extra;
-                                            epd.Energy = (ushort)copy.Energy;
+                                            wpn.Extra.Energy = (ushort)copy.Energy;
 
                                             wpnDirty = modified;
 
-                                            wpn.DoChecksum();
+                                            wpn.SetChecksum();
                                         }
 
                                         if (wpn.Weapon.Type != 0)
                                             idata.wpnSent++;
 
-                                        _net.SendToOne(i, wpnBuffer.Bytes, length, nflags);
+                                        Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref wpn, 1));
+                                        if (data.Length > length)
+                                            data = data.Slice(0, length);
+
+                                        _net.SendToOne(i, data, nflags);
                                     }
                                     else
                                     {
                                         int length = S2CPositionPacket.Length + extralen;
+
                                         if (posDirty)
                                         {
                                             sendpos.Type = (byte)S2CPacketType.Position;
@@ -1269,13 +1257,16 @@ namespace SS.Core.Modules
                                             sendpos.Extra = copy.Extra;
 
                                             // move this field from the main packet to the extra data, in case they don't match.
-                                            ExtraPositionData epd = copy.Extra;
-                                            epd.Energy = (ushort)copy.Energy;
+                                            sendpos.Extra.Energy = (ushort)copy.Energy;
 
                                             posDirty = modified;
                                         }
 
-                                        _net.SendToOne(i, sendposBuffer.Bytes, length, nflags);
+                                        Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref sendpos, 1));
+                                        if (data.Length > length)
+                                            data = data.Slice(0, length);
+
+                                        _net.SendToOne(i, data, nflags);
                                     }
                                 }
                             }
