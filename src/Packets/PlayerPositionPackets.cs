@@ -308,7 +308,7 @@ namespace SS.Core.Packets
         {
             Checksum = 0;
 
-            Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+            ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
             byte ck = 0;
             for (int i = 0; i < Length; i++)
                 ck ^= data[i];
@@ -476,7 +476,7 @@ namespace SS.Core.Packets
         {
             Checksum = 0;
 
-            Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+            ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
             byte ck = 0;
             for (int i = 0; i < Length; i++)
                 ck ^= data[i];
@@ -488,7 +488,7 @@ namespace SS.Core.Packets
         {
             get
             {
-                Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+                ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
                 byte checksum = 0;
                 int left = Length;
                 while ((left--) > 0)
