@@ -3507,7 +3507,7 @@ namespace SS.Core.Modules
         }
 
 #if CFG_DUMP_RAW_PACKETS
-        private void DumpPk(string description, Span<byte> d)
+        private void DumpPk(string description, ReadOnlySpan<byte> d)
         {
             StringBuilder sb = new StringBuilder(description.Length + 2 + (int)Math.Ceiling(d.Length / 16d) * 67);
             sb.AppendLine(description);
