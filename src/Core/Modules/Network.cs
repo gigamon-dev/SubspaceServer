@@ -2230,13 +2230,14 @@ namespace SS.Core.Modules
                 Monitor.Exit(conn.relmtx);
 
                 // send the ack
-                Span<byte> bytes = stackalloc byte[AckPacket.Length];
-                AckPacket ap = new AckPacket(bytes);
-                ap.Initialize(sn);
+                AckPacket ap = new AckPacket(sn);
 
                 lock (conn.olmtx)
                 {
-                    BufferPacket(conn, bytes, NetSendFlags.Ack);
+                    BufferPacket(
+                        conn, 
+                        MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ap, 1)), 
+                        NetSendFlags.Ack);
                 }
 
                 if (canProcess)
