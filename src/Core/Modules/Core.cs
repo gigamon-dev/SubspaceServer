@@ -5,7 +5,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
@@ -723,24 +723,23 @@ namespace SS.Core.Modules
             }
             else if (player.IsStandard)
             {
-                using DataBuffer buffer = Pool<DataBuffer>.Default.Get();
-                LoginResponsePacket lr = new LoginResponsePacket(buffer.Bytes);
+                LoginResponsePacket lr = new LoginResponsePacket();
                 lr.Initialize();
                 lr.Code = (byte)auth.Code;
                 lr.DemoData = auth.DemoData ? (byte)1 : (byte)0;
                 lr.NewsChecksum = _map.GetNewsChecksum();
-                                         
+
                 if (player.Type == ClientType.Continuum)
                 {
-                    using (DataBuffer contVersionBuffer = Pool<DataBuffer>.Default.Get())
-                    {
-                        ContinuumVersionPacket pkt = new ContinuumVersionPacket(contVersionBuffer.Bytes);
-                        pkt.Type = (byte)S2CPacketType.ContVersion;
-                        pkt.ContVersion = ClientVersion_Cont;
-                        pkt.Checksum = _continuumChecksum;
+                    ContinuumVersionPacket pkt = new ContinuumVersionPacket();
+                    pkt.Type = (byte)S2CPacketType.ContVersion;
+                    pkt.ContVersion = ClientVersion_Cont;
+                    pkt.Checksum = _continuumChecksum;
 
-                        _net.SendToOne(player, contVersionBuffer.Bytes, ContinuumVersionPacket.Length, NetSendFlags.Reliable);
-                    }
+                    _net.SendToOne(
+                        player,
+                        MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref pkt, 1)),
+                        NetSendFlags.Reliable);
 
                     lr.ExeChecksum = _continuumChecksum;
                     lr.CodeChecksum = _codeChecksum;
@@ -776,7 +775,10 @@ namespace SS.Core.Modules
                     }
                 }
 
-                _net.SendToOne(player, buffer.Bytes, LoginResponsePacket.Length, NetSendFlags.Reliable);
+                _net.SendToOne(
+                    player, 
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref lr, 1)),  
+                    NetSendFlags.Reliable);
             }
             else if (player.IsChat)
             {
