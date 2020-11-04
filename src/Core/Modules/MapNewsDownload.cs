@@ -2,11 +2,11 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
-using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -278,8 +278,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            using DataBuffer buffer = Pool<DataBuffer>.Default.Get();
-            MapFilenamePacket mf = new MapFilenamePacket(buffer.Bytes);
+            MapFilenamePacket mf = new MapFilenamePacket();
             mf.Initialize();
 
             int len = 0;
@@ -302,12 +301,15 @@ namespace SS.Core.Modules
             else
             {
                 MapDownloadData data = dls.First.Value;
-                len = mf.SetFileInfo(0, data.filename, data.checksum, null);
+                len = mf.SetFileInfo(data.filename, data.checksum);
             }
 
             Debug.Assert(len > 0);
 
-            _net.SendToOne(p, buffer.Bytes, len, NetSendFlags.Reliable);
+            _net.SendToOne(
+                p, 
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref mf, 1)).Slice(0, len), 
+                NetSendFlags.Reliable);
         }
 
         public uint GetNewsChecksum() => _newsManager.TryGetNews(out _, out uint checksum) ? checksum : 0;

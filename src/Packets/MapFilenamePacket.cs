@@ -1,77 +1,90 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using SS.Utilities;
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
-using SS.Utilities;
 
 namespace SS.Core.Packets
 {
-    public readonly struct MapFilenamePacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct MapFilenamePacket
     {
         public const int MaxLvzFiles = 16;
-        private const int MaxFiles = 16 + 1; // +1 for map file
+        private const int MaxFiles = MaxLvzFiles + 1; // +1 for map file
 
-        static MapFilenamePacket()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            typeLocation = locationBuilder.CreateByteDataLocation();
+        // Type
+        public byte Type;
 
-            filenameLocation = new DataLocation[MaxFiles];
-            checksumLocation = new UInt32DataLocation[MaxFiles];
-            sizeLocation = new UInt32DataLocation[MaxFiles];
-
-            for (int x = 0; x < MaxFiles; x++)
-            {
-                filenameLocation[x] = locationBuilder.CreateDataLocation(16);
-                checksumLocation[x] = locationBuilder.CreateUInt32DataLocation();
-                sizeLocation[x] = locationBuilder.CreateUInt32DataLocation(); // cont only
-            }
-        }
-
-        private static readonly ByteDataLocation typeLocation;
-        private static readonly DataLocation[] filenameLocation;
-        private static readonly UInt32DataLocation[] checksumLocation;
-        private static readonly UInt32DataLocation[] sizeLocation;
-
-        private readonly byte[] data;
-
-        public MapFilenamePacket(byte[] data)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-        }
+        // Files
+        private fixed byte filesBytes[File.Length * MaxFiles];
+        private Span<File> Files => new Span<File>(Unsafe.AsPointer(ref filesBytes[0]), MaxFiles);
 
         public void Initialize()
         {
-            Type = (byte)Packets.S2CPacketType.MapFilename;
+            Type = (byte)S2CPacketType.MapFilename;
         }
 
-        public byte Type
+        /// <summary>
+        /// Sets file info for the original, non-continuum version of the packet, 
+        /// which doesn't include <see cref="File.Size"/> and can only contain 1 entry, the .lvl file.
+        /// This is for VIE clients (non-bot) that don't support the continuum version of the packet (.lvl file only).
+        /// </summary>
+        /// <param name="fileName">The .lvl file name.</param>
+        /// <param name="checksum">The checksum of the file.</param>
+        /// <returns>Number of bytes for the packet.</returns>
+        public int SetFileInfo(string fileName, uint checksum)
         {
-            get { return typeLocation.GetValue(data); }
-            private set { typeLocation.SetValue(data, value); }
+            if (string.IsNullOrWhiteSpace(fileName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
+
+            ref File file = ref Files[0];
+            file.FileName.WriteNullPaddedASCII(fileName);
+            file.Checksum = checksum;
+
+            return 1 + File.LengthWithoutSize;
         }
 
-        public int SetFileInfo(int fileIndex, string filename, uint checksum, uint? size)
+        /// <summary>
+        /// Sets file info for a continuum version of the packet which includes <see cref="File.Size"/> and contain multiple entries 
+        /// which can contain one .lvl file and and <see cref="MaxLvzFiles"/> .lvz files.
+        /// </summary>
+        /// <param name="fileIndex">Index of the file to set.</param>
+        /// <param name="fileName">The file name (lvl or lvz).</param>
+        /// <param name="checksum">The checksum of the file.</param>
+        /// <param name="size">The size of the file.</param>
+        /// <returns>Number of bytes for the packet to include the file info.</returns>
+        public int SetFileInfo(int fileIndex, string fileName, uint checksum, uint size)
         {
             if (fileIndex >= MaxFiles)
-                throw new ArgumentOutOfRangeException("fileIndex", ">= " + MaxFiles);
+                throw new ArgumentOutOfRangeException(nameof(fileIndex), ">= " + MaxFiles);
 
-            int charCount = filenameLocation[fileIndex].NumBytes;
-            if (filename.Length < charCount)
-                charCount = filename.Length;
+            if (string.IsNullOrWhiteSpace(fileName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
 
-            Encoding.ASCII.GetBytes(filename, 0, charCount, data, filenameLocation[fileIndex].ByteOffset);
-            checksumLocation[fileIndex].SetValue(data, checksum);
+            ref File file = ref Files[fileIndex];
+            file.FileName.WriteNullPaddedASCII(fileName);
+            file.Checksum = checksum;
+            file.Size = size;
 
-            if (size != null)
-            {
-                sizeLocation[fileIndex].SetValue(data, size.Value);
-                return sizeLocation[fileIndex].ByteOffset + sizeLocation[fileIndex].NumBytes;
-            }
-            else
-            {
-                return checksumLocation[fileIndex].ByteOffset + checksumLocation[fileIndex].NumBytes;
-            }
+            return 1 + ((fileIndex + 1) * File.Length);
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public unsafe struct File
+        {
+            // File Name
+            private const int NumFileName = 16;
+            private fixed byte fileName[NumFileName];
+            public Span<byte> FileName => new Span<byte>(Unsafe.AsPointer(ref fileName[0]), NumFileName);
+
+            // Checksum
+            public uint Checksum;
+
+            // Size (continuum only)
+            public uint Size;
+
+            public const int Length = 24;
+            public const int LengthWithoutSize = 20;
         }
     }
 }
