@@ -1,580 +1,290 @@
-﻿using SS.Utilities;
-using System;
-using System.Buffers.Binary;
+﻿using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
-    public class Int32Array
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ClientSettingsPacket
     {
-        private readonly byte[] _data;
-        private readonly int _byteOffset;
-        private readonly int _bitOffset;
-        private readonly Int32DataLocation[] _dataLocations;
+        public byte Type;
 
-        public Int32Array(byte[] data, int byteOffset, int bitOffset, Int32DataLocation[] dataLocations)
+        public ClientBits BitSet;
+
+        // Ship settings
+        private const int NumShips = 8;
+        private fixed byte shipBytes[144 * NumShips];
+        public Span<ShipSettings> Ships => new Span<ShipSettings>(Unsafe.AsPointer(ref shipBytes[0]), NumShips);
+
+        // Int32 settings
+        private const int NumInt32Settings = 20;
+        private fixed int int32Settings[NumInt32Settings];
+        public Span<int> Int32Settings => new Span<int>(Unsafe.AsPointer(ref int32Settings[0]), NumInt32Settings);
+
+        // SpawnPosition settings
+        private const int NumSpawnPositions = 4;
+        private fixed byte spawnPositionBytes[4 * NumSpawnPositions];
+        public Span<SpawnPosition> SpawnPositions => new Span<SpawnPosition>(Unsafe.AsPointer(ref spawnPositionBytes[0]), NumSpawnPositions);
+
+        // Int16 settings
+        private const int NumInt16Settings = 58;
+        private fixed short int16Settings[NumInt16Settings];
+        public Span<short> Int16Settings => new Span<short>(Unsafe.AsPointer(ref int16Settings[0]), NumInt16Settings);
+
+        // Byte settings
+        private const int NumByteSettings = 32;
+        private fixed byte byteSettings[NumByteSettings];
+        public Span<byte> ByteSettings => new Span<byte>(Unsafe.AsPointer(ref byteSettings[0]), NumByteSettings);
+
+        // PrizeWeight settings
+        private const int NumPrizeWeightSettings = 28;
+        private fixed byte prizeWeightSettings[NumPrizeWeightSettings];
+        public Span<byte> PrizeWeightSettings => new Span<byte>(Unsafe.AsPointer(ref prizeWeightSettings[0]), NumPrizeWeightSettings);
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct ClientBits
+    {
+        private byte bitfield1;
+        private byte bitfield2;
+        private byte bitfield3;
+
+        // bitfield1 masks
+        private const byte ExactDamageMask       = 0b00000001;
+        private const byte HideFlagsMask         = 0b00000010;
+        private const byte NoXRadarMask          = 0b00000100;
+        private const byte SlowFramerateMask     = 0b00111000;
+        private const byte DisableScreenshotMask = 0b01000000;
+
+        // bitfield2 masks
+        private const byte MaxTimerDriftMask           = 0b00000111;
+        private const byte DisableBallThroughWallsMask = 0b00001000;
+        private const byte DisableBallKillingMask      = 0b00010000;
+
+        public bool ExactDamage
         {
-            if (dataLocations == null)
-                throw new ArgumentNullException(nameof(dataLocations));
-
-            _data = data ?? throw new ArgumentNullException(nameof(data));
-            _byteOffset = byteOffset;
-            _bitOffset = bitOffset;
-
-            _dataLocations = new Int32DataLocation[dataLocations.Length];
-            for (int x = 0; x < dataLocations.Length; x++)
-                _dataLocations[x] = dataLocations[x];
+            get { return (bitfield1 & ExactDamageMask) != 0; }
+            set { bitfield1 = (byte)((bitfield1 & ~ExactDamageMask) | ((value ? 1 : 0) & ExactDamageMask)); }
         }
 
-        public Int32Array(byte[] data, Int32DataLocation[] dataLocations)
-            : this(data, 0, 0, dataLocations)
+        public bool HideFlags
         {
+            get { return ((bitfield1 & HideFlagsMask) >> 1) != 0; }
+            set { bitfield1 = (byte)((bitfield1 & ~HideFlagsMask) | (((value ? 1 : 0) << 1) & HideFlagsMask)); }
         }
 
-        public int this[int index]
+        public bool NoXRadar
         {
-            get { return _dataLocations[index].GetValue(_data, _byteOffset); }
-            set { _dataLocations[index].SetValue(_data, value, _byteOffset); }
+            get { return ((bitfield1 & NoXRadarMask) >> 2) != 0; }
+            set { bitfield1 = (byte)((bitfield1 & ~NoXRadarMask) | (((value ? 1 : 0) << 2) & NoXRadarMask)); }
         }
 
-        public int Length
+        public byte SlowFramerate
         {
-            get { return _dataLocations.Length; }
+            get { return (byte)((bitfield1 & SlowFramerateMask) >> 3); }
+            set { bitfield1 = (byte)((bitfield1 & ~SlowFramerateMask) | ((value << 3) & SlowFramerateMask)); }
+        }
+
+        public bool DisableScreenshot
+        {
+            get { return ((bitfield1 & DisableScreenshotMask) >> 6) != 0; }
+            set { bitfield1 = (byte)((bitfield1 & ~DisableScreenshotMask) | (((value ? 1 : 0) << 6) & DisableScreenshotMask)); }
+        }
+
+        public byte MaxTimerDrift
+        {
+            get { return (byte)(bitfield2 & MaxTimerDriftMask); }
+            set { bitfield2 = (byte)((bitfield2 & ~MaxTimerDriftMask) | (value & MaxTimerDriftMask)); }
+        }
+
+        public bool DisableBallThroughWalls
+        {
+            get { return ((bitfield2 & DisableBallThroughWallsMask) >> 3) != 0; }
+            set { bitfield2 = (byte)((bitfield2 & ~DisableBallThroughWallsMask) | (((value ? 1 : 0) << 3) & DisableBallThroughWallsMask)); }
+        }
+
+        public bool DisableBallKilling
+        {
+            get { return ((bitfield2 & DisableBallKillingMask) >> 4) != 0; }
+            set { bitfield2 = (byte)((bitfield2 & ~DisableBallKillingMask) | (((value ? 1 : 0) << 4) & DisableBallKillingMask)); }
         }
     }
 
-    public class Int16Array
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ShipSettings
     {
-        private readonly byte[] _data;
-        private readonly int _byteOffset;
-        private readonly int _bitOffset;
-        private readonly Int16DataLocation[] _dataLocations;
+        // Int32 settings
+        private const int NumInt32Settings = 2;
+        private fixed int int32Settings[NumInt32Settings];
+        public Span<int> Int32Settings => new Span<int>(Unsafe.AsPointer(ref int32Settings[0]), NumInt32Settings);
 
-        public Int16Array(byte[] data, int byteOffset, int bitOffset, Int16DataLocation[] dataLocations)
+        // Int16 settings
+        private const int NumInt16Settings = 49;
+        private fixed short int16Settings[NumInt16Settings];
+        public Span<short> Int16Settings => new Span<short>(Unsafe.AsPointer(ref int16Settings[0]), NumInt16Settings);
+        public ref MiscBits MiscBits => ref MemoryMarshal.Cast<short, MiscBits>(Int16Settings.Slice(10, 1))[0];
+
+        // Byte settings
+        private const int NumByteSettings = 18;
+        private fixed byte byteSettings[NumByteSettings];
+        public Span<byte> ByteSettings => new Span<byte>(Unsafe.AsPointer(ref byteSettings[0]), NumByteSettings);
+
+        public WeaponBits Weapons;
+
+        private fixed byte padding[16];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct MiscBits
+    {
+        private ushort bitfield;
+
+        private const ushort SeeBombLevelMask        = 0b_00000000_00000011;
+        private const ushort DisableFastShootingMask = 0b_00000000_00000100;
+        private const ushort RadiusMask              = 0b_00000111_11111000;
+
+        public byte SeeBombLevel
         {
-            if (dataLocations == null)
-                throw new ArgumentNullException(nameof(dataLocations));
-
-            _data = data ?? throw new ArgumentNullException(nameof(data));
-            _byteOffset = byteOffset;
-            _bitOffset = bitOffset;
-
-            _dataLocations = new Int16DataLocation[dataLocations.Length];
-            for (int x = 0; x < dataLocations.Length; x++)
-                _dataLocations[x] = dataLocations[x];
+            get { return (byte)(bitfield & SeeBombLevelMask); }
+            set { bitfield = (ushort)((bitfield & ~SeeBombLevelMask) | (value & SeeBombLevelMask)); }
         }
 
-        public Int16Array(byte[] data, Int16DataLocation[] dataLocations)
-            : this(data, 0, 0, dataLocations)
+        public bool DisableFastShooting
         {
+            get { return ((bitfield & DisableFastShootingMask) >> 2) != 0; }
+            set { bitfield = (ushort)((bitfield & ~DisableFastShootingMask) | (((value ? 1 : 0) << 2) & DisableFastShootingMask)); }
         }
 
-        public short this[int index]
+        public byte Radius
         {
-            get { return _dataLocations[index].GetValue(_data, _byteOffset); }
-            set { _dataLocations[index].SetValue(_data, value, _byteOffset); }
-        }
-
-        public int Length
-        {
-            get { return _dataLocations.Length; }
+            get { return (byte)((bitfield & RadiusMask) >> 3); }
+            set { bitfield = (ushort)((bitfield & ~RadiusMask) | ((value << 3) & RadiusMask)); }
         }
     }
 
-    public class ByteArray
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct WeaponBits
     {
-        private readonly byte[] _data;
-        private readonly int _byteOffset;
-        private readonly int _bitOffset;
-        private readonly ByteDataLocation[] _dataLocations;
+        public uint bitfield;
 
-        public ByteArray(byte[] data, int byteOffset, int bitOffset, ByteDataLocation[] dataLocations)
+        private const uint ShrapnelMaxMask    = 0b_00000000_00000000_00000000_00011111;
+        private const uint ShrapnelRateMask   = 0b_00000000_00000000_00000011_11100000;
+        private const uint CloakStatusMask    = 0b_00000000_00000000_00001100_00000000;
+        private const uint StealthStatusMask  = 0b_00000000_00000000_00110000_00000000;
+        private const uint XRadarStatusMask   = 0b_00000000_00000000_11000000_00000000;
+        private const uint AntiWarpStatusMask = 0b_00000000_00000011_00000000_00000000;
+        private const uint InitialGunsMask    = 0b_00000000_00001100_00000000_00000000;
+        private const uint MaxGunsMask        = 0b_00000000_00110000_00000000_00000000;
+        private const uint InitialBombsMask   = 0b_00000000_11000000_00000000_00000000;
+        private const uint MaxBombsMask       = 0b_00000011_00000000_00000000_00000000;
+        private const uint DoubleBarrelMask   = 0b_00000100_00000000_00000000_00000000;
+        private const uint EmpBombMask        = 0b_00001000_00000000_00000000_00000000;
+        private const uint SeeMinesMask       = 0b_00010000_00000000_00000000_00000000;
+
+        public byte ShrapnelMax
         {
-            if (dataLocations == null)
-                throw new ArgumentNullException(nameof(dataLocations));
-
-            _data = data ?? throw new ArgumentNullException(nameof(data));
-            _byteOffset = byteOffset;
-            _bitOffset = bitOffset;
-
-            _dataLocations = new ByteDataLocation[dataLocations.Length];
-            for (int x = 0; x < dataLocations.Length; x++)
-                _dataLocations[x] = dataLocations[x];
+            get { return (byte)(bitfield & ShrapnelMaxMask); }
+            set { bitfield = (bitfield & ~ShrapnelMaxMask) | (value & ShrapnelMaxMask); }
         }
 
-        public ByteArray(byte[] data, ByteDataLocation[] dataLocations)
-            : this(data, 0, 0, dataLocations)
+        public byte ShrapnelRate
         {
+            get { return (byte)((bitfield & ShrapnelRateMask) >> 5); }
+            set { bitfield = (bitfield & ~ShrapnelRateMask) | (((uint)value << 5) & ShrapnelRateMask); }
         }
 
-        public byte this[int index]
+        public byte CloakStatus
         {
-            get { return _dataLocations[index].GetValue(_data, _byteOffset); }
-            set { _dataLocations[index].SetValue(_data, value, _byteOffset); }
+            get { return (byte)((bitfield & CloakStatusMask) >> 10); }
+            set { bitfield = (bitfield & ~CloakStatusMask) | (((uint)value << 10) & CloakStatusMask); }
         }
 
-        public int Length
+        public byte StealthStatus
         {
-            get { return _dataLocations.Length; }
+            get { return (byte)((bitfield & StealthStatusMask) >> 12); }
+            set { bitfield = (bitfield & ~StealthStatusMask) | (((uint)value << 12) & StealthStatusMask); }
+        }
+
+        public byte XRadarStatus
+        {
+            get { return (byte)((bitfield & XRadarStatusMask) >> 14); }
+            set { bitfield = (bitfield & ~XRadarStatusMask) | (((uint)value << 14) & XRadarStatusMask); }
+        }
+
+        public byte AntiWarpStatus
+        {
+            get { return (byte)((bitfield & AntiWarpStatusMask) >> 16); }
+            set { bitfield = (bitfield & ~AntiWarpStatusMask) | (((uint)value << 16) & AntiWarpStatusMask); }
+        }
+
+        public byte InitialGuns
+        {
+            get { return (byte)((bitfield & InitialGunsMask) >> 18); }
+            set { bitfield = (bitfield & ~InitialGunsMask) | (((uint)value << 18) & InitialGunsMask); }
+        }
+
+        public byte MaxGuns
+        {
+            get { return (byte)((bitfield & MaxGunsMask) >> 20); }
+            set { bitfield = (bitfield & ~MaxGunsMask) | (((uint)value << 20) & MaxGunsMask); }
+        }
+
+        public byte InitialBombs
+        {
+            get { return (byte)((bitfield & InitialBombsMask) >> 22); }
+            set { bitfield = (bitfield & ~InitialBombsMask) | (((uint)value << 22) & InitialBombsMask); }
+        }
+
+        public byte MaxBombs
+        {
+            get { return (byte)((bitfield & MaxBombsMask) >> 24); }
+            set { bitfield = (bitfield & ~MaxBombsMask) | (((uint)value << 24) & MaxBombsMask); }
+        }
+
+        public bool DoubleBarrel
+        {
+            get { return ((bitfield & DoubleBarrelMask) >> 26) != 0; }
+            set { bitfield = (bitfield & ~DoubleBarrelMask) | (((value ? 1u : 0u) << 26) & DoubleBarrelMask); }
+        }
+
+        public bool EmpBomb
+        {
+            get { return ((bitfield & EmpBombMask) >> 27) != 0; }
+            set { bitfield = (bitfield & ~EmpBombMask) | (((value ? 1u : 0u) << 27) & EmpBombMask); }
+        }
+
+        public bool SeeMines
+        {
+            get { return ((bitfield & SeeMinesMask) >> 28) != 0; }
+            set { bitfield = (bitfield & ~SeeMinesMask) | (((value ? 1u : 0u) << 28) & SeeMinesMask); }
         }
     }
 
-    public class ClientSettingsPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SpawnPosition
     {
-        static ClientSettingsPacket()
+        private uint bitfield;
+
+        private const uint XMask      = 0b_00000000_00000000_00000011_11111111;
+        private const uint YMask      = 0b_00000000_00001111_11111100_00000000;
+        private const uint RadiusMask = 0b_00011111_11110000_00000000_00000000;
+
+        public ushort X
         {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateByteDataLocation();
-            bitset = locationBuilder.CreateDataLocation(3);
-
-            ships = new DataLocation[8];
-            for (int x = 0; x < ships.Length; x++)
-            {
-                ships[x] = locationBuilder.CreateDataLocation(144);
-            }
-            
-            longSet = new Int32DataLocation[20];
-            for (int x = 0; x < longSet.Length; x++)
-            {
-                longSet[x] = locationBuilder.CreateInt32DataLocation();
-            }
-
-            spawnPos = new DataLocation[4];
-            for (int x = 0; x < spawnPos.Length; x++)
-            {
-                spawnPos[x] = locationBuilder.CreateDataLocation(4);
-            }
-
-            shortSet = new Int16DataLocation[58];
-            for (int x = 0; x < shortSet.Length; x++)
-            {
-                shortSet[x] = locationBuilder.CreateInt16DataLocation();
-            }
-
-            byteSet = new ByteDataLocation[32];
-            for (int x = 0; x < byteSet.Length; x++)
-            {
-                byteSet[x] = locationBuilder.CreateByteDataLocation();
-            }
-
-            prizeWeightSet = new ByteDataLocation[28];
-            for (int x = 0; x < prizeWeightSet.Length; x++)
-            {
-                prizeWeightSet[x] = locationBuilder.CreateByteDataLocation();
-            }
-
-            Length = locationBuilder.NumBytes;
+            get { return (ushort)(bitfield & XMask); }
+            set { bitfield = (bitfield & ~XMask) | (value & XMask); }
         }
 
-        private static readonly ByteDataLocation type;
-        private static readonly DataLocation bitset;
-        private static readonly DataLocation[] ships;
-        private static readonly Int32DataLocation[] longSet;
-        private static readonly DataLocation[] spawnPos;
-        private static readonly Int16DataLocation[] shortSet;
-        private static readonly ByteDataLocation[] byteSet;
-        private static readonly ByteDataLocation[] prizeWeightSet;
-        public static readonly int Length;
-
-        private readonly byte[] data;
-
-        public readonly ClientBitSet BitSet;
-        public readonly ShipSettings[] Ships;
-        public readonly Int32Array LongSet;
-        public readonly SpawnPos[] SpawnPosition;
-        public readonly Int16Array ShortSet;
-        public readonly ByteArray ByteSet;
-        public readonly ByteArray PrizeWeightSet;
-
-        public ClientSettingsPacket() : this(new byte[ClientSettingsPacket.Length])
+        public ushort Y
         {
+            get { return (ushort)((bitfield & XMask) >> 10); }
+            set { bitfield = (bitfield & ~XMask) | (((uint)value << 10) & XMask); }
         }
 
-        public ClientSettingsPacket(byte[] data)
+        public ushort Radius
         {
-            if (data == null)
-                throw new ArgumentNullException(nameof(data));
-
-            if (data.Length != ClientSettingsPacket.Length)
-                throw new ArgumentOutOfRangeException("data", "must be of length " + ClientSettingsPacket.Length + " (was " + data.Length + ")");
-
-            this.data = data;
-
-            BitSet = new ClientBitSet(new ArraySegment<byte>(data, bitset.ByteOffset, bitset.NumBytes));
-
-            Ships = new ShipSettings[ships.Length];
-            for (int x = 0; x < Ships.Length; x++)
-                Ships[x] = new ShipSettings(new ArraySegment<byte>(data, ships[x].ByteOffset, ships[x].NumBytes));
-
-            LongSet = new Int32Array(data, longSet);
-
-            SpawnPosition = new SpawnPos[spawnPos.Length];
-            for (int x = 0; x < SpawnPosition.Length; x++)
-                SpawnPosition[x] = new SpawnPos(new ArraySegment<byte>(data, spawnPos[x].ByteOffset, spawnPos[x].NumBytes));
-
-            ShortSet = new Int16Array(data, shortSet);
-            ByteSet = new ByteArray(data, byteSet);
-            PrizeWeightSet = new ByteArray(data, prizeWeightSet);
-        }
-
-        public byte[] Bytes
-        {
-            get { return data; }
-        }
-
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
-        }
-
-        public class ClientBitSet
-        {
-            static ClientBitSet()
-            {
-                // note: ASSS puts Type as part of the client bit set (hacky)
-                // instead i have type separate and split the bit field into 2 separate bit fields (first is a byte, second is a ushort)
-
-                DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                bitField1 = locationBuilder.CreateByteDataLocation();
-                bitField2 = locationBuilder.CreateUInt16DataLocation();
-
-                BitFieldBuilder builder = new BitFieldBuilder((byte)(bitField1.NumBytes * 8));
-                exactDamage = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                hideFlags = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                noXRadar = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                slowFramerate = (ByteBitFieldLocation)builder.CreateBitFieldLocation(3);
-                disableScreenshot = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                //reserved = builder.CreateBitFieldLocation(1);
-
-                builder = new BitFieldBuilder((byte)(bitField2.NumBytes * 8));
-                maxTimerDrift = (ByteBitFieldLocation)builder.CreateBitFieldLocation(3);
-                disableBallThroughWalls = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                disableBallKilling = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-            }
-
-            private static readonly ByteDataLocation bitField1;
-            private static readonly BoolBitFieldLocation exactDamage;
-            private static readonly BoolBitFieldLocation hideFlags;
-            private static readonly BoolBitFieldLocation noXRadar;
-            private static readonly ByteBitFieldLocation slowFramerate;
-            private static readonly BoolBitFieldLocation disableScreenshot;
-            //private static readonly BitFieldLocation reserved;
-
-            private static readonly UInt16DataLocation bitField2;            
-            private static readonly ByteBitFieldLocation maxTimerDrift;
-            private static readonly BoolBitFieldLocation disableBallThroughWalls;
-            private static readonly BoolBitFieldLocation disableBallKilling;
-
-            private readonly ArraySegment<byte> segment;
-
-            public ClientBitSet(ArraySegment<byte> segment)
-            {
-                this.segment = segment;
-            }
-
-            private byte BitField1
-            {
-                get { return bitField1.GetValue(segment.Array, segment.Offset); }
-                set { bitField1.SetValue(segment.Array, value, segment.Offset); }
-            }
-
-            private ushort BitField2
-            {
-                get { return bitField2.GetValue(segment.Array, segment.Offset); }
-                set { bitField2.SetValue(segment.Array, value, segment.Offset); }
-            }
-
-            public bool ExactDamage
-            {
-                set { BitField1 = exactDamage.SetValue(value, BitField1); }
-            }
-
-            public bool HideFlags
-            {
-                set { BitField1 = hideFlags.SetValue(value, BitField1); }
-            }
-
-            public bool NoXRadar
-            {
-                set { BitField1 = noXRadar.SetValue(value, BitField1); }
-            }
-
-            public byte SlowFramerate
-            {
-                set { BitField1 = slowFramerate.SetValue(value, BitField1); }
-            }
-
-            public bool DisableScreenshot
-            {
-                set { BitField1 = disableScreenshot.SetValue(value, BitField1); }
-            }
-
-            public byte MaxTimerDrift
-            {
-                set { BitField2 = maxTimerDrift.SetValue(value, BitField2); }
-            }
-
-            public bool DisableBallThroughWalls
-            {
-                set { BitField2 = disableBallThroughWalls.SetValue(value, BitField2); }
-            }
-
-            public bool DisableBallKilling
-            {
-                set { BitField2 = disableBallKilling.SetValue(value, BitField2); }
-            }
-        }
-
-        public class ShipSettings
-        {
-            static ShipSettings()
-            {
-                DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                
-                longSet = new Int32DataLocation[2];
-                for (int x = 0; x < longSet.Length; x++)
-                    longSet[x] = locationBuilder.CreateInt32DataLocation();
-
-                shortSet = new Int16DataLocation[49];
-                for (int x = 0; x < shortSet.Length; x++)
-                    shortSet[x] = locationBuilder.CreateInt16DataLocation();
-
-                byteSet = new ByteDataLocation[18];
-                for (int x = 0; x < byteSet.Length; x++)
-                    byteSet[x] = locationBuilder.CreateByteDataLocation();
-
-                weaponBits = locationBuilder.CreateDataLocation(4);
-            }
-
-            private static readonly Int32DataLocation[] longSet;
-            private static readonly Int16DataLocation[] shortSet;
-            private static readonly ByteDataLocation[] byteSet;
-            private static readonly DataLocation weaponBits;
-
-            private readonly ArraySegment<byte> segment;
-
-            public readonly Int32Array LongSet;
-            public readonly Int16Array ShortSet;
-            public readonly ByteArray ByteSet;
-            public readonly WeaponBits Weapons;
-            public readonly MiscBitField MiscBits;
-
-            public ShipSettings(ArraySegment<byte> segment)
-            {
-                this.segment = segment;
-                LongSet = new Int32Array(segment.Array, segment.Offset, 0, longSet);
-                ShortSet = new Int16Array(segment.Array, segment.Offset, 0, shortSet);
-                ByteSet = new ByteArray(segment.Array, segment.Offset, 0, byteSet);
-                Weapons = new WeaponBits(new ArraySegment<byte>(segment.Array, segment.Offset + weaponBits.ByteOffset, weaponBits.NumBytes));
-                MiscBits = new MiscBitField(segment.Array, (UInt16DataLocation)new DataLocation(segment.Offset + shortSet[10].ByteOffset, 2));
-            }
-
-            public struct WeaponBits
-            {
-                static WeaponBits()
-                {
-                    BitFieldBuilder builder = new BitFieldBuilder(32);
-                    shrapnelMax = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
-                    shrapnelRate = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
-                    cloakStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    stealthStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    xRadarStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    antiWarpStatus = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    initialGuns = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    maxGuns = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    initialBombs = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    maxBombs = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    doubleBarrel = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                    empBomb = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                    seeMines = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                }
-
-                private static readonly ByteBitFieldLocation shrapnelMax;
-                private static readonly ByteBitFieldLocation shrapnelRate;
-                private static readonly ByteBitFieldLocation cloakStatus;
-                private static readonly ByteBitFieldLocation stealthStatus;
-                private static readonly ByteBitFieldLocation xRadarStatus;
-                private static readonly ByteBitFieldLocation antiWarpStatus;
-                private static readonly ByteBitFieldLocation initialGuns;
-                private static readonly ByteBitFieldLocation maxGuns;
-                private static readonly ByteBitFieldLocation initialBombs;
-                private static readonly ByteBitFieldLocation maxBombs;
-                private static readonly BoolBitFieldLocation doubleBarrel;
-                private static readonly BoolBitFieldLocation empBomb;
-                private static readonly BoolBitFieldLocation seeMines;
-
-                private readonly ArraySegment<byte> segment;
-
-                public WeaponBits(ArraySegment<byte> segment)
-                {
-                    this.segment = segment;
-                }
-
-                private uint BitField
-                {
-                    get { return BinaryPrimitives.ReadUInt32LittleEndian(segment); }
-                    set { BinaryPrimitives.WriteUInt32LittleEndian(segment, value); }
-                }
-
-                public byte ShrapnelMax
-                {
-                    set { BitField = shrapnelMax.SetValue(value, BitField); }
-                }
-
-                public byte ShrapnelRate
-                {
-                    set { BitField = shrapnelRate.SetValue(value, BitField); }
-                }
-
-                public byte CloakStatus
-                {
-                    set { BitField = cloakStatus.SetValue(value, BitField); }
-                }
-
-                public byte StealthStatus
-                {
-                    set { BitField = stealthStatus.SetValue(value, BitField); }
-                }
-
-                public byte XRadarStatus
-                {
-                    set { BitField = xRadarStatus.SetValue(value, BitField); }
-                }
-
-                public byte AntiWarpStatus
-                {
-                    set { BitField = antiWarpStatus.SetValue(value, BitField); }
-                }
-
-                public byte InitialGuns
-                {
-                    set { BitField = initialGuns.SetValue(value, BitField); }
-                }
-
-                public byte MaxGuns
-                {
-                    set { BitField = maxGuns.SetValue(value, BitField); }
-                }
-
-                public byte InitialBombs
-                {
-                    set { BitField = initialBombs.SetValue(value, BitField); }
-                }
-
-                public byte MaxBombs
-                {
-                    set { BitField = maxBombs.SetValue(value, BitField); }
-                }
-
-                public bool DoubleBarrel
-                {
-                    set { BitField = doubleBarrel.SetValue(value, BitField); }
-                }
-
-                public bool EmpBomb
-                {
-                    set { BitField = empBomb.SetValue(value, BitField); }
-                }
-
-                public bool SeeMines
-                {
-                    set { BitField = seeMines.SetValue(value, BitField); }
-                }
-            }
-
-            public class MiscBitField
-            {
-                static MiscBitField()
-                {
-                    BitFieldBuilder builder = new BitFieldBuilder(16);
-                    seeBombLevel = (ByteBitFieldLocation)builder.CreateBitFieldLocation(2);
-                    disableFastShooting = (BoolBitFieldLocation)builder.CreateBitFieldLocation(1);
-                    radius = (ByteBitFieldLocation)builder.CreateBitFieldLocation(8);
-                    padding = (ByteBitFieldLocation)builder.CreateBitFieldLocation(5);
-                }
-
-                private static readonly ByteBitFieldLocation seeBombLevel;
-                private static readonly BoolBitFieldLocation disableFastShooting;
-                private static readonly ByteBitFieldLocation radius;
-                private static readonly ByteBitFieldLocation padding;
-
-                private readonly byte[] _data;
-                private readonly UInt16DataLocation _dataLocation;
-
-                public MiscBitField(byte[] data, UInt16DataLocation dataLocation)
-                {
-                    _data = data ?? throw new ArgumentException("data");
-                    _dataLocation = dataLocation;
-                }
-
-                private ushort BitField
-                {
-                    get { return _dataLocation.GetValue(_data); }
-                    set { _dataLocation.SetValue(_data, value); }
-                }
-
-                public byte SeeBombLevel
-                {
-                    set { BitField = seeBombLevel.SetValue(value, BitField); }
-                }
-
-                public bool DisableFastShooting
-                {
-                    set { BitField = disableFastShooting.SetValue(value, BitField); }
-                }
-
-                public byte Radius
-                {
-                    set { BitField = radius.SetValue(value, BitField); }
-                }
-            }
-        }
-
-        public class SpawnPos
-        {
-            static SpawnPos()
-            {
-                DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                bitField = locationBuilder.CreateUInt32DataLocation();
-
-                BitFieldBuilder builder = new BitFieldBuilder(32);
-                x = builder.CreateBitFieldLocation(10);
-                y = builder.CreateBitFieldLocation(10);
-                r = builder.CreateBitFieldLocation(9);
-            }
-
-            private static readonly UInt32DataLocation bitField;
-            private static readonly BitFieldLocation x;
-            private static readonly BitFieldLocation y;
-            private static readonly BitFieldLocation r;
-
-            private readonly ArraySegment<byte> segment;
-
-            public SpawnPos(ArraySegment<byte> segment)
-            {
-                this.segment = segment;
-            }
-
-            private uint BitField
-            {
-                get { return bitField.GetValue(segment.Array, segment.Offset); }
-                set { bitField.SetValue(segment.Array, value, segment.Offset); }
-            }
-
-            public ushort X
-            {
-                set { BitField = BitFieldConverter.SetUInt16(value, BitField, x.LowestOrderBit, x.NumBits); }
-            }
-
-            public ushort Y
-            {
-                set { BitField = BitFieldConverter.SetUInt16(value, BitField, y.LowestOrderBit, y.NumBits); }
-            }
-
-            public ushort R
-            {
-                set { BitField = BitFieldConverter.SetUInt16(value, BitField, r.LowestOrderBit, r.NumBits); }
-            }
+            get { return (ushort)((bitfield & RadiusMask) >> 20); }
+            set { bitfield = (bitfield & ~RadiusMask) | (((uint)value << 20) & RadiusMask); }
         }
     }
 }
