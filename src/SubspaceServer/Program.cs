@@ -1,11 +1,9 @@
 ﻿using SS.Core;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.Loader;
+using System.Text;
 
 namespace SubspaceServer
 {
@@ -49,6 +47,8 @@ namespace SubspaceServer
                 }
             }
 
+            // Add the CodePagesEncodingProvider so that Windows-1252 can be used.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             // mainloop on the main thread and quit via SIGINT, SIGBREAK, or ?shutdown/?recycle 
             Console.CancelKeyPress += Console_CancelKeyPress;

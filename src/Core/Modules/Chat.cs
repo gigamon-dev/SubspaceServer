@@ -1,12 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
-using SS.Core.ComponentCallbacks;
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
@@ -33,10 +31,29 @@ namespace SS.Core.Modules
 
         private struct Config
         {
-            public bool msgrel;
-            public int floodlimit;
-            public int floodshutup;
-            public int cmdlimit;
+            /// <summary>
+            /// Whether to send chat messages reliably.
+            /// </summary>
+            [ConfigHelp("Chat", "MessageReliable", ConfigScope.Global, typeof(bool), DefaultValue = "1", Description = "Whether to send chat messages reliably.")]
+            public bool MessageReliable;
+
+            /// <summary>
+            /// How many messages needed to be sent in a short period of time (about a second) to qualify for chat flooding.
+            /// </summary>
+            [ConfigHelp("Chat", "FloodLimit", ConfigScope.Global, typeof(int), DefaultValue = "10", Description = "How many messages needed to be sent in a short period of time (about a second) to qualify for chat flooding.")]
+            public int FloodLimit;
+
+            /// <summary>
+            /// How many seconds to disable chat for a player that is flooding chat messages.
+            /// </summary>
+            [ConfigHelp("Chat", "FloodShutup", ConfigScope.Global, typeof(int), DefaultValue = "60", Description = "How many seconds to disable chat for a player that is flooding chat messages.")]
+            public int FloodShutup;
+
+            /// <summary>
+            /// How many commands are allowed on a single line.
+            /// </summary>
+            [ConfigHelp("Chat", "CommandLimit", ConfigScope.Global, typeof(int), DefaultValue = "5", Description = "How many commands are allowed on a single line.")]
+            public int CommandLimit;
         }
 
         private Config _cfg;
@@ -44,7 +61,7 @@ namespace SS.Core.Modules
         private int _cmkey;
         private int _pmkey;
 
-        private object _playerMaskLock = new object();
+        private readonly object _playerMaskLock = new object();
 
         private class ArenaChatMask
         {
@@ -98,13 +115,13 @@ namespace SS.Core.Modules
             //if(_persist != null)
                 //_persist.
 
-            ArenaActionCallback.Register(_broker, arenaAction);
-            PlayerActionCallback.Register(_broker, playerAction);
+            ArenaActionCallback.Register(_broker, Callback_ArenaAction);
+            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
 
-            _cfg.msgrel = _configManager.GetInt(_configManager.Global, "Chat", "MessageReliable", 1) != 0;
-            _cfg.floodlimit = _configManager.GetInt(_configManager.Global, "Chat", "FloodLimit", 10);
-            _cfg.floodshutup = _configManager.GetInt(_configManager.Global, "Chat", "FloodShutup", 60);
-            _cfg.cmdlimit = _configManager.GetInt(_configManager.Global, "Chat", "CommandLimit", 5);
+            _cfg.MessageReliable = _configManager.GetInt(_configManager.Global, "Chat", "MessageReliable", 1) != 0;
+            _cfg.FloodLimit = _configManager.GetInt(_configManager.Global, "Chat", "FloodLimit", 10);
+            _cfg.FloodShutup = _configManager.GetInt(_configManager.Global, "Chat", "FloodShutup", 60);
+            _cfg.CommandLimit = _configManager.GetInt(_configManager.Global, "Chat", "CommandLimit", 5);
 
             _net.AddPacket(C2SPacketType.Chat, Packet_Chat);
 
@@ -126,8 +143,8 @@ namespace SS.Core.Modules
             //if(_chatNet != null)
                 //_chatNet.
 
-            ArenaActionCallback.Unregister(_broker, arenaAction);
-            PlayerActionCallback.Unregister(_broker, playerAction);
+            ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
+            PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
 
             //if(_persist != null)
                 //_persist.
@@ -144,28 +161,28 @@ namespace SS.Core.Modules
 
         void IChat.SendMessage(Player p, string format, params object[] args)
         {
-            sendMessage(p, format, args);
+            SendMessage(p, format, args);
         }
 
         void IChat.SendCmdMessage(Player p, string format, params object[] args)
         {
-            sendMessage(p, format, args);
+            SendMessage(p, format, args);
         }
 
         void IChat.SendSetMessage(IEnumerable<Player> set, string format, params object[] args)
         {
-            sendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
         }
 
         void IChat.SendSoundMessage(Player p, ChatSound sound, string format, params object[] args)
         {
             Player[] set = { p };
-            sendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
         }
 
         void IChat.SendSetSoundMessage(IEnumerable<Player> set, ChatSound sound, string format, params object[] args)
         {
-            sendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
         }
 
         void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
@@ -175,12 +192,12 @@ namespace SS.Core.Modules
 
         void IChat.SendArenaMessage(Arena arena, string format, params object[] args)
         {
-            IEnumerable<Player> set = getArenaSet(arena, null);
+            IEnumerable<Player> set = GetArenaSet(arena, null);
             if (set != null)
-                sendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+                SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
         }
 
-        private LinkedList<Player> getArenaSet(Arena arena, Player except)
+        private LinkedList<Player> GetArenaSet(Arena arena, Player except)
         {
             LinkedList<Player> set = new LinkedList<Player>();
             _playerData.Lock();
@@ -204,7 +221,7 @@ namespace SS.Core.Modules
             return set;
         }
 
-        private LinkedList<Player> getCapabilitySet(string capability, Player except)
+        private LinkedList<Player> GetCapabilitySet(string capability, Player except)
         {
             LinkedList<Player> set = new LinkedList<Player>();
             _playerData.Lock();
@@ -230,50 +247,40 @@ namespace SS.Core.Modules
 
         void IChat.SendArenaSoundMessage(Arena arena, ChatSound sound, string format, params object[] args)
         {
-            IEnumerable<Player> set = getArenaSet(arena, null);
+            IEnumerable<Player> set = GetArenaSet(arena, null);
             if (set != null)
-                sendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+                SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
         }
 
         void IChat.SendModMessage(string format, params object[] args)
         {
-            IEnumerable<Player> set = getCapabilitySet(Constants.Capabilities.ModChat, null);
+            IEnumerable<Player> set = GetCapabilitySet(Constants.Capabilities.ModChat, null);
             if (set != null)
-                sendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, format, args);
+                SendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, format, args);
         }
 
         void IChat.SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, string squad, string sender, string message)
         {
-            using (DataBuffer buf = Pool<DataBuffer>.Default.Get())
-            {
-                string text;
-                int size;
+            string text = !string.IsNullOrWhiteSpace(squad)
+                ? string.Format("({0})({1})>{2}", squad, sender, message)
+                : string.Format("({0})>{1}", sender, message);
 
-                if (squad != null)
-                {
-                    text = string.Format("({0})({1})>{2}", squad, sender, message);
-                    if (text.Length > 250)
-                        text = text.Substring(0, 250);
-                }
-                else
-                {
-                    text = string.Format("({0})>{1}", sender, message);
-                    if (text.Length > 250)
-                        text = text.Substring(0, 250);
-                }
+            if (text.Length > ChatPacket.MaxMessageLength)
+                text = text.Substring(0, ChatPacket.MaxMessageLength);
 
-                ChatPacket cp = new ChatPacket(buf.Bytes);
-                cp.PkType = (byte)C2SPacketType.Chat;
-                cp.Type = (byte)ChatMessageType.RemotePrivate;
-                cp.Sound = (byte)sound;
-                cp.Pid = -1;
-                size = ChatPacket.HeaderLength + cp.SetText(text);
+            ChatPacket cp = new ChatPacket();
+            cp.Type = (byte)C2SPacketType.Chat;
+            cp.ChatType = (byte)ChatMessageType.RemotePrivate;
+            cp.Sound = (byte)sound;
+            cp.PlayerId = -1;
+            int length = ChatPacket.HeaderLength + cp.MessageBytes.WriteNullTerminatedASCII(text);
 
-                if (_net != null)
-                    _net.SendToSet(set, buf.Bytes, size, NetSendFlags.Reliable);
+            _net.SendToSet(
+                set,
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref cp, 1)).Slice(0, length),
+                NetSendFlags.Reliable);
 
-                //if(_chatNet != null && 
-            }
+            //if(_chatNet != null && 
         }
 
         ChatMask IChat.GetArenaChatMask(Arena arena)
@@ -281,8 +288,7 @@ namespace SS.Core.Modules
             if(arena == null)
                 return new ChatMask();
 
-            ArenaChatMask am = arena[_cmkey] as ArenaChatMask;
-            if (am == null)
+            if (!(arena[_cmkey] is ArenaChatMask am))
                 return new ChatMask();
 
             lock (_playerMaskLock)
@@ -296,8 +302,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            ArenaChatMask am = arena[_cmkey] as ArenaChatMask;
-            if (am == null)
+            if (!(arena[_cmkey] is ArenaChatMask am))
                 return;
 
             lock (_playerMaskLock)
@@ -311,8 +316,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return new ChatMask();
 
-            PlayerChatMask pm = p[_pmkey] as PlayerChatMask;
-            if(pm == null)
+            if (!(p[_pmkey] is PlayerChatMask pm))
                 return new ChatMask();
 
             lock (_playerMaskLock)
@@ -326,8 +330,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerChatMask pm = p[_pmkey] as PlayerChatMask;
-            if (pm == null)
+            if (!(p[_pmkey] is PlayerChatMask pm))
                 return;
 
             lock (_playerMaskLock)
@@ -351,13 +354,13 @@ namespace SS.Core.Modules
 
             foreach (string str in text.Trim().WrapText(78))
             {
-                sendMessage(p, "  {0}", str);
+                SendMessage(p, "  {0}", str);
             }
         }
 
         #endregion
 
-        private void arenaAction(Arena arena, ArenaAction action)
+        private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
@@ -368,13 +371,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void playerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (p == null)
                 return;
 
-            PlayerChatMask pm = p[_pmkey] as PlayerChatMask;
-            if (pm == null)
+            if (!(p[_pmkey] is PlayerChatMask pm))
                 return;
 
             if (action == PlayerAction.PreEnterArena)
@@ -397,7 +399,7 @@ namespace SS.Core.Modules
             if (data == null)
                 return;
 
-            if (len < 6 || len > 500)
+            if (len < 6) // Note: ASSS also checks if > 500
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "bad chat packet len={0}", len);
                 return;
@@ -407,17 +409,24 @@ namespace SS.Core.Modules
             if (arena == null || p.Status != PlayerState.Playing)
                 return;
 
-            ChatPacket from = new ChatPacket(data);
-            from.RemoveControlCharactersFromText(len);
+            ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
+
+            // Null terminate if it isn't already.
+            // Also, truncate the message if the length is over the limit that we will allow.
+            from.MessageBytes[^1] = 0;
+
+            // remove control characters from the chat message
+            RemoveControlCharacters(from.MessageBytes);
 
             ChatSound sound = ChatSound.None;
             if(_capabilityManager.HasCapability(p, Constants.Capabilities.SoundMessages))
                 sound = (ChatSound)from.Sound;
 
-            string text = from.GetText(len);
+            // TODO: Don't convert to string, instead pass the Span<byte> around.
+            string text = from.MessageBytes.ReadNullTerminatedString();
 
             Player target;
-            switch ((ChatMessageType)from.Type)
+            switch ((ChatMessageType)from.ChatType)
             {
                 case ChatMessageType.Arena:
                     _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "received arena message");
@@ -426,39 +435,39 @@ namespace SS.Core.Modules
                 case ChatMessageType.PubMacro:
                 case ChatMessageType.Pub:
                     if (text[0] == ModChatChar)
-                        handleModChat(p, text.Substring(1), sound);
+                        HandleModChat(p, text.Substring(1), sound);
                     else
-                        handlePub(p, text, from.Type == (byte)ChatMessageType.PubMacro, false, sound);
+                        HandlePub(p, text, from.ChatType == (byte)ChatMessageType.PubMacro, false, sound);
                     break;
 
                 case ChatMessageType.EnemyFreq:
-                    target = _playerData.PidToPlayer(from.Pid);
+                    target = _playerData.PidToPlayer(from.PlayerId);
                     if (target == null)
                         break;
 
                     if (target.Arena == arena)
-                        handleFreq(p, target.Freq, text, sound);
+                        HandleFreq(p, target.Freq, text, sound);
                     else
                         _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "cross-arena nmefreq chat message");
                     break;
 
                 case ChatMessageType.Freq:
-                    handleFreq(p, p.Freq, text, sound);
+                    HandleFreq(p, p.Freq, text, sound);
                     break;
 
                 case ChatMessageType.Private:
-                    target = _playerData.PidToPlayer(from.Pid);
+                    target = _playerData.PidToPlayer(from.PlayerId);
                     if (target == null)
                         break;
 
                     if (target.Arena == arena)
-                        handlePrivate(p, target, text, false, sound);
+                        HandlePrivate(p, target, text, false, sound);
                     else
                         _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "cross-arena private chat message");
                     break;
 
                 case ChatMessageType.RemotePrivate:
-                    handleRemotePrivate(p, text, false, sound);
+                    HandleRemotePrivate(p, text, false, sound);
                     break;
 
                 case ChatMessageType.SysopWarning:
@@ -466,21 +475,33 @@ namespace SS.Core.Modules
                     break;
 
                 case ChatMessageType.Chat:
-                    handleChat(p, text, sound);
+                    HandleChat(p, text, sound);
                     break;
 
                 default:
-                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "received undefined type {0} chat message", from.Type);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "received undefined type {0} chat message", from.ChatType);
                     break;
             }
 
-            checkFlood(p);
+            CheckFlood(p);
         }
 
-        private void checkFlood(Player p)
+        private static void RemoveControlCharacters(Span<byte> characters)
         {
-            PlayerChatMask pm = p[_pmkey] as PlayerChatMask;
-            if (pm == null)
+            for (int i = 0; i < characters.Length && characters[i] != 0; i++)
+            {
+                // Note: For some reason ASSS also removes 255 (ÿ). Not doing the same here.
+                if (characters[i] < 32 // C0 control characters
+                    || characters[i] == 127) // DEL
+                {
+                    characters[i] = (byte)'_';
+                }
+            }
+        }
+
+        private void CheckFlood(Player p)
+        {
+            if (!(p[_pmkey] is PlayerChatMask pm))
                 return;
 
             lock (_playerMaskLock)
@@ -488,8 +509,8 @@ namespace SS.Core.Modules
                 pm.msgs++;
 
                 // TODO: add capability to spam (for bots)
-                if (pm.msgs >= _cfg.floodlimit && 
-                    _cfg.floodlimit > 0 &&
+                if (pm.msgs >= _cfg.FloodLimit && 
+                    _cfg.FloodLimit > 0 &&
                     !_capabilityManager.HasCapability(p, Constants.Capabilities.CanSpam))
                 {
                     pm.msgs >>= 1;
@@ -497,12 +518,12 @@ namespace SS.Core.Modules
                     if (pm.expires != null)
                     {
                         // already has a mask, add time
-                        pm.expires.Value.AddSeconds(_cfg.floodshutup);
+                        pm.expires.Value.AddSeconds(_cfg.FloodShutup);
                     }
                     else if (pm.mask.IsClear)
                     {
                         // only set expiry time if this is a new shutup
-                        pm.expires = DateTime.UtcNow.AddSeconds(_cfg.floodshutup);
+                        pm.expires = DateTime.UtcNow.AddSeconds(_cfg.FloodShutup);
                     }
 
                     pm.mask.SetRestricted(ChatMessageType.PubMacro);
@@ -515,49 +536,46 @@ namespace SS.Core.Modules
                     pm.mask.SetRestricted(ChatMessageType.ModChat);
                     pm.mask.SetRestricted(ChatMessageType.BillerCommand);
 
-                    sendMessage(p, "You have been shut up for {0} seconds for flooding.", _cfg.floodshutup);
-                    _logManager.LogP(LogLevel.Info, nameof(Chat), p, "flooded chat, shut up for {0} seconds", _cfg.floodshutup);
+                    SendMessage(p, "You have been shut up for {0} seconds for flooding.", _cfg.FloodShutup);
+                    _logManager.LogP(LogLevel.Info, nameof(Chat), p, "flooded chat, shut up for {0} seconds", _cfg.FloodShutup);
                 }
             }
         }
 
-        private void sendMessage(Player p, string format, params object[] args)
+        private void SendMessage(Player p, string format, params object[] args)
         {
             Player[] set = { p };
-            sendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
         }
 
-        private void sendMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
+        private void SendMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
         {
-            using (DataBuffer buf = Pool<DataBuffer>.Default.Get())
-            {
-                string text;
-                if (args != null && args.Length > 0)
-                    text = string.Format(format, args);
-                else
-                    text = format;
+            string text = (args != null && args.Length > 0)
+                ? string.Format(format, args)
+                : format;
 
-                if (text.Length > 250)
-                    text = text.Substring(0, 250);
+            if (text.Length > ChatPacket.MaxMessageLength)
+                text = text.Substring(0, ChatPacket.MaxMessageLength);
 
-                if (type == ChatMessageType.ModChat)
-                    type = ChatMessageType.SysopWarning;
+            if (type == ChatMessageType.ModChat)
+                type = ChatMessageType.SysopWarning;
 
-                ChatPacket cp = new ChatPacket(buf.Bytes);
-                cp.PkType = (byte)S2CPacketType.Chat;
-                cp.Type = (byte)type;
-                cp.Sound = (byte)sound;
-                cp.Pid = from != null ? (short)from.Id : (short)-1;
-                int size = ChatPacket.HeaderLength + cp.SetText(text);
+            ChatPacket cp = new ChatPacket();
+            cp.Type = (byte)S2CPacketType.Chat;
+            cp.ChatType = (byte)type;
+            cp.Sound = (byte)sound;
+            cp.PlayerId = from != null ? (short)from.Id : (short)-1;
+            int length = ChatPacket.HeaderLength + cp.MessageBytes.WriteNullTerminatedASCII(text);
 
-                if (_net != null)
-                    _net.SendToSet(set, buf.Bytes, size, NetSendFlags.Reliable);
+            _net.SendToSet(
+                set,
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref cp, 1)).Slice(0, length),
+                NetSendFlags.Reliable);
 
-                //if(_chatNet != null && 
-            }
+            //if(_chatNet != null && 
         }
 
-        private void handleChat(Player p, string text, ChatSound sound)
+        private void HandleChat(Player p, string text, ChatSound sound)
         {
             if (p == null)
                 return;
@@ -565,17 +583,17 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(text))
                 return;
 
-            if (ok(p, ChatMessageType.Chat))
+            if (Ok(p, ChatMessageType.Chat))
             {
                 // msg should look like "text" or "#;text"
-                fireChatMessageEvent(null, p, ChatMessageType.Chat, sound, null, -1, text);
+                FireChatMessageCallback(null, p, ChatMessageType.Chat, sound, null, -1, text);
 #if CFG_LOG_PRIVATE
                 _logManager.LogP(LogLevel.Drivel, "Chat", p, "chat msg: {0}", text);
 #endif
             }
         }
 
-        private void handleRemotePrivate(Player p, string text, bool isAllCmd, ChatSound sound)
+        private void HandleRemotePrivate(Player p, string text, bool isAllCmd, ChatSound sound)
         {
             if (p == null)
                 return;
@@ -593,19 +611,18 @@ namespace SS.Core.Modules
             string dest = tokens[1];
             string message = tokens[2];
 
-            if ((isCommandChar(message[0]) && message.Length > 1) || isAllCmd)
+            if ((IsCommandChar(message[0]) && message.Length > 1) || isAllCmd)
             {
-                if (ok(p, ChatMessageType.Command))
+                if (Ok(p, ChatMessageType.Command))
                 {
                     Player d = _playerData.FindPlayer(dest);
                     if (d != null && d.Status == PlayerState.Playing)
                     {
-                        ITarget target = d;
-                        runCommands(message, p, target, sound);
+                        RunCommands(message, p, d, sound);
                     }
                 }
             }
-            else if (ok(p, ChatMessageType.RemotePrivate))
+            else if (Ok(p, ChatMessageType.RemotePrivate))
             {
                 Player d = _playerData.FindPlayer(dest);
                 if (d != null)
@@ -616,10 +633,10 @@ namespace SS.Core.Modules
                     LinkedList<Player> set = new LinkedList<Player>();
                     set.AddLast(d);
 
-                    sendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, string.Format("({0})>{1}", p.Name, message), p.Name.Length + 3);
+                    SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, string.Format("({0})>{1}", p.Name, message), p.Name.Length + 3);
                 }
 
-                fireChatMessageEvent(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
+                FireChatMessageCallback(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
 
 #if CFG_LOG_PRIVATE
                 _logManager.LogP(LogLevel.Drivel, "Chat", p, "to [{0}] remote priv: {1}", dest, message);
@@ -627,7 +644,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void handlePrivate(Player p, Player dst, string text, bool isAllCmd, ChatSound sound)
+        private void HandlePrivate(Player p, Player dst, string text, bool isAllCmd, ChatSound sound)
         {
             if (p == null)
                 return;
@@ -637,28 +654,27 @@ namespace SS.Core.Modules
 
             Arena arena = p.Arena; // this can be null
 
-            if ((isCommandChar(text[0]) && text.Length > 1) || isAllCmd)
+            if ((IsCommandChar(text[0]) && text.Length > 1) || isAllCmd)
             {
-                if (ok(p, ChatMessageType.Command))
+                if (Ok(p, ChatMessageType.Command))
                 {
-                    ITarget target = dst;
-                    runCommands(text, p, target, sound);
+                    RunCommands(text, p, dst, sound);
                 }
             }
-            else if (ok(p, ChatMessageType.Private))
+            else if (Ok(p, ChatMessageType.Private))
             {
                 LinkedList<Player> set = new LinkedList<Player>();
                 set.AddLast(dst);
-                sendReply(set, ChatMessageType.Private, sound, p, p.Id, text, 0);
+                SendReply(set, ChatMessageType.Private, sound, p, p.Id, text, 0);
 
-                fireChatMessageEvent(arena, p, ChatMessageType.Private, sound, null, -1, text);
+                FireChatMessageCallback(arena, p, ChatMessageType.Private, sound, null, -1, text);
 #if CFG_LOG_PRIVATE
                 _logManager.LogP(LogLevel.Drivel, "Chat", p, "to [{0}] priv msg: {1}", dst.Name, text);
 #endif
             }
         }
 
-        private void fireChatMessageEvent(Arena arena, Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message)
+        private void FireChatMessageCallback(Arena arena, Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message)
         {
             // if we have an arena, then call the arena's callbacks, otherwise do the global ones
             if (arena != null)
@@ -667,7 +683,7 @@ namespace SS.Core.Modules
                 ChatMessageCallback.Fire(_broker, playerFrom, type, sound, playerTo, freq, message);
         }
 
-        private void handleFreq(Player p, short freq, string text, ChatSound sound)
+        private void HandleFreq(Player p, short freq, string text, ChatSound sound)
         {
             if (p == null)
                 return;
@@ -681,15 +697,15 @@ namespace SS.Core.Modules
 
             ChatMessageType type = p.Freq == freq ? ChatMessageType.Freq : ChatMessageType.EnemyFreq;
 
-            if (isCommandChar(text[0]) && text.Length > 1)
+            if (IsCommandChar(text[0]) && text.Length > 1)
             {
-                if (ok(p, ChatMessageType.Command))
+                if (Ok(p, ChatMessageType.Command))
                 {
                     ITarget target = Target.TeamTarget(p.Arena, p.Freq);
-                    runCommands(text, p, target, sound);
+                    RunCommands(text, p, target, sound);
                 }
             }
-            else if(ok(p, type))
+            else if(Ok(p, type))
             {
                 _playerData.Lock();
                 try
@@ -711,9 +727,9 @@ namespace SS.Core.Modules
                     if (set == null)
                         return;
 
-                    sendReply(set, type, sound, p, p.Id, text, 0);
+                    SendReply(set, type, sound, p, p.Id, text, 0);
 
-                    fireChatMessageEvent(arena, p, type, sound, null, freq, text);
+                    FireChatMessageCallback(arena, p, type, sound, null, freq, text);
                     _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "freq msg ({0}): {1}", freq, text);
                 }
                 finally
@@ -723,38 +739,38 @@ namespace SS.Core.Modules
             }
         }
 
-        private static bool isCommandChar(char c)
+        private static bool IsCommandChar(char c)
         {
             return c == CmdChar1 || c == CmdChar2;
         }
 
-        private void handleModChat(Player p, string message, ChatSound sound)
+        private void HandleModChat(Player p, string message, ChatSound sound)
         {
             if (_capabilityManager == null)
             {
-                sendMessage(p, "Staff chat is currently disabled");
+                SendMessage(p, "Staff chat is currently disabled");
                 return;
             }
 
-            if(_capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat) && ok(p, ChatMessageType.ModChat))
+            if(_capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat) && Ok(p, ChatMessageType.ModChat))
             {
-                LinkedList<Player> set = getCapabilitySet(Constants.Capabilities.ModChat, p);
+                LinkedList<Player> set = GetCapabilitySet(Constants.Capabilities.ModChat, p);
                 if (set != null)
                 {
                     message = p.Name + "> " + message;
-                    sendReply(set, ChatMessageType.ModChat, sound, p, p.Id, message, p.Name.Length + 2);
-                    fireChatMessageEvent(null, p, ChatMessageType.ModChat, sound, null, -1, message);
+                    SendReply(set, ChatMessageType.ModChat, sound, p, p.Id, message, p.Name.Length + 2);
+                    FireChatMessageCallback(null, p, ChatMessageType.ModChat, sound, null, -1, message);
                     _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "mod chat: {0}", message);
                 }
             }
             else
             {
-                sendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
+                SendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
                 _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "attempted mod chat (missing cap or shutup): {0}", message);
             }
         }
 
-        private void handlePub(Player p, string msg, bool isMacro, bool isAllCmd, ChatSound sound)
+        private void HandlePub(Player p, string msg, bool isMacro, bool isAllCmd, ChatSound sound)
         {
             if (p == null)
                 return;
@@ -766,31 +782,30 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if ((isCommandChar(msg[0]) && (msg.Length > 1)) || isAllCmd)
+            if ((IsCommandChar(msg[0]) && (msg.Length > 1)) || isAllCmd)
             {
-                if (ok(p, ChatMessageType.Command))
+                if (Ok(p, ChatMessageType.Command))
                 {
-                    ITarget target = arena;
-                    runCommands(msg, p, target, sound);
+                    RunCommands(msg, p, arena, sound);
                 }
             }
             else
             {
                 ChatMessageType type = isMacro ? ChatMessageType.PubMacro : ChatMessageType.Pub;
-                if (ok(p, type))
+                if (Ok(p, type))
                 {
-                    LinkedList<Player> set = getArenaSet(arena, p);
+                    LinkedList<Player> set = GetArenaSet(arena, p);
                     if(set != null)
-                        sendReply(set, type, sound, p, p.Id, msg, 0);
+                        SendReply(set, type, sound, p, p.Id, msg, 0);
 
-                    fireChatMessageEvent(arena, p, type, sound, null, -1, msg);
+                    FireChatMessageCallback(arena, p, type, sound, null, -1, msg);
                     _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, "pub msg: {0}", msg);
                 }
             }
 
         }
 
-        private void runCommands(string msg, Player p, ITarget target, ChatSound sound)
+        private void RunCommands(string msg, Player p, ITarget target, ChatSound sound)
         {
             if (msg == null)
                 throw new ArgumentNullException("msg");
@@ -802,10 +817,8 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException("target");
 
             // skip initial ? or *
-            char initial = '\0';
-            if (isCommandChar(msg[0]))
+            if (IsCommandChar(msg[0]))
             {
-                initial = msg[0];
                 msg = msg.Remove(0, 1);
 
                 if(msg == string.Empty)
@@ -818,13 +831,13 @@ namespace SS.Core.Modules
             {
                 string[] tokens = msg.Split(new char[] { MultiChar }, StringSplitOptions.RemoveEmptyEntries);
 
-                foreach (string token in tokens)
+                for (int i = 0; i < tokens.Length && i < _cfg.CommandLimit; i++)
                 {
                     // give modules a chance to rewrite the command
                     // TODO:
 
                     // run the command
-                    _commandManager.Command(token, p, target, sound);
+                    _commandManager.Command(tokens[i], p, target, sound);
                 }
             }
             else
@@ -837,54 +850,50 @@ namespace SS.Core.Modules
             }
         }
 
-        private void sendReply(LinkedList<Player> set, ChatMessageType type, ChatSound sound, Player p, int fromPid, string msg, int chatNetOffset)
+        private void SendReply(LinkedList<Player> set, ChatMessageType type, ChatSound sound, Player p, int fromPid, string msg, int chatNetOffset)
         {
-            using (DataBuffer buf = Pool<DataBuffer>.Default.Get())
+            NetSendFlags flags = NetSendFlags.None;
+            if (type == ChatMessageType.PubMacro)
+                flags |= NetSendFlags.PriorityN1;
+
+            if (_cfg.MessageReliable)
+                flags |= NetSendFlags.Reliable;
+
+            if (msg.Length > ChatPacket.MaxMessageLength)
+                msg = msg.Substring(0, ChatPacket.MaxMessageLength);
+
+            if (type == ChatMessageType.ModChat)
+                type = ChatMessageType.SysopWarning;
+
+            ChatPacket to = new ChatPacket();
+            to.Type = (byte)S2CPacketType.Chat;
+            to.ChatType = (byte)type;
+            to.Sound = (byte)sound;
+            to.PlayerId = (short)fromPid;
+            int length = ChatPacket.HeaderLength + to.MessageBytes.WriteNullTerminatedString(msg);
+
+            LinkedList<Player> filteredSet = null;
+            if (_obscene != null)
+                filteredSet = ObsceneFilter(set);
+
+            Span<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref to, 1)).Slice(0, length);
+
+            _net.SendToSet(set, bytes, flags);
+
+            //if(_chatNet != null)
+
+            if (filteredSet != null &&
+                _obscene != null)//&&
+                                 //!_obscene.Filter(msg) ||
             {
-                ChatPacket to = new ChatPacket(buf.Bytes);
-
-                NetSendFlags flags = NetSendFlags.None;
-                if (type == ChatMessageType.PubMacro)
-                    flags |= NetSendFlags.PriorityN1;
-
-                if (_cfg.msgrel)
-                    flags |= NetSendFlags.Reliable;
-
-                int maxTextLength = buf.Bytes.Length - ChatPacket.HeaderLength;
-                if (msg.Length > maxTextLength)
-                    return;
-
-                if (type == ChatMessageType.ModChat)
-                    type = ChatMessageType.SysopWarning;
-
-                to.PkType = (byte)S2CPacketType.Chat;
-                to.Type = (byte)type;
-                to.Sound = (byte)sound;
-                to.Pid = (short)fromPid;
-                int size = to.SetText(msg) + ChatPacket.HeaderLength;
-
-                LinkedList<Player> filteredSet = null;
-                if (_obscene != null)
-                    filteredSet = obsceneFilter(set);
-
                 if (_net != null)
-                    _net.SendToSet(set, buf.Bytes, size, flags);
+                    _net.SendToSet(filteredSet, bytes, flags);
 
                 //if(_chatNet != null)
-
-                if (filteredSet != null &&
-                    _obscene != null )//&&
-                    //!_obscene.Filter(msg) ||
-                {
-                    if (_net != null)
-                        _net.SendToSet(filteredSet, buf.Bytes, size, flags);
-
-                    //if(_chatNet != null)
-                }
             }
         }
 
-        private LinkedList<Player> obsceneFilter(LinkedList<Player> set)
+        private LinkedList<Player> ObsceneFilter(LinkedList<Player> set)
         {
             LinkedList<Player> filteredSet = null;
             LinkedListNode<Player> node;
@@ -908,31 +917,30 @@ namespace SS.Core.Modules
             return filteredSet;
         }
 
-        private string getChatType(ChatMessageType type)
+        private string GetChatType(ChatMessageType type)
         {
-            switch (type)
+            return type switch
             {
-                case ChatMessageType.Arena: return "ARENA";
-                case ChatMessageType.PubMacro: return "PUBM";
-                case ChatMessageType.Pub: return "PUB";
-                case ChatMessageType.Freq: return "FREQ";
-                case ChatMessageType.EnemyFreq: return "FREQ";
-                case ChatMessageType.Private: return "PRIV";
-                case ChatMessageType.RemotePrivate: return "PRIV";
-                case ChatMessageType.SysopWarning: return "SYSOP";
-                case ChatMessageType.Chat: return "CHAT";
-                case ChatMessageType.ModChat: return "MOD";
-                default: return null;
-            }
+                ChatMessageType.Arena => "ARENA",
+                ChatMessageType.PubMacro => "PUBM",
+                ChatMessageType.Pub => "PUB",
+                ChatMessageType.Freq => "FREQ",
+                ChatMessageType.EnemyFreq => "FREQ",
+                ChatMessageType.Private => "PRIV",
+                ChatMessageType.RemotePrivate => "PRIV",
+                ChatMessageType.SysopWarning => "SYSOP",
+                ChatMessageType.Chat => "CHAT",
+                ChatMessageType.ModChat => "MOD",
+                _ => null,
+            };
         }
 
-        private bool ok(Player p, ChatMessageType messageType)
+        private bool Ok(Player p, ChatMessageType messageType)
         {
             if (p == null)
                 return false;
 
-            PlayerChatMask pm = p[_pmkey] as PlayerChatMask;
-            if (pm == null)
+            if (!(p[_pmkey] is PlayerChatMask pm))
                 return false;
 
             ArenaChatMask am = (p.Arena != null) ? p.Arena[_cmkey] as ArenaChatMask : null;
@@ -940,7 +948,7 @@ namespace SS.Core.Modules
 
             lock (_playerMaskLock)
             {
-                expireMask(p);
+                ExpireMask(p);
 
                 if (am != null)
                     pm.mask.Combine(am.mask);
@@ -951,13 +959,12 @@ namespace SS.Core.Modules
             return mask.IsAllowed(messageType);
         }
 
-        private void expireMask(Player p)
+        private void ExpireMask(Player p)
         {
             if (p == null)
                 return;
 
-            PlayerChatMask pm = p[_pmkey] as PlayerChatMask;
-            if (pm == null)
+            if (!(p[_pmkey] is PlayerChatMask pm))
                 return;
 
             DateTime now = DateTime.UtcNow;

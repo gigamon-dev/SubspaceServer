@@ -1,137 +1,58 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
-    public readonly struct ChatPacket
+    /// <summary>
+    /// Chat packet
+    /// <para>
+    /// Subspace appears to use a subset of the Windows-1252 encoding for chat messages.
+    /// </para>
+    /// <para>
+    /// The characters the Continuum client is able to display include:
+    /// <list type="bullet">
+    /// <item><term>[0x20 - 0x7E]</term>The displayable ASCII characters.</item>
+    /// <item><term>[0xC0 - 0x0FF], excluding × (0xD7) and ÷ (0xF7)</term>Some extended characters from ISO-8859-1 which Windows-1252 also includes. Does not include the multiplication and division symbols.</item>
+    /// <item><term>€ (0x80), Š (0x8A), Ž (0x8E), š (0x9A), ž (0x9E), and Ÿ (0x9F)</term>Characters from ISO-8859-15, but as Windows-1252 codes.</item>
+    /// </list>
+    /// </para>
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct ChatPacket
     {
-        static ChatPacket()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            pktype = locationBuilder.CreateByteDataLocation();
-            type = locationBuilder.CreateByteDataLocation();
-            sound = locationBuilder.CreateByteDataLocation();
-            pid = locationBuilder.CreateInt16DataLocation();
-            HeaderLength = locationBuilder.NumBytes;
-            text = locationBuilder.CreateDataLocation(1);
-        }
-
-        private static readonly ByteDataLocation pktype;
-        private static readonly ByteDataLocation type;
-        private static readonly ByteDataLocation sound;
-        private static readonly Int16DataLocation pid;
-        public static readonly int HeaderLength;
-        private static readonly DataLocation text; // NumBytes is variable for this location, do not use
-
-        // used for finding the end of the text
-        private static readonly Predicate<byte> _nullCharPredicate =
-            delegate(byte b)
-            {
-                return b == 0;
-            };
-
-        private readonly byte[] data;
-
-        public ChatPacket(byte[] data)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-        }
-
-        public byte PkType
-        {
-            get { return pktype.GetValue(data); }
-            set { pktype.SetValue(data, value); }
-        }
-
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
-        }
-
-        public byte Sound
-        {
-            get { return sound.GetValue(data); }
-            set { sound.SetValue(data, value); }
-        }
-
-        public short Pid
-        {
-            get { return pid.GetValue(data); }
-            set { pid.SetValue(data, value); }
-        }
+        /// <summary>
+        /// Number of bytes in the header (non-message portion) of a <see cref="ChatPacket"/>
+        /// </summary>
+        public const int HeaderLength = 5;
 
         /// <summary>
-        /// To get the text stored in the packet.
+        /// A chat packet should be limited to 255 bytes.
+        /// The header is 5 bytes. Leaving 250 for the message, with the last byte being a null terminator.
+        /// So the message is limited to 249 characters (which appears to be the limit that the continuum client has).
+        /// <para>
+        /// I'm guessing that the 255 limit is so that a maxed out chat packet can fit inside a 0x0E grouped packet.
+        /// However, if it's being sent reliably, then there's a 6 byte overhead for the reliable header.
+        /// So, as long as a reliable chat packet isn't larger than 249 bytes (not maxed out), it can be added into a grouped packet.
+        /// </para>
         /// </summary>
-        /// <param name="maxBufferBytes">Maximum # of bytes the ENTIRE buffer consists of.  This is used to help determine the end of the text.</param>
-        /// <returns></returns>
-        public string GetText(int maxBufferBytes)
+        public const int MaxMessageLength = NumMessageBytes - 1; // -1 for the null terminating byte
+
+        public byte Type;
+        public byte ChatType;
+        public byte Sound;
+
+        private short playerId;
+        public short PlayerId
         {
-            if (maxBufferBytes > data.Length)
-                maxBufferBytes = data.Length; // can't be > than the buffer itself
-
-            int textByteCount = maxBufferBytes - text.ByteOffset;
-            if (textByteCount <= 0)
-                return string.Empty;
-
-            int stopIndex = Array.FindIndex<byte>(data, text.ByteOffset, textByteCount, _nullCharPredicate);
-
-            if (stopIndex == -1)
-                return Encoding.ASCII.GetString(data, text.ByteOffset, textByteCount);
-            else
-                return Encoding.ASCII.GetString(data, text.ByteOffset, stopIndex - text.ByteOffset);
+            get { return LittleEndianConverter.Convert(playerId); }
+            set { playerId = LittleEndianConverter.Convert(value); }
         }
 
-        /// <summary>
-        /// To set the text field of the chat packet.
-        /// </summary>
-        /// <param name="value">text to store</param>
-        /// <returns>the # of bytes used by the text (includes the ending '\0' character)</returns>
-        public int SetText(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return 0;
-
-            int maxTextLength = (data.Length - text.ByteOffset) - 1; // -1 for a '\0' (required by continuum)
-            int numTextBytes;
-            if (value.Length > maxTextLength)
-                numTextBytes = Encoding.ASCII.GetBytes(value, 0, maxTextLength, data, text.ByteOffset);
-            else
-                numTextBytes = Encoding.ASCII.GetBytes(value, 0, value.Length, data, text.ByteOffset);
-
-            data[text.ByteOffset + numTextBytes] = 0; // ending '\0'
-
-            return numTextBytes + 1;
-        }
-
-        /// <summary>
-        /// To make sure that the bytes in the text do not contain any control characters.
-        /// Any control character found will be changed to an underscore '_'.
-        /// </summary>
-        /// <param name="maxBufferBytes">Maximum # of bytes the ENTIRE buffer consists of.  This is used to help determine the end of the text.</param>
-        public void RemoveControlCharactersFromText(int maxBufferBytes)
-        {
-            if (maxBufferBytes > data.Length)
-                maxBufferBytes = data.Length; // can't be > than the buffer itself
-
-            int textByteCount = maxBufferBytes - text.ByteOffset;
-            if (textByteCount <= 0)
-                return;
-
-            for (int x = text.ByteOffset; x < maxBufferBytes; x++)
-            {
-                byte b = data[x];
-                if(b == 0)
-                    return; // null char (end of string)
-
-                if (char.IsControl((char)b))
-                    data[x] = (byte)('_');
-            }
-        }
+        private const int NumMessageBytes = 250;
+        private fixed byte messageBytes[NumMessageBytes];
+        public Span<byte> MessageBytes => new Span<byte>(Unsafe.AsPointer(ref messageBytes[0]), NumMessageBytes);
     }
 }
 

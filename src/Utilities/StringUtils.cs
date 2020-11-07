@@ -6,6 +6,8 @@ namespace SS.Utilities
 {
     public static class StringUtils
     {
+        public static Encoding DefaultEncoding { get; } = Encoding.GetEncoding(1252); // Windows-1252
+
         #region Read Null Terminated
 
         /// <summary>
@@ -49,6 +51,16 @@ namespace SS.Utilities
         }
 
         /// <summary>
+        /// Reads a string that is null terminated or all bytes contain characters, with the <see cref="DefaultEncoding"/>.
+        /// </summary>
+        /// <param name="source">The bytes to read from.</param>
+        /// <returns>The string.</returns>
+        public static string ReadNullTerminatedString(this Span<byte> source)
+        {
+            return ReadNullTerminatedString(source, DefaultEncoding);
+        }
+
+        /// <summary>
         /// Reads a string that is null terminated or all bytes contain characters, with a specified encoding.
         /// </summary>
         /// <param name="source">The bytes to read from.</param>
@@ -57,6 +69,16 @@ namespace SS.Utilities
         public static string ReadNullTerminatedString(this Span<byte> source, Encoding encoding)
         {
             return ReadNullTerminatedString((ReadOnlySpan<byte>)source, encoding);
+        }
+
+        /// <summary>
+        /// Reads a string that is null terminated or all bytes contain characters, with the <see cref="DefaultEncoding"/>.
+        /// </summary>
+        /// <param name="source">The bytes to read from.</param>
+        /// <returns>The string.</returns>
+        public static string ReadNullTerminatedString(this ReadOnlySpan<byte> source)
+        {
+            return ReadNullTerminatedString(source, DefaultEncoding);
         }
 
         /// <summary>
@@ -107,6 +129,20 @@ namespace SS.Utilities
         public static int WriteNullTerminatedUTF8(this Span<byte> destination, ReadOnlySpan<char> value)
         {
             return WriteNullTerminatedString(destination, value, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Writes a string into a Span&lt;byte&gt; as a null terminated C-style string with the <see cref="DefaultEncoding"/>.
+        /// </summary>
+        /// <remarks>
+        /// If you need to set all bytes within <paramref name="destination"/>, see <see cref="WriteNullPaddedString(Span{byte}, string, Encoding, bool)"/> instead.
+        /// </remarks>
+        /// <param name="destination">The buffer to write the string bytes into.</param>
+        /// <param name="value">The string to write.</param>
+        /// <returns>The number of bytes written, including the null terminator.</returns>
+        public static int WriteNullTerminatedString(this Span<byte> destination, ReadOnlySpan<char> value)
+        {
+            return WriteNullTerminatedString(destination, value, DefaultEncoding);
         }
 
         /// <summary>
