@@ -413,7 +413,7 @@ namespace SS.Core.Modules
 
             // Null terminate if it isn't already.
             // Also, truncate the message if the length is over the limit that we will allow.
-            from.MessageBytes[^1] = 0;
+            from.MessageBytes[Math.Min(len - ChatPacket.HeaderLength, from.MessageBytes.Length) - 1] = 0;
 
             // remove control characters from the chat message
             RemoveControlCharacters(from.MessageBytes);
