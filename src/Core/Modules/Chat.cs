@@ -434,7 +434,7 @@ namespace SS.Core.Modules
 
                 case ChatMessageType.PubMacro:
                 case ChatMessageType.Pub:
-                    if (text[0] == ModChatChar)
+                    if (from.MessageBytes[0] == ModChatChar)
                         HandleModChat(p, text.Substring(1), sound);
                     else
                         HandlePub(p, text, from.ChatType == (byte)ChatMessageType.PubMacro, false, sound);
