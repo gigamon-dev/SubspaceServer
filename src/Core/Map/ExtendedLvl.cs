@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -40,17 +41,17 @@ namespace SS.Core.Map
         /// <summary>
         /// coordinate --> region set
         /// </summary>
-        private readonly RegionSetCoordinateCollection _regionSetCoordinateLookup = new RegionSetCoordinateCollection(); // asss stores set index, instead we store a reference to the set
+        private readonly MapRegionSetCollection _regionSetCoordinateLookup = new MapRegionSetCollection(); // asss stores set index, instead we store a reference to the set
 
         /// <summary>
         /// list of all region sets
         /// </summary>
-        private readonly List<HashSet<MapRegion>> _regionSetList = new List<HashSet<MapRegion>>();
+        private readonly List<ImmutableHashSet<MapRegion>> _regionSetList = new List<ImmutableHashSet<MapRegion>>();
 
         /// <summary>
         /// region --> region sets it belongs to
         /// </summary>
-        private readonly Dictionary<MapRegion, HashSet<HashSet<MapRegion>>> _regionMemberSetLookup = new Dictionary<MapRegion, HashSet<HashSet<MapRegion>>>();
+        private readonly Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>> _regionMemberSetLookup = new Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>>();
 
         public override void ClearLevel()
         {
@@ -110,7 +111,7 @@ namespace SS.Core.Map
                                     }
 
                                     // turn some of them into more useful data.
-                                    ChunkHelper.ProcessChunks<object>(_rawChunks, (chunkKey, chunkData, clos) => processMapChunk(chunkKey, chunkData), null);
+                                    ChunkHelper.ProcessChunks<object>(_rawChunks, (chunkKey, chunkData, clos) => ProcessMapChunk(chunkKey, chunkData), null);
                                 }
                             }
                         }
@@ -139,7 +140,7 @@ namespace SS.Core.Map
                         }
 
                         // turn some of them into more useful data.
-                        ChunkHelper.ProcessChunks<object>(_rawChunks, (chunkKey, chunkData, clos) => processMapChunk(chunkKey, chunkData), null);
+                        ChunkHelper.ProcessChunks<object>(_rawChunks, (chunkKey, chunkData, clos) => ProcessMapChunk(chunkKey, chunkData), null);
                     }
                     else
                     {
@@ -180,17 +181,15 @@ namespace SS.Core.Map
             return region;
         }
 
-        public IEnumerable<MapRegion> RegionsAtCoord(short x, short y)
+        public IImmutableSet<MapRegion> RegionsAtCoord(short x, short y)
         {
-            HashSet<MapRegion> regionSet;
-            if (!_regionSetCoordinateLookup.TryGetValue(x, y, out regionSet))
-                yield break;
+            if (!_regionSetCoordinateLookup.TryGetValue(x, y, out ImmutableHashSet<MapRegion> regionSet))
+                return ImmutableHashSet<MapRegion>.Empty;
 
-            foreach(MapRegion region in regionSet)
-                yield return region;
+            return regionSet;
         }
 
-        private bool addRegion(MapRegion region)
+        private bool AddRegion(MapRegion region)
         {
             if (region == null)
                 return false;
@@ -202,8 +201,8 @@ namespace SS.Core.Map
 
             foreach (MapCoordinate coords in region.Coords)
             {
-                HashSet<MapRegion> oldRegionSet;
-                HashSet<MapRegion> newRegionSet = null;
+                ImmutableHashSet<MapRegion> oldRegionSet;
+                ImmutableHashSet<MapRegion> newRegionSet = null;
 
                 if (_regionSetCoordinateLookup.TryGetValue(coords, out oldRegionSet))
                 {
@@ -213,7 +212,7 @@ namespace SS.Core.Map
                         continue; // the set at this coordinate already contains the region, skip it
 
                     // look for an existing set that contains the old set and the region
-                    foreach (HashSet<MapRegion> regionToCheck in _regionSetList)
+                    foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSetList)
                     {
                         if (regionToCheck.Count == (oldRegionSet.Count + 1) &&
                             regionToCheck.Contains(region) &&
@@ -227,10 +226,13 @@ namespace SS.Core.Map
                     if (newRegionSet == null)
                     {
                         // set does not exist yet, create it
-                        newRegionSet = new HashSet<MapRegion>();
-                        newRegionSet.UnionWith(oldRegionSet);
-                        newRegionSet.Add(region);
+                        newRegionSet = oldRegionSet.Add(region);
                         _regionSetList.Add(newRegionSet);
+
+                        foreach (MapRegion existingRegion in oldRegionSet)
+                        {
+                            _regionMemberSetLookup[existingRegion].Add(newRegionSet);
+                        }
                     }
                 }
                 else
@@ -238,7 +240,7 @@ namespace SS.Core.Map
                     // no set at this coordinate yet
 
                     // look for an existing set that conains only this region
-                    foreach (HashSet<MapRegion> regionToCheck in _regionSetList)
+                    foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSetList)
                     {
                         if (regionToCheck.Count == 1 && regionToCheck.Contains(region))
                         {
@@ -250,18 +252,17 @@ namespace SS.Core.Map
                     if (newRegionSet == null)
                     {
                         // set does not exist yet, create it
-                        newRegionSet = new HashSet<MapRegion>();
-                        newRegionSet.Add(region);
+                        newRegionSet = ImmutableHashSet.Create(region);
                         _regionSetList.Add(newRegionSet);
                     }
                 }
 
-                _regionSetCoordinateLookup.Add(coords, newRegionSet);
+                _regionSetCoordinateLookup[coords] = newRegionSet;
 
-                HashSet<HashSet<MapRegion>> memberOfSet;
+                HashSet<ImmutableHashSet<MapRegion>> memberOfSet;
                 if (!_regionMemberSetLookup.TryGetValue(region, out memberOfSet))
                 {
-                    memberOfSet = new HashSet<HashSet<MapRegion>>();
+                    memberOfSet = new HashSet<ImmutableHashSet<MapRegion>>();
                     _regionMemberSetLookup.Add(region, memberOfSet);
                 }
                 memberOfSet.Add(newRegionSet);
@@ -270,7 +271,7 @@ namespace SS.Core.Map
             return true;
         }
 
-        private bool processMapChunk(uint key, ArraySegment<byte> chunkData)
+        private bool ProcessMapChunk(uint key, ArraySegment<byte> chunkData)
         {
             ChunkHeader ch = new ChunkHeader(chunkData.Array, chunkData.Offset);
             uint chunkType = ch.Type;
@@ -292,7 +293,7 @@ namespace SS.Core.Map
                 try
                 {
                     MapRegion region = new MapRegion(ch.Data);
-                    addRegion(region);
+                    AddRegion(region);
                 }
                 catch
                 {

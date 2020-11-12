@@ -1,10 +1,5 @@
-﻿using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Buffers.Binary;
 using System.Text;
-
-using SS.Utilities;
 
 namespace SS.Core.Map
 {
@@ -27,7 +22,7 @@ namespace SS.Core.Map
         /// "PROGRAM" - the name of the program that was used to create this level
         /// file
         /// </summary>
-        internal static readonly uint ATTR = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("ATTR"));
+        public static readonly uint ATTR = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("ATTR"));
 
         /// <summary>
         /// these chunks define regions. to recap, a region is a set of tiles,
@@ -54,7 +49,7 @@ namespace SS.Core.Map
         /// "rAWP" - auto-warp
         /// "rPYC" - code to be executed when a player enters or leaves this region
         /// </summary>
-        internal static readonly uint REGN = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("REGN"));
+        public static readonly uint REGN = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("REGN"));
 
         /// <summary>
         /// the format of a "TSET" chunk is a windows format bitmap, _without_ the
@@ -65,37 +60,37 @@ namespace SS.Core.Map
         /// compression.
         /// <remarks>for future use when ELVL format is standard and backwards compatability is no longer required</remarks>
         /// </summary>
-        internal static readonly uint TSET = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("TSET"));
+        public static readonly uint TSET = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("TSET"));
 
         /// <summary>
         /// the format of a "TILE" chunk is just tile data, in the same format it's
         /// always been in
         /// <remarks>for future use when ELVL format is standard and backwards compatability is no longer required</remarks>
         /// </summary>
-        internal static readonly uint TILE = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("TILE"));
+        public static readonly uint TILE = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("TILE"));
 
         /// <summary>
         /// other chunk types used specially for regions
         /// </summary>
-        internal static class RegionChunkType
+        public static class RegionChunkType
         {
             /// <summary>
             /// name of the region
             /// this is just a plain ascii string, not null terminated. every chunk
             /// should have exactly one of these.
             /// </summary>
-            internal static readonly uint Name = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNAM"));
+            public static readonly uint Name = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNAM"));
 
             /// <summary>
             /// this subchunk describes the tiles that make up the region. it's stored
             /// in a compact rle-ish representation.
             /// </summary>
-            internal static readonly uint TileData = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rTIL"));
+            public static readonly uint TileData = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rTIL"));
 
             /// <summary>
             /// this is a 0-byte chunk. its presence signifies that this region should be considered a "base".
             /// </summary>
-            internal static readonly uint IsBase = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rBSE"));
+            public static readonly uint IsBase = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rBSE"));
 
             /// <summary>
             /// this is a 0-byte chunk. if present, antiwarp should be disabled for
@@ -105,28 +100,41 @@ namespace SS.Core.Map
             /// so that it could inform the player that antiwarp is unavailable in this
             /// location.
             /// </summary>
-            internal static readonly uint NoAntiwarp = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNAW"));
+            public static readonly uint NoAntiwarp = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNAW"));
 
             /// <summary>
             /// this is a 0-byte chunk. if present, all weapons are non-functional in
             /// this region. the same notes apply to this feature as to the no antiwarp
             /// feature.
             /// </summary>
-            internal static readonly uint NoWeapons = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNWP"));
+            public static readonly uint NoWeapons = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNWP"));
 
             /// <summary>
             /// this is a 0-byte chunk. if present, any flags dropped in this region are
             /// respawned as neutral flags in the center of the map (or wherever the
             /// settings indicate they should be spawned).
             /// </summary>
-            internal static readonly uint NoFlagDrops = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNFL"));
+            public static readonly uint NoFlagDrops = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rNFL"));
 
             /// <summary>
             /// this chunk, if present, turns on the auto-warping feature. any player
             /// entering this region will be immediately warped to the specified
             /// destination.
             /// </summary>
-            internal static readonly uint Autowarp = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rAWP"));
+            public static readonly uint Autowarp = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rAWP"));
+
+            /// <summary>
+            /// Embedded Python code.
+            /// <para>
+            /// this chunk should contain ascii data representing some python code.the
+            /// code will be executed when the map is loaded, and it may define several
+            /// functions: a function named "enter", if it exists, will be call each
+            /// time a player enters this region.it will be called with one argument,
+            /// which is the player who entered the region. a function named "exit"
+            /// works similarly, except of course it gets called when someone leaves.
+            /// </para>
+            /// </summary>
+            public static readonly uint PythonCode = BinaryPrimitives.ReadUInt32LittleEndian(Encoding.ASCII.GetBytes("rPYC"));
         }
     }
 }

@@ -5,6 +5,7 @@ using SS.Core.Packets;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -121,10 +122,12 @@ namespace SS.Core.Modules
             /// </summary>
             public DateTime lastRgnCheck;
 
-            public Dictionary<MapRegion, bool> LastRegionSet = new Dictionary<MapRegion, bool>();
-            //public LinkedList<object> lastrgnset = new LinkedList<object>();
+            /// <summary>
+            /// Set of regions the player was in during the last region check.
+            /// </summary>
+            public IImmutableSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
 
-            public ShipType PlayerPostitionPacket_LastShip;
+            public ShipType? PlayerPostitionPacket_LastShip;
         }
 
         private class ArenaData
@@ -687,7 +690,7 @@ namespace SS.Core.Modules
                 pd.pos.Time = ServerTick.Now;
                 pd.lastRgnCheck = DateTime.UtcNow;
 
-                pd.LastRegionSet = new Dictionary<MapRegion, bool>(_mapData.GetRegionCount(arena));
+                pd.LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
 
                 pd.lockship = ad.initLockship;
                 if (ad.initSpec)
@@ -697,6 +700,8 @@ namespace SS.Core.Modules
                 }
 
                 p.Attached = -1;
+
+                pd.PlayerPostitionPacket_LastShip = null;
 
                 _playerData.Lock();
 
@@ -771,8 +776,7 @@ namespace SS.Core.Modules
                     ClearSpeccing(pd);
                 }
 
-                pd.LastRegionSet.Clear();
-                //pd.lastrgnset.Clear();
+                pd.LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
             }
             else if(action == PlayerAction.EnterGame)
             {
@@ -1291,13 +1295,12 @@ namespace SS.Core.Modules
                 return;
 
             Arena arena = p.Arena;
-            /*
-            foreach (MapRegion region in pd.LastRegionSet.Keys)
-            {
-                pd.LastRegionSet[region] = false;
-            }
-            */
-            foreach(MapRegion region in _mapData.RegionsAt(p.Arena, x, y))
+            IImmutableSet<MapRegion> oldRegions = pd.LastRegionSet;
+            IImmutableSet<MapRegion> newRegions = _mapData.RegionsAt(p.Arena, x, y);
+
+            pd.MapRegionNoAnti = pd.MapRegionNoWeapons = false;
+
+            foreach (MapRegion region in newRegions)
             {
                 if (region.NoAntiwarp)
                     pd.MapRegionNoAnti = true;
@@ -1305,28 +1308,21 @@ namespace SS.Core.Modules
                 if (region.NoWeapons)
                     pd.MapRegionNoWeapons = true;
 
-                //if (!pd.LastRegionSet.ContainsKey(region))
-                //{
-                    MapRegionCallback.Fire(arena, p, region, x, y, true);
-                    //pd.LastRegionSet.Add(region, true);
-                //}
-                //else
-                //{
-                    //pd.LastRegionSet[region] = true;
-                //}
+                if (!oldRegions.Contains(region))
+                {
+                    MapRegionCallback.Fire(arena, p, region, x, y, true); // entered region
+                }
             }
 
-            //pd.LastRegionSet.Except(
-            //_mapData.RegionsAt(p.Arena, (short)x, (short)y)
+            foreach (MapRegion region in oldRegions)
+            {
+                if (!newRegions.Contains(region))
+                {
+                    MapRegionCallback.Fire(arena, p, region, x, y, false); // exited region
+                }
+            }
 
-            // asss does a merge join to figure out the differences
-            //TODO: handle the callbacks properly, this is just for testing autowarp...
-            //foreach (KeyValuePair<MapRegion, bool> kvp in pd.LastRegionSet)
-            //{
-                //if (kvp.Value == false)
-                    //MapRegionCallback.Fire(arena, p, kvp.Key, x, y, false);
-            //}
-            // TODO: region enter and leave callbacks
+            pd.LastRegionSet = newRegions;
         }
 
         private void Packet_SpecRequest(Player p, byte[] data, int len)

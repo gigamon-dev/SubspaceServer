@@ -1,15 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading;
-
-using SS.Core.ComponentCallbacks;
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
-using SS.Utilities;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.IO;
 
 namespace SS.Core.Modules
 {
@@ -41,7 +36,7 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
 
             _lvlKey = _arenaManager.AllocateArenaData<ExtendedLvl>();
-            ArenaActionCallback.Register(_broker, arenaAction);
+            ArenaActionCallback.Register(_broker, Callback_ArenaAction);
             _iMapDataToken = _broker.RegisterInterface<IMapData>(this);
 
             return true;
@@ -52,7 +47,7 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<IMapData>(ref _iMapDataToken) != 0)
                 return false;
 
-            ArenaActionCallback.Unregister(_broker, arenaAction);
+            ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
             _arenaManager.FreeArenaData(_lvlKey);
 
             return true;
@@ -64,6 +59,9 @@ namespace SS.Core.Modules
 
         string IMapData.GetMapFilename(Arena arena, string mapname)
         {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
             return GetMapFilename(arena, mapname);
         }
 
@@ -71,7 +69,7 @@ namespace SS.Core.Modules
         private string GetMapFilename(Arena arena, string mapname)
         {
             if (arena == null)
-                return null;
+                throw new ArgumentNullException(nameof(arena));
 
             Dictionary<char, string> repls = new Dictionary<char, string>()
             {
@@ -92,9 +90,8 @@ namespace SS.Core.Modules
                     isLvl = true;
             }
 
-            string filename;
             if (PathUtil.find_file_on_path(
-                out filename,
+                out string filename,
                 isLvl ? Constants.CFG_LVL_SEARCH_PATH : Constants.CFG_LVZ_SEARCH_PATH,
                 repls) == 0)
             {
@@ -109,7 +106,7 @@ namespace SS.Core.Modules
         IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
             int count = 0;
 
@@ -151,14 +148,12 @@ namespace SS.Core.Modules
         string IMapData.GetAttribute(Arena arena, string key)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
-            string attributeValue;
-            if (lvl.TryGetAttribute(key, out attributeValue))
+            if (lvl.TryGetAttribute(key, out string attributeValue))
                 return attributeValue;
             else
                 return null;
@@ -167,10 +162,9 @@ namespace SS.Core.Modules
         IEnumerable<ArraySegment<byte>> IMapData.ChunkData(Arena arena, uint chunkType)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             return lvl.ChunkData(chunkType);
@@ -179,10 +173,9 @@ namespace SS.Core.Modules
         int IMapData.GetFlagCount(Arena arena)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             return lvl.FlagCount;
@@ -191,14 +184,12 @@ namespace SS.Core.Modules
         MapTile? IMapData.GetTile(Arena arena, MapCoordinate coord)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
-            MapTile tile;
-            if (lvl.TryGetTile(coord, out tile))
+            if (lvl.TryGetTile(coord, out MapTile tile))
                 return tile;
             else
                 return null;
@@ -215,14 +206,12 @@ namespace SS.Core.Modules
         bool IMapData.FindEmptyTileNear(Arena arena, ref short x, ref short y)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
-            MapTile tile;
-            if (!lvl.TryGetTile(new MapCoordinate(x, y), out tile))
+            if (!lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile))
                 return true;
 
             // TODO
@@ -233,13 +222,12 @@ namespace SS.Core.Modules
         bool IMapData.FindEmptyTileInRegion(Arena arena, MapRegion region)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
             if (region == null)
-                throw new ArgumentNullException("region");
+                throw new ArgumentNullException(nameof(region));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             // TODO
@@ -250,10 +238,9 @@ namespace SS.Core.Modules
         uint IMapData.GetChecksum(Arena arena, uint key)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             int saveKey = (int)key;
@@ -267,8 +254,7 @@ namespace SS.Core.Modules
                 {
                     for (short x = (short)(saveKey % 31); x < 1024; x += 31)
                     {
-                        MapTile tile;
-                        lvl.TryGetTile(new MapCoordinate(x, y), out tile); // if no tile, it will be zero'd out which is what we want
+                        lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
                         if ((tile >= MapTile.TileStart && tile <= MapTile.TileEnd) || tile.IsSafe)
                             key += (uint)(saveKey ^ (byte)tile);
                     }
@@ -285,10 +271,9 @@ namespace SS.Core.Modules
         int IMapData.GetRegionCount(Arena arena)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             return lvl.RegionCount;
@@ -297,34 +282,31 @@ namespace SS.Core.Modules
         MapRegion IMapData.FindRegionByName(Arena arena, string name)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             return lvl.FindRegionByName(name);
         }
 
-        IEnumerable<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
+        IImmutableSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             return lvl.RegionsAtCoord(coord.X, coord.Y);
         }
 
-        IEnumerable<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
+        IImmutableSet<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
-            ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-            if (lvl == null)
+            if (!(arena[_lvlKey] is ExtendedLvl lvl))
                 throw new Exception("missing lvl data");
 
             return lvl.RegionsAtCoord(x, y);
@@ -332,7 +314,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void arenaAction(Arena arena, ArenaAction action)
+        private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
@@ -340,19 +322,18 @@ namespace SS.Core.Modules
             if (action == ArenaAction.Create || action == ArenaAction.Destroy)
             {
                 _arenaManager.HoldArena(arena); // the worker thread will unhold
-                _mainloop.QueueThreadPoolWorkItem(arenaActionWork, arena);
+                _mainloop.QueueThreadPoolWorkItem(ArenaActionWork, arena);
             }
         }
 
-        private void arenaActionWork(Arena arena)
+        private void ArenaActionWork(Arena arena)
         {
             if (arena == null)
                 return;
 
             try
             {
-                ExtendedLvl lvl = arena[_lvlKey] as ExtendedLvl;
-                if (lvl == null)
+                if (!(arena[_lvlKey] is ExtendedLvl lvl))
                     return;
 
                 lvl.Lock();

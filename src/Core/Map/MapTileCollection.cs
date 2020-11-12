@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 
@@ -27,7 +28,7 @@ namespace SS.Core.Map
     {
     }
 
-    public class RegionSetCoordinateCollection : MapCoordinateCollection<HashSet<MapRegion>>
+    public class MapRegionSetCollection : MapCoordinateCollection<ImmutableHashSet<MapRegion>>
     {
     }
 }

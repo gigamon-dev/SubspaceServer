@@ -1,9 +1,7 @@
-﻿using System;
+﻿using SS.Core.Map;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using SS.Core.Map;
+using System.Collections.Immutable;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -87,7 +85,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="x"></param>
         /// <param name="y"></param>
         /// <returns></returns>
-        IEnumerable<MapRegion> RegionsAt(Arena arena, short x, short y);
+        IImmutableSet<MapRegion> RegionsAt(Arena arena, short x, short y);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
@@ -96,7 +94,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena"></param>
         /// <param name="coord"></param>
         /// <returns></returns>
-        IEnumerable<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
+        IImmutableSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
 
         //RegionSet GetRegionSetAt(Arena arena, short x, short y);
 

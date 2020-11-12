@@ -62,6 +62,8 @@ namespace SS.Core.Map
             private set;
         }
 
+        // TODO: Cleanup chunk reading logic.
+        //private readonly List<(uint ChunkType, byte[] Data)> _unprocessedChunks = new List<(uint ChunkType, byte[] Data)>();
         private readonly MultiDictionary<uint, ArraySegment<byte>> _chunks = new MultiDictionary<uint, ArraySegment<byte>>();
 
         /// <summary>
@@ -93,6 +95,15 @@ namespace SS.Core.Map
         }
 
         /// <summary>
+        /// Whether the region represents a base in a flag game
+        /// </summary>
+        public bool IsBase
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// Whether antiwarp should be disabled for ships in the region.
         /// </summary>
         public bool NoAntiwarp
@@ -111,6 +122,35 @@ namespace SS.Core.Map
         }
 
         /// <summary>
+        /// Whether flags should not be allowed to drop in the region.
+        /// </summary>
+        public bool NoFlagDrops
+        {
+            get;
+            private set;
+        }
+
+        public class AutoWarpDestination
+        {
+            public AutoWarpDestination(short x, short y, string arenaName)
+            {
+                X = x;
+                Y = y;
+                ArenaName = arenaName;
+            }
+
+            public short X { get; }
+            public short Y { get; }
+            public string ArenaName { get; }
+        }
+
+        public AutoWarpDestination AutoWarp
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// A rectangle based off of data from the run length encoded region data
         /// </summary>
         private class RleEntry
@@ -123,7 +163,7 @@ namespace SS.Core.Map
 
         // random point generation info
         private readonly LinkedList<RleEntry> _rleData = new LinkedList<RleEntry>();
-        private Random random = new Random();
+        private readonly Random random = new Random();
 
         public MapRegion(ArraySegment<byte> regionChunkData)
         {
@@ -132,7 +172,7 @@ namespace SS.Core.Map
                 Debug.WriteLine("warning: did not read all chunk data");
             }
 
-            ChunkHelper.ProcessChunks<MapRegion>(_chunks, processRegionChunk, this);
+            ChunkHelper.ProcessChunks<MapRegion>(_chunks, ProcessRegionChunk, this);
         }
 
         /// <summary>
@@ -172,6 +212,8 @@ namespace SS.Core.Map
                 System.Drawing.Rectangle rectangle = new System.Drawing.Rectangle(entry.X, entry.Y, entry.Width, entry.Height);
                 if (rectangle.Contains(x, y))
                     return true;
+
+                node = node.Next;
             }
 
             return false;
@@ -227,10 +269,10 @@ namespace SS.Core.Map
             x = y = -1;
         }
 
-        private bool processRegionChunk(uint key, ArraySegment<byte> chunkData, MapRegion region)
+        private bool ProcessRegionChunk(uint key, ArraySegment<byte> chunkData, MapRegion region)
         {
             if (region == null)
-                throw new ArgumentNullException("region");
+                throw new ArgumentNullException(nameof(region));
 
             ChunkHeader ch = new ChunkHeader(chunkData.Array, chunkData.Offset);
             uint chunkType = ch.Type;
@@ -248,12 +290,17 @@ namespace SS.Core.Map
             else if (chunkType == MapMetadataChunkType.RegionChunkType.TileData)
             {
                 // tile data, the definition of the region
-                if (!readRunLengthEncodedTileData(region, ch.Data))
+                if (!ReadRunLengthEncodedTileData(region, ch.Data))
                 {
                     // error in lvl file while reading rle tile data
                     //Debug.WriteLine("<ExtendedLvl> error in lvl file while reading rle tile data");
                     throw new Exception("error in lvl file while reading rle tile data");
                 }
+                return true;
+            }
+            else if (chunkType == MapMetadataChunkType.RegionChunkType.IsBase)
+            {
+                IsBase = true;
                 return true;
             }
             else if (chunkType == MapMetadataChunkType.RegionChunkType.NoAntiwarp)
@@ -266,11 +313,26 @@ namespace SS.Core.Map
                 NoWeapons = true;
                 return true;
             }
+            else if (chunkType == MapMetadataChunkType.RegionChunkType.NoFlagDrops)
+            {
+                NoFlagDrops = true;
+                return true;
+            }
+            else if (chunkType == MapMetadataChunkType.RegionChunkType.Autowarp)
+            {
+                RegionAutoWarpChunk autoWarpChunk = new RegionAutoWarpChunk(ch.Data);
+                AutoWarp = new AutoWarpDestination(
+                    autoWarpChunk.X,
+                    autoWarpChunk.Y,
+                    autoWarpChunk.ArenaName?.Trim());
+
+                return true;
+            }
 
             return false;
         }
 
-        private bool readRunLengthEncodedTileData(MapRegion region, ArraySegment<byte> source)
+        private bool ReadRunLengthEncodedTileData(MapRegion region, ArraySegment<byte> source)
         {
             if (region == null)
                 throw new ArgumentNullException("region");
@@ -323,11 +385,13 @@ namespace SS.Core.Map
                             lastRow = cy;
                         }
                         {
-                            RleEntry entry = new RleEntry();
-                            entry.X = cx;
-                            entry.Y = cy;
-                            entry.Width = n;
-                            entry.Height = 1;
+                            RleEntry entry = new RleEntry
+                            {
+                                X = cx,
+                                Y = cy,
+                                Width = n,
+                                Height = 1
+                            };
 
                             lastRowData.AddLast(entry);
                             region._rleData.AddLast(entry);
