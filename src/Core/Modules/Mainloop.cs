@@ -259,9 +259,13 @@ namespace SS.Core.Modules
             _cancellationTokenSource.Cancel();
         }
 
-        bool IMainloop.QueueMainWorkItem<TParam>(WorkerDelegate<TParam> func, TParam param)
+        bool IMainloop.QueueMainWorkItem<TState>(Action<TState> callback, TState state)
         {
-            bool ret = _runInMainQueue.TryAdd(new RunInMainWorkItem(new WorkerCallbackInvoker<TParam>(func, param)));
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            // TODO: pool RunInMainWorkItem objects to reduce allocations even further
+            bool ret = _runInMainQueue.TryAdd(new RunInMainWorkItem<TState>(callback, state));
             _runInMainAutoResetEvent.Set();
             return ret;
         }
@@ -278,13 +282,12 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IMainloop.QueueThreadPoolWorkItem<TParam>(WorkerDelegate<TParam> func, TParam param)
+        bool IMainloop.QueueThreadPoolWorkItem<TState>(Action<TState> callback, TState state)
         {
-            return ThreadPool.QueueUserWorkItem(
-                delegate
-                {
-                    func(param);
-                });
+            if (callback == null)
+                throw new ArgumentNullException(nameof(callback));
+
+            return ThreadPool.QueueUserWorkItem(callback, state, false);
         }
 
         #endregion
@@ -631,7 +634,7 @@ namespace SS.Core.Modules
         private class WaitForMainWorkItem : IRunInMainWorkItem
         {
             private bool waitResolved;
-            private object lockObj = new object();
+            private readonly object lockObj = new object();
 
             private WaitForMainWorkItem()
             {
@@ -682,38 +685,18 @@ namespace SS.Core.Modules
             }
         }
 
-        private class RunInMainWorkItem : IRunInMainWorkItem
+        private class RunInMainWorkItem<TState> : IRunInMainWorkItem
         {
-            private IWorkerCallbackInvoker _workInvoker;
+            private readonly Action<TState> _callback;
+            private readonly TState _state;
 
-            public RunInMainWorkItem(IWorkerCallbackInvoker workInvoker)
-            {
-                _workInvoker = workInvoker;
-            }
-
-            public void Process()
-            {
-                _workInvoker.Invoke();
-            }
-        }
-
-        private interface IWorkerCallbackInvoker
-        {
-            void Invoke();
-        }
-
-        private class WorkerCallbackInvoker<TState> : IWorkerCallbackInvoker
-        {
-            private readonly WorkerDelegate<TState> _callback;
-            private TState _state;
-
-            public WorkerCallbackInvoker(WorkerDelegate<TState> callback, TState state)
+            public RunInMainWorkItem(Action<TState> callback, TState state)
             {
                 _callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 _state = state;
             }
 
-            public void Invoke()
+            public void Process()
             {
                 _callback(_state);
             }

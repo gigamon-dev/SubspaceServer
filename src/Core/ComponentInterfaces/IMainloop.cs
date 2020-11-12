@@ -5,13 +5,6 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
-    /// <summary>
-    /// Represents a method that contains work to be done.
-    /// </summary>
-    /// <typeparam name="TState">Type of the state parameter of the method that this delegate encapsulates.</typeparam>
-    /// <param name="state">An object that represents the context.</param>
-    public delegate void WorkerDelegate<in TState>(TState state);
-
     public interface IMainloop : IComponentInterface
     {
         /// <summary>
@@ -30,15 +23,15 @@ namespace SS.Core.ComponentInterfaces
         /// If your module uses this method, remember to call <see cref="WaitForMainWorkItemDrain"/> when unloading
         /// to ensure that everything that was scheduled completes before unloading.
         /// </summary>
-        /// <typeparam name="TParam">type of state object</typeparam>
+        /// <typeparam name="TState">type of state object</typeparam>
         /// <param name="callback">delegate to call</param>
         /// <param name="state">state to pass to the delegate</param>
         /// <returns>true if the the delegate was successfully queued to run; otherwise false</returns>
-        bool QueueMainWorkItem<TParam>(WorkerDelegate<TParam> func, TParam param);
+        bool QueueMainWorkItem<TState>(Action<TState> callback, TState state);
 
         /// <summary>
         /// Blocks until the all work items that were queued from 
-        /// <see cref="QueueMainWorkItem{TParam}(WorkerDelegate{TParam}, TParam)"/>
+        /// <see cref="QueueMainWorkItem{TState}(Action{TState}, TState)"/>
         /// are completed.
         /// </summary>
         void WaitForMainWorkItemDrain();
@@ -50,6 +43,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="callback">delegate to call</param>
         /// <param name="state">state to pass to the delegate</param>
         /// <returns>true if the the delegate was successfully queued to run; otherwise false</returns>
-        bool QueueThreadPoolWorkItem<TParam>(WorkerDelegate<TParam> func, TParam param);
+        bool QueueThreadPoolWorkItem<TState>(Action<TState> callback, TState state);
     }
 }
