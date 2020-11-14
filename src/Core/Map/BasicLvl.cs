@@ -1,8 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Drawing;
 
 namespace SS.Core.Map
@@ -10,14 +7,12 @@ namespace SS.Core.Map
     /// <summary>
     /// For reading the basic SubSpace map format which contains tile information and optionally a tileset (bitmap).
     /// </summary>
-    public class BasicLvl
+    public abstract class BasicLvl
     {
         /// <summary>
         /// maximum # of flags a map is allowed to contain
         /// </summary>
         public const int MaxFlags = 255;
-
-        private readonly object _mtx = new object();
 
         private readonly MapTileCollection _tileLookup = new MapTileCollection();
         private readonly List<MapCoordinate> _flagCoordinateList = new List<MapCoordinate>(MaxFlags);
@@ -38,39 +33,18 @@ namespace SS.Core.Map
             get { return _errorCount; }
         }
 
-        public void Lock()
+        protected virtual void ClearLevel()
         {
-            Monitor.Enter(_mtx);
+            _tileLookup.Clear();
+            _flagCoordinateList.Clear();
+            _errorCount = 0;
         }
 
-        public void Unlock()
+        protected void SetAsEmergencyMap()
         {
-            Monitor.Exit(_mtx);
-        }
+            ClearLevel();
 
-        public virtual void ClearLevel()
-        {
-            lock (_mtx)
-            {
-                _tileLookup.Clear();
-                _flagCoordinateList.Clear();
-                _errorCount = 0;
-            }
-        }
-
-        public void SetAsEmergencyMap()
-        {
-            lock (_mtx)
-            {
-                ClearLevel();
-
-                _tileLookup.Add(0, 0, new MapTile(1));
-            }
-        }
-
-        public virtual bool LoadFromFile(string lvlname)
-        {
-            throw new Exception("not implemented, use ExtendedLvl for now");
+            _tileLookup.Add(0, 0, new MapTile(1));
         }
 
         public bool TryGetTile(MapCoordinate coord, out MapTile tile)
@@ -141,13 +115,13 @@ namespace SS.Core.Map
             foreach (KeyValuePair<MapCoordinate, MapTile> kvp in _tileLookup)
             {
                 Color color = kvp.Value switch {
-                    MapTile { IsDoor : true} => Color.Blue,
-                    MapTile { IsSafe: true } => Color.LightGreen,
-                    MapTile { IsTurfFlag: true } => Color.Yellow,
-                    MapTile { IsGoal : true } => Color.Red,
-                    MapTile { IsWormhole : true } => Color.Purple,
-                    MapTile { IsFlyOver: true } => Color.DarkGray,
-                    MapTile { IsFlyUnder: true } => Color.DarkGray,
+                    { IsDoor : true} => Color.Blue,
+                    { IsSafe: true } => Color.LightGreen,
+                    { IsTurfFlag: true } => Color.Yellow,
+                    { IsGoal : true } => Color.Red,
+                    { IsWormhole : true } => Color.Purple,
+                    { IsFlyOver: true } => Color.DarkGray,
+                    { IsFlyUnder: true } => Color.DarkGray,
                     _ => Color.White
                 };
 

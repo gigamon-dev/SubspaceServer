@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -18,7 +20,13 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private InterfaceRegistrationToken _iMapDataToken;
 
-        private int _lvlKey;
+        private class ArenaData
+        {
+            public ExtendedLvl Lvl = null;
+            public readonly ReaderWriterLockSlim Lock = new ReaderWriterLockSlim();
+        }
+
+        private int adKey;
 
         #region IModule Members
 
@@ -35,7 +43,7 @@ namespace SS.Core.Modules
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
 
-            _lvlKey = _arenaManager.AllocateArenaData<ExtendedLvl>();
+            adKey = _arenaManager.AllocateArenaData<ArenaData>();
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
             _iMapDataToken = _broker.RegisterInterface<IMapData>(this);
 
@@ -48,7 +56,7 @@ namespace SS.Core.Modules
                 return false;
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
-            _arenaManager.FreeArenaData(_lvlKey);
+            _arenaManager.FreeArenaData(adKey);
 
             return true;
         }
@@ -132,7 +140,7 @@ namespace SS.Core.Modules
                 string[] lvzNameArray = lvz.Split(",: ".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
                 foreach (string lvzName in lvzNameArray)
                 {
-                    string real = lvzName[0] == '+' ? lvzName.Substring(1) : lvzName;
+                    string real = lvzName[0] == '+' ? lvzName[1..] : lvzName;
                     string fname = GetMapFilename(arena, real);
                     if (string.IsNullOrWhiteSpace(fname))
                         continue;
@@ -150,13 +158,22 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            if (lvl.TryGetAttribute(key, out string attributeValue))
-                return attributeValue;
-            else
-                return null;
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                if (ad.Lvl.TryGetAttribute(key, out string attributeValue))
+                    return attributeValue;
+                else
+                    return null;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         IEnumerable<ArraySegment<byte>> IMapData.ChunkData(Arena arena, uint chunkType)
@@ -164,10 +181,19 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            return lvl.ChunkData(chunkType);
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.ChunkData(chunkType);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         int IMapData.GetFlagCount(Arena arena)
@@ -175,10 +201,19 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            return lvl.FlagCount;
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.FlagCount;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         MapTile? IMapData.GetTile(Arena arena, MapCoordinate coord)
@@ -186,13 +221,19 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            if (lvl.TryGetTile(coord, out MapTile tile))
-                return tile;
-            else
-                return null;
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.TryGetTile(coord, out MapTile tile) ? tile : null;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 /*
         private struct FindEmptyTileContext
@@ -208,10 +249,10 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            if (!lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile))
+            if (!ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile))
                 return true;
 
             // TODO
@@ -227,7 +268,7 @@ namespace SS.Core.Modules
             if (region == null)
                 throw new ArgumentNullException(nameof(region));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
             // TODO
@@ -240,12 +281,12 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
             int saveKey = (int)key;
 
-            lvl.Lock();
+            ad.Lock.EnterReadLock();
 
             try
             {
@@ -254,7 +295,7 @@ namespace SS.Core.Modules
                 {
                     for (short x = (short)(saveKey % 31); x < 1024; x += 31)
                     {
-                        lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
+                        ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
                         if ((tile >= MapTile.TileStart && tile <= MapTile.TileEnd) || tile.IsSafe)
                             key += (uint)(saveKey ^ (byte)tile);
                     }
@@ -262,7 +303,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                lvl.Unlock();
+                ad.Lock.ExitReadLock();
             }
 
             return key;
@@ -273,10 +314,19 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            return lvl.RegionCount;
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.RegionCount;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         MapRegion IMapData.FindRegionByName(Arena arena, string name)
@@ -284,10 +334,19 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            return lvl.FindRegionByName(name);
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.FindRegionByName(name);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         IImmutableSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
@@ -295,10 +354,19 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            return lvl.RegionsAtCoord(coord.X, coord.Y);
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.RegionsAtCoord(coord.X, coord.Y);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         IImmutableSet<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
@@ -306,82 +374,120 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!(arena[_lvlKey] is ExtendedLvl lvl))
+            if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            return lvl.RegionsAtCoord(x, y);
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.RegionsAtCoord(x, y);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         #endregion
 
-        private void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
 
-            if (action == ArenaAction.Create || action == ArenaAction.Destroy)
-            {
-                _arenaManager.HoldArena(arena); // the worker thread will unhold
-                _mainloop.QueueThreadPoolWorkItem(ArenaActionWork, arena);
-            }
-        }
-
-        private void ArenaActionWork(Arena arena)
-        {
-            if (arena == null)
+            if (arena[adKey] is not ArenaData ad)
                 return;
 
-            try
+            if (action == ArenaAction.Create)
             {
-                if (!(arena[_lvlKey] is ExtendedLvl lvl))
-                    return;
-
-                lvl.Lock();
+                _arenaManager.HoldArena(arena);
 
                 try
                 {
-                    // clear on either create or destroy
-                    lvl.ClearLevel();
+                    // load the level asynchronously
+                    ExtendedLvl lvl = await LoadMapAsync(arena).ConfigureAwait(false);
 
-                    // on create, do work
-                    if (arena.Status < ArenaState.Running)
+                    // Note: The await is purposely not within the lock
+                    // since the lock/unlock has to be performed on the same thread.
+
+                    ad.Lock.EnterWriteLock();
+
+                    try
                     {
-                        string mapname = GetMapFilename(arena, null);
-
-                        if (!string.IsNullOrEmpty(mapname) &&
-                            lvl.LoadFromFile(mapname))
-                        {
-                            _logManager.LogA(LogLevel.Info, nameof(MapData), arena, "successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", mapname, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.ErrorCount);
-
-                            /*
-                            // useful check to see that we are in fact loading correctly
-                            using (Bitmap bmp = lvl.ToBitmap())
-                            {
-                                bmp.Save(
-                                    Path.ChangeExtension(
-                                        Path.GetFileNameWithoutExtension(mapname),
-                                        ".bmp"));
-                            }
-                            */
-                        }
-                        else
-                        {
-                            _logManager.LogA(LogLevel.Warn, nameof(MapData), arena, "error finding or reading map file '{0}'", mapname);
-
-                            // fall back to emergency. this matches the compressed map in MapNewsDownload.cs
-                            lvl.SetAsEmergencyMap();
-                        }
+                        ad.Lvl = lvl;
+                    }
+                    finally
+                    {
+                        ad.Lock.ExitWriteLock();
                     }
                 }
                 finally
                 {
-                    lvl.Unlock();
+                    _arenaManager.UnholdArena(arena);
                 }
             }
-            finally
+            else if (action == ArenaAction.Destroy)
             {
-                _arenaManager.UnholdArena(arena);
+                ad.Lock.EnterWriteLock();
+
+                try
+                {
+                    ad.Lvl = null;
+                }
+                finally
+                {
+                    ad.Lock.ExitWriteLock();
+                }
             }
+        }
+
+        private async Task<ExtendedLvl> LoadMapAsync(Arena arena)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            string path = GetMapFilename(arena, null);
+            ExtendedLvl lvl = null;
+
+            if (!string.IsNullOrEmpty(path))
+            {
+                try
+                {
+                    lvl = await ExtendedLvl.LoadFromFileAsync(path).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(MapData), arena, "Error reading map file '{0}'. {1}", path, ex.Message);
+                }
+            }
+            else
+            {
+                _logManager.LogA(LogLevel.Warn, nameof(MapData), arena, "Error finding map filename.");
+            }
+
+            if (lvl != null)
+            {
+                _logManager.LogA(LogLevel.Info, nameof(MapData), arena, "Successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", path, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.ErrorCount);
+
+                /*
+                // useful check to visually see that the lvl tiles were loaded correctly
+                using (var bmp = ad.Lvl.ToBitmap())
+                {
+                    bmp.Save(
+                        Path.ChangeExtension(
+                            Path.GetFileNameWithoutExtension(mapname),
+                            ".bmp"));
+                }
+                */
+            }
+            else
+            {
+                // fall back to emergency. this matches the compressed map in MapNewsDownload.cs
+                lvl = ExtendedLvl.EmergencyMap;
+            }
+
+            return lvl;
         }
     }
 }

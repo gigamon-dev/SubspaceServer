@@ -79,8 +79,8 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
-        /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a calback.</remarks>
         /// </summary>
+        /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a callback.</remarks>
         /// <param name="arena"></param>
         /// <param name="x"></param>
         /// <param name="y"></param>
@@ -89,15 +89,11 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
-        /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a calback.</remarks>
         /// </summary>
+        /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a callback.</remarks>
         /// <param name="arena"></param>
         /// <param name="coord"></param>
         /// <returns></returns>
         IImmutableSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
-
-        //RegionSet GetRegionSetAt(Arena arena, short x, short y);
-
-        //void DiffRegionSet(Arena arena, RegionSet oldSet, RegionSet newSet, out IEnumerable<MapRegion> enteredRegions, out IEnumerable<MapRegion> leftRegions);
     }
 }
