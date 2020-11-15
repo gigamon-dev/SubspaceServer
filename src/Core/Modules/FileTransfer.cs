@@ -318,11 +318,20 @@ namespace SS.Core.Modules
             }
 
             // the stream's position should already be where we want to start reading from
-            int bytesRead = dd.Stream.Read(dataSpan);
-            if (bytesRead != dataSpan.Length)
+            do
             {
-                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Needed to retrieve sized data of {dataSpan.Length} bytes, but was only able to read {bytesRead} bytes.");
+                int bytesRead = dd.Stream.Read(dataSpan);
+
+                if (bytesRead == 0)
+                {
+                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Needed to retrieve sized data, but was {dataSpan.Length} bytes short.");
+                    dataSpan.Clear();
+                    return;
+                }
+
+                dataSpan = dataSpan.Slice(bytesRead);
             }
+            while (dataSpan.Length > 0);
         }
 
         private class DownloadDataContext
