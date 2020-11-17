@@ -1,71 +1,41 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using SS.Utilities;
+﻿using SS.Utilities;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Map
 {
     /// <summary>
     /// to read the header of a bitmap file
     /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct BitmapHeader
     {
-        static BitmapHeader()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            bm = locationBuilder.CreateUInt16DataLocation();
-            fsize = locationBuilder.CreateUInt32DataLocation();
-            res1 = locationBuilder.CreateUInt32DataLocation();
-            offbits = locationBuilder.CreateUInt32DataLocation();
-            Length = locationBuilder.NumBytes;
-        }
+        private ushort bm;
+        private uint fileSize;
+        private uint reserved;
+        private uint offset;
 
-        private static readonly UInt16DataLocation bm;
-        private static readonly UInt32DataLocation fsize;
-        private static readonly UInt32DataLocation res1;
-        private static readonly UInt32DataLocation offbits;
-        public static readonly int Length;
-
-        private readonly byte[] data;
-
-        public BitmapHeader(byte[] data)
-        {
-            this.data = data;
-        }
-
-        /// <summary>
-        /// should be 0x42 0x4D (ASCII code points for B and M)
-        /// </summary>
         public ushort BM
         {
-            get { return bm.GetValue(data); }
+            get { return LittleEndianConverter.Convert(bm); }
+            set { bm = LittleEndianConverter.Convert(value); }
         }
 
-        /// <summary>
-        /// the size of the BMP file in bytes
-        /// </summary>
         public uint FileSize
         {
-            get { return fsize.GetValue(data); }
+            get { return LittleEndianConverter.Convert(fileSize); }
+            set { fileSize = LittleEndianConverter.Convert(value); }
         }
 
-        /// <summary>
-        /// both 2 byte reserved spots as one single 4 byte spot.  This is used to figure out where the metadata starts.
-        /// <remarks>both reserved spots are used together as one to support 32 bit tilesets</remarks>
-        /// </summary>
-        public uint Res1
+        public uint Reserved
         {
-            get { return res1.GetValue(data); }
+            get { return LittleEndianConverter.Convert(reserved); }
+            set { reserved = LittleEndianConverter.Convert(value); }
         }
 
-        /// <summary>
-        /// the offset of where the bitmap data begins
-        /// </summary>
-        public uint BitmapOffset
+        public uint Offset
         {
-            get { return offbits.GetValue(data); }
+            get { return LittleEndianConverter.Convert(offset); }
+            set { offset = LittleEndianConverter.Convert(value); }
         }
     }
 }

@@ -33,7 +33,7 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>true if it could find a lvl or lvz file, buf will contain the result. false if it failed.</returns>
         string GetMapFilename(Arena arena, string mapname);
 
-        IEnumerable<ArraySegment<byte>> ChunkData(Arena arena, uint chunkType);
+        IEnumerable<ReadOnlyMemory<byte>> ChunkData(Arena arena, uint chunkType);
 
         IEnumerable<LvzFileInfo> LvzFilenames(Arena arena);
 

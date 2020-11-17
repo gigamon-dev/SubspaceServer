@@ -1,63 +1,32 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using SS.Utilities;
-
-namespace SS.Core.Map
+﻿namespace SS.Core.Map
 {
     /// <summary>
-    /// to read tile information from an lvl file
+    /// Format of tile information in an lvl file.
     /// </summary>
     public struct MapTileData
     {
-        static MapTileData()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            bitfield = locationBuilder.CreateUInt32DataLocation();
-            Length = locationBuilder.NumBytes;
+        private uint bitfield;
 
-            BitFieldBuilder builder = new BitFieldBuilder(32);
-            x = (UInt32BitFieldLocation)builder.CreateBitFieldLocation(12);
-            y = (UInt32BitFieldLocation)builder.CreateBitFieldLocation(12);
-            type = (UInt32BitFieldLocation)builder.CreateBitFieldLocation(8);
+        private const uint XMask    = 0b_00000000_00000000_00001111_11111111;
+        private const uint YMask    = 0b_00000000_11111111_11110000_00000000;
+        private const uint TypeMask = 0b_11111111_00000000_00000000_00000000;
+
+        public short X
+        {
+            get { return (short)(bitfield & XMask); }
+            set { bitfield = (bitfield & ~XMask) | ((uint)value & XMask); }
         }
 
-        private static readonly UInt32DataLocation bitfield;
-        public static readonly int Length;
-
-        private static readonly UInt32BitFieldLocation x;
-        private static readonly UInt32BitFieldLocation y;
-        private static readonly UInt32BitFieldLocation type;
-
-        private readonly byte[] data;
-        private readonly int offset;
-
-        public MapTileData(byte[] data, int offset)
+        public short Y
         {
-            this.data = data;
-            this.offset = offset;
+            get { return (short)((bitfield & YMask) >> 12); }
+            set { bitfield = (bitfield & ~YMask) | (((uint)value << 12) & YMask); }
         }
 
-        private uint BitField
+        public byte Type
         {
-            get { return bitfield.GetValue(data, offset); }
-        }
-
-        public uint X
-        {
-            get { return x.GetValue(BitField); }
-        }
-
-        public uint Y
-        {
-            get { return y.GetValue(BitField); }
-        }
-
-        public uint Type
-        {
-            get { return type.GetValue(BitField); }
+            get { return (byte)((bitfield & TypeMask) >> 24); }
+            set { bitfield = (bitfield & ~TypeMask) | (((uint)value << 24) & TypeMask); }
         }
     }
 }

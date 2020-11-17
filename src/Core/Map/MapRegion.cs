@@ -1,56 +1,21 @@
-﻿using System;
+﻿using SS.Utilities;
+using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Text;
-using SS.Utilities;
-using System.Diagnostics;
 
 namespace SS.Core.Map
 {
-    /*
     /// <summary>
-    /// TODO: consider exposing map region as an interface used by the IMapData inferface.
-    /// That way only readonly operations are exposed?  Currently, the MapRegion class is specialized for reading only.
+    /// Represents a designated set of tiles, usually but not necessarily contiguous.
     /// </summary>
-    public interface IMapDataRegion
-    {
-        string Name
-        {
-            get;
-        }
-
-        IEnumerable<ArraySegment<byte>> ChunkData(uint chunkType);
-
-        int TileCount
-        {
-            get;
-        }
-
-        bool NoAntiwarp
-        {
-            get;
-        }
-
-        bool NoWeapons
-        {
-            get;
-        }
-
-        IEnumerable<MapCoordinate> Coords
-        {
-            get;
-        }
-
-        bool ContainsCoordinate(short x, short y);
-        bool ContainsCoordinate(MapCoordinate coordinate);
-        void FindRandomPoint(out short x, out short y);
-    }
-    */
-
-    /// <summary>
+    /// <remarks>
     /// In asss, the region struct knows about the lvl that contains it and keeps track of what region sets it belongs to.
     /// In this implementation, it doesn't know anything about the lvl.  The ExtendedLvl class keeps track of region sets, etc...
-    /// </summary>
+    /// </remarks>
     public class MapRegion
     {
         /// <summary>
@@ -62,27 +27,20 @@ namespace SS.Core.Map
             private set;
         }
 
-        // TODO: Cleanup chunk reading logic.
-        //private readonly List<(uint ChunkType, byte[] Data)> _unprocessedChunks = new List<(uint ChunkType, byte[] Data)>();
-        private readonly MultiDictionary<uint, ArraySegment<byte>> _chunks = new MultiDictionary<uint, ArraySegment<byte>>();
+        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new MultiDictionary<uint, ReadOnlyMemory<byte>>();
 
         /// <summary>
-        /// To get chunk data for the region.
-        /// Note: only the payload of the chunk is included.  The chunk header is stripped out for you.
-        /// <remarks>Similar to asss' Imapdata.RegionChunk, except this will allow you enumerate over all matching chunks instead of just one.</remarks>
+        /// To get chunk data that was not processed.
         /// </summary>
-        /// <param name="chunkType">type of chunk to look for</param>
-        /// <returns></returns>
-        public IEnumerable<ArraySegment<byte>> ChunkData(uint chunkType)
+        /// <remarks>Similar to asss' Imapdata.RegionChunk, except this will allow you enumerate over all matching chunks instead of just one.</remarks>
+        /// <param name="chunkType">The type of chunk to get.</param>
+        /// <returns>Enumeration containing chunk payloads (header not included).</returns>
+        public IEnumerable<ReadOnlyMemory<byte>> ChunkData(uint chunkType)
         {
-            IEnumerable<ArraySegment<byte>> matches;
-            if (!_chunks.TryGetValues(chunkType, out matches))
-                yield break;
-
-            foreach (ArraySegment<byte> chunkWithHeader in matches)
-            {
-                yield return new ArraySegment<byte>(chunkWithHeader.Array, chunkWithHeader.Offset + ChunkHeader.Length, chunkWithHeader.Count - ChunkHeader.Length);
-            }
+            if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>> matches))
+                return matches;
+            else
+                return Enumerable.Empty<ReadOnlyMemory<byte>>();
         }
 
         /// <summary>
@@ -165,14 +123,8 @@ namespace SS.Core.Map
         private readonly LinkedList<RleEntry> _rleData = new LinkedList<RleEntry>();
         private readonly Random random = new Random();
 
-        public MapRegion(ArraySegment<byte> regionChunkData)
+        internal MapRegion()
         {
-            if (!ChunkHelper.ReadChunks(_chunks, regionChunkData))
-            {
-                Debug.WriteLine("warning: did not read all chunk data");
-            }
-
-            ChunkHelper.ProcessChunks<MapRegion>(_chunks, ProcessRegionChunk, this);
         }
 
         /// <summary>
@@ -269,74 +221,91 @@ namespace SS.Core.Map
             x = y = -1;
         }
 
-        private bool ProcessRegionChunk(uint key, ArraySegment<byte> chunkData, MapRegion region)
+        internal void ProcessRegionChunk(
+            MemoryMappedViewAccessor va,
+            uint chunkType,
+            long position,
+            int length,
+            Action<string> addError)
         {
-            if (region == null)
-                throw new ArgumentNullException(nameof(region));
-
-            ChunkHeader ch = new ChunkHeader(chunkData.Array, chunkData.Offset);
-            uint chunkType = ch.Type;
-
-            if (chunkType == MapMetadataChunkType.RegionChunkType.Name)
+            Console.WriteLine($"Process region chunk type:{chunkType} position:{position} length:{length}");
+            if (chunkType == RegionMetadataChunkType.Name)
             {
-                // a descriptive name for the region
-                if (!string.IsNullOrEmpty(region.Name))
-                    return true; // already have a name for this region
-
-                ArraySegment<byte> chunkDataWithoutHeader = ch.Data;
-                region.Name = Encoding.ASCII.GetString(chunkDataWithoutHeader.Array, chunkDataWithoutHeader.Offset, chunkDataWithoutHeader.Count);
-                return true;
-            }
-            else if (chunkType == MapMetadataChunkType.RegionChunkType.TileData)
-            {
-                // tile data, the definition of the region
-                if (!ReadRunLengthEncodedTileData(region, ch.Data))
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+                try
                 {
-                    // error in lvl file while reading rle tile data
-                    //Debug.WriteLine("<ExtendedLvl> error in lvl file while reading rle tile data");
-                    throw new Exception("error in lvl file while reading rle tile data");
+                    va.ReadArray(position, buffer, 0, length);
+                    Name = Encoding.ASCII.GetString(buffer, 0, length);
                 }
-                return true;
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
-            else if (chunkType == MapMetadataChunkType.RegionChunkType.IsBase)
+            else if (chunkType == RegionMetadataChunkType.TileData)
+            {
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+                try
+                {
+                    va.ReadArray(position, buffer, 0, length);
+                    if (!ReadRunLengthEncodedTileData(buffer.AsSpan(0, length)))
+                    {
+                        addError($"Error reading run tile data for region " +
+                            $"{(!string.IsNullOrWhiteSpace(Name) ? "'" + Name + "'" : string.Empty)} " +
+                            $"at position {position} of length {length}.");
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+            else if (chunkType == RegionMetadataChunkType.IsBase)
             {
                 IsBase = true;
-                return true;
             }
-            else if (chunkType == MapMetadataChunkType.RegionChunkType.NoAntiwarp)
+            else if (chunkType == RegionMetadataChunkType.NoAntiwarp)
             {
                 NoAntiwarp = true;
-                return true;
             }
-            else if (chunkType == MapMetadataChunkType.RegionChunkType.NoWeapons)
+            else if (chunkType == RegionMetadataChunkType.NoWeapons)
             {
                 NoWeapons = true;
-                return true;
             }
-            else if (chunkType == MapMetadataChunkType.RegionChunkType.NoFlagDrops)
+            else if (chunkType == RegionMetadataChunkType.NoFlagDrops)
             {
                 NoFlagDrops = true;
-                return true;
             }
-            else if (chunkType == MapMetadataChunkType.RegionChunkType.Autowarp)
+            else if (chunkType == RegionMetadataChunkType.Autowarp)
             {
-                RegionAutoWarpChunk autoWarpChunk = new RegionAutoWarpChunk(ch.Data);
-                AutoWarp = new AutoWarpDestination(
-                    autoWarpChunk.X,
-                    autoWarpChunk.Y,
-                    autoWarpChunk.ArenaName?.Trim());
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+                try
+                {
+                    va.ReadArray(position, buffer, 0, length);
 
-                return true;
+                    RegionAutoWarpChunk autoWarpChunk = new RegionAutoWarpChunk(buffer.AsSpan(0, length));
+                    AutoWarp = new AutoWarpDestination(
+                        autoWarpChunk.X,
+                        autoWarpChunk.Y,
+                        autoWarpChunk.ArenaName?.Trim());
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
+            else
+            {
+                //string typeStr = Encoding.ASCII.GetString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref chunkType, 1)));
+                byte[] buffer = new byte[length];
+                va.ReadArray(position, buffer, 0, length);
 
-            return false;
+                // store chunkType and buffer
+            }
         }
 
-        private bool ReadRunLengthEncodedTileData(MapRegion region, ArraySegment<byte> source)
+        private bool ReadRunLengthEncodedTileData(ReadOnlySpan<byte> source)
         {
-            if (region == null)
-                throw new ArgumentNullException("region");
-
             int i = 0;
             byte b;
             byte op;
@@ -347,12 +316,12 @@ namespace SS.Core.Map
 
             LinkedList<RleEntry> lastRowData = new LinkedList<RleEntry>();
 
-            while (i < source.Count)
+            while (i < source.Length)
             {
                 if (cx < 0 || cx > 1023 || cy < 0 || cy > 1023)
                     return false;
 
-                b = source.Array[source.Offset + i++];
+                b = source[i++];
                 op = (byte)((b & 192) >> 6);
 
                 if ((b & 32) == 0)
@@ -366,10 +335,10 @@ namespace SS.Core.Map
                     if ((b & 28) != 0)
                         Debug.WriteLine("warning, noticed invalid double byte sequence data, ignoring");
 
-                    if (i >= source.Count)
+                    if (i >= source.Length)
                         return false; // ran out of data to read
 
-                    n = (short)((((b & 3) << 8) | source.Array[source.Offset + i++]) + 1);
+                    n = (short)((((b & 3) << 8) | source[i++]) + 1);
                 }
 
                 switch (op)
@@ -394,8 +363,8 @@ namespace SS.Core.Map
                             };
 
                             lastRowData.AddLast(entry);
-                            region._rleData.AddLast(entry);
-                            region.TileCount += n;
+                            _rleData.AddLast(entry);
+                            TileCount += n;
 
                             cx += n;
                         }
@@ -418,7 +387,7 @@ namespace SS.Core.Map
                         {
                             RleEntry entry = node.Value;
                             entry.Height += n;
-                            region.TileCount += n * entry.Width;
+                            TileCount += n * entry.Width;
                         }
 
                         cy += n;
@@ -433,10 +402,15 @@ namespace SS.Core.Map
                 }
             }
 
-            if (i != source.Count || cy != 1024)
+            if (i != source.Length || cy != 1024)
                 return false;
 
             return true;
+        }
+
+        public void TrimExcess()
+        {
+            _chunks.TrimExcess();
         }
     }
 }

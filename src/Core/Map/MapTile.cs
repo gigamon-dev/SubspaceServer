@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SS.Core.Map
+﻿namespace SS.Core.Map
 {
     /// <summary>
     /// Represents a single tile on a map (lvl file).

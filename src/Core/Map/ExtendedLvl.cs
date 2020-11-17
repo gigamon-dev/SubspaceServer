@@ -1,10 +1,13 @@
 ﻿using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace SS.Core.Map
 {
@@ -15,25 +18,31 @@ namespace SS.Core.Map
     public class ExtendedLvl : BasicLvl
     {
         /// <summary>
-        /// Delimiter used for ATTR metadata.
+        /// Maximum size in bytes that a metadata chunk can be.
         /// </summary>
-        private readonly char[] _attributeSeparator = "=".ToCharArray();
+        /// <remarks>ASSS limits chunk size, even though a limit is not specified in the extended lvl format specification?</remarks>
+        private const int MaxChunkSize = 128 * 1024;
+
+        /// <summary>
+        /// Delimiter used for ATTR metadata containing key/value pairs.
+        /// </summary>
+        private const byte AttributeDelimiter = (byte)'=';
 
         /// <summary>
         /// chunk type --> data of the chunk
         /// </summary>
-        private readonly MultiDictionary<uint, ArraySegment<byte>> _rawChunks = new MultiDictionary<uint, ArraySegment<byte>>(); // using multi because many chunks will have the same type
+        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new MultiDictionary<uint, ReadOnlyMemory<byte>>(); // using multi because many chunks will have the same type
         
         /// <summary>
         /// Extended LVL attributes:
         /// attribute name --> attribute value
         /// </summary>
-        private readonly Dictionary<string, string> _attributeLookup = new Dictionary<string, string>();
+        private readonly Dictionary<string, string> _attributeLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// region name --> region
         /// </summary>
-        private readonly Dictionary<string, MapRegion> _regionLookup = new Dictionary<string, MapRegion>();
+        private readonly Dictionary<string, MapRegion> _regionLookup = new Dictionary<string, MapRegion>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// coordinate --> region set
@@ -52,7 +61,7 @@ namespace SS.Core.Map
 
         protected override void ClearLevel()
         {
-            _rawChunks.Clear();
+            _chunks.Clear();
             _attributeLookup.Clear();
             _regionLookup.Clear();
             _regionSetCoordinateLookup.Clear();
@@ -62,6 +71,23 @@ namespace SS.Core.Map
             base.ClearLevel();
         }
 
+        protected override void TrimExcess()
+        {
+            _chunks.TrimExcess();
+            _attributeLookup.TrimExcess();
+            _regionLookup.TrimExcess();
+            _regionSetCoordinateLookup.TrimExcess();
+            _regionSetList.TrimExcess();
+            _regionMemberSetLookup.TrimExcess();
+
+            foreach (MapRegion region in _regionMemberSetLookup.Keys)
+            {
+                region.TrimExcess();
+            }
+
+            base.TrimExcess();
+        }
+
         static ExtendedLvl()
         {
             var lvl = new ExtendedLvl();
@@ -69,95 +95,103 @@ namespace SS.Core.Map
             EmergencyMap = lvl;
         }
 
+        /// <summary>
+        /// An emergency map to use if loading from a file fails.
+        /// </summary>
         public static ExtendedLvl EmergencyMap
         {
             get;
         }
 
+        /// <summary>
+        /// Initializes a new empty instance.
+        /// </summary>
         private ExtendedLvl()
         {
         }
 
-        private ExtendedLvl(byte[] data)
+        /// <summary>
+        /// Initializes a new instance from a file.
+        /// </summary>
+        /// <param name="path"></param>
+        public ExtendedLvl(string path)
         {
-            int offset = 0;
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            if (data.Length >= BitmapHeader.Length)
+            using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+            using MemoryMappedViewAccessor va = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+
+            long length = new FileInfo(path).Length;
+            long position = 0;
+            int metadataHeaderLength = Marshal.SizeOf<MetadataHeader>();
+
+            if (length >= Marshal.SizeOf<BitmapHeader>())
             {
-                BitmapHeader bh = new BitmapHeader(data);
-                if (bh.BM == 19778)
+                va.Read(position, out BitmapHeader bitmapHeader);
+
+                if (bitmapHeader.BM == 19778)
                 {
                     // has a bitmap tileset
-
-                    if (bh.Res1 != 0)
+                    if (bitmapHeader.Reserved != 0)
                     {
-                        // possible metadata, try to read it
-                        if (data.Length >= bh.Res1 + MetadataHeader.Length)
+                        // possibly has metadata
+                        if (length >= bitmapHeader.Reserved + metadataHeaderLength)
                         {
-                            MetadataHeader mh = new MetadataHeader(data, (int)bh.Res1);
-                            if (mh.Magic == MetadataHeader.MetadataMagic &&
-                                data.Length >= bh.Res1 + mh.TotalSize)
+                            va.Read(bitmapHeader.Reserved, out MetadataHeader metadataHeader);
+                            if (metadataHeader.Magic == MetadataHeader.MetadataMagic
+                                && length >= bitmapHeader.Reserved + metadataHeader.TotalSize)
                             {
-                                // looks good, start reading chunks which start right after the metadata header
-                                if (!ChunkHelper.ReadChunks(
-                                    _rawChunks,
-                                    new ArraySegment<byte>(data, (int)bh.Res1 + MetadataHeader.Length, (int)mh.TotalSize - MetadataHeader.Length)))
-                                {
-                                    // some type of error reading chunks
-                                }
-
-                                // turn some of them into more useful data.
-                                ChunkHelper.ProcessChunks<object>(_rawChunks, (chunkKey, chunkData, clos) => ProcessMapChunk(chunkKey, chunkData), null);
+                                // has metadata
+                                ReadChunks(
+                                    va,
+                                    bitmapHeader.Reserved + metadataHeaderLength,
+                                    metadataHeader.TotalSize - metadataHeaderLength,
+                                    ProcessBackwardsCompatibleMapChunk);
                             }
                         }
                     }
 
                     // get in position for tile data
-                    offset += (int)bh.FileSize;
+                    position += bitmapHeader.FileSize;
                 }
             }
 
-            if (offset == 0)
+            if (position == 0)
             {
                 // was not a bitmap
-                // possible metadata, try to read it
-                MetadataHeader mh = new MetadataHeader(data, 0);
-                if (data.Length >= MetadataHeader.Length &&
-                    mh.Magic == MetadataHeader.MetadataMagic &&
-                    data.Length >= mh.TotalSize)
+                // possibly starts with metadata (non-backwards compatible extended lvl) which could contain TSET and TILE chunks
+                if (length >= metadataHeaderLength)
                 {
-                    // this is a non-backwards compatible ELVL (tileset and tile data will be in the metadata)
-                    // start reading chunks which start right after the metadata header
-                    if (!ChunkHelper.ReadChunks(
-                        _rawChunks,
-                        new ArraySegment<byte>(data, MetadataHeader.Length, (int)mh.TotalSize - MetadataHeader.Length)))
+                    va.Read(position, out MetadataHeader metadataHeader);
+                    if (metadataHeader.Magic == MetadataHeader.MetadataMagic
+                        && length >= metadataHeader.TotalSize)
                     {
-                        // some type of error reading chunks
+                        // has metadata
+                        ReadChunks(
+                            va,
+                            metadataHeaderLength,
+                            metadataHeader.TotalSize - metadataHeaderLength,
+                            ProcessNonBackwardsCompatibleMapChunk);
+
+                        // in a non-backwards compatible extended lvl, the tile data should be included in the metadata
+                        if (!IsTileDataLoaded)
+                            throw new Exception("Error loading non-backwards compatible extended lvl. No tile data.");
+
+                        TrimExcess();
+                        return;
                     }
-
-                    // turn some of them into more useful data.
-                    ChunkHelper.ProcessChunks<object>(_rawChunks, (chunkKey, chunkData, clos) => ProcessMapChunk(chunkKey, chunkData), null);
-                }
-                else
-                {
-                    // lvl file with tile data only (no tileset or metadata)
-                    ReadPlainTileData(new ArraySegment<byte>(data, offset, data.Length - offset));
                 }
             }
-            else
-            {
-                // lvl file with tileset
-                ReadPlainTileData(new ArraySegment<byte>(data, offset, data.Length - offset));
-            }
-        }
 
-        public static async Task<ExtendedLvl> LoadFromFileAsync(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+            // At this point, we should be able to read tile data.
+            // The position is either:
+            // still at the very beginning of the file, meaning the map only contains tile data
+            // OR
+            // is after the bitmap (tileset)
+            ReadPlainTileData(va, position, length - position);
 
-            byte[] data = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
-            return new ExtendedLvl(data);
+            TrimExcess();
         }
 
         /// <summary>
@@ -262,57 +296,141 @@ namespace SS.Core.Map
             return true;
         }
 
-        private bool ProcessMapChunk(uint key, ArraySegment<byte> chunkData)
+        private void ReadChunks(
+            MemoryMappedViewAccessor accessor,
+            long position,
+            long length,
+            Action<MemoryMappedViewAccessor, uint, long, int> processChunkCallback)
         {
-            ChunkHeader ch = new ChunkHeader(chunkData.Array, chunkData.Offset);
-            uint chunkType = ch.Type;
+            if (accessor == null)
+                throw new ArgumentNullException(nameof(accessor));
+
+            if (processChunkCallback == null)
+                throw new ArgumentNullException(nameof(processChunkCallback));
+
+            int chunkHeaderLength = Marshal.SizeOf<ChunkHeader>();
+
+            while (length >= chunkHeaderLength)
+            {
+                // first check the chunk header
+                accessor.Read(position, out ChunkHeader chunkHeader);
+
+                long chunkSize = chunkHeaderLength + chunkHeader.Size;
+
+                if (chunkHeader.Size > MaxChunkSize || chunkSize > length)
+                {
+                    AddError($"Bad chunk at position {position} of type {chunkHeader.Type}, size {chunkHeader.Size}, remaining length {length}.");
+                    break;
+                }
+
+                processChunkCallback(accessor, chunkHeader.Type, position + chunkHeaderLength, (int)chunkHeader.Size);
+
+                position += chunkSize;
+                length -= chunkSize;
+
+                if ((chunkHeader.Size & 3) != 0)
+                {
+                    int padding = 4 - ((int)chunkHeader.Size & 3);
+                    position += padding;
+                    length -= padding;
+                }
+            }
+        }
+
+        private void ProcessBackwardsCompatibleMapChunk(
+            MemoryMappedViewAccessor accessor,
+            uint chunkType,
+            long position,
+            int length) => ProcessMapChunk(accessor, chunkType, position, length, true);
+
+        private void ProcessNonBackwardsCompatibleMapChunk(
+            MemoryMappedViewAccessor accessor,
+            uint chunkType,
+            long position,
+            int length) => ProcessMapChunk(accessor, chunkType, position, length, false);
+
+        private void ProcessMapChunk(
+            MemoryMappedViewAccessor accessor,
+            uint chunkType,
+            long position,
+            int length, 
+            bool backwardsCompatible)
+        {
+            if (accessor == null)
+                throw new ArgumentNullException(nameof(accessor));
 
             if (chunkType == MapMetadataChunkType.ATTR)
             {
-                // attribute
-                string attributeStr = Encoding.ASCII.GetString(chunkData.Array, ChunkHeader.Length, chunkData.Count - ChunkHeader.Length);
-                string[] tokens = attributeStr.Split(_attributeSeparator, 2);
-                if (tokens.Length == 2)
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+
+                try
                 {
-                    _attributeLookup[tokens[0]] = tokens[1]; // if the same attribute is specified more than once, overwrite the existing one
+                    if (length >= 3)
+                    {
+                        accessor.ReadArray(position, buffer, 0, length);
+
+                        int delimiterIndex = Array.IndexOf(buffer, AttributeDelimiter, 1, length);
+                        if (delimiterIndex != -1)
+                        {
+                            string key = Encoding.ASCII.GetString(buffer, 0, delimiterIndex);
+                            string value = Encoding.ASCII.GetString(buffer, delimiterIndex + 1, length - delimiterIndex - 1);
+                            _attributeLookup[key] = value; // if the same attribute is specified more than once, overwrite the existing one
+                        }
+                        else
+                        {
+                            AddError($"Map metadata 'ATTR' chunk at position {position} of length {length} was missing the '=' delimiter.");
+                        }
+                    }
+                    else
+                    {
+                        AddError($"Map metadata 'ATTR' chunk at position {position} of length {length} was too short.");
+                    }
                 }
-                return true;
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
             else if (chunkType == MapMetadataChunkType.REGN)
             {
-                // region
-                try
-                {
-                    MapRegion region = new MapRegion(ch.Data);
-                    AddRegion(region);
-                }
-                catch
-                {
-                    // error reading region
-                }
+                MapRegion region = new MapRegion();
 
-                return true;
+                ReadChunks(
+                    accessor, 
+                    position, 
+                    length, 
+                    (va, chunkType, position, length) => region.ProcessRegionChunk(va, chunkType, position, length, AddError));
+
+                AddRegion(region);
             }
             else if (chunkType == MapMetadataChunkType.TSET)
             {
-                // tileset, dont care about this so just mark as processed
-                // TODO: load this into a Bitmap object
-                //ArraySegment<byte> bitmapData = ch.Data;
-                //MemoryStream ms = new MemoryStream(bitmapData.Array, bitmapData.Offset, bitmapData.Count);
-                //Bitmap
-                return true;
+                if (backwardsCompatible)
+                {
+                    AddError($"Found map metadata 'TSET' chunk at position {position} of length {length} but it is only valid in a non-backwards compatible lvl.");
+                }
+                else
+                {
+                    // tileset, not needed by the server, skip it
+                }
             }
             else if (chunkType == MapMetadataChunkType.TILE)
             {
-                // tile data
-                ReadPlainTileData(new ArraySegment<byte>(chunkData.Array, ChunkHeader.Length, chunkData.Count - ChunkHeader.Length));
-                return true;
+                if (backwardsCompatible)
+                {
+                    AddError($"Found map metadata 'TILE' chunk at position {position} of length {length} but it is only valid in a non-backwards compatible lvl.");
+                }
+                else
+                {
+                    ReadPlainTileData(accessor, position, length);
+                }
             }
             else
             {
-                // unknown chunk type
-                //string chunkTypeStr = Encoding.ASCII.GetString(chunkData, 0, 4);
-                return false;
+                // unknown chunk type, hold onto a copy of it
+                byte[] buffer = new byte[length];
+                accessor.ReadArray(position, buffer, 0, length);
+                _chunks.AddLast(chunkType, buffer);
             }
         }
 
@@ -322,21 +440,17 @@ namespace SS.Core.Map
         }
 
         /// <summary>
-        /// To get chunk data for the map.
-        /// Note: only the payload of the chunk is included.  The chunk header is stripped out.
+        /// To get chunk data that was not processed.
         /// </summary>
         /// <remarks>Similar to asss' Imapdata.MapChunk, except this will allow you enumerate over all matching chunks instead of just one.</remarks>
-        /// <param name="chunkType">type of chunk to look for</param>
-        /// <returns></returns>
-        public IEnumerable<ArraySegment<byte>> ChunkData(uint chunkType)
+        /// <param name="chunkType">The type of chunk to get.</param>
+        /// <returns>Enumeration containing chunk payloads (header not included).</returns>
+        public IEnumerable<ReadOnlyMemory<byte>> ChunkData(uint chunkType)
         {
-            if (!_rawChunks.TryGetValues(chunkType, out IEnumerable<ArraySegment<byte>> matches))
-                yield break;
-
-            foreach (ArraySegment<byte> chunkWithHeader in matches)
-            {
-                yield return new ArraySegment<byte>(chunkWithHeader.Array, chunkWithHeader.Offset + ChunkHeader.Length, chunkWithHeader.Count - ChunkHeader.Length);
-            }
+            if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>> matches))
+                return matches;
+            else
+                return Enumerable.Empty<ReadOnlyMemory<byte>>();
         }
     }
 }

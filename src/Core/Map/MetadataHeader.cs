@@ -1,65 +1,50 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using SS.Utilities;
+﻿using SS.Utilities;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Map
 {
     /// <summary>
-    /// extended lvl format metadata header (bitmap header's Reserved bytes point us to this header)
+    /// extended lvl format metadata header
     /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct MetadataHeader
     {
-        static MetadataHeader()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            magic = locationBuilder.CreateUInt32DataLocation();
-            totalsize = locationBuilder.CreateUInt32DataLocation();
-            res1 = locationBuilder.CreateUInt32DataLocation();
-            Length = locationBuilder.NumBytes;
-        }
-
-        private static readonly UInt32DataLocation magic;
-        private static readonly UInt32DataLocation totalsize;
-        private static readonly UInt32DataLocation res1;
-        public static readonly int Length;
+        private uint magic;
+        private uint totalSize;
+        private uint reserved;
 
         /// <summary>
-        /// the magic # that should be in the metadata, this is how we validate that the data being read is the header
-        /// <remarks>this magic value is an illegal value for tile data.  e.g. an lvl file that doesn't contain a tileset (bmp image)</remarks>
-        /// </summary>
-        public const uint MetadataMagic = 0x6c766c65;
-
-        private readonly byte[] data;
-        private readonly int offset;
-
-        public MetadataHeader(byte[] data, int offset)
-        {
-            this.data = data;
-            this.offset = offset;
-        }
-
-        /// <summary>
-        /// way to verify that the data being read is in fact a metadata header
+        /// Should always be <see cref="MetadataMagic"/>.
         /// </summary>
         public uint Magic
         {
-            get { return magic.GetValue(data, offset); }
+            get { return LittleEndianConverter.Convert(magic); }
+            set { magic = LittleEndianConverter.Convert(value); }
         }
 
         /// <summary>
-        /// total size of the metadata, includes the metadata header itself
+        /// the number of bytes in the whole metadata section,
+        /// including the header.note that the tile data will start at an offset of
+        /// totalsize bytes from the start of the metadata_header
         /// </summary>
         public uint TotalSize
         {
-            get { return totalsize.GetValue(data, offset); }
+            get { return LittleEndianConverter.Convert(totalSize); }
+            set { totalSize = LittleEndianConverter.Convert(value); }
         }
 
-        public uint Reserved1
+        public uint Reserved
         {
-            get { return res1.GetValue(data, offset); }
+            get { return LittleEndianConverter.Convert(reserved); }
+            set { reserved = LittleEndianConverter.Convert(value); }
         }
+
+        /// <summary>
+        /// The magic # that identifies a metadata header.
+        /// </summary>
+        /// <remarks>
+        /// "elvl" in ASCII.
+        /// </remarks>
+        public const uint MetadataMagic = 0x6c766c65;
     }
 }

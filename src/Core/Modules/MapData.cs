@@ -176,7 +176,7 @@ namespace SS.Core.Modules
             }
         }
 
-        IEnumerable<ArraySegment<byte>> IMapData.ChunkData(Arena arena, uint chunkType)
+        IEnumerable<ReadOnlyMemory<byte>> IMapData.ChunkData(Arena arena, uint chunkType)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
@@ -454,7 +454,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    lvl = await ExtendedLvl.LoadFromFileAsync(path).ConfigureAwait(false);
+                    lvl = await Task.Run(() => new ExtendedLvl(path)).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -468,7 +468,7 @@ namespace SS.Core.Modules
 
             if (lvl != null)
             {
-                _logManager.LogA(LogLevel.Info, nameof(MapData), arena, "Successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", path, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.ErrorCount);
+                _logManager.LogA(LogLevel.Info, nameof(MapData), arena, "Successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", path, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.Errors.Count);
 
                 /*
                 // useful check to visually see that the lvl tiles were loaded correctly

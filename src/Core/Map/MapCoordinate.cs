@@ -1,58 +1,53 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.Map
 {
     /// <summary>
-    /// wraps x and y coordinates of a map tile
+    /// Represents x and y coordinates on a map.
     /// </summary>
     public readonly struct MapCoordinate : IEquatable<MapCoordinate>, IComparable<MapCoordinate>
     {
-        private readonly short _xCoord;
-        private readonly short _yCoord;
-
-        public MapCoordinate(short xCoord, short yCoord)
+        public MapCoordinate(short x, short y)
         {
-            if (xCoord < 0 || xCoord > 1023)
-                throw new ArgumentOutOfRangeException("xCoord");
+            if (x < 0 || x > 1023)
+                throw new ArgumentOutOfRangeException(nameof(x));
 
-            if (yCoord < 0 || yCoord > 1023)
-                throw new ArgumentOutOfRangeException("yCoord");
+            if (y < 0 || y > 1023)
+                throw new ArgumentOutOfRangeException(nameof(y));
 
-            _xCoord = xCoord;
-            _yCoord = yCoord;
+            X = x;
+            Y = y;
         }
 
-        public short X
+        public short X { get; init; }
+
+        public short Y { get; init; }
+
+        public static bool operator ==(MapCoordinate left, MapCoordinate right)
         {
-            get { return _xCoord; }
+            return left.X == right.X && left.Y == right.Y;
         }
 
-        public short Y
+        public static bool operator !=(MapCoordinate left, MapCoordinate right)
         {
-            get { return _yCoord; }
+            return !(left == right);
         }
 
         public override int GetHashCode()
         {
-            return (((ushort)_xCoord) << 10) | ((ushort)_yCoord);
+            return (((ushort)X) << 10) | ((ushort)Y);
         }
 
         public override bool Equals(object obj)
         {
-            if (obj is MapCoordinate)
-                return Equals((MapCoordinate)obj);
-
-            return false;
+            return obj is MapCoordinate coordinate && Equals(coordinate);
         }
 
         #region IEquatable<MapCoordinate> Members
 
         public bool Equals(MapCoordinate other)
         {
-            return _xCoord == other._xCoord && _yCoord == other._yCoord;
+            return X == other.X && Y == other.Y;
         }
 
         #endregion
@@ -64,11 +59,11 @@ namespace SS.Core.Map
             // this is a guess of how tiles are ordered 
             // i plan to hopefully use this for figuring out indexes of turf flags
             // e.g. dump the coords of flags into a sorted list, resulting in the index when all flags are loaded
-            int retVal = this._yCoord.CompareTo(other._yCoord);
+            int retVal = Y.CompareTo(other.Y);
             if (retVal != 0)
                 return retVal;
 
-            return this._xCoord.CompareTo(other._xCoord);
+            return X.CompareTo(other.X);
         }
 
         #endregion

@@ -242,6 +242,11 @@ namespace SS.Utilities
             }
         }
 
+        public void TrimExcess()
+        {
+            _dictionary.TrimExcess();
+        }
+
         #region IEnumerable<KeyValuePair<TKey,TValue>> Members
 
         private struct Enumerator : IEnumerator<KeyValuePair<TKey, TValue>>
