@@ -1,4 +1,5 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Core.Map;
 using SS.Core.Packets;
 using SS.Utilities;
 using System;
@@ -21,6 +22,7 @@ namespace SS.Core.Modules
         private ICommandManager _commandManager;
         private IGame _game;
         private IMainloop _mainloop;
+        private IMapData _mapData;
         private IModuleManager _mm;
         private INetwork _net;
         private IPlayerData _playerData;
@@ -37,7 +39,8 @@ namespace SS.Core.Modules
             IConfigManager configManager,
             ICommandManager commandManager,
             IGame game,
-            IMainloop mainloop, 
+            IMainloop mainloop,
+            IMapData mapData,
             IModuleManager mm,
             INetwork net, 
             IPlayerData playerData)
@@ -50,6 +53,7 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -72,6 +76,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("attmod", Command_attmod);
             _commandManager.AddCommand("detmod", Command_detmod);
             _commandManager.AddCommand("where", Command_where);
+            _commandManager.AddCommand("mapinfo", Command_mapinfo);
 
             return true;
         }
@@ -93,6 +98,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("attmod", Command_attmod);
             _commandManager.RemoveCommand("detmod", Command_detmod);
             _commandManager.RemoveCommand("where", Command_where);
+            _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
 
             return true;
         }
@@ -598,6 +604,51 @@ namespace SS.Core.Modules
             {
                 _chat.SendMessage(p, $"{name} {verb} not using a playable client.");
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena, 
+            Args = null,
+            Description = "Displays information about the map in this arena.")]
+        private void Command_mapinfo(string command, string parameters, Player p, ITarget target)
+        {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            string fileName = _mapData.GetMapFilename(arena, null);
+
+            _chat.SendMessage(p, "LVL file loaded from '{0}'.", !string.IsNullOrWhiteSpace(fileName) ? fileName : "<nowhere>");
+
+            const string NotSet = "<not set>";
+
+            _chat.SendMessage(p, 
+                $"name: {_mapData.GetAttribute(arena, MapAttributeKeys.Name) ?? NotSet}, " +
+                $"version: {_mapData.GetAttribute(arena, MapAttributeKeys.Version) ?? NotSet}");
+
+            _chat.SendMessage(p,
+                $"map creator: {_mapData.GetAttribute(arena, MapAttributeKeys.MapCreator) ?? NotSet}, " +
+                $"tileset creator: {_mapData.GetAttribute(arena, MapAttributeKeys.TilesetCreator) ?? NotSet}, " +
+                $"program: {_mapData.GetAttribute(arena, MapAttributeKeys.Program) ?? NotSet}");
+
+            var errors = _mapData.GetErrors(arena);
+
+            _chat.SendMessage(p, 
+                $"tiles:{_mapData.GetTileCount(arena)} " +
+                $"flags:{_mapData.GetFlagCount(arena)} " + 
+                $"regions:{_mapData.GetRegionCount(arena)} " +
+                $"errors:{errors.Count}");
+
+            if (errors.Count > 0 && _capabilityManager.HasCapability(p, Constants.Capabilities.IsStaff))
+            {
+                _chat.SendMessage(p, "Error details:");
+                foreach (var error in errors)
+                {
+                    _chat.SendMessage(p, $"- {error}");
+                }
+            }
+
+            // TODO: estimated memory stats
         }
     }
 }

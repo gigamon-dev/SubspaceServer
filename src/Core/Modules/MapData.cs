@@ -196,6 +196,26 @@ namespace SS.Core.Modules
             }
         }
 
+        int IMapData.GetTileCount(Arena arena)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            if (arena[adKey] is not ArenaData ad)
+                throw new Exception("missing lvl data");
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.TileCount;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
         int IMapData.GetFlagCount(Arena arena)
         {
             if (arena == null)
@@ -209,6 +229,26 @@ namespace SS.Core.Modules
             try
             {
                 return ad.Lvl.FlagCount;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
+        IReadOnlyList<string> IMapData.GetErrors(Arena arena)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            if (arena[adKey] is not ArenaData ad)
+                throw new Exception("missing lvl data");
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.Errors;
             }
             finally
             {

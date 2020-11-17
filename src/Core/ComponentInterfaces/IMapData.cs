@@ -7,8 +7,8 @@ namespace SS.Core.ComponentInterfaces
 {
     public struct LvzFileInfo
     {
-        public string Filename;
-        public bool IsOptional;
+        public string Filename { get; init; }
+        public bool IsOptional { get; init; }
 
         public LvzFileInfo(string filename, bool isOptional)
         {
@@ -23,41 +23,66 @@ namespace SS.Core.ComponentInterfaces
     public interface IMapData : IComponentInterface
     {
         /// <summary>
-        /// finds the file currently used as this arena's map.
-        /// you should use this function and not try to figure out the map
-        /// filename yourself based on arena settings.
+        /// Gets the path of a map file used by an arena.
         /// </summary>
-        /// <param name="arena">the arena whose map we want</param>
-        /// <param name="filename">the resulting filename</param>
+        /// <remarks>
+        /// This function should be used rather than try to figure out the map filename yourself based on arena settings.
+        /// </remarks>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="mapname">null if you're looking for an lvl, or the name of an lvz file.</param>
-        /// <returns>true if it could find a lvl or lvz file, buf will contain the result. false if it failed.</returns>
+        /// <returns>The path if the lvl or lvz file could be found; otherwise, null.</returns>
         string GetMapFilename(Arena arena, string mapname);
 
+        /// <summary>
+        /// Gets unprocessed chunk data of a specified type for a the map in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="chunkType">The type of data to retrieve.</param>
+        /// <returns>A collection of chunk payloads (chunk header not included).</returns>
         IEnumerable<ReadOnlyMemory<byte>> ChunkData(Arena arena, uint chunkType);
 
+        /// <summary>
+        /// Gets info about lvz files in use by an arena.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <returns>A collection of lvz file info.</returns>
         IEnumerable<LvzFileInfo> LvzFilenames(Arena arena);
 
         /// <summary>
-        /// gets the named attribute for the arena's map.
+        /// Gets a named attribute of the map in an arena.
         /// </summary>
-        /// <param name="arena">the arena whose map we care about.</param>
-        /// <param name="key">the attribute key to retrieve.</param>
-        /// <returns>the key's value, or NULL if not present</returns>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="key">The key of the attribute to retrieve.</param>
+        /// <returns>The value, or NULL if not present.</returns>
         string GetAttribute(Arena arena, string key);
 
         /// <summary>
-        /// To get the number of turf (static) flags on the map in an arena
+        /// Gets the number of tiles on the map in an arena.
         /// </summary>
-        /// <param name="arena">the arena whose map we care about</param>
-        /// <returns>the # of turf flags</returns>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <returns>The # of tiles.</returns>
+        int GetTileCount(Arena arena);
+
+        /// <summary>
+        /// Gets the number of turf (static) flags on the map in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <returns>The # of flags.</returns>
         int GetFlagCount(Arena arena);
 
         /// <summary>
-        /// To get the contents of a single tile of the map.
+        /// Gets non-fatal load error descriptions for the map in an arena.
         /// </summary>
-        /// <param name="arena">the arena whose map we care about</param>
-        /// <param name="coord">coordinates looking at</param>
-        /// <returns>the tile, null for no tile</returns>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <returns>A collection of error descriptions.</returns>
+        IReadOnlyList<string> GetErrors(Arena arena);
+
+        /// <summary>
+        /// Gets a single tile by coordinates.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="coord">The coordinate to check.</param>
+        /// <returns>The tile, null for no tile.</returns>
         MapTile? GetTile(Arena arena, MapCoordinate coord);
 
         bool FindEmptyTileNear(Arena arena, ref short x, ref short y);
@@ -65,35 +90,49 @@ namespace SS.Core.ComponentInterfaces
         bool FindEmptyTileInRegion(Arena arena, MapRegion region);
 
         /// <summary>
-        /// Get the map checksum
-        /// <remarks>Used by Recording module to make sure the recording plays on the same map that is was recorded on.</remarks>
+        /// Get the map checksum.
         /// </summary>
-        /// <param name="arena"></param>
+        /// <remarks>
+        /// Used by the Security module to validate clients.
+        /// Used by the Recording module to make sure the recording plays on the same map that is was recorded on.
+        /// </remarks>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="key"></param>
         /// <returns></returns>
         uint GetChecksum(Arena arena, uint key);
 
+        /// <summary>
+        /// Gets the number of regions on a map in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <returns>The # of regions.</returns>
         int GetRegionCount(Arena arena);
 
+        /// <summary>
+        /// Gets a region by name.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="name">Name of the region to search for.</param>
+        /// <returns>The region if found; otherwise, null.</returns>
         MapRegion FindRegionByName(Arena arena, string name);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
         /// </summary>
         /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a callback.</remarks>
-        /// <param name="arena"></param>
-        /// <param name="x"></param>
-        /// <param name="y"></param>
-        /// <returns></returns>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="x">X coordinate to check.</param>
+        /// <param name="y">Y coordinate to check.</param>
+        /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
         IImmutableSet<MapRegion> RegionsAt(Arena arena, short x, short y);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
         /// </summary>
         /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a callback.</remarks>
-        /// <param name="arena"></param>
-        /// <param name="coord"></param>
-        /// <returns></returns>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="coord">The coordinates to check.</param>
+        /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
         IImmutableSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
     }
 }
