@@ -161,58 +161,64 @@ namespace SS.Core.Packets
             set { timer = LittleEndianConverter.Convert(value); }
         }
 
+        private uint BitField
+        {
+            get { return LittleEndianConverter.Convert(bitfield); }
+            set { bitfield = LittleEndianConverter.Convert(value); }
+        }
+
         public bool Shields
         {
-            get { return (byte)(bitfield & ShieldsMask) != 0; }
-            set { bitfield = (bitfield & ~ShieldsMask) | ((value ? 1u : 0u) & ShieldsMask); }
+            get { return (byte)(BitField & ShieldsMask) != 0; }
+            set { BitField = (BitField & ~ShieldsMask) | ((value ? 1u : 0u) & ShieldsMask); }
         }
 
         public bool Super
         {
-            get { return (byte)(bitfield & SuperMask) >> 1 != 0; }
-            set { bitfield = (bitfield & ~SuperMask) | ((value ? 1u : 0u) << 1 & SuperMask); }
+            get { return (byte)(BitField & SuperMask) >> 1 != 0; }
+            set { BitField = (BitField & ~SuperMask) | ((value ? 1u : 0u) << 1 & SuperMask); }
         }
 
         public byte Bursts
         {
-            get { return (byte)((bitfield & BurstsMask) >> 2); }
-            set { bitfield = (bitfield & ~BurstsMask) | ((uint)value << 2 & BurstsMask); }
+            get { return (byte)((BitField & BurstsMask) >> 2); }
+            set { BitField = (BitField & ~BurstsMask) | ((uint)value << 2 & BurstsMask); }
         }
 
         public byte Repels
         {
-            get { return (byte)((bitfield & RepelsMask) >> 6); }
-            set { bitfield = (bitfield & ~RepelsMask) | ((uint)value << 6 & RepelsMask); }
+            get { return (byte)((BitField & RepelsMask) >> 6); }
+            set { BitField = (BitField & ~RepelsMask) | ((uint)value << 6 & RepelsMask); }
         }
 
         public byte Thors
         {
-            get { return (byte)((bitfield & ThorsMask) >> 10); }
-            set { bitfield = (bitfield & ~ThorsMask) | ((uint)value << 10 & ThorsMask); }
+            get { return (byte)((BitField & ThorsMask) >> 10); }
+            set { BitField = (BitField & ~ThorsMask) | ((uint)value << 10 & ThorsMask); }
         }
 
         public byte Bricks
         {
-            get { return (byte)((bitfield & BricksMask) >> 14); }
-            set { bitfield = (bitfield & ~BricksMask) | ((uint)value << 14 & BricksMask); }
+            get { return (byte)((BitField & BricksMask) >> 14); }
+            set { BitField = (BitField & ~BricksMask) | ((uint)value << 14 & BricksMask); }
         }
 
         public byte Decoys
         {
-            get { return (byte)((bitfield & DecoysMask) >> 18); }
-            set { bitfield = (bitfield & ~DecoysMask) | ((uint)value << 18 & DecoysMask); }
+            get { return (byte)((BitField & DecoysMask) >> 18); }
+            set { BitField = (BitField & ~DecoysMask) | ((uint)value << 18 & DecoysMask); }
         }
 
         public byte Rockets
         {
-            get { return (byte)((bitfield & RocketsMask) >> 22); }
-            set { bitfield = (bitfield & ~RocketsMask) | ((uint)value << 22 & RocketsMask); }
+            get { return (byte)((BitField & RocketsMask) >> 22); }
+            set { BitField = (BitField & ~RocketsMask) | ((uint)value << 22 & RocketsMask); }
         }
 
         public byte Portals
         {
-            get { return (byte)((bitfield & PortalsMask) >> 26); }
-            set { bitfield = (bitfield & ~PortalsMask) | ((uint)value << 26 & PortalsMask); }
+            get { return (byte)((BitField & PortalsMask) >> 26); }
+            set { BitField = (BitField & ~PortalsMask) | ((uint)value << 26 & PortalsMask); }
         }
     }
 

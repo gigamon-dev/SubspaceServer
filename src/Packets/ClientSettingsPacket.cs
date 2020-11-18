@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Utilities;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -143,22 +144,28 @@ namespace SS.Core.Packets
         private const ushort DisableFastShootingMask = 0b_00000000_00000100;
         private const ushort RadiusMask              = 0b_00000111_11111000;
 
+        private ushort BitField
+        {
+            get { return LittleEndianConverter.Convert(bitfield); }
+            set { bitfield = LittleEndianConverter.Convert(value); }
+        }
+
         public byte SeeBombLevel
         {
-            get { return (byte)(bitfield & SeeBombLevelMask); }
-            set { bitfield = (ushort)((bitfield & ~SeeBombLevelMask) | (value & SeeBombLevelMask)); }
+            get { return (byte)(BitField & SeeBombLevelMask); }
+            set { BitField = (ushort)((BitField & ~SeeBombLevelMask) | (value & SeeBombLevelMask)); }
         }
 
         public bool DisableFastShooting
         {
-            get { return ((bitfield & DisableFastShootingMask) >> 2) != 0; }
-            set { bitfield = (ushort)((bitfield & ~DisableFastShootingMask) | (((value ? 1 : 0) << 2) & DisableFastShootingMask)); }
+            get { return ((BitField & DisableFastShootingMask) >> 2) != 0; }
+            set { BitField = (ushort)((BitField & ~DisableFastShootingMask) | (((value ? 1 : 0) << 2) & DisableFastShootingMask)); }
         }
 
         public byte Radius
         {
-            get { return (byte)((bitfield & RadiusMask) >> 3); }
-            set { bitfield = (ushort)((bitfield & ~RadiusMask) | ((value << 3) & RadiusMask)); }
+            get { return (byte)((BitField & RadiusMask) >> 3); }
+            set { BitField = (ushort)((BitField & ~RadiusMask) | ((value << 3) & RadiusMask)); }
         }
     }
 
@@ -269,22 +276,28 @@ namespace SS.Core.Packets
         private const uint YMask      = 0b_00000000_00001111_11111100_00000000;
         private const uint RadiusMask = 0b_00011111_11110000_00000000_00000000;
 
+        public uint BitField
+        {
+            get { return LittleEndianConverter.Convert(bitfield); }
+            set { bitfield = LittleEndianConverter.Convert(value); }
+        }
+
         public ushort X
         {
-            get { return (ushort)(bitfield & XMask); }
-            set { bitfield = (bitfield & ~XMask) | (value & XMask); }
+            get { return (ushort)(BitField & XMask); }
+            set { BitField = (BitField & ~XMask) | (value & XMask); }
         }
 
         public ushort Y
         {
-            get { return (ushort)((bitfield & XMask) >> 10); }
-            set { bitfield = (bitfield & ~XMask) | (((uint)value << 10) & XMask); }
+            get { return (ushort)((BitField & XMask) >> 10); }
+            set { BitField = (BitField & ~XMask) | (((uint)value << 10) & XMask); }
         }
 
         public ushort Radius
         {
-            get { return (ushort)((bitfield & RadiusMask) >> 20); }
-            set { bitfield = (bitfield & ~RadiusMask) | (((uint)value << 20) & RadiusMask); }
+            get { return (ushort)((BitField & RadiusMask) >> 20); }
+            set { BitField = (BitField & ~RadiusMask) | (((uint)value << 20) & RadiusMask); }
         }
     }
 }
