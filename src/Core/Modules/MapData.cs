@@ -512,11 +512,11 @@ namespace SS.Core.Modules
 
                 /*
                 // useful check to visually see that the lvl tiles were loaded correctly
-                using (var bmp = ad.Lvl.ToBitmap())
+                using (var bmp = lvl.ToBitmap())
                 {
                     bmp.Save(
                         Path.ChangeExtension(
-                            Path.GetFileNameWithoutExtension(mapname),
+                            Path.GetFileNameWithoutExtension(path),
                             ".bmp"));
                 }
                 */
