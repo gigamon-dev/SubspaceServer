@@ -714,8 +714,17 @@ namespace SS.Core.Modules
 
         private readonly NetStats _globalStats = new NetStats();
 
+        // delegates to prevent allocating a new delegate object per call
+        private readonly Action<BigPacketWork> mainloopWork_CallBigPacketHandlersAction;
+        private readonly Action<SubspaceBuffer> mainloopWork_CallPacketHandlersAction;
+        private readonly Action<InvokeReliableCallbackDTO> mainloopWork_InvokeReliableCallbackAction;
+
         public Network()
         {
+            mainloopWork_CallBigPacketHandlersAction = MainloopWork_CallBigPacketHandlers;
+            mainloopWork_CallPacketHandlersAction = MainloopWork_CallPacketHandlers;
+            mainloopWork_InvokeReliableCallbackAction = MainloopWork_InvokeReliableCallback;
+
             _oohandlers = new oohandler[20];
 
             _oohandlers[0] = null; //00 - nothing
@@ -1802,7 +1811,7 @@ namespace SS.Core.Modules
             }
             else if (rp.T1 < MAXTYPES)
             {
-                _mainloop.QueueMainWorkItem(MainloopWork_CallPacketHandlers, buffer);
+                _mainloop.QueueMainWorkItem(mainloopWork_CallPacketHandlersAction, buffer);
             }
             else
             {
@@ -2332,7 +2341,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(p));
 
             _mainloop.QueueMainWorkItem(
-                MainloopWork_InvokeReliableCallback,
+                mainloopWork_InvokeReliableCallbackAction,
                 new InvokeReliableCallbackDTO()
                 {
                     CallbackInvoker = callbackInvoker,
@@ -2516,7 +2525,7 @@ namespace SS.Core.Modules
                     if (newbuf[0] > 0 && newbuf[0] < MAXTYPES)
                     {
                         _mainloop.QueueMainWorkItem(
-                            MainloopWork_CallBigPacketHandlers,
+                            mainloopWork_CallBigPacketHandlersAction,
                             new BigPacketWork()
                             {
                                 ConnData = conn,

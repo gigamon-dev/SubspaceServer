@@ -161,6 +161,16 @@ namespace SS.Core.Modules
             public int[] wpnRange = new int[WeaponCount];
         }
 
+        // delegates to prevent allocating a new delegate object per call
+        private readonly Action<ShipFreqChangeDTO> mainloopWork_RunShipFreqChangeCallbackAction;
+        private readonly Action<SpawnDTO> mainloopWork_RunSpawnCallbackAction;
+
+        public Game()
+        {
+            mainloopWork_RunSpawnCallbackAction = MainloopWork_RunSpawnCallback;
+            mainloopWork_RunShipFreqChangeCallbackAction = MainloopWork_RunShipFreqChangeCallback;
+        }
+
         #region IModule Members
 
         public bool Load(
@@ -2173,7 +2183,7 @@ namespace SS.Core.Modules
         private void DoSpawnCallback(Player p, SpawnCallback.SpawnReason reason)
         {
             _mainloop.QueueMainWorkItem(
-                MainloopWork_RunSpawnCallback,
+                mainloopWork_RunSpawnCallbackAction,
                 new SpawnDTO()
                 {
                     Arena = p.Arena,
@@ -2189,6 +2199,7 @@ namespace SS.Core.Modules
             public SpawnCallback.SpawnReason Reason;
         }
 
+        
         private void MainloopWork_RunSpawnCallback(SpawnDTO dto)
         {
             if (dto.Arena == dto.Player.Arena)
@@ -2210,7 +2221,7 @@ namespace SS.Core.Modules
         private void DoShipFreqChangeCallback(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             _mainloop.QueueMainWorkItem(
-                MainloopWork_RunShipFreqChangeCallback,
+                mainloopWork_RunShipFreqChangeCallbackAction,
                 new ShipFreqChangeDTO()
                 {
                     Arena = p.Arena,
