@@ -228,7 +228,6 @@ namespace SS.Core.Map
             int length,
             Action<string> addError)
         {
-            Console.WriteLine($"Process region chunk type:{chunkType} position:{position} length:{length}");
             if (chunkType == RegionMetadataChunkType.Name)
             {
                 byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
