@@ -98,15 +98,9 @@ namespace SS.Core.Modules
                     isLvl = true;
             }
 
-            if (PathUtil.find_file_on_path(
-                out string filename,
+            return PathUtil.FindFileOnPath(
                 isLvl ? Constants.CFG_LVL_SEARCH_PATH : Constants.CFG_LVZ_SEARCH_PATH,
-                repls) == 0)
-            {
-                return filename;
-            }
-
-            return null;
+                repls);
         }
 
         [ConfigHelp("General", "LevelFiles", ConfigScope.Arena, typeof(string), 

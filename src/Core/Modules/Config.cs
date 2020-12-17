@@ -17,23 +17,19 @@ namespace SS.Core.Modules
         private readonly LinkedList<ConfigFile> _files = new LinkedList<ConfigFile>();
         private readonly object cfgmtx = new object(); // protects _opened and _files
 
-        private ConfigHandle _global;
         public event EventHandler GlobalConfigChanged;
 
         private IMainloopTimer _mainloopTimer;
         private ILogManager _logManager;
         private InterfaceRegistrationToken _iConfigManagerToken;
 
-        public ConfigManager()
-        {
-        }
-
         /// <summary>
         /// The global config handle (global.conf)
         /// </summary>
         public ConfigHandle Global
         {
-            get { return _global; }
+            get;
+            private set;
         }
 
         private void global_changed(object clos)
@@ -44,24 +40,23 @@ namespace SS.Core.Modules
 
         public ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate configChanged, object clos)
         {
-            string fname;
-
             // make sure at least the base file exists
-            if (locateConfigFile(out fname, arena, name) == -1)
+            string path = LocateConfigFile(arena, name);
+            if (path == null)
                 return null;
 
             // first try to get it out of the table
             lock (cfgmtx)
             {
-                ConfigFile cf;
-                if (_opened.TryGetValue(fname, out cf) == false)
+                if (_opened.TryGetValue(path, out ConfigFile cf) == false)
                 {
                     // if not, make a new one
-                    cf = new ConfigFile(fname, arena, name);
+                    cf = new ConfigFile(path, arena, name);
+                    cf.Load(
+                        LocateConfigFile, 
+                        message => LogError(path, message));
 
-                    cf.doLoad(arena, name);
-
-                    _opened.Add(fname, cf);
+                    _opened.Add(path, cf);
                     _files.AddLast(cf);
                 }
 
@@ -70,7 +65,7 @@ namespace SS.Core.Modules
                 return new ConfigHandle(cf, configChanged, clos);
             }
         }
-        
+
         public void CloseConfigFile(ConfigHandle ch)
         {
             if (ch == null)
@@ -83,7 +78,7 @@ namespace SS.Core.Modules
 
             try
             {
-                 removed = cf.Handles.Remove(ch);
+                removed = cf.Handles.Remove(ch);
             }
             finally
             {
@@ -173,7 +168,7 @@ namespace SS.Core.Modules
 
             return result;
         }
-        
+
         public void SetStr(ConfigHandle ch, string section, string key, string value, string info, bool permanent)
         {
         }
@@ -200,7 +195,7 @@ namespace SS.Core.Modules
             }
         }
 
-        internal static int locateConfigFile(out string dest, string arena, string name)
+        private static string LocateConfigFile(string arena, string name)
         {
             Dictionary<char, string> repls = new Dictionary<char, string>(2);
             repls.Add('n', name);
@@ -209,7 +204,19 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(name))
                 repls['n'] = string.IsNullOrEmpty(arena) == false ? "arena.conf" : "global.conf";
 
-            return PathUtil.find_file_on_path(out dest, Constants.CFG_CONFIG_SEARCH_PATH, repls);
+            return PathUtil.FindFileOnPath(Constants.CFG_CONFIG_SEARCH_PATH, repls);
+        }
+
+        private void LogError(string fileName, string message)
+        {
+            if (_logManager != null)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(ConfigManager), $"Error loading config file '{fileName}'. {message}");
+            }
+            else
+            {
+                Console.Error.WriteLine($"W <{nameof(ConfigManager)}> Error loading config file '{fileName}'. {message}");
+            }
         }
 
         #region IModule Members
@@ -218,8 +225,8 @@ namespace SS.Core.Modules
         {
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
 
-            _global = OpenConfigFile(null, null, global_changed, null);
-            if (_global == null)
+            Global = OpenConfigFile(null, null, global_changed, null);
+            if (Global == null)
                 return false;
 
             // TODO: set timer to watch for when the server should write to config files (this is not a priority so i will hold off doing this for now)

@@ -15,9 +15,8 @@ namespace SS.Core
         //private const int MAX_KEY_LENGTH = 64;
 
         private readonly object mutex = new object();
-        internal readonly LinkedList<ConfigHandle> Handles;
-        internal readonly Dictionary<string, string> _table;
-        //StringChunk *strings;  // collection of strings to conserve allocations and free all at once, dont think i need
+        internal readonly LinkedList<ConfigHandle> Handles = new LinkedList<ConfigHandle>();
+        internal readonly Dictionary<string, string> _table = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         //private LinkedList<object> dirty; // this must be used for setting config values (not implemented in this release)
         //private bool anychanged = false;
         private DateTime lastmod;
@@ -25,10 +24,6 @@ namespace SS.Core
 
         internal ConfigFile(string filename, string arena, string name)
         {
-            // TODO: when i figure out what goes in each list and dictionary
-            Handles = new LinkedList<ConfigHandle>();
-            _table = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            //strings = new
             //dirty = new
 
             this.filename = filename;
@@ -45,6 +40,10 @@ namespace SS.Core
             }
         }
 
+        public string FileName { get; }
+        public string Arena { get; }
+        public string Name { get; }
+
         internal void Lock()
         {
             Monitor.Enter(mutex);
@@ -55,21 +54,20 @@ namespace SS.Core
             Monitor.Exit(mutex);
         }
 
-        internal void doLoad(string arena, string name)
+        public void Load(APPFileFinderFunc fileFinderCallback, APPReportErrFunc reportErrorCallback = null)
         {
-            using (APPContext ctx = new APPContext(
-                new APPFileFinderFunc(ConfigManager.locateConfigFile),
-                new APPReportErrFunc(reportError),
-                arena))
-            {
+            if (fileFinderCallback == null)
+                throw new ArgumentNullException(nameof(fileFinderCallback));
 
-                ctx.AddFile(name);
+            using (PreprocessorReader reader = new PreprocessorReader(fileFinderCallback, reportErrorCallback, arena))
+            {
+                reader.AddFile(name);
 
                 string key = null;
                 string line = null;
                 string val = null;
 
-                while (ctx.GetLine(out line))
+                while ((line = reader.ReadLine()) != null)
                 {
                     line = line.Trim();
 
@@ -124,6 +122,10 @@ namespace SS.Core
                         }
                     }
                 }
+
+                // TODO: watch these files for changes?
+                // Note: ASSS only watches (via timer) the base file, not ones pulled in via #include
+                //ctx.FilePaths
             }
         }
 

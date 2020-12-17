@@ -125,16 +125,15 @@ namespace SS.Core
         /// or if there was an error expanding a source string, it returns an
         /// error.
         /// </summary>
-        /// <param name="dest">where to put the result</param>
-        /// <param name="searchpath">a colon-delimited list of strings, where each string is a source string acceptable by macro_expand_string</param>
+        /// <param name="searchPaths">a colon-delimited list of strings, where each string is a source string acceptable by macro_expand_string</param>
         /// <param name="repls">the replacement table to use</param>
-        /// <returns>0 on success, -1 on failure</returns>
-        public static int find_file_on_path(
-            out string dest,
-            string searchpath,
+        /// <param name="dest">where to put the result</param>
+        /// <returns>The path of the file if a match was found. Otherwise, <see langword="null"/>, not found.</returns>
+        public static string FindFileOnPath(
+            string searchPaths,
             Dictionary<char, string> repls)
         {
-            string[] paths = searchpath.Split(':');
+            string[] paths = searchPaths.Split(':');
             string file;
 
             foreach (string path in paths)
@@ -149,8 +148,7 @@ namespace SS.Core
                     {
                         // HACK: find better way
                         File.OpenRead(file).Close();
-                        dest = file;
-                        return 0;
+                        return file;
                     }
                     catch
                     {
@@ -158,8 +156,7 @@ namespace SS.Core
                 }
             }
 
-            dest = null;
-            return -1;
+            return null;
         }
 
         /// <summary>
