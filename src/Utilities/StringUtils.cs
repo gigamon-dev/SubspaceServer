@@ -256,6 +256,42 @@ namespace SS.Utilities
 
         #endregion
 
+        /// <summary>
+        /// Gets a <see cref="string"/> from a <see cref="StringBuilder"/> trimmed of whitespace.
+        /// </summary>
+        /// <remarks>The <see cref="StringBuilder"/> itself is not modified.</remarks>
+        /// <param name="sb">The <see cref="StringBuilder"/> to read from.</param>
+        /// <returns>The trimmed string.</returns>
+        public static string ToTrimmedString(this StringBuilder sb)
+        {
+            if (sb == null)
+                throw new ArgumentNullException(nameof(sb));
+
+            // Find the last non-whitespace character
+            int end;
+            for (end = sb.Length - 1; end >= 0; end--)
+            {
+                if (!char.IsWhiteSpace(sb[end]))
+                    break;
+            }
+
+            if (end == -1)
+            {
+                // All whitespace
+                return string.Empty;
+            }
+
+            // Find the first non-whitespace character
+            int start;
+            for (start = 0; start < end; start++)
+            {
+                if (!char.IsWhiteSpace(sb[start]))
+                    break;
+            }
+
+            return sb.ToString(start, end - start + 1);
+        }
+
         public static string TrimWhitespaceAndExtras(this string str, params char[] characters)
         {
             int startIndex = 0;

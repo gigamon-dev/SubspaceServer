@@ -144,8 +144,9 @@ namespace SS.Core.Modules
             ConfigFile cf = ch.file;
             cf.Lock();
 
-            bool haveSection = !string.IsNullOrEmpty(section);
-            bool haveKey = !string.IsNullOrEmpty(key);
+            // allowing empty string for section and/or key
+            bool haveSection = section != null;
+            bool haveKey = key != null;
 
             if (haveSection && haveKey)
             {
@@ -197,14 +198,12 @@ namespace SS.Core.Modules
 
         private static string LocateConfigFile(string arena, string name)
         {
-            Dictionary<char, string> repls = new Dictionary<char, string>(2);
-            repls.Add('n', name);
-            repls.Add('b', arena);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = string.IsNullOrWhiteSpace(arena) ? "global.conf" : "arena.conf";
+            }
 
-            if (string.IsNullOrEmpty(name))
-                repls['n'] = string.IsNullOrEmpty(arena) == false ? "arena.conf" : "global.conf";
-
-            return PathUtil.FindFileOnPath(Constants.CFG_CONFIG_SEARCH_PATH, repls);
+            return PathUtil.FindFileOnPath(Constants.ConfigSearchPaths, name, arena);
         }
 
         private void LogError(string fileName, string message)

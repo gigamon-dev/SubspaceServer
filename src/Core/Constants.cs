@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Text;
 
 namespace SS.Core
@@ -10,23 +11,51 @@ namespace SS.Core
     public static class Constants
     {
         /// <summary>
-        /// the search paths for config files (colon delimited with placeholders)
+        /// Search paths for config files with placeholders:
+        /// <list type="table">
+        /// <item><term>{0}</term><description>file name<para>Can be just a file name. (e.g. "arena.conf")</para><para>Or a file name with path (e.g. "conf/svs/svs.conf")</para></description></item>
+        /// <item><term>{1}</term><description>arena name</description></item>
+        /// </list>
         /// </summary>
-        public const string CFG_CONFIG_SEARCH_PATH = "arenas/%b/%n:conf/%n:%n:arenas/(default)/%n";
+        public static readonly IReadOnlyCollection<string> ConfigSearchPaths = new ReadOnlyCollection<string>(
+            new string[] {
+                "arenas/{1}/{0}",
+                "conf/{0}",
+                "{0}",
+                "arenas/(default)/{0}",
+            });
 
         /// <summary>
-        /// the search paths for lvl files (colon delimited with placeholders)
-        /// %b = base arena name (no trailing number)
-        /// %m = map file name
+        /// Search paths for lvl files with placeholders:
+        /// <list type="table">
+        /// <item><term>{0}</term><description>map file name</description></item>
+        /// <item><term>{1}</term><description>base arena name (no trailing number)</description></item>
+        /// </list>
         /// </summary>
-        public const string CFG_LVL_SEARCH_PATH = "arenas/%b/%m:maps/%m:%m:arenas/%b/%b.lvl:maps/%b.lvl:arenas/(default)/%m";
+        public static readonly IReadOnlyCollection<string> LvlSearchPaths = new ReadOnlyCollection<string>(
+            new string[] {
+                "arenas/{1}/{0}",
+                "maps/{0}",
+                "{0}",
+                "arenas/{1}/{1}.lvl",
+                "maps/{1}.lvl",
+                "arenas/(default)/{0}",
+            });
 
         /// <summary>
-        /// the search paths for lvz files (colon delimited with placeholders)
-        /// %b = base arena name (no trailing number)
-        /// %m = lvz file name
+        /// Search paths for lvz files with placeholders:
+        /// <list type="table">
+        /// <item><term>{0}</term><description>map file name</description></item>
+        /// <item><term>{1}</term><description>base arena name (no trailing number)</description></item>
+        /// </list>
         /// </summary>
-        public const string CFG_LVZ_SEARCH_PATH = "arenas/%b/%m:maps/%m:%m:arenas/(default)/%m";
+        public static readonly IReadOnlyCollection<string> LvzSearchPaths = new ReadOnlyCollection<string>(
+            new string[] {
+                "arenas/{1}/{0}",
+                ":maps/{0}",
+                ":{0}",
+                ":arenas/(default)/{0}",
+            });
 
         /// <summary>
         /// how many incoming rel packets to buffer for a client

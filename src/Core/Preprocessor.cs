@@ -97,6 +97,17 @@ namespace SS.Core
             depth = 0;
         }
 
+        public (string FilePath, int LineNumber)? CurrentFileLine
+        {
+            get
+            {
+                if (file == null)
+                    return null;
+
+                return (file.FilePath, file.LineNumber);
+            }
+        }
+
         /// <summary>
         /// Paths of the files processed.
         /// This is populated as lines are read with <see cref="GetLine(out string)"/>.
@@ -259,16 +270,7 @@ namespace SS.Core
                         break;
                 }
 
-                // trim trailing whitespace
-                while (sb.Length > 0 && char.IsWhiteSpace(sb[^1])) sb.Length--;
-
-                // find the first non-whitespace character
-                int i;
-                for (i = 0; i < sb.Length; i++)
-                    if (!char.IsWhiteSpace(sb[i]))
-                        break;
-
-                string trimmedLine = (i < sb.Length) ? sb.ToString(i, sb.Length - i) : sb.ToString();
+                string trimmedLine = sb.ToTrimmedString();
 
                 // check for directives
                 if ((trimmedLine != string.Empty) && (trimmedLine[0] == DirectiveChar))

@@ -63,62 +63,51 @@ namespace SS.Core
             {
                 reader.AddFile(name);
 
-                string key = null;
-                string line = null;
-                string val = null;
+                ReadOnlySpan<char> section = ReadOnlySpan<char>.Empty;
+                string line;
 
                 while ((line = reader.ReadLine()) != null)
                 {
-                    line = line.Trim();
+                    ReadOnlySpan<char> lineSpan = line.AsSpan().Trim();
 
-                    if (line[0] == '[')
+                    if (lineSpan[0] == '[')
                     {
-                        // new section: copy to key name
-                        // skip leading brackets/spaces
-                        key = StringUtils.TrimWhitespaceAndExtras(line, '[', ']');
-                        key += ":";
-                    }
-                    else
-                    {
-                        string unescaped;
-                        line = unescapeString(out unescaped, line, '=');
-
-                        if (string.IsNullOrEmpty(unescaped))
-                            continue;
-
-                        if (!string.IsNullOrEmpty(line) && line[0] == '=')
+                        // new section
+                        if (lineSpan[^1] == ']')
                         {
-                            line = line.Substring(1).Trim();
-                            unescaped = unescaped.Trim();
-
-                            unescapeString(out val, line, '\0');
-
-                            if (unescaped.IndexOf(':') != -1)
-                            {
-                                // this syntax lets you specify a section and key on
-                                // one line. it does _not_ modify the "current section"
-                                _table[unescaped] = val;
-                            }
-                            else if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(unescaped))
-                            {
-                                _table[key + unescaped] = val;
-                            }
-                            else
-                            {
-                                reportError("ignoring value not in any section");
-                            }
+                            lineSpan = lineSpan[1..^1].Trim();
                         }
                         else
                         {
-                            if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(unescaped))
-                            {
-                                // there is no value for this key, so enter it with the empty string
-                                _table[key + unescaped] = string.Empty;
-                            }
-                            else
-                            {
-                                reportError("ignoring value not in any section");
-                            }
+                            var currentFileLine = reader.CurrentFileLine;
+                            reportErrorCallback($"Section is missing ']' ({currentFileLine?.FilePath}:{currentFileLine?.LineNumber})");
+
+                            // use the remainder of the line as the section name
+                            lineSpan = lineSpan[1..];
+                        }
+
+                        // Note: allowing section to be empty
+                        section = lineSpan;
+                    }
+                    else
+                    {
+                        if (lineSpan.IsEmpty)
+                        {
+                            // empty line
+                            continue;
+                        }
+
+                        ParseConfProperty(line, out string key, out ReadOnlySpan<char> value);
+
+                        if (key.Contains(':'))
+                        {
+                            // <section>:<key> syntax
+                            // the section overrides any section we're currently in
+                            _table[key] = value.ToString();
+                        }
+                        else
+                        {
+                            _table[string.Concat(section, ":", key)] = value.ToString();
                         }
                     }
                 }
@@ -129,64 +118,59 @@ namespace SS.Core
             }
         }
 
-        internal void writeDirtyValuesOne(bool callCallbacks)
+        internal void WriteDirtyValuesOne(bool callCallbacks)
         {
             // i think that this method writes changed settings to file
             // TODO: not necessary to get things running
         }
 
-        private static void reportError(string error)
-        {
-            // TODO: use log manager
-            Console.WriteLine("<config> " + error);
-        }
-
         /// <summary>
-        /// escapes the config file syntactic characters. currently just = and \
+        /// Escapes the config file syntactic characters. Currently just = and \
         /// </summary>
-        /// <param name="src"></param>
+        /// <param name="value"></param>
         /// <returns></returns>
-        private static string escapeString(string src)
+        private static string EscapeString(string value)
         {
-            StringBuilder sb = new StringBuilder(src);
+            StringBuilder sb = new StringBuilder(value);
             sb.Replace(@"=", @"\=");
             sb.Replace(@"\", @"\\");
             return sb.ToString();
         }
 
         /// <summary>
-        /// 
+        /// Parses a line of text as a key=value property.
+        /// Whitespace is trimmed off from both the key and value.
+        /// Characters are unescaped for the key only.
+        /// Valid escape character sequences include "\=" for = and "\\" for \.
+        /// Invalid escape character sequences are ignored by skipping the \ character.
         /// </summary>
-        /// <param name="dst"></param>
-        /// <param name="source"></param>
-        /// <param name="stopon"></param>
-        /// <returns>the remainder of source if stopped on a character</returns>
-        private static string unescapeString(out string dst, string source, char stopon)
+        /// <param name="line">The line to parse.</param>
+        /// <param name="key">The resulting key. <see cref="string.Empty"/> if no key found.</param>
+        /// <param name="value">The resulting value. <see cref="Span{char}.Empty"/> if there is no value.</param>
+        private static void ParseConfProperty(ReadOnlySpan<char> line, out string key, out ReadOnlySpan<char> value)
         {
-            StringBuilder sb = new StringBuilder();
-            int x;
-            for (x = 0; x < source.Length; x++)
+            StringBuilder sb = new StringBuilder(line.Length);
+
+            int i;
+            for (i = 0; i < line.Length; i++)
             {
-                if (source[x] == stopon)
+                if (line[i] == '=')
                     break;
 
-                if (source[x] == '\\')
+                if (line[i] == '\\')
                 {
-                    x++;
-                    if (x < source.Length)
-                        sb.Append(source[x]);
+                    i++;
+                    if (i < line.Length)
+                        sb.Append(line[i]);
                 }
                 else
                 {
-                    sb.Append(source[x]);
+                    sb.Append(line[i]);
                 }
             }
 
-            dst = sb.ToString();
-            if (x == source.Length)
-                return string.Empty;
-            else
-                return source.Substring(x);
+            key = sb.ToTrimmedString();
+            value = line[i..].TrimStart('=').Trim();
         }
 
         #region IDisposable Members

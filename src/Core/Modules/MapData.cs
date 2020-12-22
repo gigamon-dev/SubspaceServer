@@ -74,33 +74,23 @@ namespace SS.Core.Modules
         }
 
         [ConfigHelp("General", "Map", ConfigScope.Arena, typeof(string), Description = "The name of the level file for the arena.")]
-        private string GetMapFilename(Arena arena, string mapname)
+        private string GetMapFilename(Arena arena, string mapName)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            Dictionary<char, string> repls = new Dictionary<char, string>()
+            if (string.IsNullOrWhiteSpace(mapName))
             {
-                {'b', arena.BaseName}, 
-                {'m', null}
-            };
-
-            if (string.IsNullOrEmpty(mapname))
-                mapname = _configManager.GetStr(arena.Cfg, "General", "Map");
-
-            bool isLvl = false;
-
-            if (string.IsNullOrEmpty(mapname) == false)
-            {
-                repls['m'] = mapname;
-
-                if (string.Equals(Path.GetExtension(mapname), ".lvl", StringComparison.OrdinalIgnoreCase))
-                    isLvl = true;
+                mapName = _configManager.GetStr(arena.Cfg, "General", "Map");
             }
 
+            bool isLvl = !string.IsNullOrWhiteSpace(mapName)
+                && string.Equals(Path.GetExtension(mapName), ".lvl", StringComparison.OrdinalIgnoreCase);
+
             return PathUtil.FindFileOnPath(
-                isLvl ? Constants.CFG_LVL_SEARCH_PATH : Constants.CFG_LVZ_SEARCH_PATH,
-                repls);
+                isLvl ? Constants.LvlSearchPaths : Constants.LvzSearchPaths,
+                mapName, 
+                arena.BaseName);
         }
 
         [ConfigHelp("General", "LevelFiles", ConfigScope.Arena, typeof(string), 
