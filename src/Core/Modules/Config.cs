@@ -7,11 +7,13 @@ using System.Threading;
 
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using SS.Core.Configuration;
 
 namespace SS.Core.Modules
 {
+    /*
     [CoreModuleInfo]
-    public class ConfigManager : IModule, IModuleLoaderAware, IConfigManager
+    public class Config : IModule, IModuleLoaderAware, IConfigManager
     {
         private readonly Dictionary<string, ConfigFile> _opened = new Dictionary<string, ConfigFile>(StringComparer.OrdinalIgnoreCase);
         private readonly LinkedList<ConfigFile> _files = new LinkedList<ConfigFile>();
@@ -210,11 +212,11 @@ namespace SS.Core.Modules
         {
             if (_logManager != null)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(ConfigManager), $"Error loading config file '{fileName}'. {message}");
+                _logManager.LogM(LogLevel.Warn, nameof(Config), $"Error loading config file '{fileName}'. {message}");
             }
             else
             {
-                Console.Error.WriteLine($"W <{nameof(ConfigManager)}> Error loading config file '{fileName}'. {message}");
+                Console.Error.WriteLine($"W <{nameof(Config)}> Error loading config file '{fileName}'. {message}");
             }
         }
 
@@ -263,4 +265,5 @@ namespace SS.Core.Modules
 
         #endregion
     }
+    */
 }

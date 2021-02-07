@@ -83,7 +83,7 @@ namespace SS.Core
                             reportErrorCallback($"Section is missing ']' ({currentFileLine?.FilePath}:{currentFileLine?.LineNumber})");
 
                             // use the remainder of the line as the section name
-                            lineSpan = lineSpan[1..];
+                            lineSpan = lineSpan[1..].Trim();
                         }
 
                         // Note: allowing section to be empty
@@ -146,7 +146,7 @@ namespace SS.Core
         /// </summary>
         /// <param name="line">The line to parse.</param>
         /// <param name="key">The resulting key. <see cref="string.Empty"/> if no key found.</param>
-        /// <param name="value">The resulting value. <see cref="Span{char}.Empty"/> if there is no value.</param>
+        /// <param name="value">The resulting value. <see cref="ReadOnlySpan{char}.Empty"/> if there is no value.</param>
         private static void ParseConfProperty(ReadOnlySpan<char> line, out string key, out ReadOnlySpan<char> value)
         {
             StringBuilder sb = new StringBuilder(line.Length);

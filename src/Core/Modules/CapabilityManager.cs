@@ -64,8 +64,8 @@ namespace SS.Core.Modules
             PlayerActionCallback.Register(_broker, playerAction);
             NewPlayerCallback.Register(_broker, newPlayer);
 
-            _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf", null, null);
-            _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf", null, null);
+            _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf");
+            _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf");
 
             _iCapabilityManagerToken = _broker.RegisterInterface<ICapabilityManager>(this);
             _iGroupManagerToken = _broker.RegisterInterface<IGroupManager>(this);

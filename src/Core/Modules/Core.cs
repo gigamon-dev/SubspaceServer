@@ -803,7 +803,7 @@ namespace SS.Core.Modules
 
             auth.DemoData = false;
             auth.Code = AuthCode.OK;
-            auth.Authenticated = true; //false; // HACK: until I have time to add the AuthFile module
+            auth.Authenticated = false;
 
             string name = lp.Name;
             auth.Name = name.Length > 23 ? name.Substring(0, 23) : name;

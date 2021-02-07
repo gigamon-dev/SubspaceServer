@@ -188,7 +188,7 @@ namespace SS.Core
 
             try
             {
-                // Use the default encoding unless a there is BOM.
+                // Use the default encoding unless there is a BOM.
                 sr = new StreamReader(path, StringUtils.DefaultEncoding, true);
             }
             catch (Exception ex)

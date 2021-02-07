@@ -15,10 +15,10 @@ namespace SS.Core.ComponentInterfaces
     /// but this can be customized with the search path.
     /// 
     /// the main global configuration file is maintained internally to this
-    /// module and you don't have to open or close it. just use GLOBAL as
+    /// module and you don't have to open or close it. just use <see cref="Global"/> as
     /// your ConfigHandle. arena configuration files are also maintained for
-    /// you as arena->cfg. so typically you will only need to call GetStr and
-    /// GetInt.
+    /// you as <see cref="Arena.Cfg"/>. so typically you will only need to call <see cref="GetStr"/> and
+    /// <see cref="GetInt"/>.
     ///
     /// there can also be secondary global or arena config files, specified
     /// with the second parameter of OpenConfigFile. these are used for staff
@@ -27,25 +27,25 @@ namespace SS.Core.ComponentInterfaces
     /// different file.
     ///
     /// setting configuration values is relatively straightforward. the info
-    /// parameter to SetStr and SetInt should describe who initiated the
+    /// parameter to <see cref="SetStr"/> and <see cref="SetInt"/> should describe who initiated the
     /// change and when. this information may be written back to the
     /// configuration files.
-    ///
-    /// FlushDirtyValues and CheckModifiedFiles do what they say. there's no
-    /// need to call them in general; the config module performs those
-    /// actions internally based on timers also.
     /// </summary>
     public interface IConfigManager : IComponentInterface
     {
+        /// <summary>
+        /// Handle to the main global configuration file.
+        /// </summary>
         ConfigHandle Global
         {
             get;
         }
 
         /// <summary>
-        /// Open a new config file.
-        /// 
-        /// This opens a new config file to be managed by the config module.
+        /// Opens a config file.
+        /// </summary>
+        /// <remarks>
+        /// This opens a config file to be managed by the config module.
         /// You should close each file you open with CloseConfigFile. The
         /// filename to open isn't specified directly, but indirectly by
         /// providing an optional arena the file is associated with, and a
@@ -57,17 +57,86 @@ namespace SS.Core.ComponentInterfaces
         /// and "staff.conf" for name. If name is NULL, it looks for
         /// "arena.conf" in the arena directory. If name and arena are both
         /// NULL, it looks for "global.conf" in the global conf directory.
-        /// 
-        /// The optional callback function can call GetStr or GetInt on this
-        /// (or other) config files, but it should not call any other
-        /// functions in the config interface.
+        /// </remarks>
+        /// <param name="arena">
+        /// The name of the arena to use when searching for the file.
+        /// <see langword="null"/> to open a file in the global conf directory.
+        /// </param>
+        /// <param name="name">
+        /// The name of the desired config file. 
+        /// <see langword="null"/> to open the default file ("arena.conf" if an <paramref name="arena"/> is specified, or "global.conf" if no arena is specified).
+        /// </param>
+        /// <returns>A handle for the file, or NULL if an error occured.</returns>
+        ConfigHandle OpenConfigFile(string arena, string name);
+
+        /// <summary>
+        /// Opens a config file, with a callback to receive change notifications.
         /// </summary>
-        /// <param name="arena">the name of the arena to use when searching for the file</param>
-        /// <param name="name">the name of the desired config file</param>
-        /// <param name="configChanged">a callback function that will get called whenever some values in the config file have changed (due to either something in the server calling SetStr or SetInt, or the file changing on disk and the server noticing)</param>
-        /// <param name="clos">a closure argument for the callback function</param>
-        /// <returns>a ConfigHandle for the new file, or NULL if an error occured</returns>
-        ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate configChanged, object clos);
+        /// <remarks>
+        /// This opens a config file to be managed by the config module.
+        /// You should close each file you open with CloseConfigFile. The
+        /// filename to open isn't specified directly, but indirectly by
+        /// providing an optional arena the file is associated with, and a
+        /// filename. These elements are plugged into the config file search
+        /// path to find the actual file. For example, if you want to open
+        /// the file groupdef.conf in the global conf directory, you'd pass
+        /// in NULL for arena and "groupdef.conf" for name. If you wanted the
+        /// file "staff.conf" in arenas/foo, you'd pass in "foo" for arena
+        /// and "staff.conf" for name. If name is NULL, it looks for
+        /// "arena.conf" in the arena directory. If name and arena are both
+        /// NULL, it looks for "global.conf" in the global conf directory.
+        /// </remarks>
+        /// <param name="arena">
+        /// The name of the arena to use when searching for the file.
+        /// <see langword="null"/> to open a file in the global conf directory.
+        /// </param>
+        /// <param name="name">
+        /// The name of the desired config file. 
+        /// <see langword="null"/> to open the default file ("arena.conf" if an <paramref name="arena"/> is specified, or "global.conf" if no arena is specified).
+        /// </param>
+        /// <param name="changedCallback">
+        /// A callback that will get called whenever a config file is changed
+        /// (due to either a call to <see cref="SetStr"/> or <see cref="SetInt"/>, or the file changing on disk and the server noticing).
+        /// <para>The callback function can call <see cref="GetStr"/> or <see cref="GetInt"/> on this (or other) config files, but it should not call any other functions in the config interface.
+        /// </para>
+        /// </param>
+        /// <returns>A handle for the file, or NULL if an error occured.</returns>
+        ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate changedCallback);
+
+        /// <summary>
+        /// Opens a config file, with a callback to receive change notifications.
+        /// </summary>
+        /// <remarks>
+        /// This opens a config file to be managed by the config module.
+        /// You should close each file you open with CloseConfigFile. The
+        /// filename to open isn't specified directly, but indirectly by
+        /// providing an optional arena the file is associated with, and a
+        /// filename. These elements are plugged into the config file search
+        /// path to find the actual file. For example, if you want to open
+        /// the file groupdef.conf in the global conf directory, you'd pass
+        /// in NULL for arena and "groupdef.conf" for name. If you wanted the
+        /// file "staff.conf" in arenas/foo, you'd pass in "foo" for arena
+        /// and "staff.conf" for name. If name is NULL, it looks for
+        /// "arena.conf" in the arena directory. If name and arena are both
+        /// NULL, it looks for "global.conf" in the global conf directory.
+        /// </remarks>
+        /// <param name="arena">
+        /// The name of the arena to use when searching for the file.
+        /// <see langword="null"/> to open a file in the global conf directory.
+        /// </param>
+        /// <param name="name">
+        /// The name of the desired config file. 
+        /// <see langword="null"/> to open the default file ("arena.conf" if an <paramref name="arena"/> is specified, or "global.conf" if no arena is specified).
+        /// </param>
+        /// <param name="changedCallback">
+        /// A callback that will get called whenever a config file is changed
+        /// (due to either a call to <see cref="SetStr"/> or <see cref="SetInt"/>, or the file changing on disk and the server noticing).
+        /// <para>The callback function can call <see cref="GetStr"/> or <see cref="GetInt"/> on this (or other) config files, but it should not call any other functions in the config interface.
+        /// </para>
+        /// </param>
+        /// <param name="state">An object to be passed when <paramref name="changedCallback"/> is called.</param>
+        /// <returns>A handle for the file, or NULL if an error occured.</returns>
+        ConfigHandle OpenConfigFile<TState>(string arena, string name, ConfigChangedDelegate<TState> changedCallback, TState state);
 
         /// <summary>
         /// Closes a previously opened file.

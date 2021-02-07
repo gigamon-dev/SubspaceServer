@@ -979,7 +979,7 @@ namespace SS.Core.Modules
                     switch (status)
                     {
                         case ArenaState.DoInit0:
-                            arena.Cfg = _configManager.OpenConfigFile(arena.BaseName, null, new ConfigChangedDelegate(ArenaConfChanged), arena);
+                            arena.Cfg = _configManager.OpenConfigFile(arena.BaseName, null, ArenaConfChanged, arena);
                             arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DEFAULT_SPEC_FREQ);
                             arena.Status = ArenaState.WaitHolds0;
                             Debug.Assert(arenaData.Holds == 0);
