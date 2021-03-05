@@ -8,7 +8,14 @@ namespace SS.Core.Configuration
 {
     public class LineReference
     {
+        /// <summary>
+        /// The line.
+        /// </summary>
         public RawLine Line { get; init; }
+
+        /// <summary>
+        /// The file the line came from.
+        /// </summary>
         public ConfFile File { get; init; }
     }
 }

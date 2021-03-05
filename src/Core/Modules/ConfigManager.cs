@@ -364,12 +364,12 @@ namespace SS.Core.Modules
             throw new InvalidOperationException("Handle is closed.");
         }
 
-        public void SetInt(ConfigHandle handle, string section, string key, int value, string info, bool permanent)
+        public void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent)
         {
-            SetStr(handle, section, key, value.ToString(), info, permanent);
+            SetStr(handle, section, key, value.ToString(), comment, permanent);
         }
 
-        public void SetStr(ConfigHandle handle, string section, string key, string value, string info, bool permanent)
+        public void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent)
         {
             if (handle == null)
                 throw new ArgumentNullException(nameof(handle));
@@ -385,7 +385,7 @@ namespace SS.Core.Modules
                 {
                     if (documentHandle.DocumentInfo != null)
                     {
-                        documentHandle.DocumentInfo.Document.UpdateOrAddProperty(section, key, value, permanent);
+                        documentHandle.DocumentInfo.Document.UpdateOrAddProperty(section, key, value, permanent, comment);
 
                         // set a flag so that we remember to fire change notifications (done in a timer)
                         documentHandle.DocumentInfo.IsChangeNotificationPending = true;

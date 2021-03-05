@@ -175,21 +175,20 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to change</param>
         /// <param name="value">the new value of the key</param>
-        /// <param name="info">a string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004"</param>
+        /// <param name="comment">a string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004"</param>
         /// <param name="permanent">whether this change should be written back to the config file.</param>
-        void SetStr(ConfigHandle ch, string section, string key, string value, string info, bool permanent);
+        void SetStr(ConfigHandle ch, string section, string key, string value, string comment, bool permanent);
 
         /// <summary>
         /// Changes a config file value.
-        /// Same as SetStr, but the new value is specified as an integer.
+        /// The same as <see cref="SetStr"/>, but the as an integer.
         /// </summary>
-        /// <see cref="SetStr"/>
-        /// <param name="ch"></param>
-        /// <param name="section"></param>
-        /// <param name="key"></param>
-        /// <param name="value"></param>
-        /// <param name="info"></param>
-        /// <param name="permanent"></param>
-        void SetInt(ConfigHandle ch, string section, string key, int value, string info, bool permanent);
+        /// <param name="ch">the config file to use</param>
+        /// <param name="section">which section of the file the key is in</param>
+        /// <param name="key">the name of the key to change</param>
+        /// <param name="value">the new value of the key</param>
+        /// <param name="comment">a string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004"</param>
+        /// <param name="permanent">whether this change should be written back to the config file.</param>
+        void SetInt(ConfigHandle ch, string section, string key, int value, string comment, bool permanent);
     }
 }

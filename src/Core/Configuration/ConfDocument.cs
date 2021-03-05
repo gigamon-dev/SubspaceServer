@@ -187,7 +187,7 @@ namespace SS.Core.Configuration
             // try to update first
             //
 
-            if (TryUpdateProperty(section, key, value, permanent))
+            if (TryUpdateProperty(section, key, value, permanent, comment))
                 return;
 
             //
@@ -234,9 +234,17 @@ namespace SS.Core.Configuration
 
                         // change the file
                         updatingFile = file;
-                        // TODO: logic to also insert comment line
+
+                        if (!string.IsNullOrWhiteSpace(comment))
+                        {
+                            file.Lines.Insert(
+                                ++fileIndex,
+                                new RawComment() { CommentChar = ';', Text = comment });
+                        }
+
                         file.Lines.Insert(++fileIndex, propertyToInsert);
                         file.SetDirty();
+
                         updatingFile = null;
 
                         // add it to the lines we consider active
@@ -270,8 +278,17 @@ namespace SS.Core.Configuration
                         HasDelimiter = value != null,
                     };
 
-                // TODO: logic to also add comment line
+                updatingFile = baseFile;
+
+                if (!string.IsNullOrWhiteSpace(comment))
+                {
+                    baseFile.Lines.Add(new RawComment() { CommentChar = ';', Text = comment });
+                }
+
                 baseFile.Lines.Add(propertyToAdd);
+                baseFile.SetDirty();
+                
+                updatingFile = null;
 
                 LineReference lineRef = new LineReference
                 {
@@ -365,7 +382,20 @@ namespace SS.Core.Configuration
                     lines[docIndex] = lineReference;
                     propertyInfo.PropertyReference = lineReference;
 
-                    // TODO: logic to update comment line(s)
+                    // update comment line(s)
+                    if (!string.IsNullOrWhiteSpace(comment))
+                    {
+                        updatingFile.Lines.Insert(
+                            fileIndex,
+                            new RawComment() { CommentChar = ';', Text = comment });
+
+                        // remove old comments (comment lines immediately before the property line)
+                        int commentIndex = fileIndex;
+                        while (--commentIndex >= 0 && updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
+                        {
+                            updatingFile.Lines.RemoveAt(commentIndex);
+                        }
+                    }
 
                     updatingFile.SetDirty();
                 }
