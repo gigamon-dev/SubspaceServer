@@ -82,7 +82,7 @@ namespace SS.Core.Modules
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
 
             string newsFilename = _configManager.GetStr(_configManager.Global, "General", "NewsFile");
-            if (string.IsNullOrEmpty(newsFilename))
+            if (string.IsNullOrWhiteSpace(newsFilename))
                 newsFilename = "news.txt";
 
             _newsManager = new NewsManager(newsFilename);
@@ -531,7 +531,7 @@ namespace SS.Core.Modules
             public MapDownloadData MapDownloadData { get; }
         }
 
-        private class NewsManager : IDisposable
+        private sealed class NewsManager : IDisposable
         {
             private readonly string _newsFilename;
             private byte[] _compressedNewsData; // includes packet header
@@ -541,8 +541,8 @@ namespace SS.Core.Modules
 
             public NewsManager(string filename)
             {
-                if (string.IsNullOrEmpty(filename))
-                    throw new ArgumentNullException("filename");
+                if (string.IsNullOrWhiteSpace(filename))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
 
                 _newsFilename = filename;
 
@@ -564,25 +564,32 @@ namespace SS.Core.Modules
                 uint checksum;
                 byte[] compressedData;
 
-                using (FileStream newsStream = File.OpenRead(_newsFilename))
+                try
                 {
-                    // calculate the checksum
-                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
-                    checksum = (uint)crc32.GetCrc32(newsStream);
-
-                    newsStream.Position = 0;
-
-                    // compress using zlib
-                    using MemoryStream compressedStream = new MemoryStream();
-                    using (ZlibStream zlibStream = new ZlibStream(
-                        compressedStream,
-                        CompressionMode.Compress,
-                        CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                    using (FileStream newsStream = File.OpenRead(_newsFilename))
                     {
-                        newsStream.CopyTo(zlibStream);
-                    }
+                        // calculate the checksum
+                        Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                        checksum = (uint)crc32.GetCrc32(newsStream);
 
-                    compressedData = compressedStream.ToArray();
+                        newsStream.Position = 0;
+
+                        // compress using zlib
+                        using MemoryStream compressedStream = new MemoryStream();
+                        using (ZlibStream zlibStream = new ZlibStream(
+                            compressedStream,
+                            CompressionMode.Compress,
+                            CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                        {
+                            newsStream.CopyTo(zlibStream);
+                        }
+
+                        compressedData = compressedStream.ToArray();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return;
                 }
 
                 // prepare the file packet
