@@ -21,6 +21,7 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private ICommandManager _commandManager;
         private IGame _game;
+        IGroupManager _groupManager;
         private IMainloop _mainloop;
         private IMapData _mapData;
         private IModuleManager _mm;
@@ -39,6 +40,7 @@ namespace SS.Core.Modules
             IConfigManager configManager,
             ICommandManager commandManager,
             IGame game,
+            IGroupManager groupManager,
             IMainloop mainloop,
             IMapData mapData,
             IModuleManager mm,
@@ -52,6 +54,7 @@ namespace SS.Core.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
+            _groupManager = groupManager ?? throw new ArgumentNullException(nameof(groupManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
@@ -75,6 +78,8 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("rmmod", Command_rmmod);
             _commandManager.AddCommand("attmod", Command_attmod);
             _commandManager.AddCommand("detmod", Command_detmod);
+            _commandManager.AddCommand("getgroup", Command_getgroup);
+            _commandManager.AddCommand("grplogin", Command_grplogin);
             _commandManager.AddCommand("where", Command_where);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
 
@@ -97,6 +102,8 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("rmmod", Command_rmmod);
             _commandManager.RemoveCommand("attmod", Command_attmod);
             _commandManager.RemoveCommand("detmod", Command_detmod);
+            _commandManager.RemoveCommand("getgroup", Command_getgroup);
+            _commandManager.RemoveCommand("grplogin", Command_grplogin);
             _commandManager.RemoveCommand("where", Command_where);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
 
@@ -568,6 +575,46 @@ namespace SS.Core.Modules
                     _chat.SendMessage(p, $"Module '{module}' attached.");
                 else
                     _chat.SendMessage(p, $"Failed to attach module '{module}'.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.None,
+            Args = null,
+            Description = "Displays the group of the player, or if none specified, you.")]
+        private void Command_getgroup(string command, string parameters, Player p, ITarget target)
+        {
+            if (target.Type == TargetType.Player && target is IPlayerTarget playerTarget)
+            {
+                Player targetPlayer = playerTarget.Player;
+                _chat.SendMessage(p, $"{targetPlayer.Name} is in group {_groupManager.GetGroup(targetPlayer)}.");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"You are in group {_groupManager.GetGroup(p)}.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<group name> <password>",
+            Description = "Logs you in to the specified group, if the password is correct.")]
+        private void Command_grplogin(string command, string parameters, Player p, ITarget target)
+        {            
+            string[] parameterArray = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (parameterArray.Length != 2)
+            {
+                _chat.SendMessage(p, "You must specify a group name and password.");
+            }
+            else if (_groupManager.CheckGroupPassword(parameterArray[0], parameterArray[1]))
+            {
+                _groupManager.SetTempGroup(p, parameterArray[0]);
+                _chat.SendMessage(p, $"You are now in group {parameterArray[0]}.");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"Bad password for group {parameterArray[0]}.");
             }
         }
 

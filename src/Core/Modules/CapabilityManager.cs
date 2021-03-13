@@ -180,15 +180,14 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (string.IsNullOrWhiteSpace(group))
                 return;
 
-            if (string.IsNullOrEmpty(group))
-            {
-                pd.Group = group;
-                pd.Source = CapSource.Temp;
-            }
+            if (p[_pdkey] is not PlayerData pd)
+                return;
+
+            pd.Group = group;
+            pd.Source = CapSource.Temp;
         }
 
         void IGroupManager.RemoveGroup(Player p, string info)
@@ -229,10 +228,10 @@ namespace SS.Core.Modules
         {
             string correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
             
-            if (string.IsNullOrEmpty(correctPw))
+            if (string.IsNullOrWhiteSpace(correctPw))
                 return false;
 
-            return string.Compare(correctPw, pw, false) == 0;
+            return string.Equals(correctPw, pw, StringComparison.OrdinalIgnoreCase);
         }
 
         #endregion
