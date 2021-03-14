@@ -132,10 +132,19 @@ namespace SS.Core.Configuration
             if (TryWriteRaw(writer))
                 return;
 
+            if (SectionOverride != null) // note: allowing empty string for no section
+            {
+                writer.Write(SectionOverride);
+                writer.Write(':');
+            }
+
+            writer.Write(Key);
+
             if (HasDelimiter || !string.IsNullOrWhiteSpace(Value))
-                writer.WriteLine("{0} = {1}", Key, Value);
-            else
-                writer.WriteLine(Key);
+            {
+                writer.Write(" = ");
+                writer.WriteLine(Value);
+            }
         }
     }
 
