@@ -143,8 +143,10 @@ namespace SS.Core.Configuration
             if (HasDelimiter || !string.IsNullOrWhiteSpace(Value))
             {
                 writer.Write(" = ");
-                writer.WriteLine(Value);
+                writer.Write(Value);
             }
+
+            writer.WriteLine();
         }
     }
 
