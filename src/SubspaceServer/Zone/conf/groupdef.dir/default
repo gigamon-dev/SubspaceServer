@@ -18,6 +18,7 @@ cmd_cheater
 cmd_where
 cmd_zone
 cmd_obscene
+privcmd_reply
 
 cmd_version
 cmd_uptime

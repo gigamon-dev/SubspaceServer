@@ -187,7 +187,7 @@ namespace SS.Core.Modules
 
         void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
         {
-            
+            SendMessage(set, type, sound, from, format, args);
         }
 
         void IChat.SendArenaMessage(Arena arena, string format, params object[] args)

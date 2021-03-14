@@ -75,6 +75,12 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("sheep", Command_sheep);
             _commandManager.AddCommand("netstats", Command_netstats);
             _commandManager.AddCommand("info", Command_info);
+            _commandManager.AddCommand("a", Command_a);
+            _commandManager.AddCommand("aa", Command_aa);
+            _commandManager.AddCommand("z", Command_z);
+            _commandManager.AddCommand("az", Command_az);
+            _commandManager.AddCommand("warn", Command_warn);
+            _commandManager.AddCommand("reply", Command_reply);
             _commandManager.AddCommand("lsmod", Command_lsmod);
             _commandManager.AddCommand("modinfo", Command_modinfo);
             _commandManager.AddCommand("insmod", Command_insmod);
@@ -102,6 +108,12 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("sheep", Command_sheep);
             _commandManager.RemoveCommand("netstats", Command_netstats);
             _commandManager.RemoveCommand("info", Command_info);
+            _commandManager.RemoveCommand("a", Command_a);
+            _commandManager.RemoveCommand("aa", Command_aa);
+            _commandManager.RemoveCommand("z", Command_a);
+            _commandManager.RemoveCommand("az", Command_az);
+            _commandManager.RemoveCommand("warn", Command_warn);
+            _commandManager.RemoveCommand("reply", Command_reply);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
             _commandManager.RemoveCommand("modinfo", Command_modinfo);
             _commandManager.RemoveCommand("insmod", Command_insmod);
@@ -341,6 +353,95 @@ namespace SS.Core.Modules
             {
                 SendCommonBandwidthInfo(p, t, connectedTimeSpan, prefix, true);
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "<text>",
+            Description = "Displays the text as an arena (green) message to the targets.")]
+        private void Command_a(string command, string parameters, Player p, ITarget target)
+        {
+            ChatSound sound = ChatSound.Beep1; // TODO:
+            _playerData.TargetToSet(target, out LinkedList<Player> set);
+            _chat.SendSetSoundMessage(set, sound, $"{parameters} -{p.Name}");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "<text>",
+            Description = "Displays the text as an anonymous arena (green) message to the targets.")]
+        private void Command_aa(string command, string parameters, Player p, ITarget target)
+        {
+            ChatSound sound = ChatSound.Beep1; // TODO:
+            _playerData.TargetToSet(target, out LinkedList<Player> set);
+            _chat.SendSetSoundMessage(set, sound, "{0}", parameters);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<text>",
+            Description = "Displays the text as an arena (green) message to the whole zone.")]
+        private void Command_z(string command, string parameters, Player p, ITarget target)
+        {
+            ChatSound sound = ChatSound.Beep1; // TODO:
+            _chat.SendArenaSoundMessage(null, sound, $"{parameters} -{p.Name}");
+
+            // TODO: peer
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<text>",
+            Description = "Displays the text as an anonymous arena (green) message to the whole zone.")]
+        private void Command_az(string command, string parameters, Player p, ITarget target)
+        {
+            ChatSound sound = ChatSound.Beep1; // TODO:
+            _chat.SendArenaSoundMessage(null, sound, "{0}", parameters);
+
+            // TODO: peer
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "<message>",
+            Description = "Sends a red warning message to a player.")]
+        private void Command_warn(string command, string parameters, Player p, ITarget target)
+        {
+            if (target.Type != TargetType.Player || target is not IPlayerTarget playerTarget)
+            {
+                _chat.SendMessage(p, "You must target a player.");
+                return;
+            }
+
+            Player[] set = { playerTarget.Player };
+            if (_capabilityManager.HasCapability(p, Constants.Capabilities.IsStaff))
+            {
+                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters} -{p.Name}");
+            }
+            else
+            {
+                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters}");
+            }
+
+            _chat.SendMessage(p, $"Player '{playerTarget.Player.Name}' has been warned.");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "<message>",
+            Description = "Sends a private message to a player.\n" +
+            "Useful for logging replies to moderator help requests.")]
+        private void Command_reply(string command, string parameters, Player p, ITarget target)
+        {
+            if (target.Type != TargetType.Player || target is not IPlayerTarget playerTarget)
+            {
+                _chat.SendMessage(p, "You must target a player.");
+                return;
+            }
+
+            Player[] set = { playerTarget.Player };
+            _chat.SendAnyMessage(set, ChatMessageType.Private, ChatSound.None, p, "{0}", parameters);
+            _chat.SendMessage(p, $"Private message sent to player '{playerTarget.Player.Name}'.");
         }
 
         private void SendCommonBandwidthInfo(Player p, Player t, TimeSpan connectedTimeSpan, string prefix, bool includeSensitive)
