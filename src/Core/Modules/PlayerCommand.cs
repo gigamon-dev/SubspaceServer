@@ -21,7 +21,8 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private ICommandManager _commandManager;
         private IGame _game;
-        IGroupManager _groupManager;
+        private IGroupManager _groupManager;
+        private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMapData _mapData;
         private IModuleManager _mm;
@@ -41,6 +42,7 @@ namespace SS.Core.Modules
             ICommandManager commandManager,
             IGame game,
             IGroupManager groupManager,
+            ILogManager logManager,
             IMainloop mainloop,
             IMapData mapData,
             IModuleManager mm,
@@ -55,6 +57,7 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _groupManager = groupManager ?? throw new ArgumentNullException(nameof(groupManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
@@ -79,6 +82,8 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("attmod", Command_attmod);
             _commandManager.AddCommand("detmod", Command_detmod);
             _commandManager.AddCommand("getgroup", Command_getgroup);
+            _commandManager.AddCommand("setgroup", Command_setgroup);
+            _commandManager.AddCommand("rmgroup", Command_rmgroup);
             _commandManager.AddCommand("grplogin", Command_grplogin);
             _commandManager.AddCommand("where", Command_where);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
@@ -103,6 +108,8 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("attmod", Command_attmod);
             _commandManager.RemoveCommand("detmod", Command_detmod);
             _commandManager.RemoveCommand("getgroup", Command_getgroup);
+            _commandManager.RemoveCommand("setgroup", Command_setgroup);
+            _commandManager.RemoveCommand("rmgroup", Command_rmgroup);
             _commandManager.RemoveCommand("grplogin", Command_grplogin);
             _commandManager.RemoveCommand("where", Command_where);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
@@ -182,7 +189,7 @@ namespace SS.Core.Modules
             "Immediately shuts down the server, exiting with {EXIT_NONE}. If\n" + 
             "{-r} is specified, exit with {EXIT_RECYCLE} instead. The {run-asss}\n" +
             "script, if it is being used, will notice {EXIT_RECYCLE} and restart\n" +
-            "the server.\n")]
+            "the server.")]
         private void Command_shutdown(string command, string parameters, Player p, ITarget target)
         {
             ExitCode code = string.Equals(parameters, "-r", StringComparison.OrdinalIgnoreCase)
@@ -196,9 +203,9 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description =
-            "Immediately shuts down the server, exiting with {EXIT_RECYCLE}. The " +
-            "{run-asss} script, if it is being used, will notice {EXIT_RECYCLE} " +
-            "and restart the server.\n")]
+            "Immediately shuts down the server, exiting with {EXIT_RECYCLE}. The\n" +
+            "{run-asss} script, if it is being used, will notice {EXIT_RECYCLE}\n" +
+            "and restart the server.")]
         private void Command_recyclezone(string command, string parameters, Player p, ITarget target)
         {
             _mainloop.Quit(ExitCode.Recycle);
@@ -219,8 +226,8 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "[{-v}]",
             Description = 
-            "Prints out information about the server." +
-            "For staff members, it will print more detailed version information." +
+            "Prints out information about the server.\n" +
+            "For staff members, it will print more detailed version information.\n" +
             "If staff members specify the {-v} arg, it will print even more verbose information.")]
         private void Command_version(string command, string parameters, Player p, ITarget target)
         {
@@ -437,7 +444,7 @@ namespace SS.Core.Modules
             Description =
             "Displays information about the specified module. This might include a\n" +
             "version number, contact information for the author, and a general\n" +
-            "description of the module.\n")]
+            "description of the module.")]
         private void Command_modinfo(string command, string parameters, Player p, ITarget target)
         {
             if (string.IsNullOrWhiteSpace(parameters))
@@ -593,6 +600,99 @@ namespace SS.Core.Modules
             {
                 _chat.SendMessage(p, $"You are in group {_groupManager.GetGroup(p)}.");
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "[{-a}] [{-p}] <group name>",
+            Description = "Assigns the group given as an argument to the target player. The player\n" +
+            "must be in group {default}, or the server will refuse to change his\n" +
+            "group. Additionally, the player giving the command must have an\n" +
+            "appropriate capability: {setgroup_foo}, where {foo} is the\n" +
+            "group that he's trying to set the target to.\n\n" +
+            "The optional {-p} means to assign the group permanently. Otherwise, when\n" +
+            "the target player logs out or changes arenas, the group will be lost.\n\n" +
+            "The optional {-a} means to make the assignment local to the current\n" +
+            "arena, rather than being valid in the entire zone.")]
+        private void Command_setgroup(string command, string parameters, Player p, ITarget target)
+        {
+            Player targetPlayer = (target as IPlayerTarget)?.Player;
+            if (targetPlayer == null)
+                return;
+
+            bool permanent = false;
+            bool global = true;
+            string groupName = null;
+
+            string[] parameterArray = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (string parameter in parameterArray)
+            {
+                if (string.Equals(parameter, "-p"))
+                    permanent = true;
+                else if (string.Equals(parameter, "-a"))
+                    global = false;
+                else
+                    groupName = parameter;
+            }
+
+            if (string.IsNullOrWhiteSpace(groupName))
+                return;
+
+            if (!_capabilityManager.HasCapability(p, $"higher_than_{groupName}"))
+            {
+                _chat.SendMessage(p, $"You don't have permission to give people group {groupName}.");
+                _logManager.LogP(LogLevel.Warn, nameof(PlayerCommand), p, $"Doesn't have permission to set group '{groupName}'.");
+                return;
+            }
+
+            // make sure the target isn't in a group already
+            string currentGroup = _groupManager.GetGroup(targetPlayer);
+            if (!string.Equals(currentGroup, "default"))
+            {
+                _chat.SendMessage(p, $"Player {targetPlayer.Name} already has a group. You need to use ?rmgroup first.");
+                _logManager.LogP(LogLevel.Warn, nameof(PlayerCommand), p, $"Tried to set the group of [{targetPlayer.Name}], who is in '{currentGroup}' already, to '{groupName}'.");
+                return;
+            }
+
+            if (permanent)
+            {
+                _groupManager.SetPermGroup(targetPlayer, groupName, global, $"Set by {p.Name} on {DateTime.Now}.");
+                _chat.SendMessage(p, $"{targetPlayer.Name} is now in group {groupName}.");
+                _chat.SendMessage(targetPlayer, $"You have been assigned to group {groupName} by {p.Name}.");
+            }
+            else
+            {
+                _groupManager.SetTempGroup(targetPlayer, groupName);
+                _chat.SendMessage(p, $"{targetPlayer.Name} is now temporarily in group {groupName}.");
+                _chat.SendMessage(targetPlayer, $"You have been temporarily assigned to group {groupName} by {p.Name}.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = null,
+            Description = "Removes the group from a player, returning him to group 'default'. If\n" +
+            "the group was assigned for this session only, then it will be removed\n" +
+            "for this session; if it is a global group, it will be removed globally;\n" +
+            "and if it is an arena group, it will be removed for this arena.")]
+        private void Command_rmgroup(string command, string parameters, Player p, ITarget target)
+        {
+            Player targetPlayer = (target as IPlayerTarget)?.Player;
+            if (targetPlayer == null)
+                return;
+
+            string currentGroup = _groupManager.GetGroup(targetPlayer);
+            if (!_capabilityManager.HasCapability(p, $"higher_than_{currentGroup}"))
+            {
+                _chat.SendMessage(p, $"You don't have permission to take away group {currentGroup}.");
+                _logManager.LogP(LogLevel.Warn, nameof(PlayerCommand), p, $"Doesn't have permission to take away group '{currentGroup}'.");
+                return;
+            }
+
+            _groupManager.RemoveGroup(targetPlayer, $"Set by {p.Name} on {DateTime.Now}");
+
+            _chat.SendMessage(p, $"{targetPlayer.Name} has been removed from group {currentGroup}.");
+            _chat.SendMessage(targetPlayer, $"You have been removed from group {currentGroup}.");
         }
 
         [CommandHelp(
