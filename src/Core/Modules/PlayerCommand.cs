@@ -85,6 +85,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("setgroup", Command_setgroup);
             _commandManager.AddCommand("rmgroup", Command_rmgroup);
             _commandManager.AddCommand("grplogin", Command_grplogin);
+            _commandManager.AddCommand("listmod", Command_listmod);
             _commandManager.AddCommand("where", Command_where);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
 
@@ -111,6 +112,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("setgroup", Command_setgroup);
             _commandManager.RemoveCommand("rmgroup", Command_rmgroup);
             _commandManager.RemoveCommand("grplogin", Command_grplogin);
+            _commandManager.RemoveCommand("listmod", Command_listmod);
             _commandManager.RemoveCommand("where", Command_where);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
 
@@ -715,6 +717,60 @@ namespace SS.Core.Modules
             else
             {
                 _chat.SendMessage(p, $"Bad password for group {parameterArray[0]}.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Lists all staff members logged on, which arena they are in, and\n" +
+            "which group they belong to.\n")]
+        private void Command_listmod(string command, string parameters, Player p, ITarget target)
+        {
+            bool canSeePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
+            bool canSeeAllStaff = _capabilityManager.HasCapability(p, Constants.Capabilities.SeeAllStaff);
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player player in _playerData.PlayerList)
+                {
+                    if (player.Status != PlayerState.Playing)
+                        continue;
+
+                    string group = _groupManager.GetGroup(player);
+                    string format;
+
+                    if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
+                    {
+                        format = ": {0} {1} {2}";
+                    }
+                    else if (canSeeAllStaff
+                        && !string.Equals(group, "default", StringComparison.Ordinal)
+                        && !string.Equals(group, "none", StringComparison.Ordinal))
+                    {
+                        format = ": {0} {1} ({2})";
+                    }
+                    else
+                    {
+                        format = null;
+                    }
+
+                    if (format != null)
+                    {
+                        _chat.SendMessage(
+                            p,
+                            format,
+                            player.Name,
+                            (!player.Arena.IsPrivate || canSeePrivateArenas || p.Arena == player.Arena) ? player.Arena.Name : "(private)",
+                            group);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
             }
         }
 
