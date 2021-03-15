@@ -83,6 +83,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("warn", Command_warn);
             _commandManager.AddCommand("reply", Command_reply);
             _commandManager.AddCommand("warpto", Command_warpto);
+            _commandManager.AddCommand("shipreset", Command_shipreset);
             _commandManager.AddCommand("send", Command_send);
             _commandManager.AddCommand("lsmod", Command_lsmod);
             _commandManager.AddCommand("modinfo", Command_modinfo);
@@ -119,6 +120,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("warn", Command_warn);
             _commandManager.RemoveCommand("reply", Command_reply);
             _commandManager.RemoveCommand("warpto", Command_warpto);
+            _commandManager.RemoveCommand("shipreset", Command_shipreset);
             _commandManager.RemoveCommand("send", Command_send);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
             _commandManager.RemoveCommand("modinfo", Command_modinfo);
@@ -513,6 +515,15 @@ namespace SS.Core.Modules
                 return;
 
             _game.WarpTo(target, x, y);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = null,
+            Description = "Resets the ship of the target player(s).")]
+        private void Command_shipreset(string command, string parameters, Player p, ITarget target)
+        {
+            _game.ShipReset(target);
         }
 
         [CommandHelp(
