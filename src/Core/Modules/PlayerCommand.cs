@@ -84,6 +84,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("reply", Command_reply);
             _commandManager.AddCommand("warpto", Command_warpto);
             _commandManager.AddCommand("shipreset", Command_shipreset);
+            _commandManager.AddCommand("specall", Command_specall);
             _commandManager.AddCommand("send", Command_send);
             _commandManager.AddCommand("lsmod", Command_lsmod);
             _commandManager.AddCommand("modinfo", Command_modinfo);
@@ -121,6 +122,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("reply", Command_reply);
             _commandManager.RemoveCommand("warpto", Command_warpto);
             _commandManager.RemoveCommand("shipreset", Command_shipreset);
+            _commandManager.RemoveCommand("specall", Command_specall);
             _commandManager.RemoveCommand("send", Command_send);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
             _commandManager.RemoveCommand("modinfo", Command_modinfo);
@@ -524,6 +526,18 @@ namespace SS.Core.Modules
         private void Command_shipreset(string command, string parameters, Player p, ITarget target)
         {
             _game.ShipReset(target);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = null,
+            Description = "Sends all of the targets to spectator mode.")]
+        private void Command_specall(string command, string parameters, Player p, ITarget target)
+        {
+            _playerData.TargetToSet(target, out LinkedList<Player> set);
+
+            foreach (Player player in set)
+                _game.SetShipAndFreq(player, ShipType.Spec, p.Arena.SpecFreq);
         }
 
         [CommandHelp(
