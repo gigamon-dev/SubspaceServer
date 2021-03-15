@@ -86,7 +86,7 @@ namespace SS.Core.Modules
             {
                 if (string.IsNullOrWhiteSpace(helpText))
                 {
-                    TryGetHelpText(handler, out helpText);
+                    TryGetHelpText(commandName, handler, out helpText);
                 }
 
                 CommandData cd = new CommandData(handler, arena, helpText);
@@ -104,28 +104,33 @@ namespace SS.Core.Modules
             }
         }
 
-        private bool TryGetHelpText(CommandDelegate handler, out string helpText)
+        private bool TryGetHelpText(string commandName, CommandDelegate handler, out string helpText)
         {
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
             MethodInfo mi = handler.GetMethodInfo();
-            CommandHelpAttribute helpAttr = mi.GetCustomAttribute<CommandHelpAttribute>();
-            if (helpAttr == null)
+            foreach (CommandHelpAttribute helpAttr in mi.GetCustomAttributes<CommandHelpAttribute>())
             {
-                helpText = null;
-                return false;
+                if (helpAttr.Command != null 
+                    && !string.Equals(helpAttr.Command, commandName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                StringBuilder sb = new StringBuilder();
+                sb.Append($"Targets: {helpAttr.Targets:F}\n");
+                sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
+
+                if (!string.IsNullOrWhiteSpace(helpAttr.Description))
+                    sb.Append(helpAttr.Description);
+
+                helpText = sb.ToString();
+                return true;
             }
 
-            StringBuilder sb = new StringBuilder();
-            sb.Append($"Targets: {helpAttr.Targets:F}\n");
-            sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
-
-            if (!string.IsNullOrWhiteSpace(helpAttr.Description))
-                sb.Append(helpAttr.Description);
-
-            helpText = sb.ToString();
-            return true;
+            helpText = null;
+            return false;
         }
 
         void ICommandManager.RemoveCommand(string commandName, CommandDelegate handler, Arena arena)

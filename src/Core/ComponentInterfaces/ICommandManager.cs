@@ -18,9 +18,14 @@ namespace SS.Core.ComponentInterfaces
     /// <summary>
     /// Attribute for providing help information about a command.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
+    [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = true)]
     public class CommandHelpAttribute : Attribute
     {
+        /// <summary>
+        /// Use this to specify the command the help information is for (for commands that share a common handler method with multiple <see cref="CommandHelpAttribute"/>s).
+        /// </summary>
+        public string Command { get; set; }
+
         /// <summary>
         /// Use this to specify the target or targets E.g., <code>CommandTarget.Player | CommandTarget.Team</code>
         /// </summary>

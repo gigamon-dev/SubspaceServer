@@ -312,19 +312,23 @@ namespace SS.Core.Modules
                 _chat.SendSoundMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
         }
 
-        // TODO: add support for multiple attributes (possibly via an optional property that specifies the command name)
-        //[CommandHelp(
-        //    Targets = CommandTarget.None,
-        //    Args = "section:key",
-        //    Description = "Displays the value of an arena setting. Make sure there are no\n" +
-        //    "spaces around the colon.")]
         [CommandHelp(
+            Command = "geta",
+            Targets = CommandTarget.None,
+            Args = "section:key",
+            Description = "Displays the value of an arena setting. Make sure there are no\n" +
+            "spaces around the colon.")]
+        [CommandHelp(
+            Command = "getg",
             Targets = CommandTarget.None,
             Args = "section:key",
             Description = "Displays the value of an global setting. Make sure there are no\n" +
             "spaces around the colon.")]
         private void Command_getX(string command, string parameters, Player p, ITarget target)
         {
+            if (string.IsNullOrWhiteSpace(parameters))
+                return;
+
             ConfigHandle ch = string.Equals(command, "geta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
             string result = _configManager.GetStr(ch, parameters, null);
             if (result != null)
@@ -337,14 +341,15 @@ namespace SS.Core.Modules
             }
         }
 
-        // TODO: add support for multiple attributes (possibly via an optional property that specifies the command name)
-        //[CommandHelp(
-        //    Targets = CommandTarget.None,
-        //    Args = "[{-t}] section:key=value",
-        //    Description = "Sets the value of an arena setting. Make sure there are no\n" +
-        //    "spaces around either the colon or the equals sign. A {-t} makes\n" +
-        //    "the setting temporary.\n")]
         [CommandHelp(
+            Command = "seta",
+            Targets = CommandTarget.None,
+            Args = "[{-t}] section:key=value",
+            Description = "Sets the value of an arena setting. Make sure there are no\n" +
+            "spaces around either the colon or the equals sign. A {-t} makes\n" +
+            "the setting temporary.\n")]
+        [CommandHelp(
+            Command = "setg",
             Targets = CommandTarget.None,
             Args = "[{-t}] section:key=value",
             Description = "Sets the value of a global setting. Make sure there are no\n"+
@@ -352,7 +357,7 @@ namespace SS.Core.Modules
             "the setting temporary.\n")]
         private void Command_setX(string command, string parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrEmpty(parameters))
+            if (string.IsNullOrWhiteSpace(parameters))
                 return;
 
             ConfigHandle ch = string.Equals(command, "seta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
