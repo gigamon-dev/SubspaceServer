@@ -74,6 +74,10 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("uptime", Command_uptime);
             _commandManager.AddCommand("version", Command_version);
             _commandManager.AddCommand("sheep", Command_sheep);
+            _commandManager.AddCommand("geta", Command_getX);
+            _commandManager.AddCommand("getg", Command_getX);
+            _commandManager.AddCommand("seta", Command_setX);
+            _commandManager.AddCommand("setg", Command_setX);
             _commandManager.AddCommand("netstats", Command_netstats);
             _commandManager.AddCommand("info", Command_info);
             _commandManager.AddCommand("a", Command_a);
@@ -112,6 +116,10 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("uptime", Command_uptime);
             _commandManager.RemoveCommand("version", Command_version);
             _commandManager.RemoveCommand("sheep", Command_sheep);
+            _commandManager.RemoveCommand("geta", Command_getX);
+            _commandManager.RemoveCommand("getg", Command_getX);
+            _commandManager.RemoveCommand("seta", Command_setX);
+            _commandManager.RemoveCommand("setg", Command_setX);
             _commandManager.RemoveCommand("netstats", Command_netstats);
             _commandManager.RemoveCommand("info", Command_info);
             _commandManager.RemoveCommand("a", Command_a);
@@ -302,6 +310,63 @@ namespace SS.Core.Modules
                 _chat.SendSoundMessage(p, ChatSound.Sheep, sheepMessage);
             else
                 _chat.SendSoundMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
+        }
+
+        // TODO: add support for multiple attributes (possibly via an optional property that specifies the command name)
+        //[CommandHelp(
+        //    Targets = CommandTarget.None,
+        //    Args = "section:key",
+        //    Description = "Displays the value of an arena setting. Make sure there are no\n" +
+        //    "spaces around the colon.")]
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "section:key",
+            Description = "Displays the value of an global setting. Make sure there are no\n" +
+            "spaces around the colon.")]
+        private void Command_getX(string command, string parameters, Player p, ITarget target)
+        {
+            ConfigHandle ch = string.Equals(command, "geta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
+            string result = _configManager.GetStr(ch, parameters, null);
+            if (result != null)
+            {
+                _chat.SendMessage(p, $"{parameters}={result}");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"{parameters} not found.");
+            }
+        }
+
+        // TODO: add support for multiple attributes (possibly via an optional property that specifies the command name)
+        //[CommandHelp(
+        //    Targets = CommandTarget.None,
+        //    Args = "[{-t}] section:key=value",
+        //    Description = "Sets the value of an arena setting. Make sure there are no\n" +
+        //    "spaces around either the colon or the equals sign. A {-t} makes\n" +
+        //    "the setting temporary.\n")]
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[{-t}] section:key=value",
+            Description = "Sets the value of a global setting. Make sure there are no\n"+
+            "spaces around either the colon or the equals sign. A {-t} makes\n"+
+            "the setting temporary.\n")]
+        private void Command_setX(string command, string parameters, Player p, ITarget target)
+        {
+            if (string.IsNullOrEmpty(parameters))
+                return;
+
+            ConfigHandle ch = string.Equals(command, "seta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
+            bool permanent = true;
+
+            ReadOnlySpan<char> line = parameters.AsSpan();
+            if (line.StartsWith("-t"))
+            {
+                permanent = false;
+                line = line.Slice(2);
+            }
+
+            Configuration.ConfFile.ParseConfProperty(line, out string section, out string key, out ReadOnlySpan<char> value, out _);
+            _configManager.SetStr(ch, section, key, value.ToString(), $"Set by {p.Name} on {DateTime.Now}", permanent);
         }
 
         [CommandHelp(

@@ -306,7 +306,7 @@ namespace SS.Core.Configuration
         /// <param name="key">The resulting key. <see cref="string.Empty"/> if no key found.</param>
         /// <param name="value">The resulting value. <see cref="Span{char}.Empty"/> if there is no value.</param>
         /// <param name="hasValueDelimiter"></param>
-        private static void ParseConfProperty(
+        public static void ParseConfProperty(
             ReadOnlySpan<char> line,
             out string sectionOverride,
             out string key,
