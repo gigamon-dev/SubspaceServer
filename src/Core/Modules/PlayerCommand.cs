@@ -82,6 +82,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("warn", Command_warn);
             _commandManager.AddCommand("reply", Command_reply);
             _commandManager.AddCommand("warpto", Command_warpto);
+            _commandManager.AddCommand("send", Command_send);
             _commandManager.AddCommand("lsmod", Command_lsmod);
             _commandManager.AddCommand("modinfo", Command_modinfo);
             _commandManager.AddCommand("insmod", Command_insmod);
@@ -116,6 +117,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("warn", Command_warn);
             _commandManager.RemoveCommand("reply", Command_reply);
             _commandManager.RemoveCommand("warpto", Command_warpto);
+            _commandManager.RemoveCommand("send", Command_send);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
             _commandManager.RemoveCommand("modinfo", Command_modinfo);
             _commandManager.RemoveCommand("insmod", Command_insmod);
@@ -478,6 +480,9 @@ namespace SS.Core.Modules
             Description = "Warps target player(s) to an x,y coordinate.")]
         private void Command_warpto(string command, string parameters, Player p, ITarget target)
         {
+            if (string.IsNullOrWhiteSpace(parameters))
+                return;
+
             ReadOnlySpan<char> coordsSpan = parameters.AsSpan().Trim();
 
             int index = coordsSpan.IndexOf(' ');
@@ -494,6 +499,33 @@ namespace SS.Core.Modules
                 return;
 
             _game.WarpTo(target, x, y);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "<arena name>",
+            Description = "Sends target player to the named arena. (Works on Continuum users only.)")]
+        private void Command_send(string command, string parameters, Player p, ITarget target)
+        {
+            if (string.IsNullOrWhiteSpace(parameters))
+                return;
+
+            if (target.Type != TargetType.Player || target is not IPlayerTarget playerTarget)
+                return;
+
+            Player targetPlayer = playerTarget.Player;
+            switch (targetPlayer.Type)
+            {
+                case ClientType.Continuum:
+                case ClientType.Chat:
+                case ClientType.VIE:
+                    _arenaManager.SendToArena(p, parameters, 0, 0);
+                    break;
+
+                default:
+                    _chat.SendMessage(p, "You can only use ?send on players using Continuum, Subspace or chat clients.");
+                    break;
+            }
         }
 
         [CommandHelp(
