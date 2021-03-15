@@ -196,7 +196,11 @@ namespace SS.Core.Modules
                 if (!string.IsNullOrWhiteSpace(keyTuple.ModuleTypeName))
                     _chat.SendMessage(p, $"  Requires module: {keyTuple.ModuleTypeName}");
 
-                _chat.SendMessage(p, $"  Scope: {keyTuple.Attr.Scope}");
+                if(string.IsNullOrWhiteSpace(keyTuple.Attr.FileName))
+                    _chat.SendMessage(p, $"  Location: {keyTuple.Attr.Scope}");
+                else
+                    _chat.SendMessage(p, $"  Location: {keyTuple.Attr.Scope}, File: {keyTuple.Attr.FileName}");
+
                 _chat.SendMessage(p, $"  Type: {keyTuple.Attr.Type.Name}");
 
                 if (!string.IsNullOrWhiteSpace(keyTuple.Attr.Range))

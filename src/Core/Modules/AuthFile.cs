@@ -26,8 +26,14 @@ namespace SS.Core.Modules
         private bool allowUnknown;
         private int pdKey;
 
-        //[ConfigHelp("General", "HashAlgorithm", )]
-        //[ConfigHelp("General", "AllowUnknown", )]
+        private const string ConfigFileName = "passwd.conf";
+
+        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5", Range = "See .NET documentation on 'HashAlgorithm.Create'",
+            Description = "The algorithm to use for hashing passwords.")]
+        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex", Range = "hex|Base64",
+            Description = "How password hashes are encoded in the password file.")]
+        [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1", 
+            Description = "Determines whether to allow players not listed in the password file.")]
         public bool Load(
             ComponentBroker broker,
             IPlayerData playerData,
@@ -42,7 +48,7 @@ namespace SS.Core.Modules
             this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
 
-            pwdFile = config.OpenConfigFile(null, "passwd.conf");
+            pwdFile = config.OpenConfigFile(null, ConfigFileName);
             if (pwdFile == null)
             {
                 log.LogM(LogLevel.Error, nameof(AuthFile), "Module could not load due to being unable to open passwd.conf.");
@@ -209,6 +215,8 @@ namespace SS.Core.Modules
             return hashChars.ToString();
         }
 
+        [ConfigHelp("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
+            Description = "If true, you must be authenticated (have used a correct password) according to this module or some other module before using ?local_password to change your local password.")]
         private void Command_passwd(string command, string parameters, Player p, ITarget target)
         {
             if (string.IsNullOrWhiteSpace(parameters))
