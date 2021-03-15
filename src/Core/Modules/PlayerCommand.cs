@@ -70,6 +70,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("arena", Command_arena);
             _commandManager.AddCommand("shutdown", Command_shutdown);
             _commandManager.AddCommand("recyclezone", Command_recyclezone);
+            _commandManager.AddCommand("recyclearena", Command_recyclearena);
             _commandManager.AddCommand("uptime", Command_uptime);
             _commandManager.AddCommand("version", Command_version);
             _commandManager.AddCommand("sheep", Command_sheep);
@@ -105,6 +106,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("arena", Command_arena);
             _commandManager.RemoveCommand("shutdown", Command_shutdown);
             _commandManager.RemoveCommand("recyclezone", Command_recyclezone);
+            _commandManager.RemoveCommand("recyclearena", Command_recyclearena);
             _commandManager.RemoveCommand("uptime", Command_uptime);
             _commandManager.RemoveCommand("version", Command_version);
             _commandManager.RemoveCommand("sheep", Command_sheep);
@@ -227,6 +229,18 @@ namespace SS.Core.Modules
         private void Command_recyclezone(string command, string parameters, Player p, ITarget target)
         {
             _mainloop.Quit(ExitCode.Recycle);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Recycles the current arena without kicking players off.")]
+        private void Command_recyclearena(string command, string parameters, Player p, ITarget target)
+        {
+            if (!_arenaManager.RecycleArena(p.Arena))
+            {
+                _chat.SendMessage(p, "Arena recycle failed; check the log for details.");
+            }
         }
 
         [CommandHelp(
