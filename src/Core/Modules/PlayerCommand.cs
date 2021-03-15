@@ -81,6 +81,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("az", Command_az);
             _commandManager.AddCommand("warn", Command_warn);
             _commandManager.AddCommand("reply", Command_reply);
+            _commandManager.AddCommand("warpto", Command_warpto);
             _commandManager.AddCommand("lsmod", Command_lsmod);
             _commandManager.AddCommand("modinfo", Command_modinfo);
             _commandManager.AddCommand("insmod", Command_insmod);
@@ -114,6 +115,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("az", Command_az);
             _commandManager.RemoveCommand("warn", Command_warn);
             _commandManager.RemoveCommand("reply", Command_reply);
+            _commandManager.RemoveCommand("warpto", Command_warpto);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
             _commandManager.RemoveCommand("modinfo", Command_modinfo);
             _commandManager.RemoveCommand("insmod", Command_insmod);
@@ -468,6 +470,30 @@ namespace SS.Core.Modules
 
             if (t.Flags.NoFlagsBalls)
                 _chat.SendMessage(p, $"{prefix}: lag too high to carry flags or balls");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "<x xoord> <y coord>",
+            Description = "Warps target player(s) to an x,y coordinate.")]
+        private void Command_warpto(string command, string parameters, Player p, ITarget target)
+        {
+            ReadOnlySpan<char> coordsSpan = parameters.AsSpan().Trim();
+
+            int index = coordsSpan.IndexOf(' ');
+            if (index == -1)
+                return;
+
+            if (!short.TryParse(coordsSpan.Slice(0, index), out short x))
+                return;
+
+            if (!short.TryParse(coordsSpan[(index + 1)..], out short y))
+                return;
+
+            if (x == 0 && y == 0)
+                return;
+
+            _game.WarpTo(target, x, y);
         }
 
         [CommandHelp(
