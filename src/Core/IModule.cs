@@ -51,12 +51,12 @@ namespace SS.Core
     /// 
     /// Module life cycle:
     /// <list type="number">
-    /// <item><see cref="IModule.Load(ModuleManager, Dictionary{Type, IComponentInterface})"/></item>
-    /// <item>[optional] <see cref="IModuleLoaderAware.PostLoad(ModuleManager)"/></item>
+    /// <item>Load(<see cref="ComponentBroker"/>, [&lt;component interface&gt;, ...]) method</item>
+    /// <item>[optional] <see cref="IModuleLoaderAware.PostLoad(ComponentBroker)"/></item>
     /// <item>[optional] <see cref="IArenaAttachableModule.AttachModule(Arena)"/></item>
     /// <item>[optional] <see cref="IArenaAttachableModule.DetachModule(Arena)"/></item>
-    /// <item>[optional] <see cref="IModuleLoaderAware.PreUnload(ModuleManager)"/></item>
-    /// <item><see cref="IModule.Unload(ModuleManager)"/></item>
+    /// <item>[optional] <see cref="IModuleLoaderAware.PreUnload(ComponentBroker)"/></item>
+    /// <item><see cref="IModule.Unload(ComponentBroker)"/></item>
     /// </list>
     /// </para>
     /// </summary>
@@ -76,9 +76,9 @@ namespace SS.Core
 
     /// <summary>
     /// Interface that a module can optionally implement if it needs to do work 
-    /// after being loaded (<see cref="PostLoad(ModuleManager)"/>) 
+    /// after being loaded (<see cref="PostLoad(ComponentBroker)"/>) 
     /// or 
-    /// before being unloaded (<see cref="PreUnload(ModuleManager)"/>).
+    /// before being unloaded (<see cref="PreUnload(ComponentBroker)"/>).
     /// </summary>
     public interface IModuleLoaderAware
     {
