@@ -1,2 +1,2 @@
-# This folder contains the client executables (e.g. continuum.exe).  This is to prevent them from getting into source control.
-*.exe
+# This folder is used to store temporary files (uploads, settings to be downloaded, etc.).  This is to prevent them from getting into source control.
+*.*

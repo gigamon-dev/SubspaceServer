@@ -415,7 +415,7 @@ namespace SS.Core
 		[ConfigHelp("All", "TurretSpeedPenalty", ConfigScope.Arena, typeof(int), "Amount the ship's speed is decreased with a turret riding")]
 		[ConfigHelp("All", "BulletFireDelay", ConfigScope.Arena, typeof(int), "Delay that ship waits after a bullet is fired until another weapon may be fired (in ticks)")]
 		[ConfigHelp("All", "MultiFireDelay", ConfigScope.Arena, typeof(int), "Delay that ship waits after a multifire bullet is fired until another weapon may be fired (in ticks)")]
-		[ConfigHelp("All", "BombFireDelay", ConfigScope.Arena, typeof(int), "Delay that ship waits after a bomb is fired until another weaponmay be fired (in ticks)")]
+		[ConfigHelp("All", "BombFireDelay", ConfigScope.Arena, typeof(int), "Delay that ship waits after a bomb is fired until another weapon may be fired (in ticks)")]
 		[ConfigHelp("All", "LandmineFireDelay", ConfigScope.Arena, typeof(int), "Delay that ship waits after a mine is fired until another weapon may be fired (in ticks)")]
 		[ConfigHelp("All", "RocketTime", ConfigScope.Arena, typeof(int), "How long a Rocket lasts (in ticks)")]
 		[ConfigHelp("All", "InitialBounty", ConfigScope.Arena, typeof(int), "Number of 'Greens' given to ships when they start")]

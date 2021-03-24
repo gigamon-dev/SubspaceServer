@@ -7,14 +7,16 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
-    public class Help : IModule, IModuleLoaderAware
+    public class Help : IModule, IModuleLoaderAware, IConfigHelp
     {
         private IChat _chat;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
+        private InterfaceRegistrationToken _iConfigHelpToken;
 
         private string _helpCommandName;
         private ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> _settingsLookup;
+        public ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> Sections => _settingsLookup;
         private Dictionary<string, string> _sectionAllKeysDictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private string _sectionGroupsStr;
 
@@ -34,11 +36,16 @@ namespace SS.Core.Modules
 
             _commandManager.AddCommand(_helpCommandName, Command_help);
 
+            _iConfigHelpToken = broker.RegisterInterface<IConfigHelp>(this);
+
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            if (broker.UnregisterInterface<IConfigHelp>(ref _iConfigHelpToken) != 0)
+                return false;
+
             _commandManager.RemoveCommand(_helpCommandName, Command_help);
 
             return true;
