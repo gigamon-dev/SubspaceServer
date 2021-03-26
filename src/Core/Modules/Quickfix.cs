@@ -129,12 +129,15 @@ namespace SS.Core.Modules
                     if (!string.IsNullOrWhiteSpace(attribute.Range))
                     {
                         int dashIndex = attribute.Range.IndexOf('-');
-                        if (int.TryParse(attribute.Range[0..(dashIndex - 1)], out int min)
+
+                        if (dashIndex != -1
+                            && int.TryParse(attribute.Range[0..dashIndex], out int min)
                             && int.TryParse(attribute.Range[(dashIndex + 1)..], out int max))
                         {
                             writer.Write($"{sectionName}:{attribute.Key}:{value}:{min}:{max}:{attribute.Description}\r\n");
                             continue;
                         }
+
                     }
 
                     writer.Write($"{sectionName}:{attribute.Key}:{value}:::{attribute.Description}\r\n");

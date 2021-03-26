@@ -183,6 +183,42 @@ namespace SS.Core.Modules
             }
         }
 
+        [ConfigHelp("Bullet", "ExactDamage", ConfigScope.Arena, typeof(bool), DefaultValue ="0", Description = "Whether to use exact bullet damage (Cont .36+)")]
+        [ConfigHelp("Spectator", "HideFlags", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to show dropped flags to spectators (Cont .36+)")]
+        [ConfigHelp("Spectator", "NoXRadar", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether spectators are disallowed from having X radar (Cont .36+)")]
+        [ConfigHelp("Misc", "SlowFrameCheck", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "")]
+        [ConfigHelp("Misc", "DisableScreenshot", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable Continuum's screenshot feature (Cont .37+)")]
+        [ConfigHelp("Misc", "MaxTimerDrift", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "")]
+        [ConfigHelp("Soccer", "DisableWallPass", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable ball-passing through walls (Cont .38+)")]
+        [ConfigHelp("Soccer", "DisableBallKilling", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable ball killing in safe zones (Cont .38+)")]
+        [ConfigHelp("All", "ShrapnelMax", ConfigScope.Arena, typeof(byte), "Maximum amount of shrapnel released from a ship's bomb")]
+        [ConfigHelp("All", "ShrapnelRate", ConfigScope.Arena, typeof(byte), "Amount of additional shrapnel gained by a 'Shrapnel Upgrade' prize.")]
+        [ConfigHelp("All", "AntiWarpStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'Anti-Warp' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp("All", "CloakStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'Cloak' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp("All", "StealthStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'Stealth' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp("All", "XRadarStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'X-Radar' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp("All", "InitialGuns", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Initial level a ship's guns fire")]
+        [ConfigHelp("All", "MaxGuns", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Maximum level a ship's guns can fire")]
+        [ConfigHelp("All", "InitialBombs", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Initial level a ship's bombs fire")]
+        [ConfigHelp("All", "MaxBombs", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Maximum level a ship's bombs can fire")]
+        [ConfigHelp("All", "DoubleBarrel", ConfigScope.Arena, typeof(bool), "Whether ships fire with double barrel bullets")]
+        [ConfigHelp("All", "EmpBomb", ConfigScope.Arena, typeof(bool), "Whether ships fire EMP bombs")]
+        [ConfigHelp("All", "SeeMines", ConfigScope.Arena, typeof(bool), "Whether ships see mines on radar")]
+        [ConfigHelp("All", "SeeBombLevel", ConfigScope.Arena, typeof(int), Range = "0-4", Description = "If ship can see bombs on radar (0=Disabled, 1=All, 2=L2 and up, 3=L3 and up, 4=L4 bombs only)")]
+        [ConfigHelp("All", "DisableFastShooting", ConfigScope.Arena, typeof(bool), "If firing bullets, bombs, or thors is disabled after using afterburners (1=enabled) (Cont .36+)")]
+        [ConfigHelp("All", "Radius", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "14", Description = "The ship's radius from center to outside, in pixels. (Cont .37+)")]
+        [ConfigHelp("Spawn", "Team0-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team1-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team2-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team3-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team0-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team1-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team2-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team3-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team0-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team1-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team2-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
+        [ConfigHelp("Spawn", "Team3-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
         private void LoadSettings(ArenaClientSettingsData ad, ConfigHandle ch)
         {
             if (ad == null)
@@ -200,14 +236,15 @@ namespace SS.Core.Modules
             cs.BitSet.SlowFramerate = (byte)_configManager.GetInt(ch, "Misc", "SlowFrameCheck", 0);
             cs.BitSet.DisableScreenshot = _configManager.GetInt(ch, "Misc", "DisableScreenshot", 0) != 0;
             cs.BitSet.MaxTimerDrift = (byte)_configManager.GetInt(ch, "Misc", "MaxTimerDrift", 0);
-            cs.BitSet.DisableBallThroughWalls = _configManager.GetInt(ch, "Soccer", "DisableWallPass", 0) != 0;
+            cs.BitSet.DisableWallPass = _configManager.GetInt(ch, "Soccer", "DisableWallPass", 0) != 0;
             cs.BitSet.DisableBallKilling = _configManager.GetInt(ch, "Soccer", "DisableBallKilling", 0) != 0;
 
             // ships
+            string[] shipNames = Enum.GetNames<ShipType>();
             for (int i = 0; i < 8; i++)
             {
                 ref ShipSettings ss = ref cs.Ships[i];
-                string shipName = ClientSettingsConfig.ShipNames[i];
+                string shipName = shipNames[i];
 
                 // basic stuff
                 for (int j = 0; j < ss.Int32Settings.Length; j++)
@@ -245,13 +282,9 @@ namespace SS.Core.Modules
             // spawn locations
             for (int i = 0; i < 4; i++)
             {
-                string xName = "Team#-X".Replace('#', char.Parse(i.ToString()));
-                string yName = "Team#-Y".Replace('#', char.Parse(i.ToString()));
-                string rName = "Team#-Radius".Replace('#', char.Parse(i.ToString()));
-
-                cs.SpawnPositions[i].X = (ushort)_configManager.GetInt(ch, "Spawn", xName, 0);
-                cs.SpawnPositions[i].Y = (ushort)_configManager.GetInt(ch, "Spawn", yName, 0);
-                cs.SpawnPositions[i].Radius = (ushort)_configManager.GetInt(ch, "Spawn", rName, 0);
+                cs.SpawnPositions[i].X = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-X", 0);
+                cs.SpawnPositions[i].Y = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Y", 0);
+                cs.SpawnPositions[i].Radius = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Radius", 0);
             }
 
             // rest of settings

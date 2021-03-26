@@ -28,10 +28,10 @@ namespace SS.Core.Modules
 
         private const string ConfigFileName = "passwd.conf";
 
-        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5", Range = "See .NET documentation on 'HashAlgorithm.Create'",
-            Description = "The algorithm to use for hashing passwords.")]
-        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex", Range = "hex|Base64",
-            Description = "How password hashes are encoded in the password file.")]
+        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5", 
+            Description = "The algorithm to use for hashing passwords. See .NET documentation on 'HashAlgorithm.Create'.")]
+        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex", 
+            Description = "How password hashes are encoded in the password file. hex|Base64")]
         [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1", 
             Description = "Determines whether to allow players not listed in the password file.")]
         public bool Load(

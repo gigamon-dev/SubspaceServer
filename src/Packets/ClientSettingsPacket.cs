@@ -98,7 +98,7 @@ namespace SS.Core.Packets
             set { bitfield2 = (byte)((bitfield2 & ~MaxTimerDriftMask) | (value & MaxTimerDriftMask)); }
         }
 
-        public bool DisableBallThroughWalls
+        public bool DisableWallPass
         {
             get { return ((bitfield2 & DisableBallThroughWallsMask) >> 3) != 0; }
             set { bitfield2 = (byte)((bitfield2 & ~DisableBallThroughWallsMask) | (((value ? 1 : 0) << 3) & DisableBallThroughWallsMask)); }
