@@ -57,7 +57,60 @@ namespace SS.Core.Modules
 
         private void Packet_SettingChange(Player p, byte[] data, int length)
         {
-            
+            if (!capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
+            {
+                chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
+                return;
+            }
+
+            ConfigHandle arenaConfigHandle = p.Arena?.Cfg;
+            if (arenaConfigHandle == null)
+                return;
+
+            string comment = $"Set by {p.Name} with ?quickfix on {DateTime.UtcNow}";
+            bool permanent = true;
+            int position = 1;
+
+            while (position < length)
+            {
+                int nullIndex = Array.IndexOf<byte>(data, 0, position);
+                if (nullIndex == -1 || nullIndex == position)
+                    break;
+                
+                if (nullIndex > position)
+                {
+                    string delimitedSetting = StringUtils.ReadNullTerminatedString(data.AsSpan(position, nullIndex - position));
+                    string[] tokens = delimitedSetting.Split(':', 3, StringSplitOptions.None);
+
+                    if (tokens.Length != 3)
+                    {
+                        log.LogP(LogLevel.Malicious, nameof(Quickfix), p, "Badly formatted setting change.");
+                        return;
+                    }
+
+                    if (string.Equals(tokens[0], "__pragma", StringComparison.Ordinal))
+                    {
+                        if (string.Equals(tokens[1], "perm", StringComparison.Ordinal))
+                        {
+                            // send __pragma:perm:0 to make further settings changes temporary
+                            permanent = tokens[2] != "0";
+                        }
+                        else if (string.Equals(tokens[1], "flush", StringComparison.Ordinal)
+                            && tokens[2] == "1")
+                        {
+                            // send __pragma:flush:1 to flush settings changes
+                            //TODO: configManager.FlushDirtyValues();
+                        }
+                    }
+                    else
+                    {
+                        log.LogP(LogLevel.Info, nameof(Quickfix), p, $"setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
+                        configManager.SetStr(arenaConfigHandle, tokens[0], tokens[1], tokens[2], comment, permanent);
+                    }
+                }
+
+                position = nullIndex + 1;
+            }
         }
 
         private void Command_quickfix(string command, string parameters, Player p, ITarget target)

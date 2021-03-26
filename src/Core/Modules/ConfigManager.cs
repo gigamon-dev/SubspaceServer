@@ -113,6 +113,8 @@ namespace SS.Core.Modules
 
         private bool ServerTimer_ReloadModified()
         {
+            LinkedList<DocumentInfo> notifyList = null;
+
             rwLock.EnterUpgradeableReadLock();
 
             try
@@ -156,12 +158,15 @@ namespace SS.Core.Modules
                             {
                                 Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
                                 docInfo.Document.Load();
-                                docInfo.NotifyChanged();
+                                docInfo.IsChangeNotificationPending = true;
                             }
 
                             if (docInfo.IsChangeNotificationPending)
                             {
-                                docInfo.NotifyChanged();
+                                if (notifyList == null)
+                                    notifyList = new LinkedList<DocumentInfo>();
+
+                                notifyList.AddLast(docInfo);
                             }
                         }
 
@@ -178,6 +183,15 @@ namespace SS.Core.Modules
             finally
             {
                 rwLock.ExitUpgradeableReadLock();
+            }
+
+            // notify of changes (outside of reader/writer lock)
+            if (notifyList != null)
+            {
+                foreach (var docInfo in notifyList)
+                {
+                    docInfo.NotifyChanged();
+                }
             }
 
             return true;
@@ -543,6 +557,7 @@ namespace SS.Core.Modules
         private class DocumentInfo
         {
             private readonly LinkedList<DocumentHandle> handles = new LinkedList<DocumentHandle>();
+            private readonly object lockObj = new object();
 
             public DocumentInfo(string path, ConfDocument document)
             {
@@ -555,12 +570,35 @@ namespace SS.Core.Modules
 
             public string Path { get; }
             public ConfDocument Document { get; }
-            public bool IsChangeNotificationPending { get; set; }
+            private bool isChangeNotificationPending = false;
+            public bool IsChangeNotificationPending
+            {
+                get
+                {
+                    lock (lockObj)
+                    {
+                        return isChangeNotificationPending;
+                    }
+                }
+
+                set
+                {
+                    lock (lockObj)
+                    {
+                        isChangeNotificationPending = value;
+                    }
+                }
+            }
 
             public DocumentHandle CreateHandle()
             {
                 DocumentHandle handle = new DocumentHandle(this, null);
-                handles.AddLast(handle);
+
+                lock (lockObj)
+                {
+                    handles.AddLast(handle);
+                }
+
                 return handle;
             }
 
@@ -570,7 +608,11 @@ namespace SS.Core.Modules
                     this,
                     callback != null ? new ConfigChangedInvoker(callback) : null);
 
-                handles.AddLast(handle);
+                lock (lockObj)
+                {
+                    handles.AddLast(handle);
+                }
+
                 return handle;
             }
 
@@ -580,7 +622,11 @@ namespace SS.Core.Modules
                     this,
                     callback != null ? new ConfigChangedInvoker<TState>(callback, state) : null);
 
-                handles.AddLast(handle);
+                lock (lockObj)
+                {
+                    handles.AddLast(handle);
+                }
+
                 return handle;
             }
 
@@ -593,17 +639,24 @@ namespace SS.Core.Modules
                     return false;
 
                 handle.DocumentInfo = null;
-                return handles.Remove(handle);
+
+                lock (lockObj)
+                {
+                    return handles.Remove(handle);
+                }
             }
 
             public void NotifyChanged()
             {
-                foreach (DocumentHandle handle in handles)
+                lock (lockObj)
                 {
-                    handle.NotifyConfigChanged();
-                }
+                    foreach (DocumentHandle handle in handles)
+                    {
+                        handle.NotifyConfigChanged();
+                    }
 
-                IsChangeNotificationPending = false;
+                    IsChangeNotificationPending = false;
+                }
             }
         }
     }
