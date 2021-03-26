@@ -72,13 +72,14 @@ namespace SS.Core.Modules
             if (arenaConfigHandle == null)
                 return;
 
-            // TODO: decide on whether to use
-            //Path.GetTempFileName();
-            string filename = Path.Combine("tmp", $"server-{Guid.NewGuid().ToString("N")}.set");
+            // TODO: setting on whether to use the system's temp folder (Path.GetTempFileName()) or use our own tmp folder
+            string path = Path.Combine("tmp", $"server-{Guid.NewGuid():N}.set");
+            bool hasData = false;
+
             try
             {
 
-                using FileStream fs = File.Open(filename, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                using FileStream fs = File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                 using StreamWriter writer = new StreamWriter(fs, StringUtils.DefaultEncoding);
 
                 foreach (var sectionGrouping in configHelp.Sections.OrderBy(s => s.Key))
@@ -97,12 +98,42 @@ namespace SS.Core.Modules
                         TryWriteSection(parameters, sectionGrouping, arenaConfigHandle, writer, sectionGrouping.Key);
                     }
                 }
+
+                hasData = fs.Position > 0;
             }
-            catch
+            catch (Exception ex)
             {
+                log.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to create temporary server.set file '{path}'. {ex.Message}");
+                
+                if (File.Exists(path))
+                {
+                    DeleteTempFile(path);
+                }
+                return;
             }
-            
-            //fileTransfer.SendFile(p, )
+
+            if (hasData)
+            {
+                chat.SendMessage(p, "Sending settings...");
+                fileTransfer.SendFile(p, path, "server.set", true);
+            }
+            else
+            {
+                chat.SendMessage(p, "No settings matches your query.");
+                DeleteTempFile(path);
+            }
+
+            void DeleteTempFile(string path)
+            {
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (Exception ex)
+                {
+                    log.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to delete temporary server.set file '{path}'. {ex.Message}");
+                }
+            }
         }
 
         private void TryWriteSection(

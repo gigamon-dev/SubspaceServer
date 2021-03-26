@@ -269,18 +269,19 @@ namespace SS.Core.Modules
 
             if (dataSpan.IsEmpty)
             {
-                _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "Completed send of '{0}'.", dd.Filename);
+                _logManager.LogM(LogLevel.Info, nameof(FileTransfer), $"Completed send of '{dd.Filename}'.");
                 dd.Stream.Dispose();
-                if (!string.IsNullOrEmpty(dd.DeletePath))
+
+                if (!string.IsNullOrWhiteSpace(dd.DeletePath))
                 {
                     try
                     {
                         File.Delete(dd.DeletePath);
-                        _logManager.LogM(LogLevel.Info, nameof(FileTransfer), "Deleted '{0}' after completed send.", dd.Filename);
+                        _logManager.LogM(LogLevel.Info, nameof(FileTransfer), $"Deleted '{dd.DeletePath}' ({dd.Filename}) after completed send.");
                     }
                     catch (Exception ex)
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "Failed to delete '{0}' after completed send. {1}", dd.Filename, ex.Message);
+                        _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Failed to delete '{dd.DeletePath}' ({dd.Filename}) after completed send. {ex.Message}");
                     }
                 }
 
