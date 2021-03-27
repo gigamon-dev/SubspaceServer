@@ -9,6 +9,14 @@ using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality that clients use to display an in-game user interface for managing arena settings.
+    /// This includes:
+    /// <list type="bullet">
+    /// <item>The ?quickfix command (AKA, ?getsettings for subgame compatibility) to download arena settings in a text based delimited file format.</item>
+    /// <item>A packet handler (<see cref="Packets.C2SPacketType.SettingChange"/>) for processing requests from clients to update settings.</item>
+    /// </list>
+    /// </summary>
     public class Quickfix : IModule
     {
         private ICommandManager commandManager;
