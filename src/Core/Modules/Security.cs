@@ -10,6 +10,29 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that sends security check requests to clients which they must respond to.
+    /// 
+    /// <para>
+    /// Security-wise, the requests are a countermeasure against cheating, though there is the assumption of trust in the client itself.
+    /// The server requests that the clients respond in a timely fashion with checksums of:
+    /// <list type="bullet">
+    /// <item>The map</item>
+    /// <item>Client settings</item>
+    /// <item>The client executable</item>
+    /// </list>
+    /// Through these requests, the server may decide to kick players that fail to respond or have a checksum mismatch.
+    /// </para>
+    /// 
+    /// <para>
+    /// The requests double as a mechanism to synchronize random number generator (RNG) seeds.  
+    /// The RNG seeds are used to synchronize the state of doors (open or closed) and spawn locations of prizes (greens).
+    /// </para>
+    /// 
+    /// <para>
+    /// Also, the responses from clients include data that can be used for gathering statistics on lag / packetloss.
+    /// </para>
+    /// </summary>
     [CoreModuleInfo]
     public class Security : IModule
     {

@@ -12,6 +12,9 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
+    /// </summary>
     [CoreModuleInfo]
     public class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
     {

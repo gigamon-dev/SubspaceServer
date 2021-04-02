@@ -10,6 +10,9 @@ using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that manages map data (lvl and lvz files) for arenas.
+    /// </summary>
     [CoreModuleInfo]
     public class MapData : IModule, IMapData
     {

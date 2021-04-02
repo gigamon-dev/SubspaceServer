@@ -6,6 +6,9 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that implements the <see cref="IPrng"/> interface to wrap pseudo-random number generation functionality.
+    /// </summary>
     public class Prng : IModule, IPrng
     {
         private InterfaceRegistrationToken iPrngToken;

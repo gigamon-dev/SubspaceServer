@@ -6,6 +6,9 @@ using System.Xml.Linq;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that loads modules based on an xml configuration file.
+    /// </summary>
     [CoreModuleInfo]
     public class ModuleLoader : IModule, IModuleLoader
     {

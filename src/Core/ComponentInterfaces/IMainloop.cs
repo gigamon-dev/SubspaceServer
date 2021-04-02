@@ -10,7 +10,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Called by the main thread to process the timers and work items.
         /// </summary>
-        /// <returns>The exist code to be returned to the OS.</returns>
+        /// <returns>The exit code to be returned to the OS.</returns>
         int RunLoop();
 
         /// <summary>

@@ -4,6 +4,9 @@ using System.IO;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that handles commands for administrators.
+    /// </summary>
     [CoreModuleInfo]
     public class AdminCommand : IModule
     {

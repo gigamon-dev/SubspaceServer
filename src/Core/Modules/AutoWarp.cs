@@ -1,13 +1,14 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
-using SS.Utilities;
 using System;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module for relocating, 'warping', players that move onto specially designated map regions defined in extended lvl files.
+    /// Players can be warped to a new (x,y) coordinate on the map, and even be sent to another arena.
+    /// </summary>
     [CoreModuleInfo]
     public class AutoWarp : IModule
     {

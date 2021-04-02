@@ -11,6 +11,12 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that handles the majority of player commands.
+    /// </summary>
+    /// <remarks>
+    /// See the <see cref="AdminCommand"/> module for other commands that are geared towards server administration.
+    /// </remarks>
     [CoreModuleInfo]
     public class PlayerCommand : IModule
     {
