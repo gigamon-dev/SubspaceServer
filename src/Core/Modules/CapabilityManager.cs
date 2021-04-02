@@ -1,13 +1,26 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using SS.Core.ComponentCallbacks;
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using System;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that implements capability management (<see cref="ICapabilityManager"/>) functionality by group (<see cref="IGroupManager"/>).
+    ///
+    /// <para>
+    /// Groups are configured in the "groupdef.conf" global config file.  
+    /// Within it, groups are defined and capablities assigned to each group. 
+    /// Sections are the group names and the properties within them are the capabilities.
+    /// </para>
+    /// 
+    /// <para>
+    /// Groups are further configured in the "staff.conf" global config file.
+    /// The [GroupPasswords] section can be used to set passwords for groups that can be logged into.
+    /// Group membership can be configured globally using the [(global)] section, 
+    /// or per arena using the base arena name for the section name 
+    /// (e.g. [turf] for turf, turf1, ..., turf{N}  arenas).
+    /// </para>
+    /// </summary>
     [CoreModuleInfo]
     public class CapabilityManager : IModule, ICapabilityManager, IGroupManager
     {
@@ -19,21 +32,49 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken _iCapabilityManagerToken;
         private InterfaceRegistrationToken _iGroupManagerToken;
 
-        private enum CapSource
+        /// <summary>
+        /// Enumeration representing the source of group membership.
+        /// </summary>
+        private enum GroupSource
         {
-            Default, 
-            Global, 
-            Arena, 
+            /// <summary>
+            /// No source, default value.
+            /// </summary>
+            Default,
+
+            /// <summary>
+            /// Global config, Global section: [(global)]
+            /// </summary>
+            Global,
+
+            /// <summary>
+            /// Global config, Arena section: [&lt;arena base name&gt;]
+            /// </summary>
+            Arena,
+
 #if CFG_USE_ARENA_STAFF_LIST
+            /// <summary>
+            /// Arena config, [Staff] section
+            /// </summary>
             ArenaList, 
 #endif
-            Temp, 
+            /// <summary>
+            /// Temporary, not persisted in a config file.
+            /// </summary>
+            Temp,
         }
 
         private class PlayerData
         {
+            /// <summary>
+            /// The player's current group.
+            /// </summary>
             public string Group;
-            public CapSource Source;
+
+            /// <summary>
+            /// The source of the <see cref="Group"/>.
+            /// </summary>
+            public GroupSource Source;
         }
 
         private int _pdkey;
@@ -61,8 +102,8 @@ namespace SS.Core.Modules
 
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
 
-            PlayerActionCallback.Register(_broker, playerAction);
-            NewPlayerCallback.Register(_broker, newPlayer);
+            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+            NewPlayerCallback.Register(_broker, Callback_NewPlayer);
 
             _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf");
             _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf");
@@ -84,8 +125,8 @@ namespace SS.Core.Modules
             _configManager.CloseConfigFile(_groupDefConfHandle);
             _configManager.CloseConfigFile(_staffConfHandle);
 
-            PlayerActionCallback.Unregister(_broker, playerAction);
-            NewPlayerCallback.Unregister(_broker, newPlayer);
+            PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
+            NewPlayerCallback.Unregister(_broker, Callback_NewPlayer);
 
             _playerData.FreePlayerData(_pdkey);
 
@@ -101,11 +142,9 @@ namespace SS.Core.Modules
             if (p == null)
                 return false;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (p[_pdkey] is not PlayerData pd)
                 return false;
 
-            //return !string.IsNullOrEmpty(_configManager.GetStr(_groupDefConfHandle, pd.Group, capability));
             return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
         }
 
@@ -115,7 +154,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(group))
                 group = Group_Default;
 
-            return !string.IsNullOrEmpty(_configManager.GetStr(_groupDefConfHandle, group, capability));
+            return _configManager.GetStr(_groupDefConfHandle, group, capability) != null;
         }
 
         bool ICapabilityManager.HasCapability(Player p, Arena arena, string capability)
@@ -124,14 +163,20 @@ namespace SS.Core.Modules
                 return false;
 
             PlayerData tempPd = new PlayerData();
-            updateGroup(p, tempPd, arena, false);
+            UpdateGroup(p, tempPd, arena, false);
 
-            return !string.IsNullOrEmpty(_configManager.GetStr(_groupDefConfHandle, tempPd.Group, capability));
+            return _configManager.GetStr(_groupDefConfHandle, tempPd.Group, capability) != null;
         }
 
         bool ICapabilityManager.HigherThan(Player a, Player b)
         {
-            return false;
+            if (a == null || b == null)
+                return false;
+
+            if (b[_pdkey] is not PlayerData bpd)
+                return false;
+
+            return ((ICapabilityManager)this).HasCapability(a, $"higher_than_{bpd.Group}");
         }
 
         #endregion
@@ -143,8 +188,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return null;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (p[_pdkey] is not PlayerData pd)
                 return null;
 
             return pd.Group;
@@ -155,8 +199,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             // first set it for the current session
@@ -166,12 +209,12 @@ namespace SS.Core.Modules
             if (global)
             {
                 _configManager.SetStr(_staffConfHandle, Constants.AG_GLOBAL, p.Name, group, info, true);
-                pd.Source = CapSource.Global;
+                pd.Source = GroupSource.Global;
             }
             else if (p.Arena != null)
             {
                 _configManager.SetStr(_staffConfHandle, p.Arena.BaseName, p.Name, group, info, true);
-                pd.Source = CapSource.Arena;
+                pd.Source = GroupSource.Arena;
             }
         }
 
@@ -187,7 +230,7 @@ namespace SS.Core.Modules
                 return;
 
             pd.Group = group;
-            pd.Source = CapSource.Temp;
+            pd.Source = GroupSource.Temp;
         }
 
         void IGroupManager.RemoveGroup(Player p, string info)
@@ -195,8 +238,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             // in all cases, set current group to default
@@ -204,14 +246,14 @@ namespace SS.Core.Modules
 
             switch (pd.Source)
             {
-                case CapSource.Default:
+                case GroupSource.Default:
                     break; // player is in the default group already, nothing to do
 
-                case CapSource.Global:
+                case GroupSource.Global:
                     _configManager.SetStr(_staffConfHandle, Constants.AG_GLOBAL, p.Name, Group_Default, info, true);
                     break;
 
-                case CapSource.Arena:
+                case GroupSource.Arena:
                     _configManager.SetStr(_staffConfHandle, p.Arena.BaseName, p.Name, Group_Default, info, true);
                     break;
 #if CFG_USE_ARENA_STAFF_LIST
@@ -219,7 +261,7 @@ namespace SS.Core.Modules
                     _configManager.SetStr(p.Arena.Cfg, "Staff", p.Name, Group_Default, info);
                     break;
 #endif
-                case CapSource.Temp:
+                case GroupSource.Temp:
                     break;
             }
         }
@@ -227,7 +269,7 @@ namespace SS.Core.Modules
         bool IGroupManager.CheckGroupPassword(string group, string pw)
         {
             string correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
-            
+
             if (string.IsNullOrWhiteSpace(correctPw))
                 return false;
 
@@ -236,48 +278,46 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void playerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (p == null)
                 return;
 
-            PlayerData pd = p[_pdkey] as PlayerData;
-            if (pd == null)
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             switch (action)
             {
                 case PlayerAction.PreEnterArena:
-                    updateGroup(p, pd, arena, true);
+                    UpdateGroup(p, pd, arena, true);
                     break;
 
                 case PlayerAction.Connect:
-                    updateGroup(p, pd, null, true);
+                    UpdateGroup(p, pd, null, true);
                     break;
 
                 case PlayerAction.Disconnect:
                 case PlayerAction.LeaveArena:
                     pd.Group = Group_None;
                     break;
-            }   
+            }
         }
 
-        private void newPlayer(Player p, bool isNew)
+        private void Callback_NewPlayer(Player p, bool isNew)
         {
             if (p == null)
                 return;
 
             if (isNew)
             {
-                PlayerData pd = p[_pdkey] as PlayerData;
-                if (pd == null)
+                if (p[_pdkey] is not PlayerData pd)
                     return;
 
                 pd.Group = Group_None;
             }
         }
 
-        private void updateGroup(Player p, PlayerData pd, Arena arena, bool log)
+        private void UpdateGroup(Player p, PlayerData pd, Arena arena, bool log)
         {
             if (p == null || pd == null)
                 return;
@@ -287,7 +327,7 @@ namespace SS.Core.Modules
                 // if the player hasn't been authenticated against either the
                 // biller or password file, don't assign groups based on name.
                 pd.Group = Group_Default;
-                pd.Source = CapSource.Default;
+                pd.Source = GroupSource.Default;
                 return;
             }
 
@@ -295,7 +335,7 @@ namespace SS.Core.Modules
             if (arena != null && !string.IsNullOrEmpty(g = _configManager.GetStr(_staffConfHandle, arena.BaseName, p.Name)))
             {
                 pd.Group = g;
-                pd.Source = CapSource.Arena;
+                pd.Source = GroupSource.Arena;
 
                 if (log)
                     _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, "assigned to group '{0}' (arena)", pd.Group);
@@ -313,14 +353,14 @@ namespace SS.Core.Modules
             {
                 // only global groups available for now
                 pd.Group = g;
-                pd.Source = CapSource.Global;
+                pd.Source = GroupSource.Global;
                 if (log)
                     _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, "assigned to group '{0}' (global)", pd.Group);
             }
             else
             {
                 pd.Group = Group_Default;
-                pd.Source = CapSource.Default;
+                pd.Source = GroupSource.Default;
             }
         }
     }
