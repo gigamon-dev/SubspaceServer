@@ -90,7 +90,9 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
-            broker.ReleaseInterface(ref logManager);
+            if (logManager != null)
+                broker.ReleaseInterface(ref logManager);
+
             return true;
         }
 

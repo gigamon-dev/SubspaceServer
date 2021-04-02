@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 
 namespace SS.Core
 {
     /// <summary>
-    /// Base interface for interfaces that are registerable with the ComponentBroker.
+    /// Base interface for interfaces that are registerable with the <see cref="ComponentBroker"/>.
     /// </summary>
     public interface IComponentInterface
     {
@@ -330,14 +329,14 @@ namespace SS.Core
             if (interfaceType == null)
                 throw new ArgumentNullException(nameof(interfaceType));
 
-            if (instance == null)
-                throw new ArgumentNullException(nameof(instance));
-
             if (interfaceType.IsInterface == false)
                 throw new ArgumentException("Must be an interface.", nameof(interfaceType));
 
             if(typeof(IComponentInterface).IsAssignableFrom(interfaceType) == false)
                 throw new ArgumentException("Must be an IComponentInterface.", nameof(interfaceType));
+
+            if (instance == null)
+                return; // nothing to release
 
             //
             // Try to release it in this broker instance.
@@ -392,6 +391,9 @@ namespace SS.Core
             if (interfaceType.IsInterface == false)
                 throw new Exception(interfaceType.Name + " is not an interface");
 
+            if (instance == null)
+                return; // nothing to release
+
             //
             // Try to release it in this broker instance.
             //
@@ -438,12 +440,12 @@ namespace SS.Core
         /// <summary>
         /// For synchronizing access to the <see cref="_callbackRegistrations"/>.
         /// </summary>
-        private ReaderWriterLockSlim _callbackRwLock = new ReaderWriterLockSlim();
+        private readonly ReaderWriterLockSlim _callbackRwLock = new ReaderWriterLockSlim();
 
         /// <summary>
         /// The callback dictionary where: Key is the delegate type. Value is the delegate itself.
         /// </summary>
-        private Dictionary<Type, Delegate> _callbackRegistrations = new Dictionary<Type, Delegate>();
+        private readonly Dictionary<Type, Delegate> _callbackRegistrations = new Dictionary<Type, Delegate>();
 
         /// <summary>
         /// Registers a handler for a "callback" (publisher/subscriber event).
@@ -456,7 +458,7 @@ namespace SS.Core
         public void RegisterCallback<TDelegate>(TDelegate handler) where TDelegate : Delegate
         {
             if (handler == null)
-                throw new ArgumentNullException("handler");
+                throw new ArgumentNullException(nameof(handler));
 
             Type key = typeof(TDelegate);
             
@@ -490,7 +492,7 @@ namespace SS.Core
         public void UnregisterCallback<TDelegate>(TDelegate handler) where TDelegate : Delegate
         {
             if (handler == null)
-                throw new ArgumentNullException("handler");
+                throw new ArgumentNullException(nameof(handler));
 
             Type key = typeof(TDelegate);
 

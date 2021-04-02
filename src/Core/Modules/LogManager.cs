@@ -74,8 +74,8 @@ namespace SS.Core.Modules
 
             try
             {
-                broker.ReleaseInterface(ref _configManager);
-                _configManager = null;
+                if (_configManager != null)
+                    broker.ReleaseInterface(ref _configManager);
 
                 return true;
             }
