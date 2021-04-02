@@ -10,6 +10,10 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that manages arenas, which includes the arena life-cycle: 
+    /// the states they are in, transitions between states, movement of players between arenas, etc.
+    /// </summary>
     [CoreModuleInfo]
     public class ArenaManager : IModule, IArenaManager, IModuleLoaderAware
     {
@@ -341,6 +345,7 @@ namespace SS.Core.Modules
                         {
                             if (player.Arena == arena)
                             {
+                                // send whoami packet so the clients leave the arena
                                 if(player.IsStandard)
                                 {
                                     whoami.D1 = (short)player.Id;
@@ -365,6 +370,7 @@ namespace SS.Core.Modules
                     _playerData.WriteUnlock();
                 }
 
+                // arena to close and then get resurrected
                 arena.Status = ArenaState.Closing;
 
                 if (arena[_adkey] is ArenaData arenaData)
@@ -524,13 +530,17 @@ namespace SS.Core.Modules
             string name;
             if (sb.Length == 0)
             {
+                // this might occur when a player is redirected to us from another zone
                 IArenaPlace ap = _broker.GetInterface<IArenaPlace>();
                 if (ap != null)
                 {
                     try
                     {
                         int spx = 0, spy = 0;
-                        ap.Place(out name, ref spx, ref spy, player);
+                        if (!ap.Place(out name, ref spx, ref spy, player))
+                        {
+                            name = "0";
+                        }
                     }
                     finally
                     {
@@ -1347,21 +1357,23 @@ namespace SS.Core.Modules
             string name;
             int spx = 0;
             int spy = 0;
-            if (go.ArenaType == -3)
+
+            if (go.ArenaType == -3) // private arena
             {
                 if (!HasCapGo(p))
                     return;
 
                 name = go.ArenaName;
             }
-            else if (go.ArenaType == -2 || go.ArenaType == -1)
+            else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
             {
                 IArenaPlace ap = _broker.GetInterface<IArenaPlace>();
+
                 if (ap != null)
                 {
                     try
                     {
-                        if (ap.Place(out name, ref spx, ref spy, p) == false)
+                        if (!ap.Place(out name, ref spx, ref spy, p))
                         {
                             name = "0";
                         }
@@ -1376,7 +1388,7 @@ namespace SS.Core.Modules
                     name = "0";
                 }
             }
-            else if (go.ArenaType >= 0)
+            else if (go.ArenaType >= 0) // specific public arena
             {
                 if (!HasCapGo(p))
                     return;
@@ -1391,7 +1403,7 @@ namespace SS.Core.Modules
 
             if (p.Type == ClientType.Continuum)
             {
-                // TODO
+                // TODO: ability to redirect to another server/zone
                 //IRedirect
             }
 
@@ -1421,8 +1433,22 @@ namespace SS.Core.Modules
 
         private bool HasCapGo(Player p)
         {
-            // TODO: 
-            return true;
+            if (p == null)
+                return false;
+
+            ICapabilityManager capabilityManager = _broker.GetInterface<ICapabilityManager>();
+
+            try
+            {
+                return capabilityManager == null || capabilityManager.HasCapability(p, "cmd_go");
+            }
+            finally
+            {
+                if (capabilityManager != null)
+                {
+                    _broker.ReleaseInterface(ref capabilityManager);
+                }
+            }
         }
     }
 }

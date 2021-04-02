@@ -24,7 +24,7 @@ namespace SS.Core.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
 
-            loadPubNames();
+            LoadPubNames();
 
             _iArenaPlaceToken = broker.RegisterInterface<IArenaPlace>(this);
 
@@ -43,6 +43,8 @@ namespace SS.Core.Modules
 
         #region IArenaPlace Members
 
+        [ConfigHelp("General", "DesiredPlaying", ConfigScope.Global, typeof(int), DefaultValue = "15", 
+            Description = "This controls when the server will create new public arenas.")]
         bool IArenaPlace.Place(out string arenaName, ref int spawnX, ref int spawnY, Player p)
         {
             arenaName = string.Empty;
@@ -54,16 +56,13 @@ namespace SS.Core.Modules
             else
                 tryList = new string[] { p.ConnectAs };
 
-            for (int pass = 1; pass < 10; pass++)
+            for (int pass = 0; pass < 10; pass++)
             {
                 foreach (string name in tryList)
                 {
-                    int totalCount;
-                    int playing;
+                    string tryName = pass == 0 ? name : name + pass;
 
-                    string tryName = name + pass;
-
-                    Arena arena = _arenaManager.FindArena(tryName, out totalCount, out playing);
+                    Arena arena = _arenaManager.FindArena(tryName, out _, out int playing);
                     if (arena == null)
                     {
                         // doesn't exist yet, use a backup only
@@ -88,7 +87,10 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void loadPubNames()
+        [ConfigHelp("General", "PublicArenas", ConfigScope.Global, typeof(string), 
+            "A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested. " +
+            "Allowed delimiters include: ' ' (space), ',', ':', and ';'.")]
+        private void LoadPubNames()
         {
             string delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
             if (string.IsNullOrEmpty(delimitedArenaNames))
