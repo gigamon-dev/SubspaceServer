@@ -796,7 +796,7 @@ namespace SS.Core.Modules
 
         [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int), 
             "The port that the game protocol listens on. Sections named " +
-            "Listen1 through Listen9 are also supported.All Listen " +
+            "Listen1 through Listen9 are also supported. All Listen " +
             "sections must contain a port setting.")]
         [ConfigHelp("Listen", "BindAddress", ConfigScope.Global, typeof(string),
             "The interface address to bind to. This is optional, and if " +
@@ -805,7 +805,6 @@ namespace SS.Core.Modules
         {
             string configSection = "Listen" + ((configIndex == 0) ? string.Empty : configIndex.ToString());
 
-            
             int gamePort = _configManager.GetInt(_configManager.Global, configSection, "Port", -1);
             if (gamePort == -1)
                 return null;
@@ -1435,7 +1434,7 @@ namespace SS.Core.Modules
             if (len == 0)
                 return;
 
-            // FUTURE: Change this when Microsoft adds a Socket.SendTo(Span<byte>,...) overload. For now, need to copy to a byte[].
+            // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
             using (SubspaceBuffer buffer = _bufferPool.Get())
             {
                 data.CopyTo(new Span<byte>(buffer.Bytes, 0, len));
@@ -2961,18 +2960,44 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(pkt));
 
             if (len < 1)
-                throw new ArgumentOutOfRangeException(nameof(len), "Need at least 1 byte to send.");
+                throw new ArgumentOutOfRangeException(nameof(len), "There needs to be at least 1 byte to send.");
 
             if (ld == null)
                 throw new ArgumentNullException(nameof(ld));
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk(string.Format("SENDRAW: {0} bytes", len), new ArraySegment<byte>(pkt, 0, len));
+            DumpPk($"SENDRAW: {len} bytes", new ReadOnlySpan<byte>(pkt, 0, len));
 #endif
 
             ld.GameSocket.SendTo(pkt, len, SocketFlags.None, remoteEndpoint);
 
             _globalStats.bytesent += (ulong)len;
+            _globalStats.pktsent++;
+        }
+
+        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, ReadOnlySpan<byte> data, ListenData ld)
+        {
+            if (remoteEndpoint == null)
+                throw new ArgumentNullException(nameof(remoteEndpoint));
+
+            if (data.Length < 1)
+                throw new ArgumentOutOfRangeException(nameof(data), "There needs to be at least 1 byte to send.");
+
+            if (ld == null)
+                throw new ArgumentNullException(nameof(ld));
+
+#if CFG_DUMP_RAW_PACKETS
+            DumpPk($"SENDRAW: {data.Length} bytes", data);
+#endif
+
+            // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
+            using (SubspaceBuffer buffer = _bufferPool.Get())
+            {
+                data.CopyTo(new Span<byte>(buffer.Bytes, 0, data.Length));
+                ld.GameSocket.SendTo(buffer.Bytes, 0, data.Length, SocketFlags.None, remoteEndpoint);
+            }
+
+            _globalStats.bytesent += (ulong)data.Length;
             _globalStats.pktsent++;
         }
 

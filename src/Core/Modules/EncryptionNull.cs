@@ -4,80 +4,58 @@ using SS.Utilities;
 using System;
 using System.Buffers.Binary;
 using System.Net;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module for the login sequence (connection init) that responds such that no encryption is used.
+    /// </summary>
+    /// <remarks>
+    /// This module cannot be used alongside other encryption modules. 
+    /// If you intend to use an encryption module, make sure this one is not loaded.
+    /// </remarks>
     [CoreModuleInfo]
     public class EncryptionNull : IModule
     {
         private INetworkEncryption _networkEncryption;
 
-        private struct ConnectionInitResponsePacket
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct ConnectionInitResponsePacket
         {
-            // static constructor to initialize packet's info
-            static ConnectionInitResponsePacket()
+            public readonly byte T1;
+            public readonly byte T2;
+            public readonly int Key;
+
+            public ConnectionInitResponsePacket(int key)
             {
-                DataLocationBuilder locationBuilder = new DataLocationBuilder();
-                t1 = locationBuilder.CreateByteDataLocation();
-                t2 = locationBuilder.CreateByteDataLocation();
-                key = locationBuilder.CreateInt32DataLocation();
-            }
-
-            // static data members that tell the location of each field in the byte array of a packet
-            private static readonly ByteDataLocation t1;
-            private static readonly ByteDataLocation t2;
-            private static readonly Int32DataLocation key;
-
-            // data members
-            private readonly byte[] data;
-
-            public ConnectionInitResponsePacket(byte[] data)
-            {
-                this.data = data;
-            }
-
-            public byte T1
-            {
-                set { t1.SetValue(data, value); }
-                //get { return ExtendedBitConverter.ToByte(data, t1.ByteOffset, t1.BitOffset); }
-                //set { ExtendedBitConverter.WriteByteBits(value, data, t1.ByteOffset, t1.BitOffset, t1.NumBits); }
-            }
-
-            public byte T2
-            {
-                set { t2.SetValue(data, value); }
-                //get { return ExtendedBitConverter.ToByte(data, t2.ByteOffset, t2.BitOffset); }
-                //set { ExtendedBitConverter.WriteByteBits(value, data, t2.ByteOffset, t2.BitOffset, t2.NumBits); }
-            }
-
-            public int Key
-            {
-                set { key.SetValue(data, value); }
-                //set { ExtendedBitConverter.WriteInt32Bits(value, data, key.ByteOffset, key.BitOffset, key.NumBits); }
+                T1 = 0x00;
+                T2 = 0x02;
+                Key = LittleEndianConverter.Convert(key);
             }
         }
-
+        
         #region IModule Members
 
         public bool Load(ComponentBroker broker, INetworkEncryption networkEncryption)
         {
             _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
 
-            ConnectionInitCallback.Register(broker, connectionInit);
+            ConnectionInitCallback.Register(broker, Callback_ConnectionInit);
 
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            ConnectionInitCallback.Unregister(broker, connectionInit);
+            ConnectionInitCallback.Unregister(broker, Callback_ConnectionInit);
 
             return true;
         }
 
         #endregion
 
-        private void connectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        private void Callback_ConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
         {
             ClientType type;
             Player p;
@@ -110,20 +88,17 @@ namespace SS.Core.Modules
             if (p == null)
             {
                 // no slots left?
-                byte[] pkt = {0x00, 0x07};
-                _networkEncryption.ReallyRawSend(remoteEndpoint, pkt, pkt.Length, ld);
+                Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07};
+                _networkEncryption.ReallyRawSend(remoteEndpoint, disconnect, ld);
                 return;
             }
 
-            int key = BinaryPrimitives.ReadInt32LittleEndian(new Span<byte>(buffer, 2, 4));
+            int key = BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(buffer, 2, 4));
 
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
-            // note: reusing the buffer (asss creates a new buffer on the stack)
-            ConnectionInitResponsePacket rp = new ConnectionInitResponsePacket(buffer);
-            rp.T1 = 0x00;
-            rp.T2 = 0x02;
-            rp.Key = key;
-            _networkEncryption.ReallyRawSend(remoteEndpoint, buffer, 6, ld);
+            ConnectionInitResponsePacket response = new ConnectionInitResponsePacket(key);
+            Span<byte> packetSpan = MemoryMarshal.Cast<ConnectionInitResponsePacket, byte>(MemoryMarshal.CreateSpan(ref response, 1));
+            _networkEncryption.ReallyRawSend(remoteEndpoint, packetSpan, ld);
         }
     }
 }

@@ -46,6 +46,7 @@ namespace SS.Core.ComponentInterfaces
     public interface INetworkEncryption : IComponentInterface
     {
         void ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, ListenData ld);
+        void ReallyRawSend(IPEndPoint remoteEndpoint, ReadOnlySpan<byte> data, ListenData ld);
         Player NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld);
     }
 }
