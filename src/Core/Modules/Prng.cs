@@ -27,7 +27,9 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IPrng>(ref iPrngToken);
+            if (broker.UnregisterInterface<IPrng>(ref iPrngToken) != 0)
+                return false;
+
             return true;
         }
 
