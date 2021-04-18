@@ -13,22 +13,26 @@ namespace SS.Core.Configuration
     /// </summary>
     public class ConfFile
     {
-        private const char DirectiveChar = '#';
-        private const char ContinueChar = '\\';
-        private static readonly char[] CommentChars = { '/', ';' };
-
-        private const char SectionStartChar = '[';
-        private const char SectionEndChar = ']';
-        private const char PropertySectionOverrideChar = ':';
-
+        /// <summary>
+        /// Constructor for a brand new conf file, not on disk.
+        /// </summary>
         public ConfFile()
         {
         }
 
+        /// <summary>
+        /// Constructor for a conf file that is on disk.
+        /// </summary>
+        /// <param name="path">The path of the file.</param>
         public ConfFile(string path) : this(path, null)
         {
         }
 
+        /// <summary>
+        /// Constructor for a conf file that is on disk, with a logger.
+        /// </summary>
+        /// <param name="path">The path of the file.</param>
+        /// <param name="logger">A logger to report errors to.</param>
         public ConfFile(string path, IConfigLogger logger)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -40,7 +44,7 @@ namespace SS.Core.Configuration
 
         public string Path { get; private set; }
         public DateTime? LastModified { get; private set; }
-        public bool IsReloadNeeded => LastModified != File.GetLastWriteTimeUtc(Path);
+        public bool IsReloadNeeded => !string.IsNullOrWhiteSpace(Path) && LastModified != File.GetLastWriteTimeUtc(Path);
         public List<RawLine> Lines { get; } = new List<RawLine>();
 
         /// <summary>
@@ -81,7 +85,7 @@ namespace SS.Core.Configuration
 
                 lineBuilder.Append(line);
 
-                if (line.EndsWith(ContinueChar))
+                if (line.EndsWith(RawLine.ContinueChar))
                 {
                     lineBuilder.Length--;
                     rawBuilder.AppendLine(line);
@@ -112,7 +116,7 @@ namespace SS.Core.Configuration
 
         private void RefreshLastModified()
         {
-            LastModified = File.GetLastWriteTimeUtc(Path);
+            LastModified = string.IsNullOrWhiteSpace(Path) ? null : File.GetLastWriteTimeUtc(Path);
         }
 
         private RawLine ParseLine(string raw, ReadOnlySpan<char> line)
@@ -121,24 +125,24 @@ namespace SS.Core.Configuration
             {
                 return RawLine.Empty;
             }
-            else if (CommentChars.Contains(line[0]))
+            else if (RawComment.CommentChars.Contains(line[0]))
             {
-                return new RawComment()
+                return new RawComment(
+                    line[0],
+                    line[1..].TrimStart().ToString())
                 {
-                    Raw = raw,
-                    CommentChar = line[0],
-                    Text = line[1..].TrimStart().ToString(),
+                    Raw = raw
                 };
             }
-            else if (line[0] == DirectiveChar)
+            else if (line[0] == RawPreprocessor.DirectiveChar)
             {
                 line = line[1..]; // skip DirectiveChar
 
-                if (line.StartsWith("ifdef", StringComparison.Ordinal)
-                    || line.StartsWith("ifndef", StringComparison.Ordinal))
+                if (line.StartsWith(RawPreprocessorIfdef.Directive, StringComparison.Ordinal)
+                    || line.StartsWith(RawPreprocessorIfndef.Directive, StringComparison.Ordinal))
                 {
                     bool isNot = line[2] == 'n';
-                    line = line[(isNot ? "ifndef".Length : "ifdef".Length)..];
+                    line = line[(isNot ? RawPreprocessorIfndef.Directive.Length : RawPreprocessorIfdef.Directive.Length)..];
 
                     if (line.Length > 0 && char.IsWhiteSpace(line[0]))
                     {
@@ -153,28 +157,28 @@ namespace SS.Core.Configuration
                         if (line.Length > 0)
                         {
                             return isNot
-                                ? new RawPreprocessorIfndef() { Raw = raw, Name = line.ToString(), }
-                                : new RawPreprocessorIfdef() { Raw = raw, Name = line.ToString(), };
+                                ? new RawPreprocessorIfndef(line.ToString()) { Raw = raw }
+                                : new RawPreprocessorIfdef(line.ToString()) { Raw = raw };
                         }
                         else
                         {
                             ReportError(
-                                $"{DirectiveChar}{(isNot ? "ifndef" : "ifdef")} " +
+                                $"{RawPreprocessor.DirectiveChar}{(isNot ? RawPreprocessorIfndef.Directive : RawPreprocessorIfdef.Directive)} " +
                                 $"is missing an identifier ({Path}:{lineNumber}).");
                         }
                     }
                 }
-                else if (line.StartsWith("else", StringComparison.Ordinal))
+                else if (line.StartsWith(RawPreprocessorElse.Directive, StringComparison.Ordinal))
                 {
                     return RawPreprocessor.Else;
                 }
-                else if (line.StartsWith("endif", StringComparison.Ordinal))
+                else if (line.StartsWith(RawPreprocessorEndif.Directive, StringComparison.Ordinal))
                 {
                     return RawPreprocessor.Endif;
                 }
-                else if (line.StartsWith("define", StringComparison.Ordinal))
+                else if (line.StartsWith(RawPreprocessorDefine.Directive, StringComparison.Ordinal))
                 {
-                    line = line["define".Length..];
+                    line = line[RawPreprocessorDefine.Directive.Length..];
 
                     if (line.Length > 0 && char.IsWhiteSpace(line[0]))
                     {
@@ -189,22 +193,22 @@ namespace SS.Core.Configuration
                             ReadOnlySpan<char> nameSpan = line.Slice(0, i);
                             line = line[i..].TrimStart();
 
-                            return new RawPreprocessorDefine()
+                            return new RawPreprocessorDefine(
+                                nameSpan.ToString(),
+                                (line.Length > 0) ? line.ToString() : null)
                             {
                                 Raw = raw,
-                                Name = nameSpan.ToString(),
-                                Value = (line.Length > 0) ? line.ToString() : null,
                             };
                         }
                         else
                         {
-                            ReportError($"{DirectiveChar}define is missing a name ({Path}:{lineNumber}).");
+                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorDefine.Directive} is missing a name ({Path}:{lineNumber}).");
                         }
                     }
                 }
-                else if (line.StartsWith("undef", StringComparison.Ordinal))
+                else if (line.StartsWith(RawPreprocessorUndef.Directive, StringComparison.Ordinal))
                 {
-                    line = line["undef".Length..];
+                    line = line[RawPreprocessorUndef.Directive.Length..];
 
                     if (line.Length > 0 && char.IsWhiteSpace(line[0]))
                     {
@@ -212,21 +216,20 @@ namespace SS.Core.Configuration
 
                         if (line.Length > 0)
                         {
-                            return new RawPreprocessorUndef()
+                            return new RawPreprocessorUndef(line.ToString())
                             {
                                 Raw = raw,
-                                Name = line.ToString(),
                             };
                         }
                         else
                         {
-                            ReportError($"{DirectiveChar}undef is missing a name ({Path}:{lineNumber}).");
+                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorUndef.Directive} is missing a name ({Path}:{lineNumber}).");
                         }
                     }
                 }
-                else if (line.StartsWith("include", StringComparison.Ordinal))
+                else if (line.StartsWith(RawPreprocessorInclude.Directive, StringComparison.Ordinal))
                 {
-                    line = line["include".Length..];
+                    line = line[RawPreprocessorInclude.Directive.Length..];
 
                     if (line.Length > 0 && char.IsWhiteSpace(line[0]))
                     {
@@ -239,55 +242,53 @@ namespace SS.Core.Configuration
 
                         if (line.Length > 0)
                         {
-                            return new RawPreprocessorInclude()
+                            return new RawPreprocessorInclude(line.ToString())
                             {
                                 Raw = raw,
-                                FilePath = line.ToString(),
                             };
                         }
                         else
                         {
-                            ReportError($"{DirectiveChar}include is missing a file name ({Path}:{lineNumber}).");
+                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorInclude.Directive} is missing a file name ({Path}:{lineNumber}).");
                         }
                     }
                 }
             }
-            else if (line[0] == SectionStartChar)
+            else if (line[0] == RawSection.StartChar)
             {
-                if (line[^1] == SectionEndChar)
+                if (line[^1] == RawSection.EndChar)
                 {
                     line = line[1..^1].Trim();
                 }
                 else
                 {
-                    ReportError($"Section is missing ']' ({Path}:{lineNumber})");
+                    ReportError($"Section is missing '{RawSection.EndChar}' ({Path}:{lineNumber})");
 
                     // use the remainder of the line as the section name
                     line = line[1..].Trim();
                 }
 
-                return new RawSection()
+                return new RawSection(line.ToString())
                 {
                     Raw = raw,
-                    Name = line.ToString(),
                 };
             }
             else
             {
                 ParseConfProperty(
-                    line, 
+                    line,
                     out string sectionOverride,
-                    out string key, 
+                    out string key,
                     out ReadOnlySpan<char> value,
                     out bool hasValueDelimiter);
 
-                return new RawProperty()
+                return new RawProperty(
+                    sectionOverride,
+                    key,
+                    value.IsEmpty ? string.Empty : value.ToString(),
+                    hasValueDelimiter)
                 {
                     Raw = raw,
-                    SectionOverride = sectionOverride,
-                    Key = key,
-                    Value = value.IsEmpty ? string.Empty : value.ToString(),
-                    HasDelimiter = hasValueDelimiter,
                 };
             }
 
@@ -304,7 +305,7 @@ namespace SS.Core.Configuration
         /// <param name="line">The line to parse.</param>
         /// <param name="sectionOverride"></param>
         /// <param name="key">The resulting key. <see cref="string.Empty"/> if no key found.</param>
-        /// <param name="value">The resulting value. <see cref="Span{char}.Empty"/> if there is no value.</param>
+        /// <param name="value">The resulting value. <see cref="ReadOnlySpan{char}.Empty"/> if there is no value.</param>
         /// <param name="hasValueDelimiter"></param>
         public static void ParseConfProperty(
             ReadOnlySpan<char> line,
@@ -318,7 +319,7 @@ namespace SS.Core.Configuration
             int i;
             for (i = 0; i < line.Length; i++)
             {
-                if (line[i] == '=')
+                if (line[i] == RawProperty.KeyValueDelimiter)
                     break;
 
                 if (line[i] == '\\')
@@ -336,8 +337,8 @@ namespace SS.Core.Configuration
             ParseKey(sb, out sectionOverride, out key);
 
             line = line[i..];
-            hasValueDelimiter = line.Length > 0 && line[0] == '=';
-            value = line.TrimStart('=').Trim();
+            hasValueDelimiter = line.Length > 0 && line[0] == RawProperty.KeyValueDelimiter;
+            value = hasValueDelimiter ? line[1..].Trim() : ReadOnlySpan<char>.Empty;
         }
 
         private static void ParseKey(StringBuilder sb, out string sectionOverride, out string key)
@@ -373,7 +374,7 @@ namespace SS.Core.Configuration
             int delimiter;
             for (delimiter = start; delimiter <= end; delimiter++)
             {
-                if (sb[delimiter] == PropertySectionOverrideChar)
+                if (sb[delimiter] == RawProperty.SectionOverrideDelimiter)
                     break;
             }
 
@@ -394,7 +395,7 @@ namespace SS.Core.Configuration
 
         private void ReportError(string message)
         {
-            logger.Log(LogLevel.Warn, message);
+            logger?.Log(LogLevel.Warn, message);
         }
 
         protected virtual void OnChanged()

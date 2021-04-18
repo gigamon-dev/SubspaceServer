@@ -77,6 +77,9 @@ namespace SS.Core.Configuration
             this.logger = logger;
         }
 
+        /// <summary>
+        /// Loads the document. Subsequent calls reload the document.
+        /// </summary>
         public void Load()
         {
             //
@@ -181,6 +184,14 @@ namespace SS.Core.Configuration
             }
         }
 
+        /// <summary>
+        /// Sets a property's value. An existing property will be updated, otherwise a new one will be added.
+        /// </summary>
+        /// <param name="section">The section of the property to add.</param>
+        /// <param name="key">The key of the property to add.</param>
+        /// <param name="value">The value of the property.</param>
+        /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
+        /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
         public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string comment = null)
         {
             //
@@ -225,12 +236,11 @@ namespace SS.Core.Configuration
                     if (fileIndex != -1)
                     {
                         var propertyToInsert =
-                            new RawProperty()
-                            {
-                                Key = key,
-                                Value = value,
-                                HasDelimiter = value != null,
-                            };
+                            new RawProperty(
+                                sectionOverride: null, 
+                                key: key, 
+                                value: value,
+                                hasDelimiter: value != null);
 
                         // change the file
                         updatingFile = file;
@@ -239,7 +249,7 @@ namespace SS.Core.Configuration
                         {
                             file.Lines.Insert(
                                 ++fileIndex,
-                                new RawComment() { CommentChar = ';', Text = comment });
+                                new RawComment(RawComment.DefaultCommentChar, comment));
                         }
 
                         file.Lines.Insert(++fileIndex, propertyToInsert);
@@ -270,19 +280,17 @@ namespace SS.Core.Configuration
 
                 // otherwise add it to the end of the base file (effectively how ASSS saves conf changes)
                 var propertyToAdd =
-                    new RawProperty()
-                    {
-                        SectionOverride = section,
-                        Key = key,
-                        Value = value,
-                        HasDelimiter = value != null,
-                    };
+                    new RawProperty(
+                        sectionOverride: section,
+                        key: key,
+                        value: value,
+                        hasDelimiter: value != null);
 
                 updatingFile = baseFile;
 
                 if (!string.IsNullOrWhiteSpace(comment))
                 {
-                    baseFile.Lines.Add(new RawComment() { CommentChar = ';', Text = comment });
+                    baseFile.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
                 }
 
                 baseFile.Lines.Add(propertyToAdd);
@@ -307,6 +315,13 @@ namespace SS.Core.Configuration
             }
         }
 
+        /// <summary>
+        /// Gets the value of a property.
+        /// </summary>
+        /// <param name="section">The section of the property to get.</param>
+        /// <param name="key">The key of the property.</param>
+        /// <param name="value">When this method returns, contains the value of the property if found; otherwise, null.</param>
+        /// <returns><see langword="true"/> if the property was found; otherwise, <see langword="false"/>.</returns>
         public bool TryGetValue(string section, string key, out string value)
         {
             string keyString;
@@ -333,6 +348,15 @@ namespace SS.Core.Configuration
             return true;
         }
 
+        /// <summary>
+        /// Updates the value of an existing property.
+        /// </summary>
+        /// <param name="section">The section of the property to update.</param>
+        /// <param name="key">The key of the property to update.</param>
+        /// <param name="value">The value to set the property to.</param>
+        /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
+        /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
+        /// <returns>True if the property was found and updated.  Otherwise, false.</returns>
         public bool TryUpdateProperty(string section, string key, string value, bool permanent, string comment = null)
         {
             string keyString;
@@ -363,13 +387,11 @@ namespace SS.Core.Configuration
                 if (fileIndex != -1 && docIndex != -1)
                 {
                     RawProperty old = (RawProperty)propertyInfo.PropertyReference.Line;
-                    RawProperty replacement = new RawProperty()
-                    {
-                        SectionOverride = old.SectionOverride,
-                        Key = old.Key,
-                        Value = value,
-                        HasDelimiter = value != null || old.HasDelimiter,
-                    };
+                    RawProperty replacement = new RawProperty(
+                        sectionOverride: old.SectionOverride,
+                        key: old.Key,
+                        value: value,
+                        hasDelimiter: value != null || old.HasDelimiter);
 
                     updatingFile.Lines[fileIndex] = replacement;
 
@@ -387,7 +409,7 @@ namespace SS.Core.Configuration
                     {
                         updatingFile.Lines.Insert(
                             fileIndex,
-                            new RawComment() { CommentChar = ';', Text = comment });
+                            new RawComment(RawComment.DefaultCommentChar, comment));
 
                         // remove old comments (comment lines immediately before the property line)
                         int commentIndex = fileIndex;
