@@ -39,7 +39,7 @@ namespace SS.Core.Modules
         private const ushort ClientVersion_VIE = 134;
         private const ushort ClientVersion_Cont = 40;
 
-        private const string ContinuumExeFile = "clients/continuum.exe";
+        private const string ContinuumExeFile = "clients/Continuum.exe";
         private const string ContinuumChecksumFile = "scrty";
 
         private uint _continuumChecksum;
