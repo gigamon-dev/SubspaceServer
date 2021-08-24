@@ -217,7 +217,7 @@ namespace SS.Core.Map
                 node = node.Next;
             }
 
-            Debug.WriteLine(string.Format("Error with random point in region {0}", Name));
+            Debug.WriteLine($"Error with random point in region {Name}.");
             x = y = -1;
         }
 

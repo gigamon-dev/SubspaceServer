@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 namespace SS.Core
@@ -19,7 +20,7 @@ namespace SS.Core
 
             foreach (string path in searchPaths)
             {
-                string filePath = string.Format(path, replacements);
+                string filePath = string.Format(CultureInfo.InvariantCulture, path, replacements);
 
                 if (File.Exists(filePath))
                 {

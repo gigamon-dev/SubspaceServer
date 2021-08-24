@@ -592,7 +592,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void WriteLog(LogLevel level, string format, params object[] args)
+        private void WriteLog(LogLevel level, string message)
         {
             ILogManager _logManager = _broker.GetInterface<ILogManager>();
 
@@ -600,7 +600,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    _logManager.LogM(level, nameof(Mainloop), format, args);
+                    _logManager.LogM(level, nameof(Mainloop), message);
                 }
                 finally
                 {
@@ -610,9 +610,9 @@ namespace SS.Core.Modules
             else
             {
                 if (level == LogLevel.Error)
-                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(Mainloop)}> {string.Format(format, args)}");
+                    Console.Error.WriteLine($"{(LogCode)level} <{nameof(Mainloop)}> {message}");
                 else
-                    Console.WriteLine($"{(LogCode)level} <{nameof(Mainloop)}> {string.Format(format, args)}");
+                    Console.WriteLine($"{(LogCode)level} <{nameof(Mainloop)}> {message}");
             }
         }
 

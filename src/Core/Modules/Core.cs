@@ -514,9 +514,9 @@ namespace SS.Core.Modules
                 p.PermId = pkt.D2;
 
                 if (p.Type == ClientType.VIE)
-                    p.ClientName = string.Format("<ss/vie client, v. {0}>", pkt.CVersion);
+                    p.ClientName = $"<ss/vie client, v. {pkt.CVersion}>";
                 else if (p.Type == ClientType.Continuum)
-                    p.ClientName = string.Format("<continuum, v. {0}>", pkt.CVersion);
+                    p.ClientName = $"<continuum, v. {pkt.CVersion}>";
 
                 // set up status
                 _playerData.WriteLock();

@@ -262,8 +262,8 @@ namespace SS.Core.Modules
         void IChat.SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, string squad, string sender, string message)
         {
             string text = !string.IsNullOrWhiteSpace(squad)
-                ? string.Format("({0})({1})>{2}", squad, sender, message)
-                : string.Format("({0})>{1}", sender, message);
+                ? $"({squad})({sender})>{message}"
+                : $"({sender})>{message}";
 
             if (text.Length > ChatPacket.MaxMessageLength)
                 text = text.Substring(0, ChatPacket.MaxMessageLength);
@@ -633,7 +633,7 @@ namespace SS.Core.Modules
                     LinkedList<Player> set = new LinkedList<Player>();
                     set.AddLast(d);
 
-                    SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, string.Format("({0})>{1}", p.Name, message), p.Name.Length + 3);
+                    SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, $"({p.Name})>{message}", p.Name.Length + 3);
                 }
 
                 FireChatMessageCallback(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);

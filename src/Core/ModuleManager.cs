@@ -1153,20 +1153,20 @@ namespace SS.Core
 
         #region Log Methods
 
-        private void WriteLogA(LogLevel level, Arena arena, string format, params object[] args)
+        private void WriteLogA(LogLevel level, Arena arena, string message)
         {
             if (level == LogLevel.Error)
-                Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
+                Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {message}");
             else
-                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {string.Format(format, args)}");
+                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {message}");
         }
 
-        private void WriteLogM(LogLevel level, string format, params object[] args)
+        private void WriteLogM(LogLevel level, string message)
         {
             if (level == LogLevel.Error)
-                Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
+                Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {message}");
             else
-                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {string.Format(format, args)}");
+                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {message}");
         }
 
         #endregion

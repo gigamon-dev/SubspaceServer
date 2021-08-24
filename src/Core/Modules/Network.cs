@@ -788,7 +788,7 @@ namespace SS.Core.Modules
             catch (Exception ex)
             {
                 socket.Close();
-                throw new Exception(string.Format("cannot bind socket to {0}:{1}", bindAddress, port), ex);
+                throw new Exception($"Cannot bind socket to {bindAddress}:{port}.", ex);
             }
 
             return socket;
@@ -1394,7 +1394,7 @@ namespace SS.Core.Modules
             Player p = conn.p;
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk(string.Format("SEND: {0} bytes to pid ", len, p.Id), data);
+            DumpPk($"SEND: {len} bytes to pid {p.Id}", data);
 #endif
 
             if ((p != null) && (conn.enc != null))
@@ -1423,7 +1423,7 @@ namespace SS.Core.Modules
             Player p = conn.p;
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk(string.Format("SEND: {0} bytes to pid ", len, p.Id), data);
+            DumpPk($"SEND: {len} bytes to pid {p.Id}", data);
 #endif
 
             if ((p != null) && (conn.enc != null))
@@ -1611,7 +1611,7 @@ namespace SS.Core.Modules
             }
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk(string.Format("RECV: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
+            DumpPk($"RECV: {buffer.NumBytes} bytes", new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
             if (!(receivedFrom is IPEndPoint remoteEndPoint))
@@ -1718,7 +1718,7 @@ namespace SS.Core.Modules
             }
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk(string.Format("RECV: about to process {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
+            DumpPk($"RECV: about to process {buffer.NumBytes} bytes", new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
             ProcessBuffer(buffer);
@@ -1957,7 +1957,7 @@ namespace SS.Core.Modules
             }
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk(string.Format("RAW CLIENT DATA: {0} bytes", buffer.NumBytes), new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
+            DumpPk($"RAW CLIENT DATA: {buffer.NumBytes} bytes", new ArraySegment<byte>(buffer.Bytes, 0, buffer.NumBytes));
 #endif
 
             // TODO
