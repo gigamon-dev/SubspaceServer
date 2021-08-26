@@ -52,29 +52,29 @@ namespace SS.Core
         /// <summary>
         /// For synchronizing access to all data members.
         /// </summary>
-        private readonly object _moduleLockObj = new object();
+        private readonly object _moduleLockObj = new();
 
         /// <summary>
         /// All registered (and possibly loaded) modules.
         /// </summary>
-        private readonly Dictionary<Type, ModuleData> _moduleTypeLookup = new Dictionary<Type, ModuleData>();
+        private readonly Dictionary<Type, ModuleData> _moduleTypeLookup = new();
 
         /// <summary>
         /// Modules that are loaded, in the order that they were loaded.
         /// </summary>
-        private readonly LinkedList<Type> _loadedModules = new LinkedList<Type>();
+        private readonly LinkedList<Type> _loadedModules = new();
 
         /// <summary>
         /// Assembly Path --> Assembly
         /// </summary>
         /// TODO: StringComparer based whether the file system is case sensitive? Also, how to handle a mixture of file systems?
-        private readonly Dictionary<string, Assembly> _loadedPluginAssemblies = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Assembly> _loadedPluginAssemblies = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Types of 'plug-in' modules that are registered.
         /// Plug-in modules are modules that are in assemblies loaded (and isolated) into their own <see cref="ModulePluginLoadContext"/> as a 'plug-in'.
         /// </summary>
-        private readonly HashSet<Type> _pluginModuleTypeSet = new HashSet<Type>();
+        private readonly HashSet<Type> _pluginModuleTypeSet = new();
 
         /// <summary>
         /// Constructs a <see cref="ModuleManager"/>.
@@ -156,7 +156,7 @@ namespace SS.Core
                     return false;
                 }
 
-                if (!(moduleData.Module is IArenaAttachableModule arenaAttachableModule))
+                if (moduleData.Module is not IArenaAttachableModule arenaAttachableModule)
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
                     return false;
@@ -237,7 +237,7 @@ namespace SS.Core
                     return false;
                 }
 
-                if (!(moduleData.Module is IArenaAttachableModule arenaAttachableModule))
+                if (moduleData.Module is not IArenaAttachableModule arenaAttachableModule)
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
                     return false;
@@ -306,7 +306,7 @@ namespace SS.Core
 
             lock (_moduleLockObj)
             {
-                List<ModuleData> matchingModules = new List<ModuleData>();
+                List<ModuleData> matchingModules = new();
 
                 if (string.IsNullOrWhiteSpace(path))
                 {
@@ -448,7 +448,7 @@ namespace SS.Core
 
         private bool AddAndLoadModule<TModule>(bool load) where TModule : class, IModule
         {
-            if (!(CreateModuleObject(typeof(TModule)) is TModule module))
+            if (CreateModuleObject(typeof(TModule)) is not TModule module)
                 return false;
 
             return AddAndLoadModule(module, load);
@@ -467,7 +467,7 @@ namespace SS.Core
                 if (_moduleTypeLookup.ContainsKey(moduleType))
                     return false;
 
-                ModuleData moduleData = new ModuleData(module);
+                ModuleData moduleData = new(module);
                 _moduleTypeLookup.Add(moduleType, moduleData);
 
                 Assembly assembly = moduleType.Assembly;
@@ -485,7 +485,7 @@ namespace SS.Core
             }
         }
 
-        private bool IsModule(Type type)
+        private static bool IsModule(Type type)
         {
             if (type == null)
                 return false;
@@ -501,7 +501,7 @@ namespace SS.Core
             return true;
         }
 
-        private IModule CreateModuleObject(Type type)
+        private static IModule CreateModuleObject(Type type)
         {
             if (type == null)
                 throw new ArgumentNullException(nameof(type));
@@ -589,7 +589,7 @@ namespace SS.Core
                 return false; // can't unload, possibly can't unregister one of its interfaces
             }
 
-            _loadedModules.Remove(moduleData.ModuleType);
+            _loadedModules.Remove(node);
             _moduleTypeLookup.Remove(moduleData.ModuleType);
 
             Assembly assembly = type.Assembly;
@@ -603,10 +603,9 @@ namespace SS.Core
                 if (_pluginModuleTypeSet.Any((t) => t.Assembly == assembly) == false)
                 {
                     WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}]");
-
-                    // TODO: also need to do some weak reference stuff?
-                    //_loadedPluginAssemblies.Remove
-                    //moduleLoadContext.Unload();
+                    
+                    _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
+                    moduleLoadContext.Unload();
                 }
             }
 
@@ -861,7 +860,7 @@ namespace SS.Core
                     throw new ArgumentException("Does not have an acceptable Load method.", nameof(module));
 
                 if (filteredMethods.Length > 1)
-                    throw new ArgumentException("Ambiguous Load method. Found filteredMethods.Length possiblities.", nameof(module));
+                    throw new ArgumentException($"Ambiguous Load method. Found {filteredMethods.Length} possiblities.", nameof(module));
 
                 LoadMethod = filteredMethods[0].method;
                 LoadParameters = filteredMethods[0].parameters;
@@ -881,42 +880,66 @@ namespace SS.Core
                 }
             }
 
+            /// <summary>
+            /// The <see cref="System.Type"/> of the module.
+            /// </summary>
             public Type ModuleType
             {
                 get;
             }
 
+            /// <summary>
+            /// The instance of the module.
+            /// </summary>
             public IModule Module
             {
                 get;
             }
 
+            /// <summary>
+            /// A description of the module, retrieved from <see cref="ModuleInfoAttribute.Description"/>.
+            /// </summary>
             public string Description
             {
                 get;
             }
 
+            /// <summary>
+            /// Whether the module has been loaded.
+            /// </summary>
             public bool IsLoaded
             {
                 get;
                 set;
             }
 
+            /// <summary>
+            /// The load method.
+            /// </summary>
             public MethodInfo LoadMethod
             {
                 get;
             }
 
+            /// <summary>
+            /// The parameters to the <see cref="LoadMethod"/>.
+            /// </summary>
             public ParameterInfo[] LoadParameters
             {
                 get;
             }
 
+            /// <summary>
+            /// Dependencies required to load the module.
+            /// </summary>
             public Dictionary<Type, IComponentInterface> InterfaceDependencies
             {
                 get;
             }
 
+            /// <summary>
+            /// Arenas the module is attached to.
+            /// </summary>
             public HashSet<Arena> AttachedArenas
             {
                 get;
@@ -954,9 +977,7 @@ namespace SS.Core
                 return false;
             }
 
-            // we got all the interfaces, now we can load the module
-            bool success = false;
-
+            // we got all the interfaces, now we should have all of the parameters
             object[] parameters = new object[moduleData.LoadParameters.Length];
             parameters[0] = this;
 
@@ -967,6 +988,9 @@ namespace SS.Core
                     parameters[i] = dependency;
                 }
             }
+
+            // load the module
+            bool success;
 
             try
             {
@@ -1001,6 +1025,9 @@ namespace SS.Core
         {
             if (moduleData == null)
                 throw new ArgumentNullException(nameof(moduleData));
+
+            if (!moduleData.IsLoaded)
+                return true; // it's not loaded, nothing to do
 
             if (moduleData.AttachedArenas.Count > 0)
             {
@@ -1093,8 +1120,8 @@ namespace SS.Core
                 if (!_loadedPluginAssemblies.TryGetValue(path, out Assembly assembly))
                 {
                     // Assembly not loaded yet, try to load it.
-                    ModulePluginLoadContext loadContext = new ModulePluginLoadContext(path);
-                    AssemblyName assemblyName = new AssemblyName(Path.GetFileNameWithoutExtension(path));
+                    ModulePluginLoadContext loadContext = new(path);
+                    AssemblyName assemblyName = new(Path.GetFileNameWithoutExtension(path));
                     assembly = loadContext.LoadFromAssemblyName(assemblyName);
                     _loadedPluginAssemblies[path] = assembly;
 
@@ -1112,7 +1139,7 @@ namespace SS.Core
         }
 
         /// <summary>
-        /// The <see cref="AssemblyLoadContext"/> that is used to  load module "plugins".
+        /// The <see cref="AssemblyLoadContext"/> that is used to load module "plugins".
         /// This class is <see langword="private"/> to the <see cref="ModuleManager"/> 
         /// which fully manages loading each plugin assembly into a separate, isolated context.
         /// </summary>
@@ -1123,7 +1150,13 @@ namespace SS.Core
             public ModulePluginLoadContext(string moduleAssemblyPath)
                 : base(Path.GetFileNameWithoutExtension(moduleAssemblyPath), true)
             {
+                AssemblyPath = moduleAssemblyPath;
                 _resolver = new AssemblyDependencyResolver(moduleAssemblyPath);
+            }
+
+            public string AssemblyPath
+            {
+                get;
             }
 
             protected override Assembly Load(AssemblyName assemblyName)
@@ -1153,7 +1186,7 @@ namespace SS.Core
 
         #region Log Methods
 
-        private void WriteLogA(LogLevel level, Arena arena, string message)
+        private static void WriteLogA(LogLevel level, Arena arena, string message)
         {
             if (level == LogLevel.Error)
                 Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {message}");
@@ -1161,7 +1194,7 @@ namespace SS.Core
                 Console.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {{{arena?.Name ?? "(bad arena)"}}} {message}");
         }
 
-        private void WriteLogM(LogLevel level, string message)
+        private static void WriteLogM(LogLevel level, string message)
         {
             if (level == LogLevel.Error)
                 Console.Error.WriteLine($"{(LogCode)level} <{nameof(ModuleManager)}> {message}");
