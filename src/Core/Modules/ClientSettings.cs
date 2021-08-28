@@ -2,11 +2,16 @@
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using System;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that manages the client-side settings.
+    /// Client-side settings are the settings sent to the client via a <see cref="ClientSettingsPacket"/> (includes ship settings and more).
+    /// Settings are loaded from disk when an arena is loaded and when there is a config change.
+    /// </summary>
     [CoreModuleInfo]
     public class ClientSettings : IModule, IClientSettings
     {
@@ -22,11 +27,11 @@ namespace SS.Core.Modules
         private int _adkey;
         private int _pdkey;
 
-        private object _setMtx = new object();
+        private readonly object _setMtx = new();
 
         private class ArenaClientSettingsData
         {
-            public ClientSettingsPacket cs = new ClientSettingsPacket();
+            public ClientSettingsPacket cs = new();
 
             /// <summary>
             /// prizeweight partial sums. 1-28 are used for now, representing prizes 1 to 28.
@@ -105,8 +110,27 @@ namespace SS.Core.Modules
 
         uint IClientSettings.GetChecksum(Player p, uint key)
         {
-            // TODO: implement this.  For now, 0 means skip checks for settings checksum.
-            return 0;
+            if (p == null)
+                return 0;
+
+            Arena arena = p.Arena;
+            if (arena == null)
+                return 0;
+
+            ArenaClientSettingsData ad = arena[_adkey] as ArenaClientSettingsData;
+
+            lock (_setMtx)
+            {
+                Span<byte> clientSettingsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ad.cs, 1));
+                uint checksum = 0;
+                while (clientSettingsBytes.Length >= 4)
+                {
+                    checksum += (BinaryPrimitives.ReadUInt32LittleEndian(clientSettingsBytes) ^ key);
+                    clientSettingsBytes = clientSettingsBytes[4..];
+                }
+
+                return checksum;
+            }
         }
 
         Prize IClientSettings.GetRandomPrize(Arena arena)
@@ -114,8 +138,7 @@ namespace SS.Core.Modules
             if(arena == null)
                 return 0;
 
-            ArenaClientSettingsData ad = arena[_adkey] as ArenaClientSettingsData;
-            if (ad == null)
+            if (arena[_adkey] is not ArenaClientSettingsData ad)
                 return 0;
 
             int max = ad.pwps[28];
@@ -143,29 +166,32 @@ namespace SS.Core.Modules
             return (Prize)i;
         }
 
-        ClientSettingOverrideKey IClientSettings.GetOverrideKey(string section, string key)
-        {
-            return new ClientSettingOverrideKey();
-        }
+        //ClientSettingOverrideKey IClientSettings.GetOverrideKey(string section, string key)
+        //{
+        //    return new ClientSettingOverrideKey();
+        //}
 
-        void IClientSettings.ArenaOverride(Arena arena, ClientSettingOverrideKey key, int val)
-        {
+        //void IClientSettings.ArenaOverride(Arena arena, ClientSettingOverrideKey key, int val)
+        //{
             
-        }
+        //}
 
-        void IClientSettings.PlayerOverride(Player p, ClientSettingOverrideKey key)
-        {
+        //void IClientSettings.PlayerOverride(Player p, ClientSettingOverrideKey key)
+        //{
             
-        }
+        //}
 
         #endregion
 
+        [ConfigHelp("Misc", "SendUpdatedSettings", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
+            Description ="Whether to send updates to players when the arena settings change.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
 
-            ArenaClientSettingsData ad = arena[_adkey] as ArenaClientSettingsData;
+            if (arena[_adkey] is not ArenaClientSettingsData ad)
+                return;
 
             lock (_setMtx)
             {
@@ -175,10 +201,42 @@ namespace SS.Core.Modules
                 }
                 else if(action == ArenaAction.ConfChanged)
                 {
+                    bool sendUpdated = _configManager.GetInt(arena.Cfg, "Misc", "SendUpdatedSettings", 1) != 0;
+
+                    ClientSettingsPacket old = ad.cs;
+
+                    LoadSettings(ad, arena.Cfg);
+
+                    if (sendUpdated)
+                    {
+                        Span<byte> oldSpan = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref old, 1));
+                        Span<byte> newSpan = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ad.cs, 1));
+
+                        if (!oldSpan.SequenceEqual(newSpan))
+                        {
+                            _logManager.LogA(LogLevel.Info, nameof(ClientSettings), arena, "Sending modified settings.");
+
+                            _playerData.Lock();
+
+                            try
+                            {
+                                foreach (Player p in _playerData.PlayerList)
+                                {
+                                    if (p.Arena == arena && p.Status == PlayerState.Playing)
+                                        SendOneSettings(p, ad);
+                                }
+                            }
+                            finally
+                            {
+                                _playerData.Unlock();
+                            }
+                        }
+                    }
                 }
                 else if (action == ArenaAction.Destroy)
                 {
                     // mark settings as destroyed (for asserting later)
+                    ad.cs.Type = 0;
                 }
             }
         }
@@ -352,8 +410,8 @@ namespace SS.Core.Modules
             {
                 _net.SendToOne(
                     p,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ad.cs, 1))
-                    , NetSendFlags.Reliable);
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ad.cs, 1)),
+                    NetSendFlags.Reliable);
             }
         }
     }
