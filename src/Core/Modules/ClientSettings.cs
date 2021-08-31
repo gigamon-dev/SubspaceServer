@@ -2,7 +2,6 @@
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using System;
-using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
@@ -100,7 +99,8 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            ArenaClientSettingsData ad = arena[_adkey] as ArenaClientSettingsData;
+            if (arena[_adkey] is not ArenaClientSettingsData ad)
+                return;
 
             lock (_setMtx)
             {
@@ -117,19 +117,12 @@ namespace SS.Core.Modules
             if (arena == null)
                 return 0;
 
-            ArenaClientSettingsData ad = arena[_adkey] as ArenaClientSettingsData;
+            if (arena[_adkey] is not ArenaClientSettingsData ad)
+                return 0;
 
             lock (_setMtx)
             {
-                Span<byte> clientSettingsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ad.cs, 1));
-                uint checksum = 0;
-                while (clientSettingsBytes.Length >= 4)
-                {
-                    checksum += (BinaryPrimitives.ReadUInt32LittleEndian(clientSettingsBytes) ^ key);
-                    clientSettingsBytes = clientSettingsBytes[4..];
-                }
-
-                return checksum;
+                return ad.cs.GetChecksum(key);
             }
         }
 

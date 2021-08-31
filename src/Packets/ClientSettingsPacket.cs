@@ -1,5 +1,6 @@
 ﻿using SS.Utilities;
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -41,6 +42,20 @@ namespace SS.Core.Packets
         private const int NumPrizeWeightSettings = 28;
         private fixed byte prizeWeightSettings[NumPrizeWeightSettings];
         public Span<byte> PrizeWeightSettings => new Span<byte>(Unsafe.AsPointer(ref prizeWeightSettings[0]), NumPrizeWeightSettings);
+
+        public uint GetChecksum(uint key)
+        {
+            ReadOnlySpan<byte> byteSpan = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
+            uint checksum = 0;
+
+            while (byteSpan.Length >= 4)
+            {
+                checksum += (BinaryPrimitives.ReadUInt32LittleEndian(byteSpan) ^ key);
+                byteSpan = byteSpan[4..];
+            }
+
+            return checksum;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
