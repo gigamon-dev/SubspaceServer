@@ -328,7 +328,7 @@ namespace SS.Core.Modules
             Command = "getg",
             Targets = CommandTarget.None,
             Args = "section:key",
-            Description = "Displays the value of an global setting. Make sure there are no\n" +
+            Description = "Displays the value of a global setting. Make sure there are no\n" +
             "spaces around the colon.")]
         private void Command_getX(string command, string parameters, Player p, ITarget target)
         {
@@ -457,9 +457,8 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "<text>",
             Description = "Displays the text as an arena (green) message to the targets.")]
-        private void Command_a(string command, string parameters, Player p, ITarget target)
+        private void Command_a(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            ChatSound sound = ChatSound.Beep1; // TODO:
             _playerData.TargetToSet(target, out LinkedList<Player> set);
             _chat.SendSetSoundMessage(set, sound, $"{parameters} -{p.Name}");
         }
@@ -468,9 +467,8 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "<text>",
             Description = "Displays the text as an anonymous arena (green) message to the targets.")]
-        private void Command_aa(string command, string parameters, Player p, ITarget target)
+        private void Command_aa(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            ChatSound sound = ChatSound.Beep1; // TODO:
             _playerData.TargetToSet(target, out LinkedList<Player> set);
             _chat.SendSetSoundMessage(set, sound, "{0}", parameters);
         }
@@ -479,9 +477,8 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<text>",
             Description = "Displays the text as an arena (green) message to the whole zone.")]
-        private void Command_z(string command, string parameters, Player p, ITarget target)
+        private void Command_z(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            ChatSound sound = ChatSound.Beep1; // TODO:
             _chat.SendArenaSoundMessage(null, sound, $"{parameters} -{p.Name}");
 
             // TODO: peer
@@ -491,9 +488,8 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<text>",
             Description = "Displays the text as an anonymous arena (green) message to the whole zone.")]
-        private void Command_az(string command, string parameters, Player p, ITarget target)
+        private void Command_az(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            ChatSound sound = ChatSound.Beep1; // TODO:
             _chat.SendArenaSoundMessage(null, sound, "{0}", parameters);
 
             // TODO: peer

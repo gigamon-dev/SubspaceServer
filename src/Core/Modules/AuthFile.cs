@@ -88,6 +88,8 @@ namespace SS.Core.Modules
             commandManager.AddCommand("local_password", Command_passwd);
             commandManager.AddCommand("addallowed", Command_addallowed);
             commandManager.AddCommand("set_local_password", Command_set_local_password);
+            commandManager.AddUnlogged("passwd");
+            commandManager.AddUnlogged("local_password");
 
             iAuthToken = broker.RegisterInterface<IAuth>(this);
             // TODO: billing fallback
@@ -102,6 +104,12 @@ namespace SS.Core.Modules
 
             commandManager.RemoveCommand("passwd", Command_passwd);
             commandManager.RemoveCommand("local_password", Command_passwd);
+            commandManager.RemoveCommand("addallowed", Command_addallowed);
+            commandManager.RemoveCommand("set_local_password", Command_set_local_password);
+            commandManager.RemoveUnlogged("passwd");
+            commandManager.RemoveUnlogged("local_password");
+
+            playerData.FreePlayerData(pdKey);
 
             config.CloseConfigFile(pwdFile);
             pwdFile = null;
@@ -215,6 +223,14 @@ namespace SS.Core.Modules
             return hashChars.ToString();
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None, 
+            Args = "<new password>",
+            Description =
+            "Changes your local server password. Note that this command only changes\n" +
+            "the password used by the auth_file authentication mechanism (used when the\n" +
+            "billing server is disconnected). This command does not involve the billing\n" +
+            "server.\n")]
         [ConfigHelp("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
             Description = "If true, you must be authenticated (have used a correct password) according to this module or some other module before using ?local_password to change your local password.")]
         private void Command_passwd(string command, string parameters, Player p, ITarget target)
@@ -239,6 +255,12 @@ namespace SS.Core.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None, 
+            Args = "<player name>", 
+            Description =
+            "Adds a player to passwd.conf with no set password. This will allow them\n" +
+            "to log in when AllowUnknown is set to false, and has no use otherwise.\n")]
         private void Command_addallowed(string command, string parameters, Player p, ITarget target)
         {
             if (string.IsNullOrWhiteSpace(parameters))
@@ -251,6 +273,12 @@ namespace SS.Core.Modules
             chat.SendMessage(p, $"Added {parameters} to the allowed player list.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = null,
+            Description =
+            "If used on a player that has no local password set, it will set their\n" +
+            "local password to the password they used to log in to this session.\n")]
         private void Command_set_local_password(string command, string parameters, Player p, ITarget target)
         {
             if (target.Type != TargetType.Player)

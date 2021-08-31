@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -43,55 +40,68 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
-    /// 
+    /// Delegate for a command handler.
     /// </summary>
-    /// <param name="command">the name of the command that was issued</param>
-    /// <param name="parameters">the stuff that the player typed after the command name</param>
-    /// <param name="p">the player issuing the command</param>
-    /// <param name="target">describes how the command was issued (public, private, etc..</param>
-    public delegate void CommandDelegate(string command, string parameters, Player p, ITarget target);
+    /// <param name="commandName">The name of the command that was issued.</param>
+    /// <param name="parameters">The characters the player typed after the command name.</param>
+    /// <param name="p">The player issuing the command.</param>
+    /// <param name="target">The target of the command.</param>
+    public delegate void CommandDelegate(string commandName, string parameters, Player p, ITarget target);
 
     /// <summary>
-    /// the command manager; deals with registering and dispatching commands.
+    /// Delegate for a command handler that also uses sounds.
+    /// </summary>
+    /// <param name="commandName">The name of the command that was issued.</param>
+    /// <param name="parameters">The characters the player typed after the command name.</param>
+    /// <param name="p">The player issuing the command.</param>
+    /// <param name="target">The target of the command.</param>
+    /// <param name="sound">The sound to use.</param>
+    public delegate void CommandWithSoundDelegate(string commandName, string parameters, Player p, ITarget target, ChatSound sound);
+
+    /// <summary>
+    /// Delegate for a 'default' command handler.
+    /// </summary>
+    /// <param name="commandName">The name of the command that was issued.</param>
+    /// <param name="line">The full command line.</param>
+    /// <param name="p">The player issuing the command.</param>
+    /// <param name="target">The target of the command.</param>
+    public delegate void DefaultCommandDelegate(string commandName, string line, Player p, ITarget target);
+
+    /// <summary>
+    /// Interface for a module which deals with registering and dispatching commands.
     /// 
-    /// command handlers come in two flavors, which differ only in whether
-    /// the handler gets to see the command name that was used. this can only
-    /// make a difference if the same handler is used for multiple commands,
-    /// of course. also, if you want to register per-arena commands, you need
-    /// to use the second flavor. all handlers may assume p and p->arena are
-    /// non-NULL.
-    /// 
-    /// Target structs are used to describe how a command was issued.
-    /// commands typed as public chat messages get targets of type T_ARENA.
-    /// commands typed as local private messages or remove private messages
-    /// to another player on the same server get T_PLAYER targets, and
-    /// commands sent as team messages (to your own team or an enemy team)
-    /// get T_FREQ targets.
-    /// 
-    /// there is no difference between ? commands and * commands. all
+    /// <para>
+    /// There is no difference between ? commands and * commands. All
     /// commands (except of course commands handled on the client) work
     /// equally whether a ? or a * was used.
+    /// </para>
     /// 
-    /// help text should follow a standard format:
-    /// <code>
-    /// local helptext_t help_foo =
-    /// "Module: ...\n"
-    /// "Targets: ...\n"
-    /// "Args: ...\n"
-    /// More text here...\n";
-    /// </code>
+    /// <para>
+    /// <see cref="ITarget"/> is used to describe how a command was issued.
+    /// Commands typed as public chat messages have an <see cref="ITarget.Type"/> of <see cref="TargetType.Arena"/>.
+    /// Commands typed as local private messages or remote private messages
+    /// to another player on the same server but in a different arena get <see cref="TargetType.Player"/>, and
+    /// commands sent as team messages (to your own team or an enemy team)
+    /// get <see cref="TargetType.Freq"/>.
+    /// </para>
+    /// 
+    /// <para>
+    /// Help information about a command can be added using the <see cref="CommandHelpAttribute"/> on handler methods.
+    /// If a handler method is used for multiple commands, use <see cref="CommandHelpAttribute.Command"/> to differentiate.
+    /// </para>
     ///
-    /// the server keeps track of a "default" command handler, which will get
-    /// called if no commands know to the server match a typed command. to
-    /// set or remove the default handler, pass NULL as cmdname to any of the
-    /// Add/RemoveCommand functions. this feature should only be used by
-    /// billing server modules.
+    /// <para>
+    /// Billing server modules can subscribe to <see cref="DefaultCommandReceived"/> to receive "default" commands.
+    /// A 'default' command is a command that are not handled by the zone server 
+    /// because no commands known to the zone server match a typed command
+    /// or a command is purposely being skipped and being forwarded to billing.
+    /// </para>
     /// </summary>
     public interface ICommandManager : IComponentInterface
     {
         /// <summary>
         /// Registers a command handler.
-        /// Be sure to use RemoveCommand to unregister this before unloading.
+        /// Be sure to use <see cref="RemoveCommand"/> to unregister this before unloading.
         /// </summary>
         /// <param name="commandName">The name of the command to register.</param>
         /// <param name="handler">The command handler.</param>
@@ -103,8 +113,21 @@ namespace SS.Core.ComponentInterfaces
         void AddCommand(string commandName, CommandDelegate handler, Arena arena = null, string helpText = null);
 
         /// <summary>
+        /// Registers a command handler.
+        /// Be sure to use <see cref="RemoveCommand"/> to unregister this before unloading.
+        /// </summary>
+        /// <param name="commandName">The name of the command to register.</param>
+        /// <param name="handler">The command handler.</param>
+        /// <param name="arena">Arena to register the command for. <see langword="null"/> for all arenas.</param>
+        /// <param name="helpText">
+        /// Help text for this command, or <see langword="null"/> for none.
+        /// If <see langword="null"/>, it will look for a <see cref="CommandHelpAttribute"/> on the <paramref name="handler"/>.
+        /// </param>
+        void AddCommand(string commandName, CommandWithSoundDelegate handler, Arena arena = null, string helpText = null);
+
+        /// <summary>
         /// Unregisters a command handler.
-        /// Use this to unregister handlers registered with AddCommand.
+        /// Use this to unregister handlers registered with <see cref="AddCommand"/>.
         /// </summary>
         /// <param name="commandName">The name of the command to unregister.</param>
         /// <param name="handler">The command handler.</param>
@@ -112,9 +135,24 @@ namespace SS.Core.ComponentInterfaces
         void RemoveCommand(string commandName, CommandDelegate handler, Arena arena = null);
 
         /// <summary>
+        /// Unregisters a command handler.
+        /// Use this to unregister handlers registered with <see cref="AddCommand"/>.
+        /// </summary>
+        /// <param name="commandName">The name of the command to unregister.</param>
+        /// <param name="handler">The command handler.</param>
+        /// <param name="arena">Arena to unregister the command for. <see langword="null"/> for all arenas.</param>
+        void RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena arena = null);
+
+        /// <summary>
+        /// Event for billing modules to subscribe to for them to handle 'default' commands.
+        /// This provides a hook in so that billing modules may forward commands to a billing server to handle.
+        /// </summary>
+        event DefaultCommandDelegate DefaultCommandReceived;
+
+        /// <summary>
         /// Dispatches an incoming command.
         /// This is generally only called by the chat module and billing server modules.
-        /// If the first character of typedline is a backslash, command
+        /// If the first character of <paramref name="typedLine"/> is a backslash, command
         /// handlers in the server will be bypassed and the command will be
         /// passed directly to the default handler.
         /// </summary>
@@ -131,5 +169,21 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena"></param>
         /// <returns></returns>
         string GetHelpText(string commandName, Arena arena);
+
+        /// <summary>
+        /// Adds a command from the collection of commands that should not have its parameters be included in logs.
+        /// It will still log that the command was executed, but without parameter details.
+        /// </summary>
+        /// <param name="commandName">The command to add.</param>
+        void AddUnlogged(string commandName);
+
+        /// <summary>
+        /// Removes a command from the collection of commands that should not have its parameters be included in logs.
+        /// </summary>
+        /// <param name="commandName">The command to remove.</param>
+        void RemoveUnlogged(string commandName);
+
+        // TODO: for ?cmdlist ?commands ?allcommands
+        //IEnumerable<CommandInfo> GetCommands(Arena arena, Player p, bool excludeGlobal, bool excludeNoAccess);
     }
 }

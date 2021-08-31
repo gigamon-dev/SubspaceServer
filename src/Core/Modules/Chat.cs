@@ -601,7 +601,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(text))
                 return;
 
-            string[] tokens = text.Split(new char[] {':'}, StringSplitOptions.None);
+            string[] tokens = text.Split(':', 3, StringSplitOptions.None);
             if (text[0] != ':' || tokens.Length != 3 || tokens[0] != string.Empty || tokens[1] == string.Empty || tokens[2] == string.Empty)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Chat), p, "malformed remote private message");

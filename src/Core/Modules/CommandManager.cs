@@ -1,13 +1,14 @@
-﻿using System;
+﻿using SS.Core.ComponentInterfaces;
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 
-using SS.Core.ComponentInterfaces;
-
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// <inheritdoc cref="ICommandManager"/>
+    /// </summary>
     [CoreModuleInfo]
     public class CommandManager : IModule, ICommandManager
     {
@@ -18,30 +19,68 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private InterfaceRegistrationToken _iCommandManagerToken;
 
-        private class CommandData
+        #region Helper classes
+
+        private abstract class CommandData
         {
-            public readonly CommandDelegate Handler;
             public readonly Arena Arena;
-            public readonly string HelpText;
+            public readonly string HelpText; // TODO: change to be CommandHelpAttribute?
 
             public CommandData(
-                CommandDelegate handler,
                 Arena arena,
                 string helpText)
             {
-                if (handler == null)
-                    throw new ArgumentNullException("handler");
-
-                Handler = handler;
                 Arena = arena;
                 HelpText = helpText;
             }
+
+            public virtual bool IsHandler(CommandDelegate handler) => false;
+            public virtual bool IsHandler(CommandWithSoundDelegate handler) => false;
+            public abstract void DispatchCommand(string command, string parameters, Player p, ITarget target, ChatSound sound);
         }
 
-        private Dictionary<string, LinkedList<CommandData>> _cmdLookup;
-        private object _cmdmtx = new object();
+        private class BasicCommandData : CommandData
+        {
+            public readonly CommandDelegate Handler;
 
-        private CommandDelegate _defaultHandler;
+            public BasicCommandData(
+                CommandDelegate handler,
+                Arena arena,
+                string helpText)
+                : base(arena, helpText)
+            {
+                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+            }
+
+            public override bool IsHandler(CommandDelegate handler) => Handler == handler;
+
+            public override void DispatchCommand(string command, string parameters, Player p, ITarget target, ChatSound sound) => Handler(command, parameters, p, target);
+        }
+
+        private class SoundCommandData : CommandData
+        {
+            public readonly CommandWithSoundDelegate Handler;
+
+            public SoundCommandData(
+                CommandWithSoundDelegate handler,
+                Arena arena,
+                string helpText)
+                : base(arena, helpText)
+            {
+                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+            }
+
+            public override bool IsHandler(CommandWithSoundDelegate handler) => Handler == handler;
+
+            public override void DispatchCommand(string command, string parameters, Player p, ITarget target, ChatSound sound) => Handler(command, parameters, p, target, sound);
+        }
+
+        #endregion
+
+        private readonly Dictionary<string, LinkedList<CommandData>> _cmdLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _unloggedCommands = new(StringComparer.OrdinalIgnoreCase);
+        private event DefaultCommandDelegate DefaultCommandEvent;
+        private readonly object _lockObj = new();
 
         #region IModule Members
 
@@ -58,8 +97,9 @@ namespace SS.Core.Modules
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
-            _cmdLookup = new Dictionary<string, LinkedList<CommandData>>(StringComparer.OrdinalIgnoreCase);
-            _defaultHandler = null;
+            _cmdLookup.Clear();
+            DefaultCommandEvent = null;
+            InitializeUnloggedCommands();
 
             _iCommandManagerToken = _broker.RegisterInterface<ICommandManager>(this);
 
@@ -71,6 +111,9 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<ICommandManager>(ref _iCommandManagerToken) != 0)
                 return false;
 
+            _cmdLookup.Clear();
+            DefaultCommandEvent = null;
+
             return true;
         }
 
@@ -80,53 +123,90 @@ namespace SS.Core.Modules
 
         void ICommandManager.AddCommand(string commandName, CommandDelegate handler, Arena arena, string helpText)
         {
-            if (commandName == null)
-                _defaultHandler = handler;
-            else
+            if (string.IsNullOrWhiteSpace(commandName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
+
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            AddCommand(commandName, handler, arena, helpText);
+        }
+
+        void ICommandManager.AddCommand(string commandName, CommandWithSoundDelegate handler, Arena arena, string helpText)
+        {
+            if (string.IsNullOrWhiteSpace(commandName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
+
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            AddCommand(commandName, handler, arena, helpText);
+        }
+
+        private void AddCommand(string commandName, Delegate handler, Arena arena, string helpText)
+        {
+            if (string.IsNullOrWhiteSpace(commandName))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
+
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            if (string.IsNullOrWhiteSpace(helpText))
             {
-                if (string.IsNullOrWhiteSpace(helpText))
+                TryGetHelpText(commandName, handler, out helpText);
+            }
+
+            CommandData cd;
+            if (handler is CommandDelegate basicHandler)
+                cd = new BasicCommandData(basicHandler, arena, helpText);
+            else if (handler is CommandWithSoundDelegate soundHandler)
+                cd = new SoundCommandData(soundHandler, arena, helpText);
+            else
+                throw new ArgumentException($"Handler must be a {nameof(CommandDelegate)} or {nameof(CommandWithSoundDelegate)}.", nameof(handler));
+
+            lock (_lockObj)
+            {
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
                 {
-                    TryGetHelpText(commandName, handler, out helpText);
+                    ll = new LinkedList<CommandData>();
+                    _cmdLookup.Add(commandName, ll);
                 }
 
-                CommandData cd = new CommandData(handler, arena, helpText);
-
-                lock (_cmdmtx)
-                {
-                    LinkedList<CommandData> ll;
-                    if (_cmdLookup.TryGetValue(commandName, out ll) == false)
-                    {
-                        ll = new LinkedList<CommandData>();
-                        _cmdLookup.Add(commandName, ll);
-                    }
-                    ll.AddLast(cd);
-                }
+                ll.AddLast(cd);
             }
         }
 
-        private bool TryGetHelpText(string commandName, CommandDelegate handler, out string helpText)
+        private bool TryGetHelpText(string commandName, Delegate handler, out string helpText)
         {
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            MethodInfo mi = handler.GetMethodInfo();
-            foreach (CommandHelpAttribute helpAttr in mi.GetCustomAttributes<CommandHelpAttribute>())
+            try
             {
-                if (helpAttr.Command != null 
-                    && !string.Equals(helpAttr.Command, commandName, StringComparison.OrdinalIgnoreCase))
+                MethodInfo mi = handler.GetMethodInfo();
+                foreach (CommandHelpAttribute helpAttr in mi.GetCustomAttributes<CommandHelpAttribute>())
                 {
-                    continue;
+                    if (helpAttr.Command != null
+                        && !string.Equals(helpAttr.Command, commandName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    StringBuilder sb = new();
+                    sb.Append($"Targets: {helpAttr.Targets:F}\n");
+                    sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
+
+                    if (!string.IsNullOrWhiteSpace(helpAttr.Description))
+                        sb.Append(helpAttr.Description);
+
+                    helpText = sb.ToString();
+                    return true;
                 }
-
-                StringBuilder sb = new StringBuilder();
-                sb.Append($"Targets: {helpAttr.Targets:F}\n");
-                sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
-
-                if (!string.IsNullOrWhiteSpace(helpAttr.Description))
-                    sb.Append(helpAttr.Description);
-
-                helpText = sb.ToString();
-                return true;
+            }
+            catch (Exception ex)
+            {
+                // ignore any reflection errors
+                _logManager.LogM(LogLevel.Drivel, nameof(CommandManager), $"Error trying to look for help attributes for command {commandName}. {ex}");
             }
 
             helpText = null;
@@ -135,32 +215,70 @@ namespace SS.Core.Modules
 
         void ICommandManager.RemoveCommand(string commandName, CommandDelegate handler, Arena arena)
         {
-            if (commandName == null)
+            lock (_lockObj)
             {
-                if (_defaultHandler == handler)
-                    _defaultHandler = null;
-            }
-            else
-            {
-                LinkedList<CommandData> ll;
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
+                    return;
 
-                lock (_cmdmtx)
+                for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
                 {
-                    if (_cmdLookup.TryGetValue(commandName, out ll) == false)
-                        return;
-
-                    for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
+                    CommandData cd = node.Value;
+                    if (cd.IsHandler(handler) && cd.Arena == arena)
                     {
-                        CommandData cd = node.Value;
-                        if (cd.Handler == handler && cd.Arena == arena)
-                        {
-                            ll.Remove(node);
-                            break;
-                        }
+                        ll.Remove(node);
+                        break;
+                    }
+                }
+
+                if (ll.Count == 0)
+                    _cmdLookup.Remove(commandName);
+            }
+        }
+
+        void ICommandManager.RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena arena)
+        {
+            lock (_lockObj)
+            {
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
+                    return;
+
+                for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
+                {
+                    CommandData cd = node.Value;
+                    if (cd.IsHandler(handler) && cd.Arena == arena)
+                    {
+                        ll.Remove(node);
+                        break;
+                    }
+                }
+
+                if (ll.Count == 0)
+                    _cmdLookup.Remove(commandName);
+            }
+        }
+
+        event DefaultCommandDelegate ICommandManager.DefaultCommandReceived
+        {
+            add
+            {
+                lock (_lockObj)
+                {
+                    if (DefaultCommandEvent != null)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(CommandManager),
+                            $"A {nameof(ICommandManager.DefaultCommandReceived)} is being subscribed to when one is already subscribed. " +
+                            $"Check that you're not loading more than 1 module that registers a default handler (e.g. only one billing module allowed).");
                     }
 
-                    if (ll.Count == 0)
-                        _cmdLookup.Remove(commandName);
+                    DefaultCommandEvent += value;
+                }
+            }
+
+            remove
+            {
+                lock (_lockObj)
+                {
+                    DefaultCommandEvent -= value;
                 }
             }
         }
@@ -170,18 +288,27 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(typedLine))
                 return;
 
+            if (p == null)
+                return;
+
             // almost all commands assume that p.Arena is not null
             if (p.Arena == null)
                 return;
+
+            if (target == null)
+                return;
+
+            // NOTE: the Chat module has already removed the starting ? or * from typedLine
 
             bool skipLocal = false;
 
             typedLine = typedLine.Trim();
 
+            // ?\<command> is a way to send a command straight to the the billing server
             if (typedLine[0] == '\\')
             {
                 typedLine = typedLine.Remove(0, 1);
-                if(typedLine == string.Empty)
+                if (typedLine == string.Empty)
                     return;
 
                 skipLocal = true;
@@ -189,67 +316,27 @@ namespace SS.Core.Modules
 
             string origLine = typedLine;
 
-            
+            // TODO: ASSS cuts command name at 30 characters? why the limit?
+            // TODO: ASSS ends command name on ' ', '=', and '#'.  Then for parameters it skips ' ' and '=', but will leave a '#' at the start in the parameters string?
+            // = makes sense for ?chat=first,second,third or ?password=newpassword etc...
+            // where is # used?
+
             string[] tokens = typedLine.Split(" =".ToCharArray(), 2, StringSplitOptions.RemoveEmptyEntries);
-            string cmd; // TODO: handle 30 character max on command name?
+            string cmd;
             string parameters;
 
-            if(tokens.Length == 1)
+            if (tokens.Length == 1)
             {
                 cmd = tokens[0];
                 parameters = string.Empty;
             }
-            else if(tokens.Length == 2)
+            else if (tokens.Length == 2)
             {
                 cmd = tokens[0];
                 parameters = tokens[1];
             }
             else
                 return;
-
-            string cmdWithSound = cmd + '\0' + (char)sound;
-            /*
-            // find end of command
-            int charactersToSearch = typedLine.Length;
-            if(charactersToSearch > 30)
-                charactersToSearch = 30; // max of 30 characters (might be a biller protocol limitation?)
-            int index = typedLine.IndexOfAny(" =".ToCharArray(), 0, charactersToSearch);
-            
-            string cmd;
-            string parameters;
-            
-            if(index == -1)
-            {
-                cmd = typedLine;
-                parameters = string.Empty;
-            }
-            else
-            {
-                cmd = typedLine.Substring(0, index);
-                parameters = typedLine.Substring(index
-            }
-            */
-            
-            /*
-            int index = 0;
-            while (index < sb.Length && sb[index] != ' ' && sb[index] != '=' && index < 30)
-                index++;
-
-            if(index == 0)
-                return;
-
-            string cmd = sb.ToString(0, index);
-            string cmdWithSound = cmd + '\0' + (char)sound;
-
-            while (index < sb.Length && sb[index] != ' ' && sb[index] != '=')
-                index++;
-
-            string parameters;
-            if (index == sb.Length - 1)
-                parameters = string.Empty;
-            else
-                parameters = sb.ToString(index, sb.Length - index
-            */
 
             string prefix;
             Arena remoteArena = null;
@@ -270,28 +357,26 @@ namespace SS.Core.Modules
             else
                 prefix = "privcmd";
 
-            lock (_cmdmtx)
+            lock (_lockObj)
             {
-                LinkedList<CommandData> ll;
-                _cmdLookup.TryGetValue(cmd, out ll);
+                _cmdLookup.TryGetValue(cmd, out LinkedList<CommandData> ll);
 
                 if (skipLocal || ll == null)
                 {
                     // we don't know about this, send it to the biller
-                    if (_defaultHandler != null)
-                        _defaultHandler(cmd, origLine, p, target);
+                    DefaultCommandEvent?.Invoke(cmd, origLine, p, target);
                 }
-                else if (allowed(p, cmd, prefix, remoteArena))
+                else if (Allowed(p, cmd, prefix, remoteArena))
                 {
+                    LogCommand(p, target, cmd, parameters);
+
                     foreach (CommandData cd in ll)
                     {
                         if (cd.Arena != null && cd.Arena != p.Arena)
                             continue;
 
-                        cd.Handler(cmd, parameters, p, target);
+                        cd.DispatchCommand(cmd, parameters, p, target, sound);
                     }
-
-                    logCommand(p, target, cmd, parameters);
                 }
 #if CFG_LOG_ALL_COMMAND_DENIALS
                 else
@@ -305,11 +390,10 @@ namespace SS.Core.Modules
         string ICommandManager.GetHelpText(string commandName, Arena arena)
         {
             string ret = null;
-            LinkedList<CommandData> ll;
 
-            lock (_cmdmtx)
+            lock (_lockObj)
             {
-                if (_cmdLookup.TryGetValue(commandName, out ll))
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll))
                 {
                     for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
                     {
@@ -325,27 +409,43 @@ namespace SS.Core.Modules
             return ret;
         }
 
+        void ICommandManager.AddUnlogged(string commandName)
+        {
+            lock (_lockObj)
+            {
+                _unloggedCommands.Add(commandName);
+            }
+        }
+
+        void ICommandManager.RemoveUnlogged(string commandName)
+        {
+            lock (_lockObj)
+            {
+                _unloggedCommands.Remove(commandName);
+            }
+        }
+
         #endregion
 
-        private bool allowed(Player p, string cmd, string prefix, Arena remoteArena)
+        private bool Allowed(Player p, string cmd, string prefix, Arena remoteArena)
         {
             if (p == null)
-                throw new ArgumentNullException("p");
+                throw new ArgumentNullException(nameof(p));
 
             if (string.IsNullOrEmpty(cmd))
-                throw new ArgumentOutOfRangeException("cmd", cmd, "cannot be null or empty");
+                throw new ArgumentOutOfRangeException(nameof(cmd), cmd, "cannot be null or empty");
 
             if (string.IsNullOrEmpty(prefix))
-                throw new ArgumentOutOfRangeException("prefix", prefix, "cannot be null or empty");
+                throw new ArgumentOutOfRangeException(nameof(prefix), prefix, "cannot be null or empty");
 
             if (_capabilityManager == null)
             {
 
 #if ALLOW_ALL_IF_CAPMAN_IS_MISSING
-                _logManager.LogM(LogLevel.Warn, nameof(CommandManager), "the capability manager isn't loaded, allowing all commands");
+                _logManager.LogM(LogLevel.Warn, nameof(CommandManager), "The capability manager isn't loaded, allowing all commands.");
                 return true;
 #else
-                _logManager.LogM(LogLevel.Warn, nameof(CommandManager), "the capability manager isn't loaded, disallowing all commands");
+                _logManager.LogM(LogLevel.Warn, nameof(CommandManager), "The capability manager isn't loaded, disallowing all commands.");
                 return false;
 #endif
             }
@@ -358,25 +458,25 @@ namespace SS.Core.Modules
                 return _capabilityManager.HasCapability(p, capability);
         }
 
-        private void logCommand(Player p, ITarget target, string cmd, string parameters)
+        private void LogCommand(Player p, ITarget target, string cmd, string parameters)
         {
             if (p == null)
-                throw new ArgumentNullException("p");
+                throw new ArgumentNullException(nameof(p));
 
             if (target == null)
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
 
             if (string.IsNullOrEmpty(cmd))
-                throw new ArgumentOutOfRangeException("cmd", cmd, "cannot be null or empty");
+                throw new ArgumentOutOfRangeException(nameof(cmd), cmd, "cannot be null or empty");
 
             if (_logManager == null)
                 return;
 
             // don't log the parameters to some commands
-            if (dontLog(cmd))
+            if (_unloggedCommands.Contains(cmd))
                 parameters = "...";
 
-            StringBuilder sb = new StringBuilder(32);
+            StringBuilder sb = new(32);
 
             switch (target.Type)
             {
@@ -393,7 +493,7 @@ namespace SS.Core.Modules
                 case TargetType.Player:
                     sb.Append("to [");
                     sb.Append((target as IPlayerTarget).Player.Name);
-                    sb.Append("]");
+                    sb.Append(']');
                     break;
                 
                 default:
@@ -408,22 +508,26 @@ namespace SS.Core.Modules
 
         }
 
-        private bool dontLog(string cmd)
+        private void InitializeUnloggedCommands()
         {
-            if (string.Compare(cmd, "chat", true) == 0) return true;
-            if (string.Compare(cmd, "password", true) == 0) return true;
-            if (string.Compare(cmd, "passwd", true) == 0) return true;
-            if (string.Compare(cmd, "local_password", true) == 0) return true;
-            if (string.Compare(cmd, "squadcreate", true) == 0) return true;
-            if (string.Compare(cmd, "squadjoin", true) == 0) return true;
-            if (string.Compare(cmd, "addop", true) == 0) return true;
-            if (string.Compare(cmd, "adduser", true) == 0) return true;
-            if (string.Compare(cmd, "changepassword", true) == 0) return true;
-            if (string.Compare(cmd, "login", true) == 0) return true;
-            if (string.Compare(cmd, "blogin", true) == 0) return true;
-            if (string.Compare(cmd, "bpassword", true) == 0) return true;
+            lock (_lockObj)
+            {
+                _unloggedCommands.Clear();
 
-            return false;
+                // billing commands that shouldn't be logged
+                _unloggedCommands.Add("chat");
+                _unloggedCommands.Add("password");
+                _unloggedCommands.Add("squadcreate");
+                _unloggedCommands.Add("squadjoin");
+                _unloggedCommands.Add("addop");
+                _unloggedCommands.Add("adduser");
+                _unloggedCommands.Add("changepassword");
+                _unloggedCommands.Add("login");
+                _unloggedCommands.Add("blogin");
+                _unloggedCommands.Add("bpassword");
+                _unloggedCommands.Add("squadpassword");
+                _unloggedCommands.Add("message");
+            }
         }
     }
 }
