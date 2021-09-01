@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -36,7 +37,6 @@ namespace SS.Core.Modules
 
             public virtual bool IsHandler(CommandDelegate handler) => false;
             public virtual bool IsHandler(CommandWithSoundDelegate handler) => false;
-            public abstract void DispatchCommand(string command, string parameters, Player p, ITarget target, ChatSound sound);
         }
 
         private class BasicCommandData : CommandData
@@ -53,8 +53,6 @@ namespace SS.Core.Modules
             }
 
             public override bool IsHandler(CommandDelegate handler) => Handler == handler;
-
-            public override void DispatchCommand(string command, string parameters, Player p, ITarget target, ChatSound sound) => Handler(command, parameters, p, target);
         }
 
         private class SoundCommandData : CommandData
@@ -71,16 +69,16 @@ namespace SS.Core.Modules
             }
 
             public override bool IsHandler(CommandWithSoundDelegate handler) => Handler == handler;
-
-            public override void DispatchCommand(string command, string parameters, Player p, ITarget target, ChatSound sound) => Handler(command, parameters, p, target, sound);
         }
 
         #endregion
 
+        private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
         private readonly Dictionary<string, LinkedList<CommandData>> _cmdLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _unloggedCommands = new(StringComparer.OrdinalIgnoreCase);
-        private event DefaultCommandDelegate DefaultCommandEvent;
+
         private readonly object _lockObj = new();
+        private event DefaultCommandDelegate _defaultCommandEvent;
 
         #region IModule Members
 
@@ -97,9 +95,23 @@ namespace SS.Core.Modules
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
-            _cmdLookup.Clear();
-            DefaultCommandEvent = null;
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                _cmdLookup.Clear();
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+
             InitializeUnloggedCommands();
+
+            lock (_lockObj)
+            {
+                _defaultCommandEvent = null;
+            }
 
             _iCommandManagerToken = _broker.RegisterInterface<ICommandManager>(this);
 
@@ -111,8 +123,21 @@ namespace SS.Core.Modules
             if (_broker.UnregisterInterface<ICommandManager>(ref _iCommandManagerToken) != 0)
                 return false;
 
-            _cmdLookup.Clear();
-            DefaultCommandEvent = null;
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                _cmdLookup.Clear();
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+
+            lock (_lockObj)
+            {
+                _defaultCommandEvent = null;
+            }
 
             return true;
         }
@@ -164,7 +189,9 @@ namespace SS.Core.Modules
             else
                 throw new ArgumentException($"Handler must be a {nameof(CommandDelegate)} or {nameof(CommandWithSoundDelegate)}.", nameof(handler));
 
-            lock (_lockObj)
+            _rwLock.EnterWriteLock();
+
+            try
             {
                 if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
                 {
@@ -173,6 +200,10 @@ namespace SS.Core.Modules
                 }
 
                 ll.AddLast(cd);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
             }
         }
 
@@ -215,7 +246,9 @@ namespace SS.Core.Modules
 
         void ICommandManager.RemoveCommand(string commandName, CommandDelegate handler, Arena arena)
         {
-            lock (_lockObj)
+            _rwLock.EnterWriteLock();
+
+            try
             {
                 if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
                     return;
@@ -233,11 +266,17 @@ namespace SS.Core.Modules
                 if (ll.Count == 0)
                     _cmdLookup.Remove(commandName);
             }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
         }
 
         void ICommandManager.RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena arena)
         {
-            lock (_lockObj)
+            _rwLock.EnterWriteLock();
+
+            try
             {
                 if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
                     return;
@@ -254,6 +293,10 @@ namespace SS.Core.Modules
 
                 if (ll.Count == 0)
                     _cmdLookup.Remove(commandName);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
             }
         }
 
@@ -263,14 +306,14 @@ namespace SS.Core.Modules
             {
                 lock (_lockObj)
                 {
-                    if (DefaultCommandEvent != null)
+                    if (_defaultCommandEvent != null)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(CommandManager),
                             $"A {nameof(ICommandManager.DefaultCommandReceived)} is being subscribed to when one is already subscribed. " +
                             $"Check that you're not loading more than 1 module that registers a default handler (e.g. only one billing module allowed).");
                     }
 
-                    DefaultCommandEvent += value;
+                    _defaultCommandEvent += value;
                 }
             }
 
@@ -278,7 +321,7 @@ namespace SS.Core.Modules
             {
                 lock (_lockObj)
                 {
-                    DefaultCommandEvent -= value;
+                    _defaultCommandEvent -= value;
                 }
             }
         }
@@ -357,31 +400,55 @@ namespace SS.Core.Modules
             else
                 prefix = "privcmd";
 
-            lock (_lockObj)
-            {
-                _cmdLookup.TryGetValue(cmd, out LinkedList<CommandData> ll);
+            CommandDelegate basicHandlers = null;
+            CommandWithSoundDelegate soundHandlers = null;
 
-                if (skipLocal || ll == null)
+            if (!skipLocal)
+            {
+                _rwLock.EnterReadLock();
+
+                try
                 {
-                    // we don't know about this, send it to the biller
-                    DefaultCommandEvent?.Invoke(cmd, origLine, p, target);
+                    if (_cmdLookup.TryGetValue(cmd, out LinkedList<CommandData> list))
+                    {
+                        foreach (CommandData cd in list)
+                        {
+                            if (cd.Arena != null && cd.Arena != p.Arena)
+                                continue;
+
+                            if (cd is BasicCommandData basicData)
+                                basicHandlers = (basicHandlers == null) ? basicData.Handler : basicHandlers += basicData.Handler;
+                            else if (cd is SoundCommandData soundData)
+                                soundHandlers = (soundHandlers == null) ? soundData.Handler : soundHandlers += soundData.Handler;
+                        }
+                    }
                 }
-                else if (Allowed(p, cmd, prefix, remoteArena))
+                finally
+                {
+                    _rwLock.ExitReadLock();
+                }
+            }
+
+            bool foundLocal = basicHandlers != null || soundHandlers != null;
+
+            if (skipLocal || !foundLocal)
+            {
+                // send it to the biller
+                _defaultCommandEvent?.Invoke(cmd, origLine, p, target);
+            }
+            else if (foundLocal)
+            {
+                if (Allowed(p, cmd, prefix, remoteArena))
                 {
                     LogCommand(p, target, cmd, parameters);
 
-                    foreach (CommandData cd in ll)
-                    {
-                        if (cd.Arena != null && cd.Arena != p.Arena)
-                            continue;
-
-                        cd.DispatchCommand(cmd, parameters, p, target, sound);
-                    }
+                    basicHandlers?.Invoke(cmd, parameters, p, target);
+                    soundHandlers?.Invoke(cmd, parameters, p, target, sound);
                 }
 #if CFG_LOG_ALL_COMMAND_DENIALS
                 else
                 {
-                    _logManager.LogP(LogLevel.Drivel, "CommandManager", p, "permission denied for {0}", cmd);
+                    _logManager.LogP(LogLevel.Drivel, nameof(CommandManager), p, "Permission denied for command '{0}'.", cmd);
                 }
 #endif
             }
@@ -391,7 +458,9 @@ namespace SS.Core.Modules
         {
             string ret = null;
 
-            lock (_lockObj)
+            _rwLock.EnterReadLock();
+
+            try
             {
                 if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll))
                 {
@@ -405,23 +474,39 @@ namespace SS.Core.Modules
                     }
                 }
             }
+            finally
+            {
+                _rwLock.ExitReadLock();
+            }
 
             return ret;
         }
 
         void ICommandManager.AddUnlogged(string commandName)
         {
-            lock (_lockObj)
+            _rwLock.EnterWriteLock();
+
+            try
             {
                 _unloggedCommands.Add(commandName);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
             }
         }
 
         void ICommandManager.RemoveUnlogged(string commandName)
         {
-            lock (_lockObj)
+            _rwLock.EnterWriteLock();
+
+            try
             {
                 _unloggedCommands.Remove(commandName);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
             }
         }
 
@@ -473,8 +558,17 @@ namespace SS.Core.Modules
                 return;
 
             // don't log the parameters to some commands
-            if (_unloggedCommands.Contains(cmd))
-                parameters = "...";
+            _rwLock.EnterReadLock();
+
+            try
+            {
+                if (_unloggedCommands.Contains(cmd))
+                    parameters = "...";
+            }
+            finally
+            {
+                _rwLock.ExitReadLock();
+            }
 
             StringBuilder sb = new(32);
 
@@ -510,7 +604,9 @@ namespace SS.Core.Modules
 
         private void InitializeUnloggedCommands()
         {
-            lock (_lockObj)
+            _rwLock.EnterWriteLock();
+            
+            try
             {
                 _unloggedCommands.Clear();
 
@@ -527,6 +623,10 @@ namespace SS.Core.Modules
                 _unloggedCommands.Add("bpassword");
                 _unloggedCommands.Add("squadpassword");
                 _unloggedCommands.Add("message");
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
             }
         }
     }
