@@ -352,9 +352,9 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
-            foreach (string str in text.Trim().WrapText(78))
+            foreach (ReadOnlySpan<char> line in text.GetWrappedText(78, ' '))
             {
-                SendMessage(p, "  {0}", str);
+                SendMessage(p, string.Concat("  ", line));
             }
         }
 

@@ -309,23 +309,84 @@ namespace SS.Utilities
             return str.Substring(startIndex, endIndex - startIndex + 1);
         }
 
-        public static IEnumerable<string> WrapText(this string text, int width)
+        /// <summary>
+        /// Gets an enumerator which can be used to read text as multiple lines.
+        /// </summary>
+        /// <param name="text">The text to wrap.</param>
+        /// <param name="width">The number of characters to allow on a line.</param>
+        /// <param name="delimiter">The delimiter to split lines by.</param>
+        /// <returns>An enumerator.</returns>
+        public static WrapTextEnumerator GetWrappedText(this string text, int width = 80, char delimiter = ' ')
         {
-            if (text == null)
-                yield break;
+            return new WrapTextEnumerator(text, width, delimiter);
+        }
 
-            StringBuilder sb = new StringBuilder(text);
-            int startIndex = 0;
+        /// <summary>
+        /// Gets an enumerator which can be used to read text as multiple lines.
+        /// </summary>
+        /// <param name="text">The text to wrap.</param>
+        /// <param name="width">The number of characters to allow on a line.</param>
+        /// <param name="delimiter">The delimiter to split lines by.</param>
+        /// <returns>An enumerator.</returns>
+        public static WrapTextEnumerator GetWrappedText(this ReadOnlySpan<char> text, int width = 80, char delimiter = ' ')
+        {
+            return new WrapTextEnumerator(text, width, delimiter);
+        }
+    }
 
-            while (startIndex < sb.Length)
+    /// <summary>
+    /// Provides the ability to enumerate on a string to get wrapped lines.
+    /// </summary>
+    public ref struct WrapTextEnumerator
+    {
+        private ReadOnlySpan<char> _text;
+        private readonly int _width;
+        private readonly char _delimiter;
+
+        public WrapTextEnumerator(ReadOnlySpan<char> text, int width, char delimiter)
+        {
+            _text = text;
+            _width = width;
+            _delimiter = delimiter;
+            Current = default;
+        }
+
+        public WrapTextEnumerator GetEnumerator() => this;
+
+        public ReadOnlySpan<char> Current { get; private set; }
+
+        public bool MoveNext()
+        {
+            if (_text.Length == 0)
+                return false;
+
+            int index = (_text.Length >= _width ? _width : _text.Length) - 1;
+
+            if (_text[index] != _delimiter
+                && _text.Length > (index + 1)
+                && _text[index + 1] != _delimiter)
             {
-                if (width > sb.Length - startIndex)
-                    width = sb.Length - startIndex;
+                // mid-word, look for an earlier occurence of the delimiter
+                int delimiterIndex;
+                for (delimiterIndex = index - 1; delimiterIndex >= 0; delimiterIndex--)
+                {
+                    if (_text[delimiterIndex] == _delimiter)
+                        break;
+                }
 
-                yield return sb.ToString(startIndex, width);
-
-                startIndex += width;
+                if (delimiterIndex != -1)
+                {
+                    index = delimiterIndex;
+                }
             }
+
+            Current = _text.Slice(0, index + 1);
+
+            _text = _text[(index + 1)..];
+            if (_text.Length > 0 && _text[0] == _delimiter)
+                _text = _text.TrimStart(_delimiter);
+
+            return true;
         }
     }
 }
