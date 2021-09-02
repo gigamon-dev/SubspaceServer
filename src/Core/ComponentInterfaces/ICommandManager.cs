@@ -182,8 +182,5 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="commandName">The command to remove.</param>
         void RemoveUnlogged(string commandName);
-
-        // TODO: for ?cmdlist ?commands ?allcommands
-        //IEnumerable<CommandInfo> GetCommands(Arena arena, Player p, bool excludeGlobal, bool excludeNoAccess);
     }
 }

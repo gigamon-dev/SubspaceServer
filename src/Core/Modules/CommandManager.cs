@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -11,7 +12,7 @@ namespace SS.Core.Modules
     /// <inheritdoc cref="ICommandManager"/>
     /// </summary>
     [CoreModuleInfo]
-    public class CommandManager : IModule, ICommandManager
+    public class CommandManager : IModule, ICommandManager, IModuleLoaderAware
     {
         private ComponentBroker _broker;
         private IPlayerData _playerData;
@@ -19,6 +20,8 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
         private InterfaceRegistrationToken _iCommandManagerToken;
+
+        private IChat _chat;
 
         #region Helper classes
 
@@ -113,8 +116,28 @@ namespace SS.Core.Modules
                 _defaultCommandEvent = null;
             }
 
+            // In ASSS, ?commands and ?allcommands are implemented in a separate module, cmdlist.
+            // To simplify (not having to pass a collection of data over), it's implemented here, in the CommandManager.
+            // However, this complicates dependencies.  The Chat module has a dependency on ICommandManager.
+            // To prevent cyclical dependencies, CommandManager doesn't require IChat to Load
+            // and instead gets IChat later using IModuleLoaderAware.PostLoad.
+            ((ICommandManager)this).AddCommand("commands", Command_commands, null, null);
+            ((ICommandManager)this).AddCommand("allcommands", Command_allcommands, null, null);
+
             _iCommandManagerToken = _broker.RegisterInterface<ICommandManager>(this);
 
+            return true;
+        }
+
+        public bool PostLoad(ComponentBroker broker)
+        {
+            _chat = broker.GetInterface<IChat>();
+            return true;
+        }
+
+        public bool PreUnload(ComponentBroker broker)
+        {
+            broker.ReleaseInterface(ref _chat);
             return true;
         }
 
@@ -627,6 +650,144 @@ namespace SS.Core.Modules
             finally
             {
                 _rwLock.ExitWriteLock();
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player, 
+            Description =
+            "Displays all the commands that you (or the specified player) can use.\n" +
+            "Commands in the arena section are specific to the current arena.\n" +
+            "The symbols before each command specify how the command can be used:\n" +
+            "A dot '.' means you use the command without sending it to a player, " +
+            "it might apply to the entire zone, the current arena or to yourself.\n" +
+            "A slash '/' means you can send the command in a private message to a player, " +
+            "the effects will then apply to that player only.\n" +
+            "A colon ':' means you can send the command in a private message to a player in a different arena")]
+        private void Command_commands(string commandName, string parameters, Player p, ITarget target)
+        {
+            if (_chat == null)
+                return;
+
+            if (target.Type == TargetType.Player)
+            {
+                Player playerTarget = ((IPlayerTarget)target).Player;
+                _chat.SendMessage(p, $"'{playerTarget.Name}' can use the following commands:");
+                ListCommands(p.Arena, playerTarget, p, false, true);
+            }
+            else
+            {
+                _chat.SendMessage(p, "You can use the following commands:");
+                ListCommands(p.Arena, p, p, false, true);
+            }
+
+            string helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
+            if (string.IsNullOrWhiteSpace(helpCommandName))
+                helpCommandName = "man";
+
+            _chat.SendMessage(p, $"Use ?{helpCommandName} <command name> to learn more about a command.");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description =
+            "Displays all commands, including those you don't have access to use.\n" +
+            "Commands in the arena section are specific to the current arena.\n" +
+            "The symbols before each command specify how the command can be used:\n" +
+            "An exclamation mark '!' means you don't have access to use the command.\n" +
+            "A dot '.' means you use the command without sending it to a player, " +
+            "it might apply to the entire zone, the current arena or to yourself.\n" +
+            "A slash '/' means you can send the command in a private message to a player, " +
+            "the effects will then apply to that player only.\n" +
+            "A colon ':' means you can send the command in a private message to a player in a different arena")]
+        private void Command_allcommands(string commandName, string parameters, Player p, ITarget target)
+        {
+            if (_chat == null)
+                return;
+
+            _chat.SendMessage(p, "All commands:");
+            ListCommands(p.Arena, p, p, false, false);
+
+            string helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
+            if (string.IsNullOrWhiteSpace(helpCommandName))
+                helpCommandName = "man";
+
+            _chat.SendMessage(p, $"Use ?{helpCommandName} <command name> to learn more about a command.");
+        }
+
+        private void ListCommands(Arena arena, Player p, Player sendTo, bool excludeGlobal, bool excludeNoAccess)
+        {
+            if (_chat == null)
+                return;
+
+            _rwLock.EnterReadLock();
+
+            try
+            {
+                var commands = 
+                    from kvp in _cmdLookup
+                    let command = kvp.Key
+                    let canArena = Allowed(p, command, "cmd", null)
+                    let canPriv = Allowed(p, command, "privcmd", null)
+                    let canRemotePriv = Allowed(p, command, "rprivcmd", null)
+                    where !excludeNoAccess || canArena || canPriv || canRemotePriv
+                    from commandData in kvp.Value
+                    where (!excludeGlobal && commandData.Arena == null) || commandData.Arena == arena
+                    orderby command
+                    select (command, isArenaSpecific: commandData.Arena != null, canArena, canPriv, canRemotePriv);
+
+                StringBuilder sb = new(); // TODO: get from a pool
+
+                if (!excludeGlobal)
+                {
+                    var globalCommands = commands.Where(c => !c.isArenaSpecific);
+                    if (globalCommands.Any())
+                    {
+                        sb.Append("Zone:");
+                        AppendCommands(sb, globalCommands);
+                        _chat.SendWrappedText(sendTo, sb.ToString());
+                    }
+                }
+
+                sb.Clear();
+
+                var arenaCommands = commands.Where(c => c.isArenaSpecific);
+                if (arenaCommands.Any())
+                {
+                    sb.Append("Arena:");
+                    AppendCommands(sb, arenaCommands);
+                    _chat.SendWrappedText(sendTo, sb.ToString());
+                }
+            }
+            finally
+            {
+                _rwLock.ExitReadLock();
+            }
+
+            static void AppendCommands(StringBuilder sb, IEnumerable<(string command, bool isArenaSpecific, bool canArena, bool canPriv, bool canRemotePriv)> commands)
+            {
+                foreach (var (command, isArenaSpecific, canArena, canPriv, canRemotePriv) in commands)
+                {
+                    sb.Append(' ');
+
+                    if (!canArena && !canPriv && !canRemotePriv)
+                    {
+                        sb.Append('!');
+                    }
+                    else
+                    {
+                        if (canArena)
+                            sb.Append('.');
+
+                        if (canPriv)
+                            sb.Append('/');
+
+                        if (canRemotePriv)
+                            sb.Append(':');
+                    }
+
+                    sb.Append(command);
+                }
             }
         }
     }
