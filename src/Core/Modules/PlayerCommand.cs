@@ -392,7 +392,8 @@ namespace SS.Core.Modules
             _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}", 
                 stats.PingsReceived, stats.PacketsSent, stats.PacketsReceived);
 
-            ulong bwout = (stats.BytesSent + stats.PacketsSent * 28) / secs; // TODO: figure out why 28?
+            // IP Header (20 bytes) + UDP Header (8 bytes) = 28 bytes total overhead for each packet
+            ulong bwout = (stats.BytesSent + stats.PacketsSent * 28) / secs;
             ulong bwin = (stats.BytesReceived + stats.PacketsReceived * 28) / secs;
             _chat.SendMessage(p, "netstats: bw out={0}  bw in={1}", bwout, bwin);
 
