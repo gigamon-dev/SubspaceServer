@@ -81,8 +81,9 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="clos">The state to pass (provides a way to identify the data to retrieve).</param>
     /// <param name="offset">The starting position of the data to retrieve.</param>
     /// <param name="dataSpan">
-    /// The <see cref="Span{byte}"/> to fill with data. 
-    /// <see cref="Span{T}.Empty"/> indicates the end of a transfer and can be used to perform any necessary cleanup.</param>
+    /// The buffer to fill with data. 
+    /// An empty span indicates the end of a transfer and can be used to perform any necessary cleanup.
+    /// </param>
     public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, Span<byte> dataSpan);
 
     public interface IReadOnlyNetStats
@@ -206,7 +207,7 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// To send sized data to a player.
-        /// Used for sending files to players such as map/news/updates.
+        /// Used for sending files to players (including, but not limited to: map files (lvl and lvz), news.txt, and client updates).
         /// </summary>
         /// <typeparam name="T">The type of the argument used in the callback to retrieve data to send.</typeparam>
         /// <param name="p">The player to send data to.</param>
