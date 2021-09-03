@@ -1,52 +1,165 @@
-using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
+using System;
+using System.Threading.Tasks;
 
 namespace SS.Core
 {
     /// <summary>
-    /// note to self: in asss the main thread goes into a loop which processes timers sequentially.
-    /// i am thinking that this server wont do that.  it'll be more like a windows service.
+    /// A helpful abstraction of the server that assists with starting and stopping logic.
+    /// <list type="number">
+    /// <item>Start the server with <see cref="Run"/> or <see cref="RunAsync"/>.</item>
+    /// <item>Use the <see cref="Broker"/> to access the various components of the server.</item>
+    /// <item>Stop the server with <see cref="Quit"/>.</item>
+    /// </list>
     /// </summary>
     public class Server
     {
-        private ModuleManager _mm;
-        private IMainloop _ml;
-        private Task<int> _mainloopTask;
+        private volatile ModuleManager _mm;
 
-        public int Run()
+        /// <summary>
+        /// The root broker.  Available after the server has been started. Otherwise, null.
+        /// Use this to get the various <see cref="IComponentInterface"/>s that the loaded modules provide.
+        /// </summary>
+        public ComponentBroker Broker { get { return _mm; } }
+
+        /// <summary>
+        /// Starts the server such that the calling thread runs the loop in the Mainloop module.
+        /// This method will block until the server is told to stop (<see cref="Quit"/> or ?shutdown from in game).
+        /// </summary>
+        /// <returns>An exit code that can be returned to the OS.</returns>
+        /// <exception cref="InvalidOperationException">The server is already running.</exception>
+        public ExitCode Run()
         {
-            if (_mm != null)
-                throw new InvalidOperationException("Found an existing instance of ModuleManager.  Is the server already running?");
+            if (!Start())
+            {
+                return ExitCode.ModLoad;
+            }
 
-            _mm = new ModuleManager();
-            LoadModuleFile("conf/Modules.config");
-            _mm.DoPostLoadStage();
+            return RunMainloop();
+        }
 
-            _ml = _mm.GetInterface<IMainloop>();
-            if (_ml == null)
-                throw new Exception("Loaded modules, but unable to get IMainloop. Check that it is in the Modules.config.");
+        /// <summary>
+        /// Starts the server such that a worker thread (from the .NET thread pool) runs the loop in the Mainloop module.
+        /// This method does not block. It could be useful if hosted in a Windows service, an interactive console app, or app with a GUI.
+        /// </summary>
+        /// <returns>A task representing the mainloop. Use its result to get the exit code.</returns>
+        /// <exception cref="InvalidOperationException">The server is already running.</exception>
+        public Task<ExitCode> RunAsync()
+        {
+            if (!Start())
+            {
+                return Task.FromResult(ExitCode.ModLoad);
+            }
 
-            int ret;
+            return Task.Factory.StartNew(RunMainloop, TaskCreationOptions.LongRunning);
+        }
+
+        /// <summary>
+        /// Tells the mainloop to quit.
+        /// </summary>
+        public void Quit()
+        {
+            ModuleManager mm = _mm;
+            if (mm == null)
+            {
+                Console.WriteLine("The server is not running.");
+                return;
+            }
+
+            IMainloop mainloop = mm.GetInterface<IMainloop>();
+            if (mainloop == null)
+            {
+                Console.WriteLine("Mainloop is not loaded.");
+                return;
+            }
 
             try
             {
-                ret = _ml.RunLoop();
+                mainloop.Quit(ExitCode.None);
             }
             finally
             {
-                _mm.ReleaseInterface(ref _ml);
+                mm.ReleaseInterface(ref mainloop);
+            }
+        }
+
+        private bool Start()
+        {
+            if (_mm != null)
+                throw new InvalidOperationException("The server is already running.");
+
+            _mm = new ModuleManager();
+
+            if (!LoadModulesFromConfig("conf/Modules.config"))
+            {
+                _mm.UnloadAllModules();
+                return false;
             }
 
+            _mm.DoPostLoadStage();
+
+            return true;
+        }
+
+        private bool LoadModulesFromConfig(string moduleConfigFilename)
+        {
+            IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
+            if (loader == null)
+            {
+                if (!_mm.LoadModule<ModuleLoader>())
+                {
+                    Console.Error.WriteLine("Failed to load ModuleLoader.");
+                    return false;
+                }
+
+                loader = _mm.GetInterface<IModuleLoader>();
+                if (loader == null)
+                {
+                    Console.Error.WriteLine("Loaded ModuleLoader, but unable to get it via its interface.");
+                    return false;
+                }
+            }
+
+            try
+            {
+                return loader.LoadModulesFromConfig(moduleConfigFilename);
+            }
+            finally
+            {
+                _mm.ReleaseInterface(ref loader);
+            }
+        }
+
+        private ExitCode RunMainloop()
+        {
+            ExitCode ret;
+
+            // Run the mainloop.
+            IMainloop mainloop = _mm.GetInterface<IMainloop>();
+            if (mainloop == null)
+            {
+                Console.Error.WriteLine("Unable to get IMainloop. Check that the Mainloop module is in the Modules.config.");
+                return ExitCode.General;
+            }
+
+            try
+            {
+                ret = mainloop.RunLoop();
+            }
+            finally
+            {
+                _mm.ReleaseInterface(ref mainloop);
+            }
+
+            // Try to send a friendly message to anyone connected.
+            // Note: There is no guarantee the Network module will send it before being unloaded.
             IChat chat = _mm.GetInterface<IChat>();
             if (chat != null)
             {
                 try
                 {
-                    chat.SendArenaMessage(null, $"The server is {(ret == (int)ExitCode.Recycle ? "recycling" : "shutting down")} now!");
+                    chat.SendArenaMessage(null, $"The server is {(ret == ExitCode.Recycle ? "recycling" : "shutting down")} now!");
                 }
                 finally
                 {
@@ -54,68 +167,12 @@ namespace SS.Core
                 }
             }
 
+            // Unload.
             _mm.DoPreUnloadStage();
             _mm.UnloadAllModules();
-
-            //_mm.Dispose(); // TODO
             _mm = null;
 
             return ret;
-        }
-
-        public void Quit()
-        {
-            _ml.Quit(ExitCode.None);
-        }
-
-        public void Start()
-        {
-            LoadModuleFile("conf/Modules.config");
-            _mm.DoPostLoadStage();
-
-            _ml = _mm.GetInterface<IMainloop>();
-            if (_ml == null)
-                throw new Exception("Loaded modules, but unable to get IMainloop. Check that it is in the Modules.config.");
-
-            _mainloopTask = Task.Factory.StartNew(() => _ml.RunLoop(), TaskCreationOptions.LongRunning);
-        }
-
-        public int Stop()
-        {
-            _ml.Quit(ExitCode.None);
-            int ret = _mainloopTask.Result;
-
-            _mm.DoPreUnloadStage();
-            _mm.UnloadAllModules();
-
-            return ret;
-        }
-
-        private void LoadModuleFile(string moduleConfigFilename)
-        {
-            IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
-            if (loader == null)
-            {
-                if (!_mm.LoadModule<ModuleLoader>())
-                {
-                    throw new Exception("Failed to load ModuleLoader.");
-                }
-
-                loader = _mm.GetInterface<IModuleLoader>();
-                if (loader == null)
-                {
-                    throw new Exception("Loaded ModuleLoader, but unable to get it via its interface.");
-                }
-            }
-
-            try
-            {
-                loader.LoadModulesFromConfig(moduleConfigFilename);
-            }
-            finally
-            {
-                _mm.ReleaseInterface(ref loader);
-            }
         }
     }
 }

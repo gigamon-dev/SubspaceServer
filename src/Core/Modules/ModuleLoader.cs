@@ -1,7 +1,9 @@
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace SS.Core.Modules
@@ -39,56 +41,75 @@ namespace SS.Core.Modules
 
         private void WriteLog(LogLevel level, string message)
         {
-            ILogManager _logManager = _broker.GetInterface<ILogManager>();
+            TextWriter writer = (level == LogLevel.Error) ? Console.Error : Console.Out;
+            writer.WriteLine($"{(LogCode)level} <{nameof(ModuleLoader)}> {message}");
+        }
 
-            if (_logManager != null)
-            {
-                try
-                {
-                    _logManager.LogM(level, nameof(ModuleLoader), message);
-                }
-                finally
-                {
-                    _broker.ReleaseInterface(ref _logManager);
-                }
-            }
+        private void WriteLog(LogLevel level, string message, IXmlLineInfo lineInfo)
+        {
+            if (lineInfo != null && lineInfo.HasLineInfo())
+                WriteLog(level, $"{message} (Line {lineInfo.LineNumber}, Position {lineInfo.LinePosition})");
             else
-            {
-                Console.WriteLine($"{(LogCode)level} <{nameof(ModuleLoader)}> {message}");
-            }
+                WriteLog(level, message);
         }
 
         #region IModuleLoader Members
 
         bool IModuleLoader.LoadModulesFromConfig(string moduleConfigFilename)
         {
+            // Read the xml config.
+            XDocument doc;
+
             try
             {
-                // Read the xml config.
-                var doc = XDocument.Load(moduleConfigFilename);
-                var moduleEntries =
-                    from moduleElement in doc.Descendants("module")
-                    let type = moduleElement.Attribute("type").Value
-                    let path = moduleElement.Attribute("path")?.Value
-                    let priority = moduleElement.Attribute("priority")?.Value
-                    where !string.IsNullOrWhiteSpace(type)
-                    select (type, path, priority);
-
-                // Try to load each module.
-                foreach (var entry in moduleEntries)
-                {
-                    if (string.IsNullOrWhiteSpace(entry.path))
-                        _mm.LoadModule(entry.type);
-                    else
-                        _mm.LoadModule(entry.type, entry.path);
-                }
-
-                // Tell the module manager to try to load everything that isn't already loaded.
-                _mm.LoadAllModules();
+                doc = XDocument.Load(moduleConfigFilename, LoadOptions.SetLineInfo);
             }
             catch (Exception ex)
             {
-                WriteLog(LogLevel.Error, $"ModuleLoader.LoadModulesFromConfig: {ex}");
+                WriteLog(LogLevel.Error, $"Error reading xml config file '{moduleConfigFilename}'. {ex}");
+                return false;
+            }
+
+            // Load modules based on the xml.
+            try
+            {
+                var moduleEntries =
+                    from moduleElement in doc.Descendants("module")
+                    let type = moduleElement.Attribute("type")?.Value // null not allowed, but we'll check later
+                    let path = moduleElement.Attribute("path")?.Value // non-null for plug-in modules only
+                    let lineInfo = moduleElement as IXmlLineInfo
+                    select (type, path, lineInfo);
+
+                // Try to load each module.
+                foreach (var (type, path, lineInfo) in moduleEntries)
+                {
+                    if (string.IsNullOrWhiteSpace(type))
+                    {
+                        WriteLog(LogLevel.Error, $"Missing/invalid 'type' attribute on 'module' element. Check the config: '{moduleConfigFilename}'.", lineInfo);
+                        return false;
+                    }
+
+                    bool success;
+
+                    if (string.IsNullOrWhiteSpace(path))
+                        success = _mm.LoadModule(type);
+                    else
+                        success = _mm.LoadModule(type, path);
+
+                    if (!success)
+                    {
+                        if (string.IsNullOrWhiteSpace(path))
+                            WriteLog(LogLevel.Error, $"Failed to load '{type}'. Check the config: '{moduleConfigFilename}'.", lineInfo);
+                        else
+                            WriteLog(LogLevel.Error, $"Failed to load '{type}' [{path}]. Check the config: '{moduleConfigFilename}'.", lineInfo);
+
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLog(LogLevel.Error, $"Error loading modules. {ex}");
                 return false;
             }
 

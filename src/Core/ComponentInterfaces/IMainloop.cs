@@ -8,13 +8,16 @@ namespace SS.Core.ComponentInterfaces
     public interface IMainloop : IComponentInterface
     {
         /// <summary>
-        /// Called by the main thread to process the timers and work items.
+        /// Called by the thread that wants to do all of the 'main loop' work (process the timers and work items).
+        /// This method blocks until another thread calls <see cref="Quit(ExitCode)"/>.
+        /// Normally, the actual main thread of the application would call this.
         /// </summary>
-        /// <returns>The exit code to be returned to the OS.</returns>
-        int RunLoop();
+        /// <returns>The exit code that was passed into the call to <see cref="Quit(ExitCode)"/>.</returns>
+        ExitCode RunLoop();
 
         /// <summary>
         /// Signals the main loop to stop.
+        /// This would normally be <see cref="ExitCode.None"/> for a normal shutdown or <see cref="ExitCode.Recycle"/> to signal a restart.
         /// </summary>
         void Quit(ExitCode code);
 

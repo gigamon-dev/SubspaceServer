@@ -616,7 +616,7 @@ namespace SS.Core
 
         #region Bulk Operations
 
-        public void LoadAllModules()
+        public bool LoadAllModules()
         {
             lock (_moduleLockObj)
             {
@@ -648,10 +648,11 @@ namespace SS.Core
                     }
                 }
                 while ((numModulesLeftToLoad > 0) && (numModulesLoadedDuringLastPass > 0));
-            }
 
-            // at this point, we loaded everything we could
-            // anything left unloaded is missing at least one dependency
+                // at this point, we loaded everything we could
+                // anything left unloaded is missing at least one dependency
+                return numModulesLeftToLoad == 0;
+            }
         }
 
         public void UnloadAllModules()

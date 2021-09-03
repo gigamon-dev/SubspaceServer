@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private readonly CancellationToken _cancellationToken;
         private Thread _mainThread;
-        private int _quitCode = 0;
+        private ExitCode _quitCode = ExitCode.None;
 
         // for main loop workitems
         private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = new BlockingCollection<IRunInMainWorkItem>(); // TODO: maybe we should use bounding?
@@ -101,10 +101,18 @@ namespace SS.Core.Modules
 
         #region IMainloop Members
 
-        int IMainloop.RunLoop()
+        ExitCode IMainloop.RunLoop()
         {
             _mainThread = Thread.CurrentThread;
-            _mainThread.Name = "mainloop";
+
+            try
+            {
+                _mainThread.Name = nameof(Mainloop);
+            }
+            catch
+            {
+                // ignore any errors
+            }
 
             WaitHandle[] waitHandles = new WaitHandle[]
             {
@@ -173,7 +181,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            return _quitCode & 0xFF;
+            return _quitCode;
         }
 
         private void ProcessTimers()
@@ -255,7 +263,7 @@ namespace SS.Core.Modules
 
         void IMainloop.Quit(ExitCode code)
         {
-            _quitCode = 0x100 | (byte)code;
+            _quitCode = code;
             _cancellationTokenSource.Cancel();
         }
 
@@ -272,6 +280,14 @@ namespace SS.Core.Modules
 
         void IMainloop.WaitForMainWorkItemDrain()
         {
+            if (_mainThread == null)
+            {
+                // Can't wait for main work items to drain if there is no thread processing the mainloop yet.
+                // This can happen if there is an issue during the initial load of modules,
+                // where it to aborts loading and never gets to running the mainloop.
+                return;
+            }
+
             if (Thread.CurrentThread == _mainThread)
             {
                 DrainRunInMain();

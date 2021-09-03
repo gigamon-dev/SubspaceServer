@@ -1,27 +1,25 @@
+using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
-using System.Collections.Generic;
 using System.Text;
 using System.Threading;
-
-using SS.Utilities;
-using SS.Core.ComponentInterfaces;
-using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
     [CoreModuleInfo]
     public class LogManager : IModule, IModuleLoaderAware, ILogManager
     {
-        private MessagePassingQueue<string> _logQueue = new MessagePassingQueue<string>();
-        private Thread _loggingThread;
-
         private ComponentBroker _broker;
         private InterfaceRegistrationToken iLogManagerToken;
 
-        private ReaderWriterLock _moduleUnloadLock = new ReaderWriterLock(); // using rwlock in case we ever have multiple logging threads
+        private readonly MessagePassingQueue<string> _logQueue = new();
+        private Thread _loggingThread;
+
+        private readonly ReaderWriterLockSlim _rwLock = new();
         private IConfigManager _configManager = null;
 
-        private void loggingThread()
+        private void LoggingThread()
         {
             string message;
 
@@ -51,7 +49,7 @@ namespace SS.Core.Modules
                 return false;
 
             _logQueue.Enqueue(null);
-            _loggingThread.Join();
+            _loggingThread?.Join();
             return true;
         }
 
@@ -61,16 +59,27 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            _configManager = broker.GetInterface<IConfigManager>();
-            _loggingThread = new Thread(new ThreadStart(loggingThread));
-            _loggingThread.Name = "LogManager";
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                _configManager = broker.GetInterface<IConfigManager>();
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+
+            _loggingThread = new Thread(new ThreadStart(LoggingThread));
+            _loggingThread.Name = nameof(LogManager);
             _loggingThread.Start();
+
             return true;
         }
 
         bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
-            _moduleUnloadLock.AcquireWriterLock(Timeout.Infinite);
+            _rwLock.EnterWriteLock();
 
             try
             {
@@ -81,7 +90,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _moduleUnloadLock.ReleaseWriterLock();
+                _rwLock.ExitWriteLock();
             }
         }
 
@@ -91,7 +100,7 @@ namespace SS.Core.Modules
 
         void ILogManager.Log(LogLevel level, string format, params object[] args)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append(((LogCode)level).ToString());
             sb.Append(' ');
 
@@ -105,7 +114,7 @@ namespace SS.Core.Modules
 
         void ILogManager.LogM(LogLevel level, string module, string format, params object[] args)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append(((LogCode)level).ToString());
             sb.Append(" <");
             sb.Append(module);
@@ -117,7 +126,7 @@ namespace SS.Core.Modules
 
         void ILogManager.LogA(LogLevel level, string module, Arena arena, string format, params object[] args)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append(((LogCode)level).ToString());
             sb.Append(" <");
             sb.Append(module);
@@ -133,7 +142,7 @@ namespace SS.Core.Modules
         {
             Arena arena = player?.Arena;
 
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append(((LogCode)level).ToString());
             sb.Append(" <");
             sb.Append(module);
@@ -155,7 +164,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(logModuleName))
                 return true;
 
-            _moduleUnloadLock.AcquireReaderLock(Timeout.Infinite);
+            _rwLock.EnterReadLock();
 
             try
             {
@@ -187,14 +196,14 @@ namespace SS.Core.Modules
                         return true; // filtering disabled
                 }
 
-                if (settingValue.IndexOf(line[0]) == -1)
+                if (!settingValue.Contains(line[0]))
                     return false;
 
                 return true;
             }
             finally
             {
-                _moduleUnloadLock.ReleaseReaderLock();
+                _rwLock.ExitReadLock();
             }
         }
 

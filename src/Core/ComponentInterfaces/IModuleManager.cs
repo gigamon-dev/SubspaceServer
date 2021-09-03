@@ -181,9 +181,10 @@ namespace SS.Core.ComponentInterfaces
         #region Bulk Operations
 
         /// <summary>
-        /// Attempts to load any remaining known modules that have no been loaded yet.
+        /// Attempts to load any remaining known modules that have not been loaded yet.
         /// </summary>
-        void LoadAllModules();
+        /// <returns>True if all modules are loaded. False if there is at least 1 module that could not be loaded.</returns>
+        bool LoadAllModules();
 
         /// <summary>
         /// Attempts to unloads all modules.
