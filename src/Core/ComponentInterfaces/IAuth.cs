@@ -118,6 +118,6 @@ namespace SS.Core.ComponentInterfaces
         /// the function to call when the authentication result
         /// is known. call it with the player and a filled-in AuthData.
         /// </param>
-        void Authenticate(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done);
+        void Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done);
     }
 }

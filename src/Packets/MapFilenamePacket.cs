@@ -17,7 +17,7 @@ namespace SS.Core.Packets
 
         // Files
         private fixed byte filesBytes[File.Length * MaxFiles];
-        private Span<File> Files => new Span<File>(Unsafe.AsPointer(ref filesBytes[0]), MaxFiles);
+        private Span<File> Files => new(Unsafe.AsPointer(ref filesBytes[0]), MaxFiles);
 
         public void Initialize()
         {
@@ -73,9 +73,9 @@ namespace SS.Core.Packets
         public unsafe struct File
         {
             // File Name
-            private const int NumFileName = 16;
-            private fixed byte fileName[NumFileName];
-            public Span<byte> FileName => new Span<byte>(Unsafe.AsPointer(ref fileName[0]), NumFileName);
+            private const int FileNameLength = 16;
+            private fixed byte fileName[FileNameLength];
+            public Span<byte> FileName => new(Unsafe.AsPointer(ref fileName[0]), FileNameLength);
 
             // Checksum
             public uint Checksum;

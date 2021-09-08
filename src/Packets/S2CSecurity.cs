@@ -14,6 +14,16 @@ namespace SS.Core.Packets
     public struct S2CSecurity
     {
         /// <summary>
+        /// Number of bytes in a packet.
+        /// </summary>
+        public static readonly int Length;
+
+        static S2CSecurity()
+        {
+            Length = Marshal.SizeOf<S2CSecurity>();
+        }
+
+        /// <summary>
         /// 0x18
         /// </summary>
         public byte Type;
@@ -63,10 +73,5 @@ namespace SS.Core.Packets
             get { return LittleEndianConverter.Convert(key); }
             set { key = LittleEndianConverter.Convert(value); }
         }
-
-        /// <summary>
-        /// Number of bytes in a packet.
-        /// </summary>
-        public const int Length = 17;
     }
 }

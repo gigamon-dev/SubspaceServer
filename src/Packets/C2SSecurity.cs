@@ -10,6 +10,20 @@ namespace SS.Core.Packets
     public struct C2SSecurity
     {
         /// <summary>
+        /// Number of bytes in a packet.
+        /// </summary>
+        /// <remarks>
+        /// This is the minimum # of bytes.
+        /// Continuum sends more data. Presumably for it to do additional checks with subgame?
+        /// </remarks>
+        public static readonly int Length;
+
+        static C2SSecurity()
+        {
+            Length = Marshal.SizeOf<C2SSecurity>();
+        }
+
+        /// <summary>
         /// 0x1A
         /// </summary>
         public byte Type;
@@ -104,14 +118,5 @@ namespace SS.Core.Packets
             get { return LittleEndianConverter.Convert(highestPing); }
             set { highestPing = LittleEndianConverter.Convert(value); }
         }
-
-        /// <summary>
-        /// Number of bytes in a packet.
-        /// </summary>
-        /// <remarks>
-        /// This is the minimum # of bytes.
-        /// Continuum sends more data. Presumably for it to do additional checks with subgame?
-        /// </remarks>
-        public const int Length = 40;
     }
 }

@@ -132,42 +132,22 @@ namespace SS.Core.ComponentInterfaces
     public interface INetwork : IComponentInterface
     {
         /// <summary>
-        /// To send data to a single player.
+        /// Sends data to a single player.
         /// </summary>
-        /// <param name="p">player to send to</param>
-        /// <param name="data">data to send</param>
-        /// <param name="len">length of data to send</param>
-        /// <param name="flags">flags specifying options for the send</param>
-        void SendToOne(Player p, byte[] data, int len, NetSendFlags flags);
-
-        /// <summary>
-        /// To send data to a single player.
-        /// </summary>
-        /// <param name="p">player to send to</param>
-        /// <param name="data">data to send</param>
-        /// <param name="flags">flags specifying options for the send</param>
+        /// <param name="p">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="flags">Flags specifying options for the send.</param>
         void SendToOne(Player p, Span<byte> data, NetSendFlags flags);
 
         /// <summary>
-        /// To send data to players in a specific arena or
-        /// To send data to players in all arenas.
-        /// A specified person can be excluded from the send.
+        /// Sends data to players in a specific arena or all arenas,
+        /// with the ability to exclude a specified player from the send.
         /// </summary>
-        /// <param name="arena">arena to send data to, null for all arenas</param>
-        /// <param name="except">player to exclude from the send</param>
-        /// <param name="data">data to send</param>
-        /// <param name="len">length of data to send</param>
-        /// <param name="flags">flags specifying options for the send</param>
-        void SendToArena(Arena arena, Player except, byte[] data, int len, NetSendFlags flags);
-
-        /// <summary>
-        /// To send data to a set of players.
-        /// </summary>
-        /// <param name="set">players to send to</param>
-        /// <param name="data">data to send</param>
-        /// <param name="len">length of data to send</param>
-        /// <param name="flags">flags specifying options for the send</param>
-        void SendToSet(IEnumerable<Player> set, byte[] data, int len, NetSendFlags flags);
+        /// <param name="arena">The arena to send data to, or <see langword="null"/> for all arenas.</param>
+        /// <param name="except">The player to exclude from the send.  <see langword="null"/> for no exclusion.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="flags">Flags specifying options for the send.</param>
+        void SendToArena(Arena arena, Player except, Span<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// To send data to a set of players.
@@ -178,35 +158,33 @@ namespace SS.Core.ComponentInterfaces
         void SendToSet(IEnumerable<Player> set, Span<byte> data, NetSendFlags flags);
 
         /// <summary>
-        /// To send data to a target of players
+        /// Sends data to a target of players
         /// </summary>
-        /// <param name="target">target describing what players to send data to</param>
-        /// <param name="data">array containing the data</param>
-        /// <param name="len">the length of the data</param>
-        /// <param name="flags">flags specifying options for the send</param>
-        void SendToTarget(ITarget target, byte[] data, int len, NetSendFlags flags);
+        /// <param name="target">The target describing which players to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="flags">Flags specifying options for the send.</param>
+        void SendToTarget(ITarget target, Span<byte> data, NetSendFlags flags);
 
         /// <summary>
-        /// To send data to a player and receive a callback after the data has been sent.
+        /// Reliably sends data to a player and invokes a callback after the data has been sent.
         /// </summary>
-        /// <param name="p">player sending data to</param>
-        /// <param name="data">array conaining the data</param>
-        /// <param name="len">number of bytes to send</param>
-        /// <param name="callback">the callback which will be called after the data has been sent</param>
-        void SendWithCallback(Player p, byte[] data, int len, ReliableDelegate callback);
+        /// <param name="p">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        void SendWithCallback(Player p, Span<byte> data, ReliableDelegate callback);
 
         /// <summary>
-        /// To send data to a player and receive a callback after the data has been sent.
+        /// Reliably sends data to a player and invokes a callback after the data has been sent.
         /// </summary>
-        /// <param name="p">player sending data to</param>
-        /// <param name="data">array conaining the data</param>
-        /// <param name="len">number of bytes to send</param>
-        /// <param name="callback">the callback which will be called after the data has been sent</param>
-        /// <param name="clos">argument to use when calling the callback</param>
-        void SendWithCallback<T>(Player p, byte[] data, int len, ReliableDelegate<T> callback, T clos);
+        /// <typeparam name="T">The type of argument used in the callback.</typeparam>
+        /// <param name="p">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        /// <param name="clos">The state to send when invoking the callback.</param>
+        void SendWithCallback<T>(Player p, Span<byte> data, ReliableDelegate<T> callback, T clos);
 
         /// <summary>
-        /// To send sized data to a player.
+        /// Sends 'sized' data to a player.
         /// Used for sending files to players (including, but not limited to: map files (lvl and lvz), news.txt, and client updates).
         /// </summary>
         /// <typeparam name="T">The type of the argument used in the callback to retrieve data to send.</typeparam>
@@ -218,21 +196,21 @@ namespace SS.Core.ComponentInterfaces
         bool SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestData, T clos);
 
         /// <summary>
-        /// To register a handler for a regular packet.
+        /// Registers a handler for a regular packet type.
+        /// </summary>
         /// <remarks>
         /// This is usually used to register handlers for game packets.
-        /// Note, this can also be used to register a handler for 'core' network level packets.  
-        /// However, registering 'core' handlers doesn't appear to be used in asss.</remarks>
-        /// </summary>
+        /// Note, this can also be used to register a handler for 0x00 0x13 by passing a packet type of 0x1300.
+        /// </remarks>
         /// <param name="pktype">The type of packet to register.</param>
-        /// <param name="func">The handler to call when a packet is received.</param>
+        /// <param name="func">The handler to register.</param>
         void AddPacket(C2SPacketType pktype, PacketDelegate func);
 
         /// <summary>
-        /// To unregister a handler for a given packet type.
+        /// Unregisters a handler for a regular packet type.
         /// </summary>
-        /// <param name="pktype"></param>
-        /// <param name="func"></param>
+        /// <param name="pktype">The type of packet to unregister.</param>
+        /// <param name="func">The handler to unregister.</param>
         void RemovePacket(C2SPacketType pktype, PacketDelegate func);
 
         /// <summary>

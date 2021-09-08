@@ -1,12 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
-    public enum Prize
+    public enum Prize : short
     {
         Recharge = 1,
         Energy,
@@ -38,71 +35,53 @@ namespace SS.Core.Packets
         Portal
     }
 
-    public readonly struct GreenPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct GreenPacket
     {
+        public static readonly int S2CLength;
+        public static readonly int C2SLength;
+
         static GreenPacket()
         {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateByteDataLocation();
-            time = locationBuilder.CreateUInt32DataLocation();
-            x = locationBuilder.CreateInt16DataLocation();
-            y = locationBuilder.CreateInt16DataLocation();
-            green = locationBuilder.CreateInt16DataLocation();
-            C2SLength = locationBuilder.NumBytes;
-            pid = locationBuilder.CreateInt16DataLocation();
-            S2CLength = locationBuilder.NumBytes;
+            S2CLength = Marshal.SizeOf<GreenPacket>();
+            C2SLength = S2CLength - Marshal.SizeOf<short>();
         }
 
-        private static readonly ByteDataLocation type;
-        private static readonly UInt32DataLocation time;
-        private static readonly Int16DataLocation x;
-        private static readonly Int16DataLocation y;
-        private static readonly Int16DataLocation green;
-        private static readonly Int16DataLocation pid;
-        public static readonly int C2SLength;
-        public static readonly int S2CLength;
-
-        private readonly byte[] data;
-
-        public GreenPacket(byte[] data)
-        {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
-        }
-
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
-        }
+        public byte Type;
+        private uint time;
+        private short x;
+        private short y;
+        private short green;
+        private short playerId; // only S2C
 
         public uint Time
         {
-            get { return time.GetValue(data); }
-            set { time.SetValue(data, value); }
+            get => LittleEndianConverter.Convert(time);
+            set => time = LittleEndianConverter.Convert(value);
         }
 
         public short X
         {
-            get { return x.GetValue(data); }
-            set { x.SetValue(data, value); }
+            get => LittleEndianConverter.Convert(x);
+            set => x = LittleEndianConverter.Convert(value);
         }
 
         public short Y
         {
-            get { return y.GetValue(data); }
-            set { y.SetValue(data, value); }
+            get => LittleEndianConverter.Convert(y);
+            set => y = LittleEndianConverter.Convert(value);
         }
 
         public Prize Green
         {
-            get { return (Prize)green.GetValue(data); }
-            set { green.SetValue(data, (short)value); }
+            get => (Prize)LittleEndianConverter.Convert(green);
+            set => green = LittleEndianConverter.Convert((short)value);
         }
 
-        public short Pid
+        public short PlayerId
         {
-            get { return pid.GetValue(data); }
-            set { pid.SetValue(data, value); }
+            get => LittleEndianConverter.Convert(playerId);
+            set => playerId = LittleEndianConverter.Convert(value);
         }
     }
 }

@@ -217,6 +217,21 @@ namespace SS.Utilities
         }
 
         /// <summary>
+        /// Writes a string into a Span&lt;byte&gt; as a null terminated C-style string, with a the <see cref="DefaultEncoding"/>.
+        /// Any remaining bytes in the <paramref name="destination"/> are zeroed out.
+        /// </summary>
+        /// <param name="destination">The buffer to write string bytes into.</param>
+        /// <param name="value">The string to write.</param>
+        /// <param name="nullTerminatorRequired">
+        /// True if the buffer's last byte must be a null terminator.
+        /// False if the buffer can be completely filled, such that there is no null terminating byte at the end.
+        /// </param>
+        public static void WriteNullPaddedString(this Span<byte> destination, ReadOnlySpan<char> value, bool nullTerminatorRequired = true)
+        {
+            WriteNullPaddedString(destination, value, DefaultEncoding, nullTerminatorRequired);
+        }
+
+        /// <summary>
         /// Writes a string into a Span&lt;byte&gt; as a null terminated C-style string, with a specified encoding.
         /// Any remaining bytes in the <paramref name="destination"/> are zeroed out.
         /// </summary>
@@ -251,7 +266,7 @@ namespace SS.Utilities
             }
 
             if (bytesWritten < destination.Length)
-                destination.Slice(bytesWritten).Clear(); // pad the rest with zero bytes
+                destination[bytesWritten..].Clear(); // pad the rest with zero bytes
         }
 
         #endregion

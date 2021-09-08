@@ -168,5 +168,13 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="playersList">An optional list to populate with the players that are antiwarping.</param>
         /// <returns>True if antiwarped, false otherwise.</returns>
         bool IsAntiwarped(Player p, LinkedList<Player> playersList);
+
+        /// <summary>
+        /// Forcefully attach a player to another player.
+        /// </summary>
+        /// <remarks>Note that continuum is not able to handle going over the TurretLimit.</remarks>
+        /// <param name="p">The attacher.</param>
+        /// <param name="to">The player to attach to.</param>
+        void Attach(Player p, Player to);
     }
 }

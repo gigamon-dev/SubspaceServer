@@ -40,7 +40,7 @@ namespace SS.Core.ComponentInterfaces
         private int next;
         public int drift;
 
-        public void Update(ref TimeSyncData data)
+        public void Update(in TimeSyncData data)
         {
             int sampleIndex = next;
             ServerTime[sampleIndex] = data.s_time;
@@ -79,7 +79,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="p"></param>
         /// <param name="data"></param>
-        void TimeSync(Player p, ref TimeSyncData data);
+        void TimeSync(Player p, in TimeSyncData data);
 
         /// <summary>
         /// For collecting information after processing the outgoing network queues.

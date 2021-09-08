@@ -216,7 +216,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void ILagCollect.TimeSync(Player p, ref TimeSyncData data)
+        void ILagCollect.TimeSync(Player p, in TimeSyncData data)
         {
             if (p == null)
                 return;
@@ -230,7 +230,7 @@ namespace SS.Core.Modules
             try
             {
                 lagStats.Packetloss = data;
-                lagStats.TimeSync.Update(ref data);
+                lagStats.TimeSync.Update(in data);
             }
             finally
             {

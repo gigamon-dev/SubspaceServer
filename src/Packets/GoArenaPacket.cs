@@ -1,100 +1,71 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
-    public readonly struct GoArenaPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct GoArenaPacket
     {
-        static GoArenaPacket()
-        {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = locationBuilder.CreateByteDataLocation();
-            shipType = locationBuilder.CreateByteDataLocation();
-            obscenityFilter = locationBuilder.CreateSByteDataLocation();
-            wavMsg = locationBuilder.CreateSByteDataLocation();
-            xRes = locationBuilder.CreateInt16DataLocation();
-            yRes = locationBuilder.CreateInt16DataLocation();
-            arenaType = locationBuilder.CreateInt16DataLocation();
-            arenaName = locationBuilder.CreateDataLocation(16);
-            LengthVIE = locationBuilder.NumBytes;
-            optionalGraphics = locationBuilder.CreateByteDataLocation();
-            LengthContinuum = locationBuilder.NumBytes;
-        }
-
-        private static readonly ByteDataLocation type;
-        private static readonly ByteDataLocation shipType;
-        private static readonly SByteDataLocation obscenityFilter;
-        private static readonly SByteDataLocation wavMsg;
-        private static readonly Int16DataLocation xRes;
-        private static readonly Int16DataLocation yRes;
-        private static readonly Int16DataLocation arenaType;
-        private static readonly DataLocation arenaName;
-        private static readonly ByteDataLocation optionalGraphics; // cont
         public static readonly int LengthVIE;
         public static readonly int LengthContinuum;
 
-        private readonly byte[] data;
-
-        public GoArenaPacket(byte[] data)
+        static GoArenaPacket()
         {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
+            LengthContinuum = Marshal.SizeOf<GoArenaPacket>();
+            LengthVIE = LengthContinuum - 1;
         }
 
-        public byte Type
-        {
-            get { return type.GetValue(data); }
-        }
+        public readonly byte Type;
+        public readonly byte ShipType;
+        public readonly sbyte ObscenityFilter;
+        public readonly sbyte WavMsg;
+        private readonly short xRes;
+        private readonly short yRes;
+        private readonly short arenaType;
 
-        public byte ShipType
-        {
-            get { return shipType.GetValue(data); }
-        }
+        private const int ArenaNameLength = 16;
+        private fixed byte arenaNameBytes[ArenaNameLength];
+        public Span<byte> ArenaNameBytes => new(Unsafe.AsPointer(ref arenaNameBytes[0]), ArenaNameLength);
 
-        public sbyte ObscenityFilter
-        {
-            get { return obscenityFilter.GetValue(data); }
-        }
-
-        public sbyte WavMsg
-        {
-            get { return wavMsg.GetValue(data); }
-        }
+        public readonly byte OptionalGraphics; // continuum
 
         public short XRes
         {
-            get { return xRes.GetValue(data); }
+            get => LittleEndianConverter.Convert(xRes);
+            init => xRes = LittleEndianConverter.Convert(value);
         }
 
         public short YRes
         {
-            get { return yRes.GetValue(data); }
+            get => LittleEndianConverter.Convert(yRes);
+            init => yRes = LittleEndianConverter.Convert(value);
         }
 
         public short ArenaType
         {
-            get { return arenaType.GetValue(data); }
+            get => LittleEndianConverter.Convert(arenaType);
+            init => arenaType = LittleEndianConverter.Convert(value);
         }
 
         public string ArenaName
         {
-            get
-            {
-                string str = Encoding.ASCII.GetString(data, arenaName.ByteOffset, arenaName.NumBytes);
-                int index = str.IndexOf('\0');
-                if (index != -1)
-                {
-                    return str.Substring(0, index);
-                }
-                return str;
-            }
+            get => ArenaNameBytes.ReadNullTerminatedString();
+            init => ArenaNameBytes.WriteNullPaddedString(value);
         }
 
-        public byte OptionalGraphics
+        public GoArenaPacket(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()
         {
-            get { return optionalGraphics.GetValue(data); }
+            Type = (byte)C2SPacketType.GotoArena;
+            ShipType = shipType;
+            ObscenityFilter = obscenityFilter;
+            WavMsg = wavMsg;
+            this.xRes = LittleEndianConverter.Convert(xRes);
+            this.yRes = LittleEndianConverter.Convert(yRes);
+            this.arenaType = LittleEndianConverter.Convert(arenaType);
+            ArenaName = arenaName;
+            OptionalGraphics = optionalGraphics;
         }
     }
 }

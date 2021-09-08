@@ -1,10 +1,8 @@
+using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
-using SS.Core.Packets;
-using SS.Core.ComponentInterfaces;
-using SS.Core.ComponentCallbacks;
 
 namespace SS.Core.Modules
 {
@@ -179,12 +177,11 @@ namespace SS.Core.Modules
                 _playerDictionary.Add(player.Id, player);
 
                 // set player info
-                player.pkt.PkType = (byte)S2CPacketType.PlayerEntering;
                 player.Status = PlayerState.Uninitialized;
                 player.Type = clientType;
                 player.Arena = null;
                 player.NewArena = null;
-                player.pkt.Ship = (sbyte)ShipType.Spec;
+                player.Ship = ShipType.Spec;
                 player.Attached = -1;
                 player.ConnectTime = DateTime.UtcNow;
                 player.ConnectAs = null;

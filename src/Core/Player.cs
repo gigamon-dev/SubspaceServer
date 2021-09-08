@@ -1,10 +1,10 @@
+using SS.Core.Packets;
+using SS.Core.Packets.S2C;
+using SS.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Net;
-using SS.Core.Packets;
 using System.Collections.Specialized;
-using SS.Utilities;
+using System.Net;
 
 namespace SS.Core
 {
@@ -256,29 +256,35 @@ namespace SS.Core
         public ServerTick Time;
     };
 
+    // TODO: Investigate thread safety. Possibly the attempt is at locking all player data in the PlayerData module? Though there are places that dont?
     public class Player : IPlayerTarget
     {
-        public PlayerDataPacket pkt = new PlayerDataPacket(new byte[PlayerDataPacket.Length]);
+        private PlayerDataPacket _packet;
+
+        /// <summary>
+        /// The <see cref="S2CPacketType.PlayerEntering"/> packet that gets sent to clients.
+        /// </summary>
+        public ref PlayerDataPacket Packet { get { return ref _packet; } } // TODO: maybe make this ref readonly and provide additional mutation methods/properties on the Player class?
 
         public ShipType Ship
         {
-            get { return (ShipType)pkt.Ship; }
-            set { pkt.Ship = (sbyte)value; }
+            get { return (ShipType)_packet.Ship; }
+            set { _packet.Ship = (sbyte)value; }
         }
 
         public short Freq
         {
-            get { return pkt.Freq; }
-            set { pkt.Freq = value; }
+            get { return _packet.Freq; }
+            set { _packet.Freq = value; }
         }
 
         /// <summary>
-        /// id of the player attached to (-1 means not attached)
+        /// ID of the player attached to (-1 means not attached).
         /// </summary>
         public short Attached
         {
-            get { return pkt.AttachedTo; }
-            set { pkt.AttachedTo = (short)value; }
+            get { return _packet.AttachedTo; }
+            set { _packet.AttachedTo = value; }
         }
 
         /// <summary>
@@ -501,8 +507,8 @@ namespace SS.Core
         {
             Id = id;
 
-            // maybe change pid to short?  asss uses int all over, wonder why...
-            pkt.Pid = (short)id;
+            // TODO: maybe change pid to short?  asss uses int all over, wonder why...
+            _packet = new() { Type = (byte)S2CPacketType.PlayerEntering, PlayerId = (short)id };
         }
 
         /// <summary>

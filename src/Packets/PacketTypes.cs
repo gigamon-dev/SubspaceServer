@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace SS.Core.Packets
 {
     public enum S2CPacketType : byte
@@ -99,7 +95,7 @@ namespace SS.Core.Packets
         Redirect = 0x3B, 
     }
 
-    public enum C2SPacketType : int
+    public enum C2SPacketType : byte
     {
         GotoArena = 0x01, 
         LeaveArena = 0x02, 
@@ -143,18 +139,5 @@ namespace SS.Core.Packets
         // missing 23
         ContLogin = 0x24, 
         Damage = 0x32
-    }
-
-    public static class PacketTypeExtensions
-    {
-        public static byte ToByte(this S2CPacketType packetType)
-        {
-            return (byte)packetType;
-        }
-
-        public static byte ToByte(this C2SPacketType packetType)
-        {
-            return (byte)packetType;
-        }
     }
 }

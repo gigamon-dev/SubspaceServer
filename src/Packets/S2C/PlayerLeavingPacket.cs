@@ -4,29 +4,20 @@ using System.Runtime.InteropServices;
 namespace SS.Core.Packets.S2C
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct ShipChangePacket
+    public readonly struct PlayerLeavingPacket
     {
         public readonly byte Type;
-        public readonly sbyte Ship;
         private readonly short playerId;
-        private readonly short freq;
 
         public readonly short PlayerId
         {
             get { return LittleEndianConverter.Convert(playerId); }
         }
 
-        public readonly short Freq
+        public PlayerLeavingPacket(short playerId)
         {
-            get { return LittleEndianConverter.Convert(freq); }
-        }
-
-        public ShipChangePacket(sbyte ship, short playerId, short freq)
-        {
-            Type = (byte)S2CPacketType.ShipChange;
-            Ship = ship;
+            Type = (byte)S2CPacketType.PlayerLeaving;
             this.playerId = LittleEndianConverter.Convert(playerId);
-            this.freq = LittleEndianConverter.Convert(freq);
         }
     }
 }

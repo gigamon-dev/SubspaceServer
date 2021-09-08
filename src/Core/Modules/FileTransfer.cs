@@ -1,8 +1,10 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
+using SS.Core.Packets.S2C;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace SS.Core.Modules
@@ -75,7 +77,7 @@ namespace SS.Core.Modules
 
             try
             {
-                FileInfo fileInfo = new FileInfo(path);
+                FileInfo fileInfo = new(path);
                 if (!fileInfo.Exists)
                 {
                     _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "File '{0}' does not exist.", path);
@@ -83,7 +85,7 @@ namespace SS.Core.Modules
                 }
 
                 FileStream fileStream = fileInfo.OpenRead();
-                DownloadDataContext dd = new DownloadDataContext(fileStream, filename, deleteAfter ? path : null);
+                DownloadDataContext dd = new(fileStream, filename, deleteAfter ? path : null);
                 _network.SendSized(p, (int)fileInfo.Length + 17, GetSizedSendData, dd);
                 return true;
             }
@@ -102,7 +104,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(path))
                 return false;
 
-            if (!(p[_udKey] is UploadDataContext ud))
+            if (p[_udKey] is not UploadDataContext ud)
                 return false;
 
             if (path.Length > 256)
@@ -113,11 +115,8 @@ namespace SS.Core.Modules
 
             ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
 
-            Span<byte> bytes = stackalloc byte[RequestFilePacket.Length];
-            RequestFilePacket pkt = new RequestFilePacket(bytes);
-            pkt.Initialize(path, "unused-field");
-
-            _network.SendToOne(p, bytes, NetSendFlags.Reliable);
+            RequestFilePacket packet = new(path, "unused-field");
+            _network.SendToOne(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
 
             _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Requesting file '{0}'.", path);
 
@@ -135,7 +134,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            if (!(p[_udKey] is UploadDataContext ud))
+            if (p[_udKey] is not UploadDataContext ud)
                 return;
 
             ud.WorkingDirectory = path;
@@ -146,7 +145,7 @@ namespace SS.Core.Modules
             if (p == null)
                 throw new ArgumentNullException(nameof(p));
 
-            if (!(p[_udKey] is UploadDataContext ud))
+            if (p[_udKey] is not UploadDataContext ud)
                 return null;
 
             return ud.WorkingDirectory;
@@ -159,7 +158,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_udKey] is UploadDataContext ud))
+            if (p[_udKey] is not UploadDataContext ud)
                 return;
 
             if (action == PlayerAction.Connect)
@@ -177,7 +176,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_udKey] is UploadDataContext ud))
+            if (p[_udKey] is not UploadDataContext ud)
                 return;
 
             if (!_capabilityManager.HasCapability(p, Constants.Capabilities.UploadFile))
@@ -208,7 +207,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_udKey] is UploadDataContext ud))
+            if (p[_udKey] is not UploadDataContext ud)
                 return;
 
             if (offset == -1)
@@ -239,7 +238,7 @@ namespace SS.Core.Modules
                 ud.FileName = ud.Stream.Name;
                 _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Accepted file for upload (to '{ud.FileName}').");
 
-                ud.Stream.Write(data.Slice(17));
+                ud.Stream.Write(data[17..]);
             }
             else if (offset > 0 && ud.Stream != null)
             {
@@ -293,12 +292,12 @@ namespace SS.Core.Modules
                 // needs all or part of the header, create the header
                 Span<byte> headerSpan = stackalloc byte[17];
                 headerSpan[0] = (byte)S2CPacketType.IncomingFile;
-                Encoding.ASCII.GetBytes(dd.Filename, headerSpan.Slice(1));
+                Encoding.ASCII.GetBytes(dd.Filename, headerSpan[1..]);
 
                 if (offset != 0)
                 {
                     // move to the data we need
-                    headerSpan = headerSpan.Slice(offset);
+                    headerSpan = headerSpan[offset..];
                 }
 
                 if (dataSpan.Length < headerSpan.Length)
@@ -314,7 +313,7 @@ namespace SS.Core.Modules
                         return;
 
                     // needs data from the file too, move to the spot for the data
-                    dataSpan = dataSpan.Slice(headerSpan.Length);
+                    dataSpan = dataSpan[headerSpan.Length..];
                 }
             }
 
@@ -330,7 +329,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                dataSpan = dataSpan.Slice(bytesRead);
+                dataSpan = dataSpan[bytesRead..];
             }
             while (dataSpan.Length > 0);
         }

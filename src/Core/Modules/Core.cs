@@ -18,8 +18,6 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Core : IModule, IAuth
     {
-        private static readonly byte[] _keepAlive = new byte[1] { (byte)S2CPacketType.KeepAlive };
-
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
         private ICapabilityManager _capabiltyManager;
@@ -270,7 +268,7 @@ namespace SS.Core.Modules
                                 if (auth != null && pdata.LoginPacketBuffer != null && pdata.LoginPacketBuffer.NumBytes > 0)
                                 {
                                     _logManager.LogM(LogLevel.Drivel, nameof(Core), "Authenticating with '{0}'", auth.GetType().ToString());
-                                    auth.Authenticate(player, new LoginPacket(pdata.LoginPacketBuffer.Bytes), pdata.LoginPacketBuffer.NumBytes, AuthDone);
+                                    auth.Authenticate(player, MemoryMarshal.AsRef<LoginPacket>(pdata.LoginPacketBuffer.Bytes), pdata.LoginPacketBuffer.NumBytes, AuthDone);
                                 }
                                 else
                                 {
@@ -455,8 +453,8 @@ namespace SS.Core.Modules
             else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) 
                 || (p.Type == ClientType.Continuum && len < LoginPacket.LengthContinuum))
 #else
-            else if ((p.Type == ClientType.VIE && len != LoginPacket.LengthVIE)
-                || (p.Type == ClientType.Continuum && len != LoginPacket.LengthContinuum))
+            else if ((p.Type == ClientType.VIE && len != LoginPacket.VIELength)
+                || (p.Type == ClientType.Continuum && len != LoginPacket.ContinuumLength))
 #endif
             {
                 _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Bad login packet length ({1})", p.Id, len);
@@ -467,7 +465,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                LoginPacket pkt = new LoginPacket(data);
+                ref LoginPacket pkt = ref MemoryMarshal.AsRef<LoginPacket>(data);
 
 #if !CFG_RELAX_LENGTH_CHECKS
                 // VIE clients can only have one version. 
@@ -486,28 +484,28 @@ namespace SS.Core.Modules
                 pdata.LoginPacketBuffer = Pool<DataBuffer>.Default.Get();
                 Array.Copy(data, pdata.LoginPacketBuffer.Bytes, len);
                 pdata.LoginPacketBuffer.NumBytes = len;
-                pkt = new LoginPacket(pdata.LoginPacketBuffer.Bytes);
+                pkt = ref MemoryMarshal.AsRef<LoginPacket>(pdata.LoginPacketBuffer.Bytes);
 
                 // name
-                CleanupName(pkt.NameSpan); // first, manipulate name as bytes (fewer string object allocations)
+                CleanupName(pkt.NameBytes); // first, manipulate name as bytes (fewer string object allocations)
                 string name = pkt.Name;
 
                 // if nothing could be salvaged from their name, disconnect them
                 if (string.IsNullOrWhiteSpace(name))
                 {
-                    FailLoginWith(p, AuthCode.BadName, "Your player name contains no valid characters", "all invalid chars");
+                    FailLoginWith(p, AuthCode.BadName, "Your player name contains no valid characters.", "all invalid chars");
                     return;
                 }
 
                 // must start with number or letter
                 if (!char.IsLetterOrDigit(name[0]))
                 {
-                    FailLoginWith(p, AuthCode.BadName, "Your player name must start with a letter or number", "name doesn't start with alphanumeric");
+                    FailLoginWith(p, AuthCode.BadName, "Your player name must start with a letter or number.", "name doesn't start with alphanumeric");
                     return;
                 }
 
                 // pass must be nul-terminated
-                pkt.PasswordSpan[^1] = 0;
+                pkt.PasswordBytes[^1] = 0;
 
                 // fill misc data
                 p.MacId = pkt.MacId;
@@ -588,9 +586,9 @@ namespace SS.Core.Modules
                 Player oldp = _playerData.FindPlayer(auth.Name);
 
                 // set new player's name
-                p.pkt.Name = auth.SendName;
+                p.Packet.Name = auth.SendName;
                 p.Name = auth.Name;
-                p.pkt.Squad = auth.Squad;
+                p.Packet.Squad = auth.Squad;
                 p.Squad = auth.Squad;
 
                 // make sure we don't have two identical players. if so, do not
@@ -790,14 +788,14 @@ namespace SS.Core.Modules
 
 #region IAuth Members
 
-        void IAuth.Authenticate(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done)
+        void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
             DefaultAuth(p, lp, lplen, done);   
         }
 
 #endregion
 
-        private void DefaultAuth(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done)
+        private void DefaultAuth(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
             AuthData auth = new AuthData();
 
@@ -817,8 +815,10 @@ namespace SS.Core.Modules
         {
             if (_net != null)
             {
-                _net.SendToArena(null, null, _keepAlive, 1, NetSendFlags.Reliable);
+                Span<byte> keepAlive = stackalloc byte[1] { (byte)S2CPacketType.KeepAlive };
+                _net.SendToArena(null, null, keepAlive, NetSendFlags.Reliable);
             }
+
             return true;
         }
     }

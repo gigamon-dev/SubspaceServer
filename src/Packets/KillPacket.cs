@@ -1,74 +1,46 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Core.Packets.S2C
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct KillPacket
     {
-        static KillPacket()
+        public readonly byte Type;
+        public readonly byte Green;
+        private readonly short killer;
+        private readonly short killed;
+        private readonly short bounty;
+        private readonly short flags;
+
+        public readonly short Killer
         {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            type = (ByteDataLocation)locationBuilder.CreateDataLocation(1);
-            green = (ByteDataLocation)locationBuilder.CreateDataLocation(1);
-            killer = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
-            killed = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
-            bounty = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
-            flags = (Int16DataLocation)locationBuilder.CreateDataLocation(2);
-            Length = locationBuilder.NumBytes;
+            get {  return LittleEndianConverter.Convert(killer); }
         }
 
-        private static readonly ByteDataLocation type;
-        private static readonly ByteDataLocation green;
-        private static readonly Int16DataLocation killer;
-        private static readonly Int16DataLocation killed;
-        private static readonly Int16DataLocation bounty;
-        private static readonly Int16DataLocation flags;
-        public static readonly int Length;
-
-        private readonly byte[] data;
-
-        public KillPacket(byte[] data)
+        public readonly short Killed
         {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
+            get { return LittleEndianConverter.Convert(killed); }
         }
 
-        public byte Type
+        public readonly short Bounty
         {
-            get { return type.GetValue(data); }
-            set { type.SetValue(data, value); }
+            get { return LittleEndianConverter.Convert(bounty); }
         }
 
-        public Prize Green
+        public readonly short Flags
         {
-            get { return (Prize)green.GetValue(data); }
-            set { green.SetValue(data, (byte)value); }
+            get { return LittleEndianConverter.Convert(flags); }
         }
 
-        public short Killer
+        public KillPacket(Prize green, short killer, short killed, short bounty, short flags)
         {
-            get { return killer.GetValue(data); }
-            set { killer.SetValue(data, value); }
-        }
-
-        public short Killed
-        {
-            get { return killed.GetValue(data); }
-            set { killed.SetValue(data, value); }
-        }
-
-        public short Bounty
-        {
-            get { return bounty.GetValue(data); }
-            set { bounty.SetValue(data, value); }
-        }
-
-        public short Flags
-        {
-            get { return flags.GetValue(data); }
-            set { flags.SetValue(data, value); }
+            Type = (byte)S2CPacketType.Kill;
+            Green = (byte)green;
+            this.killer = LittleEndianConverter.Convert(killer);
+            this.killed = LittleEndianConverter.Convert(killed);
+            this.bounty = LittleEndianConverter.Convert(bounty);
+            this.flags = LittleEndianConverter.Convert(flags);
         }
     }
 }

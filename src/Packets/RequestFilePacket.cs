@@ -1,66 +1,43 @@
 ﻿using SS.Utilities;
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Core.Packets.S2C
 {
     /// <summary>
-    /// Helper for a packet sent by the server, requesting the client to send a file.
+    /// Packet that requests the client to send a file.
     /// </summary>
-    public readonly ref struct RequestFilePacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct RequestFilePacket
     {
-        static RequestFilePacket()
-        {
-            DataLocationBuilder builder = new DataLocationBuilder();
-            typeLocation = builder.CreateByteDataLocation();
-            pathLocation = builder.CreateDataLocation(256);
-            filenameLocation = builder.CreateDataLocation(16);
-            Length = builder.NumBytes;
-        }
+        public readonly byte Type;
 
-        private static readonly ByteDataLocation typeLocation;
-        private static readonly DataLocation pathLocation;
-        private static readonly DataLocation filenameLocation;
-        public static readonly int Length;
+        private const int PathLength = 256;
+        private fixed byte pathBytes[PathLength];
+        public Span<byte> PathBytes => new(Unsafe.AsPointer(ref pathBytes[0]), PathLength);
 
-        private readonly Span<byte> bytes;
-
-        public RequestFilePacket(Span<byte> bytes)
-        {
-            if (bytes.Length < Length)
-                throw new ArgumentException($"Length is too small to contain a {nameof(RequestFilePacket)}.", nameof(bytes));
-
-            this.bytes = bytes;
-        }
-
-        public void Initialize()
-        {
-            bytes[0] = (byte)S2CPacketType.RequestForFile;
-        }
-
-        public void Initialize(string path, string filename)
-        {
-            Initialize();
-
-            Path = path;
-            Filename = filename;
-        }
-
-        public byte Type
-        {
-            get { return typeLocation.GetValue(bytes); }
-            set { typeLocation.SetValue(bytes, value); }
-        }
+        private const int FilenameLength = 16;
+        private fixed byte filenameBytes[FilenameLength];
+        public Span<byte> FilenameBytes => new(Unsafe.AsPointer(ref filenameBytes[0]), FilenameLength);
 
         public string Path
         {
-            get { return pathLocation.Slice(bytes).ReadNullTerminatedASCII(); }
-            set { pathLocation.Slice(bytes).WriteNullPaddedASCII(value); }
+            get { return PathBytes.ReadNullTerminatedString(); }
+            set { PathBytes.WriteNullPaddedString(value); }
         }
 
         public string Filename
         {
-            get { return filenameLocation.Slice(bytes).ReadNullTerminatedASCII(); }
-            set { filenameLocation.Slice(bytes).WriteNullPaddedASCII(value); }
+            get { return FilenameBytes.ReadNullTerminatedString(); }
+            set { FilenameBytes.WriteNullPaddedString(value); }
+        }
+
+        public RequestFilePacket(string path, string filename)
+        {
+            Type = (byte)S2CPacketType.RequestForFile;
+            Path = path;
+            Filename = filename;
         }
     }
 }

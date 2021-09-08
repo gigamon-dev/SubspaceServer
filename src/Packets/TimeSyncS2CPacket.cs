@@ -1,37 +1,26 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
 {
-    public readonly struct TimeSyncS2CPacket
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct TimeSyncS2CPacket
     {
-        // static constructor to initialize packet's info
-        static TimeSyncS2CPacket()
+        public byte T1;
+        public byte T2;
+        private uint clientTime;
+        private uint serverTime;
+
+        public uint ClientTime
         {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            t1 = locationBuilder.CreateByteDataLocation();
-            t2 = locationBuilder.CreateByteDataLocation();
-            clienttime = locationBuilder.CreateUInt32DataLocation();
-            servertime = locationBuilder.CreateUInt32DataLocation();
-            Length = locationBuilder.NumBytes;
+            get { return LittleEndianConverter.Convert(clientTime); }
+            set { clientTime = LittleEndianConverter.Convert(value); }
         }
 
-        // static data members that tell the location of each field in the byte array of a packet
-        private static readonly ByteDataLocation t1;
-        private static readonly ByteDataLocation t2;
-        private static readonly UInt32DataLocation clienttime;
-        private static readonly UInt32DataLocation servertime;
-        public static int Length { get; }
-
-        // data members
-        private readonly byte[] data;
-
-        public TimeSyncS2CPacket(byte[] data)
+        public uint ServerTime
         {
-            this.data = data ?? throw new ArgumentNullException(nameof(data));
+            get { return LittleEndianConverter.Convert(serverTime); }
+            set { serverTime = LittleEndianConverter.Convert(value); }
         }
 
         public void Initialize()
@@ -40,32 +29,12 @@ namespace SS.Core.Packets
             T2 = 0x06;
         }
 
-        public void Initialize(uint clientType, uint serverTime)
+        public void Initialize(uint clientTime, uint serverTime)
         {
             Initialize();
 
-            ClientTime = clientType;
+            ClientTime = clientTime;
             ServerTime = serverTime;
-        }
-
-        public byte T1
-        {
-            set { t1.SetValue(data, value); }
-        }
-
-        public byte T2
-        {
-            set { t2.SetValue(data, value); }
-        }
-
-        public uint ClientTime
-        {
-            set { clienttime.SetValue(data, value); }
-        }
-
-        public uint ServerTime
-        {
-            set { servertime.SetValue(data, value); }
         }
     }
 }

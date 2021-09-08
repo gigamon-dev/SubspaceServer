@@ -120,13 +120,13 @@ namespace SS.Core.Modules
             return true;
         }
 
-        void IAuth.Authenticate(Player p, LoginPacket lp, int lplen, AuthDoneDelegate done)
+        void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
             if (p[pdKey] is not PlayerData pd)
                 return;
 
             string name = lp.Name;
-            string pwd = StringUtils.ReadNullTerminatedString(lp.PasswordSpan);
+            string pwd = StringUtils.ReadNullTerminatedString(lp.PasswordBytes);
             pd.PasswordHash = GetPasswordHash(name, pwd);
 
             AuthData authData = new AuthData()

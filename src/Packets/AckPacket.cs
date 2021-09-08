@@ -6,6 +6,13 @@ namespace SS.Core.Packets
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct AckPacket
     {
+        public static readonly int Length;
+
+        static AckPacket()
+        {
+            Length = Marshal.SizeOf<AckPacket>();
+        }
+
         public readonly byte T1;
         public readonly byte T2;
         private readonly int seqNum;
@@ -21,7 +28,5 @@ namespace SS.Core.Packets
             T2 = 4;
             this.seqNum = LittleEndianConverter.Convert(seqNum);
         }
-
-        public const int Length = 6;
     }
 }

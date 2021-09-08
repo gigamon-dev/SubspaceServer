@@ -2,6 +2,8 @@
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Core.Packets;
+using SS.Core.Packets.C2S;
+using SS.Core.Packets.S2C;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -38,10 +40,6 @@ namespace SS.Core.Modules
         private readonly object _freqshipmtx = new object();
 
         private const int WeaponCount = 32;
-
-        private static readonly byte[] _addSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 1 };
-        private static readonly byte[] _clearSpecBytes = new byte[] { (byte)S2CPacketType.SpecData, 0 };
-        private static readonly byte[] _shipResetBytes = new byte[] { (byte)S2CPacketType.ShipReset };
 
         [Flags]
         private enum PersonalGreen
@@ -302,34 +300,20 @@ namespace SS.Core.Modules
 
         void IGame.WarpTo(ITarget target, short x, short y)
         {
-            if(target == null)
-                throw new ArgumentNullException("target");
+            if (target == null)
+                throw new ArgumentNullException(nameof(target));
 
-            using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-            {
-                SimplePacket sp = new SimplePacket(buffer.Bytes);
-                sp.Type = (byte)S2CPacketType.WarpTo;
-                sp.D1 = x;
-                sp.D2 = y;
-
-                _net.SendToTarget(target, buffer.Bytes, 5, NetSendFlags.Reliable | NetSendFlags.Urgent);
-            }
+            WarpToPacket warpTo = new(x, y);
+            _net.SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref warpTo, 1)), NetSendFlags.Reliable | NetSendFlags.Urgent);
         }
 
-        void IGame.GivePrize(ITarget target, Prize prizeType, short count)
+        void IGame.GivePrize(ITarget target, Prize prize, short count)
         {
-            if(target == null)
-                throw new ArgumentNullException("target");
+            if (target == null)
+                throw new ArgumentNullException(nameof(target));
 
-            using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-            {
-                SimplePacket sp = new SimplePacket(buffer.Bytes);
-                sp.Type = (byte)S2CPacketType.PrizeRecv;
-                sp.D1 = count;
-                sp.D2 = (short)prizeType;
-
-                _net.SendToTarget(target, buffer.Bytes, 5, NetSendFlags.Reliable);
-            }
+            PrizeReceivePacket packet = new(count, prize);
+            _net.SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
         }
 
         void IGame.Lock(ITarget target, bool notify, bool spec, int timeout)
@@ -422,9 +406,10 @@ namespace SS.Core.Modules
         void IGame.ShipReset(ITarget target)
         {
             if (target == null)
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
 
-            _net.SendToTarget(target, _shipResetBytes, _shipResetBytes.Length, NetSendFlags.Reliable);
+            Span<byte> shipResetBytes = stackalloc byte[1] { (byte)S2CPacketType.ShipReset };
+            _net.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
 
             _playerData.Lock();
 
@@ -591,6 +576,31 @@ namespace SS.Core.Modules
             }
 
             return antiwarped;
+        }
+
+        void IGame.Attach(Player p, Player to)
+        {
+            if (p == null
+                || p.Status != PlayerState.Playing
+                || p.Arena == null)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(Game), $"Failed to force attach player {p.Id} as a turret.");
+                return;
+            }
+
+            if (to != null)
+            {
+                if (to == p
+                    || to.Status != PlayerState.Playing
+                    || to.Arena != p.Arena
+                    || to.Freq != p.Freq)
+                {
+                    _logManager.LogM(LogLevel.Warn, nameof(Game), $"Failed to force attach player {p.Id} as a turret onto player {to.Id}.");
+                    return;
+                }
+            }
+
+            Attach(p, to);
         }
 
         #endregion
@@ -849,7 +859,7 @@ namespace SS.Core.Modules
                         if (--odata.epdQueries <= 0)
                         {
                             // no more people speccing the player that want extra position data
-                            _net.SendToOne(data.speccing, _clearSpecBytes, _clearSpecBytes.Length, NetSendFlags.Reliable);
+                            SendSpecBytes(data.speccing, false);
                             odata.epdQueries = 0;
                         }
                     }
@@ -869,16 +879,25 @@ namespace SS.Core.Modules
 
                 if (data.pl_epd.seeEpd)
                 {
-                    if (!(t[_pdkey] is PlayerData tdata))
+                    if (t[_pdkey] is not PlayerData tdata)
                         return;
 
                     if (tdata.epdQueries++ == 0)
                     {
                         // first time player is being specced by someone watching extra position data, tell the player to send extra position data
-                        _net.SendToOne(t, _addSpecBytes, _addSpecBytes.Length, NetSendFlags.Reliable);
+                        SendSpecBytes(t, true);
                     }
                 }
             }
+        }
+
+        private void SendSpecBytes(Player t, bool sendExtraPositionData)
+        {
+            if (t == null)
+                return;
+
+            Span<byte> specBytes = stackalloc byte[2] { (byte)S2CPacketType.SpecData, sendExtraPositionData ? (byte)1 : (byte)0 };
+            _net.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
         private void Packet_Position(Player p, byte[] data, int len)
@@ -1343,7 +1362,7 @@ namespace SS.Core.Modules
             if (data == null)
                 return;
 
-            if (len != 3)
+            if (len != SpecRequestPacket.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad spec req packet len={0}", len);
                 return;
@@ -1352,19 +1371,19 @@ namespace SS.Core.Modules
             if (p.Status != PlayerState.Playing || p.Ship != ShipType.Spec)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
-            SimplePacket pkt = new SimplePacket(data);
-            int tpid = pkt.D1;
+            ref SpecRequestPacket packet = ref MemoryMarshal.AsRef<SpecRequestPacket>(data.AsSpan(0, SpecRequestPacket.Length));
+            int targetPlayerId = packet.PlayerId;
 
             lock (_specmtx)
             {
                 ClearSpeccing(pd);
 
-                if (tpid >= 0)
+                if (targetPlayerId >= 0)
                 {
-                    Player t = _playerData.PidToPlayer(tpid);
+                    Player t = _playerData.PidToPlayer(targetPlayerId);
                     if (t != null && t.Status == PlayerState.Playing && t.Ship != ShipType.Spec && t.Arena == p.Arena)
                         AddSpeccing(pd, t);
                 }
@@ -1456,14 +1475,18 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (len != 3)
+            if (len != SetFreqPacket.Length)
+            {
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad freq req packet len={0}", len);
+            }
             else if (p.Flags.DuringChange)
+            {
                 _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: freq change before ack from previous change");
+            }
             else
             {
-                SimplePacket pkt = new SimplePacket(data);
-                FreqChangeRequest(p, pkt.D1);
+                ref SetFreqPacket packet = ref MemoryMarshal.AsRef<SetFreqPacket>(data.AsSpan(0, SetFreqPacket.Length));
+                FreqChangeRequest(p, packet.Freq);
             }
         }
 
@@ -1563,26 +1586,19 @@ namespace SS.Core.Modules
                 }
             }
 
-            using(DataBuffer buffer = Pool<DataBuffer>.Default.Get())
+            ShipChangePacket packet = new((sbyte)ship, (short)p.Id, freq);
+            
+            if (p.IsStandard)
             {
-                ShipChangePacket to = new ShipChangePacket(buffer.Bytes);
-                to.Type = (byte)S2CPacketType.ShipChange;
-                to.ShipType = (sbyte)ship;
-                to.Pid = (short)p.Id;
-                to.Freq = freq;
-                
-                if (p.IsStandard)
-                {
-                    // send it to him, with a callback
-                    _net.SendWithCallback(p, buffer.Bytes, ShipChangePacket.Length, ResetDuringChange);
-                }
-
-                // send it to everyone else
-                _net.SendToArena(arena, p, buffer.Bytes, ShipChangePacket.Length, NetSendFlags.Reliable);
-
-                //if(_chatnet != null)
-
+                // send it to him, with a callback
+                _net.SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), ResetDuringChange);
             }
+
+            // send it to everyone else
+            _net.SendToArena(arena, p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+
+            //if(_chatnet != null)
+
 
             PreShipFreqChangeCallback.Fire(arena, p, ship, oldShip, freq, oldFreq);
             DoShipFreqChangeCallback(p, ship, oldShip, freq, oldFreq);
@@ -1644,25 +1660,16 @@ namespace SS.Core.Modules
                 p.Freq = freq;
             }
 
-            
-            using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-            {
-                SimplePacket sp = new SimplePacket(buffer.Bytes);
-                sp.Type = (byte)S2CPacketType.FreqChange;
-                sp.D1 = (short)p.Id;
-                sp.D2 = freq;
-                sp.D3 = -1;
+            FreqChangePacket packet = new((short)p.Id, freq);
 
-                // him with callback
-                if (p.IsStandard)
-                    _net.SendWithCallback(p, buffer.Bytes, 6, ResetDuringChange);
+            // him with callback
+            if (p.IsStandard)
+                _net.SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), ResetDuringChange);
                 
-                // everyone else
-                _net.SendToArena(arena, p, buffer.Bytes, 6, NetSendFlags.Reliable);
+            // everyone else
+            _net.SendToArena(arena, p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
 
-                //if(_chatNet != null)
-
-            }
+            //if(_chatNet != null)
 
             PreShipFreqChangeCallback.Fire(arena, p, p.Ship, p.Ship, freq, oldFreq);
             DoShipFreqChangeCallback(p, p.Ship, p.Ship, freq, oldFreq);
@@ -1709,7 +1716,7 @@ namespace SS.Core.Modules
             if (data == null)
                 return;
 
-            if (len != 5)
+            if (len != DiePacket.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad death packet len={0}", len);
                 return;
@@ -1722,20 +1729,20 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!(arena[_adkey] is ArenaData ad))
+            if (arena[_adkey] is not ArenaData ad)
                 return;
 
-            SimplePacket dead = new SimplePacket(data);
-            short bty = dead.D2;
+            ref DiePacket packet = ref MemoryMarshal.AsRef<DiePacket>(data.AsSpan(0, DiePacket.Length));
+            short bty = packet.Bounty;
 
-            Player killer = _playerData.PidToPlayer(dead.D1);
+            Player killer = _playerData.PidToPlayer(packet.Killer);
             if (killer == null || killer.Status != PlayerState.Playing || killer.Arena != arena)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "reported kill by bad pid {0}", dead.D1);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Reported kill by bad pid {packet.Killer}");
                 return;
             }
 
-            short flagCount = p.pkt.FlagsCarried;
+            short flagCount = p.Packet.FlagsCarried;
 
             // these flags are primarily for the benefit of other modules
             _playerData.Lock();
@@ -1874,18 +1881,8 @@ namespace SS.Core.Modules
             if (killer == null || killed == null)
                 return;
 
-            using(DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-            {
-                KillPacket kp = new KillPacket(buffer.Bytes);
-                kp.Type = (byte)S2CPacketType.Kill;
-                kp.Green = green;
-                kp.Killer = (short)killer.Id;
-                kp.Killed = (short)killed.Id;
-                kp.Bounty = pts;
-                kp.Flags = flagCount;
-
-                _net.SendToArena(killer.Arena, null, buffer.Bytes, KillPacket.Length, NetSendFlags.Reliable);
-            }
+            KillPacket packet = new(green, (short)killer.Id, (short)killed.Id, pts, flagCount);
+            _net.SendToArena(killer.Arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
 
             //if(_chatnet != null)
         }
@@ -1911,20 +1908,20 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!(arena[_adkey] is ArenaData ad))
+            if (arena[_adkey] is not ArenaData ad)
                 return;
 
-            GreenPacket g = new GreenPacket(data);
+            ref GreenPacket g = ref MemoryMarshal.AsRef<GreenPacket>(data);
             Prize prize = g.Green;
-            
+
             // don't forward non-shared prizes
             if(!(prize == Prize.Thor && (ad.personalGreen & PersonalGreen.Thor) == PersonalGreen.Thor) &&
                 !(prize == Prize.Burst && (ad.personalGreen & PersonalGreen.Burst) == PersonalGreen.Burst) &&
                 !(prize == Prize.Brick && (ad.personalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
             {
-                g.Pid = (short)p.Id;
+                g.PlayerId = (short)p.Id;
                 g.Type = (byte)S2CPacketType.Green; // HACK: reuse the buffer that it came in on
-                _net.SendToArena(arena, p, data, GreenPacket.S2CLength, NetSendFlags.Unreliable);
+                _net.SendToArena(arena, p, data.AsSpan(0, GreenPacket.S2CLength), NetSendFlags.Unreliable);
                 //g.Type = C2SPacketType.Green; // asss sets it back, i dont think this is necessary though
             }
 
@@ -1942,12 +1939,36 @@ namespace SS.Core.Modules
                 GreenCallback.Fire(_broker, p, x, y, prize);
         }
 
+        // Note: This method assumes all validation checks have been done beforehand (playing, same arena, same team, etc...).
+        private void Attach(Player p, Player to)
+        {
+            if (p == null)
+                return;
+
+            short toPlayerId = (short)(to != null ? to.Id : -1);
+
+            // only if state has changed
+            if (p.Attached != toPlayerId)
+            {
+                // Send the packet
+                TurretPacket packet = new((short)p.Id, toPlayerId);
+                _net.SendToArena(p.Arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+
+                // Update the state
+                p.Attached = toPlayerId;
+
+                // Invoke the callback
+                // TODO: ASSS has does the callback synchronously for incoming packets, and has main run it for force attach.  figure out what to do
+                AttachCallback.Fire(p.Arena, p, to);
+            }
+        }
+
         private void Packet_AttachTo(Player p, byte[] data, int len)
         {
             if (p == null || data == null)
                 return;
 
-            if (len != 3)
+            if (len != AttachToPacket.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad attach req packet len={0}", len);
                 return;
@@ -1960,8 +1981,8 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            SimplePacket sp = new SimplePacket(data);
-            short pid2 = sp.D1;
+            ref AttachToPacket packet = ref MemoryMarshal.AsRef<AttachToPacket>(data.AsSpan(0, AttachToPacket.Length));
+            short pid2 = packet.PlayerId;
 
             Player to = null;
 
@@ -1969,28 +1990,19 @@ namespace SS.Core.Modules
             if (pid2 != -1)
             {
                 to = _playerData.PidToPlayer(pid2);
-                if (to == null ||
-                    to.Status != PlayerState.Playing ||
-                    to == p ||
-                    p.Arena != to.Arena ||
-                    p.Freq != to.Freq)
+
+                if (to == null
+                    || to == p
+                    || to.Status != PlayerState.Playing
+                    || p.Arena != to.Arena 
+                    || p.Freq != to.Freq)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "tried to attach to bad pid {0}", pid2);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Tried to attach to bad pid {pid2}.");
                     return;
                 }
             }
 
-            // only send it if state has changed
-            if (p.Attached != pid2)
-            {
-                sp.Type = (byte)S2CPacketType.Turret;
-                sp.D1 = (short)p.Id;
-                sp.D2 = pid2;
-                _net.SendToArena(arena, null, data, 5, NetSendFlags.Reliable);
-                p.Attached = pid2;
-
-                AttachCallback.Fire(arena, p, to);
-            }
+            Attach(p, to);
         }
 
         private void Packet_TurretKickoff(Player p, byte[] data, int len)
@@ -2005,11 +2017,8 @@ namespace SS.Core.Modules
             if(arena == null)
                 return;
 
-            SimplePacket sp = new SimplePacket(data);
-            sp.Type = (byte)S2CPacketType.TurretKickoff;
-            sp.D1 = (short)p.Id;
-
-            _net.SendToArena(arena, null, data, 3, NetSendFlags.Reliable);
+            TurretKickoffPacket packet = new((short)p.Id);
+            _net.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
         }
 
         private int Hypot(int dx, int dy)

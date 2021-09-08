@@ -37,7 +37,7 @@ namespace SS.Core.Packets
         /// So, as long as a reliable chat packet isn't larger than 249 bytes (not maxed out), it can be added into a grouped packet.
         /// </para>
         /// </summary>
-        public const int MaxMessageLength = NumMessageBytes - 1; // -1 for the null terminating byte
+        public const int MaxMessageLength = MessageLength - 1; // -1 for the null terminating byte
 
         public byte Type;
         public byte ChatType;
@@ -50,9 +50,9 @@ namespace SS.Core.Packets
             set { playerId = LittleEndianConverter.Convert(value); }
         }
 
-        private const int NumMessageBytes = 250;
-        private fixed byte messageBytes[NumMessageBytes];
-        public Span<byte> MessageBytes => new Span<byte>(Unsafe.AsPointer(ref messageBytes[0]), NumMessageBytes);
+        private const int MessageLength = 250;
+        private fixed byte messageBytes[MessageLength];
+        public Span<byte> MessageBytes => new(Unsafe.AsPointer(ref messageBytes[0]), MessageLength);
     }
 }
 

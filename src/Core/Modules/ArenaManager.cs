@@ -1,10 +1,11 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
-using SS.Utilities;
+using SS.Core.Packets.S2C;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -95,9 +96,6 @@ namespace SS.Core.Modules
         /// </summary>
         private int _adkey;
 
-        private static readonly byte[] _brickClearBytes = new byte[1] { (byte)Packets.S2CPacketType.Brick };
-        private static readonly byte[] _enteringArenaBytes = new byte[1] { (byte)Packets.S2CPacketType.EnteringArena };
-
         /// <summary>
         /// all arenas
         /// </summary>
@@ -164,13 +162,8 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send whoami packet
-                using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-                {
-                    SimplePacket whoami = new SimplePacket(buffer.Bytes);
-                    whoami.Type = (byte)S2CPacketType.WhoAmI;
-                    whoami.D1 = (short)player.Id;
-                    _net.SendToOne(player, buffer.Bytes, 3, NetSendFlags.Reliable);
-                }
+                WhoAmIPacket whoAmI = new((short)player.Id);
+                _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref whoAmI, 1)), NetSendFlags.Reliable);
                 
                 // send settings
                 IClientSettings clientset = _broker.GetInterface<IClientSettings>();
@@ -215,7 +208,7 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send to self
-                _net.SendToOne(player, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
+                _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref player.Packet, 1)), NetSendFlags.Reliable);
 
                 IMapNewsDownload mapNewDownload = _broker.GetInterface<IMapNewsDownload>();
                 if (mapNewDownload != null)
@@ -231,22 +224,20 @@ namespace SS.Core.Modules
                 }
 
                 // send brick clear and finisher
-                _net.SendToOne(player, _brickClearBytes, _brickClearBytes.Length, NetSendFlags.Reliable);
-                _net.SendToOne(player, _enteringArenaBytes, _enteringArenaBytes.Length, NetSendFlags.Reliable);
+                Span<byte> span = stackalloc byte[1];
+
+                span[0] = (byte)S2CPacketType.Brick;
+                _net.SendToOne(player, span, NetSendFlags.Reliable);
+
+                span[0] = (byte)S2CPacketType.EnteringArena;
+                _net.SendToOne(player, span, NetSendFlags.Reliable);
 
                 if (player[_spawnkey] is SpawnLoc sp)
                 {
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
-                        using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-                        {
-                            SimplePacket wto = new SimplePacket(buffer.Bytes);
-
-                            wto.Type = (byte)S2CPacketType.WarpTo;
-                            wto.D1 = sp.X;
-                            wto.D2 = sp.Y;
-                            _net.SendToOne(player, buffer.Bytes, 5, NetSendFlags.Reliable);
-                        }
+                        WarpToPacket warpTo = new(sp.X, sp.Y);
+                        _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref warpTo, 1)), NetSendFlags.Reliable);
                     }
                 }
             }
@@ -335,33 +326,29 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
+                    WhoAmIPacket whoAmI = new(0);
+
+                    // first move playing players elsewhere
+                    foreach (Player player in _playerData.PlayerList)
                     {
-                        SimplePacket whoami = new SimplePacket(buffer.Bytes);
-                        whoami.Type = (byte)S2CPacketType.WhoAmI;
-
-                        // first move playing players elsewhere
-                        foreach (Player player in _playerData.PlayerList)
+                        if (player.Arena == arena)
                         {
-                            if (player.Arena == arena)
+                            // send whoami packet so the clients leave the arena
+                            if (player.IsStandard)
                             {
-                                // send whoami packet so the clients leave the arena
-                                if(player.IsStandard)
-                                {
-                                    whoami.D1 = (short)player.Id;
-                                    _net.SendToOne(player, buffer.Bytes, 3, NetSendFlags.Reliable);
-                                }
-                                else if (player.IsChat)
-                                {
-                                    //_chatNet.SendToOne(
-                                }
-
-                                // actually initiate the client leaving arena on our side
-                                InitiateLeaveArena(player);
-
-                                // and mark the same arena as his desired arena to enter
-                                player.NewArena = arena;
+                                whoAmI.PlayerId = (short)player.Id;
+                                _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref whoAmI, 1)), NetSendFlags.Reliable);
                             }
+                            else if (player.IsChat)
+                            {
+                                //_chatNet.SendToOne(
+                            }
+
+                            // actually initiate the client leaving arena on our side
+                            InitiateLeaveArena(player);
+
+                            // and mark the same arena as his desired arena to enter
+                            player.NewArena = arena;
                         }
                     }
                 }
@@ -397,7 +384,7 @@ namespace SS.Core.Modules
                         player.Xres, 
                         player.Yres, 
                         player.Flags.WantAllLvz, 
-                        player.pkt.AcceptAudio != 0, 
+                        player.Packet.AcceptAudio != 0, 
                         player.Flags.ObscenityFilter, 
                         spawnx, 
                         spawny);
@@ -609,7 +596,7 @@ namespace SS.Core.Modules
                 player.Xres = (short)xRes;
                 player.Yres = (short)yRes;
                 player.Flags.WantAllLvz = gfx;
-                player.pkt.AcceptAudio = voices ? (byte)1 : (byte)0;
+                player.Packet.AcceptAudio = voices ? (byte)1 : (byte)0;
                 player.Flags.ObscenityFilter = obscene;
 
                 if (player[_spawnkey] is SpawnLoc sp)
@@ -648,16 +635,9 @@ namespace SS.Core.Modules
 
             if (notify)
             {
-                using (DataBuffer buffer = Pool<DataBuffer>.Default.Get())
-                {
-                    SimplePacket pk = new SimplePacket(buffer.Bytes);
-
-                    pk.Type = (byte)S2CPacketType.PlayerLeaving;
-                    pk.D1 = (short)player.Id;
-
-                    _net.SendToArena(arena, player, buffer.Bytes, 3, NetSendFlags.Reliable);
-                    //chatnet.SendToArena(
-                }
+                PlayerLeavingPacket packet = new((short)player.Id);
+                _net.SendToArena(arena, player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+                //chatnet.SendToArena(
 
                 _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "leaving arena");
             }
@@ -912,7 +892,7 @@ namespace SS.Core.Modules
         {
             if (playerTo.IsStandard)
             {
-                _net.SendToOne(playerTo, player.pkt.Bytes, PlayerDataPacket.Length, NetSendFlags.Reliable);
+                _net.SendToOne(playerTo, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref player.Packet, 1)), NetSendFlags.Reliable);
             }
             else if (playerTo.IsChat)
             {
@@ -1345,7 +1325,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            GoArenaPacket go = new GoArenaPacket(data);
+            ref GoArenaPacket go = ref MemoryMarshal.AsRef<GoArenaPacket>(data);
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
