@@ -1,5 +1,4 @@
-﻿using SS.Core.ComponentCallbacks;
-using SS.Core.ComponentInterfaces;
+﻿using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using System;
 using System.Net;
@@ -28,7 +27,7 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _pdKey = playerData.AllocatePlayerData<PlayerData>();
-            ConnectionInitCallback.Register(broker, Callback_ConnectionInit);
+            _networkEncryption.AppendConnectionInitHandler(ProcessConnectionInit);
             _iEncryptToken = broker.RegisterInterface<IEncrypt>(this, IEncryptID);
 
             return true;
@@ -39,7 +38,9 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface<IEncrypt>(ref _iEncryptToken) != 0)
                 return false;
 
-            ConnectionInitCallback.Unregister(broker, Callback_ConnectionInit);
+            if (!_networkEncryption.RemoveConnectionInitHandler(ProcessConnectionInit))
+                return false;
+
             _playerData.FreePlayerData(_pdKey);
 
             return true;
@@ -75,16 +76,15 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_ConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        private bool ProcessConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
         {
             if (len != ConnectionInitPacket.Length)
-                return;
+                return false;
 
             ref ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(buffer);
 
-            //if (packet.T1 != 0x00 || packet.T2 != 0x01 || packet.ClientType != 0x01 ||packet.Zero != 0x00) // this allows only VIE clients (not continuum)
-            if (packet.T1 != 0x00 || packet.T2 != 0x01 || packet.Zero != 0x00) // allowing any client type
-                return;
+            if (packet.T1 != 0x00 || packet.T2 != 0x01 || packet.Zero != 0x00)
+                return false;
 
             ClientType clientType;
             switch (packet.ClientType)
@@ -98,7 +98,7 @@ namespace SS.Core.Modules
                     break;
 
                 default:
-                    return; // unknown type
+                    return false; // unknown type
             }
 
             Player p = _networkEncryption.NewConnection(clientType, remoteEndpoint, IEncryptID, ld);
@@ -108,18 +108,22 @@ namespace SS.Core.Modules
                 // no slots left?
                 Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
                 _networkEncryption.ReallyRawSend(remoteEndpoint, disconnect, ld);
-                return;
+                return true;
             }
+
+            if (p[_pdKey] is not PlayerData pd)
+                return false; // should not happen, sanity
 
             int key = -packet.Key;
 
+            // initialize encryption state for the player
+            pd.Init(key);
+
+            // send the response
             ConnectionInitResponsePacket response = new(key);
             _networkEncryption.ReallyRawSend(remoteEndpoint, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
 
-            if (p[_pdKey] is not PlayerData pd)
-                return;
-
-            pd.Init(key);
+            return true;
         }
 
         private class PlayerData

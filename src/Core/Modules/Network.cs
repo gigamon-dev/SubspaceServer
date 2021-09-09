@@ -1594,7 +1594,7 @@ namespace SS.Core.Modules
                 // this might be a new connection. make sure it's really a connection init packet
                 if (IsConnectionInitPacket(buffer.Bytes))
                 {
-                    ConnectionInitCallback.Fire(_broker, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    ProcessConnectionInit(remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
 #if CFG_LOG_STUPID_STUFF
                 else if (buffer.NumBytes > 1)
@@ -1626,7 +1626,7 @@ namespace SS.Core.Modules
                     // if the player is in PlayerState.Connected, it means that
                     // the connection init response got dropped on the
                     // way to the client. we have to resend it.
-                    ConnectionInitCallback.Fire(_broker, remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    ProcessConnectionInit(remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
                 }
                 else
                 {
@@ -2825,6 +2825,64 @@ namespace SS.Core.Modules
         #endregion
 
         #region INetworkEncryption Members
+
+        private readonly List<ConnectionInitHandler> _connectionInitHandlers = new();
+        private readonly ReaderWriterLockSlim _connectionInitLock = new(LockRecursionPolicy.NoRecursion);
+
+        private bool ProcessConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        {
+            _connectionInitLock.EnterReadLock();
+
+            try
+            {
+                foreach (ConnectionInitHandler handler in _connectionInitHandlers)
+                {
+                    if (handler(remoteEndpoint, buffer, len, ld))
+                        return true;
+                }
+            }
+            finally
+            {
+                _connectionInitLock.ExitReadLock();
+            }
+
+            _logManager.LogM(LogLevel.Info, nameof(Network), $"Got a connection init packet, but no handler processed it.  Please verify that an encryption module is loaded or the {nameof(EncryptionNull)} module if no encryption is desired.");
+            return false;
+        }
+
+        void INetworkEncryption.AppendConnectionInitHandler(ConnectionInitHandler handler)
+        {
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            _connectionInitLock.EnterWriteLock();
+
+            try
+            {
+                _connectionInitHandlers.Add(handler);
+            }
+            finally
+            {
+                _connectionInitLock.ExitWriteLock();
+            }
+        }
+
+        bool INetworkEncryption.RemoveConnectionInitHandler(ConnectionInitHandler handler)
+        {
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            _connectionInitLock.EnterWriteLock();
+
+            try
+            {
+                return _connectionInitHandlers.Remove(handler);
+            }
+            finally
+            {
+                _connectionInitLock.ExitWriteLock();
+            }
+        }
 
         void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, ReadOnlySpan<byte> data, ListenData ld)
         {

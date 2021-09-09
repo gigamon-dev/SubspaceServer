@@ -1,8 +1,7 @@
-﻿using SS.Core.ComponentCallbacks;
-using SS.Core.ComponentInterfaces;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Core.Packets;
 using SS.Utilities;
 using System;
-using System.Buffers.Binary;
 using System.Net;
 using System.Runtime.InteropServices;
 
@@ -34,41 +33,44 @@ namespace SS.Core.Modules
                 Key = LittleEndianConverter.Convert(key);
             }
         }
-        
+
         #region IModule Members
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "ComponentBroker is a required parameter for the module to load even though it is not used.")]
         public bool Load(ComponentBroker broker, INetworkEncryption networkEncryption)
         {
             _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
 
-            ConnectionInitCallback.Register(broker, Callback_ConnectionInit);
+            _networkEncryption.AppendConnectionInitHandler(Callback_ConnectionInit);
 
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            ConnectionInitCallback.Unregister(broker, Callback_ConnectionInit);
+            if (!_networkEncryption.RemoveConnectionInitHandler(Callback_ConnectionInit))
+                return false;
 
             return true;
         }
 
         #endregion
 
-        private void Callback_ConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        private bool Callback_ConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
         {
-            ClientType type;
-            Player p;
+            if (len != ConnectionInitPacket.Length)
+                return false;
+
+            ref ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(buffer);
 
             // make sure the packet fits
-            if (len != 8 ||
-                buffer[0] != 0x00 ||
-                buffer[1] != 0x01 ||
-                buffer[7] != 0x00)
-                return;
+            if (packet.T1 != 0x00 || packet.T2 != 0x01 || packet.Zero != 0x00)
+                return false;
 
+            ClientType type;
+            
             // figure out client type
-            switch (buffer[6])
+            switch (packet.ClientType)
             {
                 case 0x01:
                     type = ClientType.VIE;
@@ -79,26 +81,26 @@ namespace SS.Core.Modules
                     break;
 
                 default:
-                    return; // unknown type
+                    return false; // unknown type
             }
 
             // get connection (null means no encryption)
-            p = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
+            Player p = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
 
             if (p == null)
             {
                 // no slots left?
                 Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07};
                 _networkEncryption.ReallyRawSend(remoteEndpoint, disconnect, ld);
-                return;
+                return true;
             }
 
-            int key = BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(buffer, 2, 4));
-
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
-            ConnectionInitResponsePacket response = new ConnectionInitResponsePacket(key);
+            ConnectionInitResponsePacket response = new(packet.Key);
             Span<byte> packetSpan = MemoryMarshal.Cast<ConnectionInitResponsePacket, byte>(MemoryMarshal.CreateSpan(ref response, 1));
             _networkEncryption.ReallyRawSend(remoteEndpoint, packetSpan, ld);
+
+            return true;
         }
     }
 }

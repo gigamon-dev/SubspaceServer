@@ -37,14 +37,32 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
+    /// Delegate for a handler to a connection init request.
+    /// </summary>
+    /// <param name="remoteEndpoint">Endpoint the request came from.</param>
+    /// <param name="buffer">The request data.</param>
+    /// <param name="len">The length of the data.</param>
+    /// <param name="ld">State info to pass to <see cref="INetworkEncryption.NewConnection(ClientType, IPEndPoint, string, ListenData)"/>.</param>
+    /// <returns>Whether the request was handled. True means processing is done. False means the request will be given to later handlers to process.</returns>
+    public delegate bool ConnectionInitHandler(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld);
+
+    /// <summary>
     /// Interface with special methods for encryption modules to use to access the network module.
     /// </summary>
     public interface INetworkEncryption : IComponentInterface
     {
-        // TODO: instead of ConnectionInitCallback, create a "pipeline" of possible handlers and call them in sequence until one handles it
-        //delegate bool ConnectionInitHandler(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld);
-        //void AddConnectionInitHandler(ConnectionInitHandler handler);
-        //void RemoveConnectionInitHandler(ConnectionInitHandler handler);
+        /// <summary>
+        /// Adds a handler to the end of the connection init pipeline.
+        /// </summary>
+        /// <param name="handler">The handler to add.</param>
+        void AppendConnectionInitHandler(ConnectionInitHandler handler);
+
+        /// <summary>
+        /// Removes a handler from the connection init pipeline.
+        /// </summary>
+        /// <param name="handler">The handler to remove.</param>
+        /// <returns>True if the handler was removed. Otherwise, false.</returns>
+        bool RemoveConnectionInitHandler(ConnectionInitHandler handler);
 
         /// <summary>
         /// Sends data immediately without encryption and without buffering.
