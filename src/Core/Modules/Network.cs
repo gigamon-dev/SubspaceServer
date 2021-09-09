@@ -1390,18 +1390,29 @@ namespace SS.Core.Modules
             DumpPk($"SEND: {len} bytes to pid {p.Id}", data);
 #endif
 
+            Span<byte> encryptedBuffer = stackalloc byte[Constants.MaxPacket + 4];
+            data.CopyTo(encryptedBuffer);
+
             if ((p != null) && (conn.enc != null))
-                len = conn.enc.Encrypt(p, data);
+            {
+                len = conn.enc.Encrypt(p, encryptedBuffer, len);
+            }
             //else if ((conn.cc != null) && (conn.cc.enc != null))
             //    len = conn.cc.enc.e
 
             if (len == 0)
                 return;
 
+            encryptedBuffer = encryptedBuffer.Slice(0, len);
+
+#if CFG_DUMP_RAW_PACKETS
+            DumpPk($"SEND: {len} bytes to pid {p.Id} (after encryption) ", encryptedBuffer);
+#endif
+
             // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
             using (SubspaceBuffer buffer = _bufferPool.Get())
             {
-                data.CopyTo(new Span<byte>(buffer.Bytes, 0, len));
+                encryptedBuffer.CopyTo(new Span<byte>(buffer.Bytes, 0, len));
 
                 conn.whichSock.SendTo(buffer.Bytes, 0, len, SocketFlags.None, conn.sin);
             }
@@ -2814,30 +2825,6 @@ namespace SS.Core.Modules
         #endregion
 
         #region INetworkEncryption Members
-
-        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, byte[] pkt, int len, ListenData ld)
-        {
-            if (remoteEndpoint == null)
-                throw new ArgumentNullException(nameof(remoteEndpoint));
-
-            if (pkt == null)
-                throw new ArgumentNullException(nameof(pkt));
-
-            if (len < 1)
-                throw new ArgumentOutOfRangeException(nameof(len), "There needs to be at least 1 byte to send.");
-
-            if (ld == null)
-                throw new ArgumentNullException(nameof(ld));
-
-#if CFG_DUMP_RAW_PACKETS
-            DumpPk($"SENDRAW: {len} bytes", new ReadOnlySpan<byte>(pkt, 0, len));
-#endif
-
-            ld.GameSocket.SendTo(pkt, len, SocketFlags.None, remoteEndpoint);
-
-            _globalStats.bytesent += (ulong)len;
-            _globalStats.pktsent++;
-        }
 
         void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, ReadOnlySpan<byte> data, ListenData ld)
         {
