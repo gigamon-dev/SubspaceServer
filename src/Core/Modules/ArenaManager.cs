@@ -648,7 +648,7 @@ namespace SS.Core.Modules
             // Unless I'm missing something, thread synchronization in ASSS doesn't seem right.  
             // a read lock is being held for reading the arena list (supposed to be locked prior to calling this method)
             // a read lock is being held for reading the player list
-            // but it's writing to each arena, meaning multiple threads could be writing to Arena.Total and Areana.Playing simultaneously
+            // but it's writing to each arena, meaning multiple threads could be writing to Arena.Total and Arena.Playing simultaneously
             // I've added a double checked lock, _populationRefreshLock, which will only allow 1 thread in to refresh the data at a given time.
 
             // TODO: Can ArenaManager/Arena be enhanced such that an increment/decrement occurs when players enter/leave, change ships, etc?

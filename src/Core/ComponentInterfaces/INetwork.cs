@@ -234,7 +234,30 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>The stats.</returns>
         IReadOnlyNetStats GetStats();
 
+        /// <summary>
+        /// Gets network information for a player.
+        /// </summary>
+        /// <param name="p">The player to get information about.</param>
+        /// <returns>The information.</returns>
         NetClientStats GetClientStats(Player p);
+
+        /// <summary>
+        /// Gets the endpoint (IP Address and port) and connectAs that the server is listening on for game clients.
+        /// </summary>
+        /// <param name="index">Index of the data to get.</param>
+        /// <param name="endPoint">The endpoint being listened to.</param>
+        /// <param name="connectAs">The base arena name the listening endpoint is configured with.</param>
+        /// <returns>True if data was found for the given index.  Otheriwse, false.</returns>
+        bool TryGetListenData(int index, out IPEndPoint endPoint, out string connectAs);
+
+        /// <summary>
+        /// Gets population statistics for the arenas associated with a specified connectAs.
+        /// </summary>
+        /// <param name="connectAs">The base arena name to get stats for.</param>
+        /// <param name="total">The total # of players.</param>
+        /// <param name="playing">The # of players in ships (not spectating).</param>
+        /// <returns>True if stats were found for the specified <paramref name="connectAs"/>. Otherwise, false.</returns>
+        bool TryGetPopulationStats(string connectAs, out uint total, out uint playing);
 
         /// <summary>
         /// Collection of information about sockets that the Network module is listening on.

@@ -8,7 +8,7 @@ namespace SS.Core.ComponentInterfaces
     /// <summary>
     /// Represents a method that handles calls from timer.
     /// </summary>
-    /// <returns></returns>
+    /// <returns>True to continue timer events. False to end the timer.</returns>
     public delegate bool TimerDelegate();
 
     /// <summary>
@@ -16,7 +16,7 @@ namespace SS.Core.ComponentInterfaces
     /// </summary>
     /// <typeparam name="TState">Type of the state parameter of the method that this delegate encapsulates.</typeparam>
     /// <param name="state">An object that represents the context of the timer.</param>
-    /// <returns>true to continue timer events</returns>
+    /// <returns>True to continue timer events. False to end the timer.</returns>
     public delegate bool TimerDelegate<in TState>(TState state);
 
     /// <summary>

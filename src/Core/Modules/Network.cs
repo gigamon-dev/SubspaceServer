@@ -434,14 +434,40 @@ namespace SS.Core.Modules
 
         private readonly Config _config = new Config();
 
+        private class PopulationStats
+        {
+            /// <summary>
+            /// Total # of players for the 'virtual' zone.
+            /// </summary>
+            public uint Total = 0;
+
+            /// <summary>
+            /// Total # of players for the 'virtual' zone.
+            /// </summary>
+            public uint Playing = 0;
+
+            public uint TempTotal = 0;
+            public uint TempPlaying = 0;
+        }
+
         private class PingData
         {
             public DateTime? LastRefresh = null;
-            public uint GlobalTotal = 0;
-            public uint GlobalPlaying = 0;
+
+            public readonly PopulationStats Global = new();
+
+            /// <summary>
+            /// Key: connectAs
+            /// </summary>
+            public readonly Dictionary<string, PopulationStats> ConnectAsPopulationStats = new(StringComparer.OrdinalIgnoreCase);
+
+            public void Clear()
+            {
+                ConnectAsPopulationStats.Clear();
+            }
         }
 
-        private readonly PingData _pingData = new PingData();
+        private readonly PingData _pingData = new();
 
         /// <summary>
         /// per player data key to ConnData
@@ -676,12 +702,6 @@ namespace SS.Core.Modules
         private readonly List<ListenData> _listenDataList;
         private readonly ReadOnlyCollection<ListenData> _readOnlyListenData;
 
-        /// <summary>
-        /// Key: connectAs
-        /// </summary>
-        /// <remarks>for now, only 1 listen data allowed for each connectAs.</remarks>
-        private readonly Dictionary<string, ListenData> _listenConnectAsLookup = new Dictionary<string, ListenData>();
-
         private Socket _clientSocket;
 
         // TODO: figure out if multiple threads are reading/writing
@@ -795,16 +815,16 @@ namespace SS.Core.Modules
             return socket;
         }
 
-        [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int), 
+        [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int),
             "The port that the game protocol listens on. Sections named " +
-            "Listen1 through Listen9 are also supported. All Listen " +
+            "Listen1, Listen2, ... are also supported. All Listen " +
             "sections must contain a port setting.")]
         [ConfigHelp("Listen", "BindAddress", ConfigScope.Global, typeof(string),
             "The interface address to bind to. This is optional, and if " +
             "omitted, the server will listen on all available interfaces.")]
         private ListenData CreateListenDataSockets(int configIndex)
         {
-            string configSection = "Listen" + ((configIndex == 0) ? string.Empty : configIndex.ToString());
+            string configSection = (configIndex == 0) ? "Listen" : $"Listen{configIndex}";
 
             int gamePort = _configManager.GetInt(_configManager.Global, configSection, "Port", -1);
             if (gamePort == -1)
@@ -852,11 +872,12 @@ namespace SS.Core.Modules
                 return null;
             }
 
-            ListenData listenData = new ListenData(gameSocket, pingSocket);
-
-            listenData.AllowVIE = _configManager.GetInt(_configManager.Global, configSection, "AllowVIE", 1) > 0;
-            listenData.AllowContinuum = _configManager.GetInt(_configManager.Global, configSection, "AllowCont", 1) > 0;
-            listenData.ConnectAs = _configManager.GetStr(_configManager.Global, configSection, "ConnectAs");
+            ListenData listenData = new(gameSocket, pingSocket)
+            {
+                ConnectAs = _configManager.GetStr(_configManager.Global, configSection, "ConnectAs"),
+                AllowVIE = _configManager.GetInt(_configManager.Global, configSection, "AllowVIE", 1) > 0,
+                AllowContinuum = _configManager.GetInt(_configManager.Global, configSection, "AllowCont", 1) > 0,
+            };
 
             return listenData;
         }
@@ -869,17 +890,19 @@ namespace SS.Core.Modules
             // Listen sockets (pairs of game and ping sockets)
             //
 
-            for (int x = 0; x < 10; x++)
-            {
-                ListenData listenData = CreateListenDataSockets(x);
-                if (listenData == null)
-                    continue;
+            int x = 0;
+            ListenData listenData;
 
+            while ((listenData = CreateListenDataSockets(x++)) != null)
+            {
                 _listenDataList.Add(listenData);
 
-                if (string.IsNullOrEmpty(listenData.ConnectAs) == false)
+                if (string.IsNullOrWhiteSpace(listenData.ConnectAs) == false)
                 {
-                    _listenConnectAsLookup.Add(listenData.ConnectAs, listenData);
+                    if (!_pingData.ConnectAsPopulationStats.ContainsKey(listenData.ConnectAs))
+                    {
+                        _pingData.ConnectAsPopulationStats.Add(listenData.ConnectAs, new PopulationStats());
+                    }
                 }
 
                 _logManager.LogM(LogLevel.Drivel, nameof(Network), "listening on {0}", listenData.GameSocket.LocalEndPoint);
@@ -1834,9 +1857,9 @@ namespace SS.Core.Modules
                 if (_pingData.LastRefresh == null 
                     || (DateTime.UtcNow - _pingData.LastRefresh) > _config.PingRefreshThreshold)
                 {
-                    foreach (ListenData listenData in _listenDataList)
+                    foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
                     {
-                        listenData.PlayersTotal = listenData.PlayersPlaying = 0;
+                        stats.TempTotal = stats.TempPlaying = 0;
                     }
 
                     IArenaManager aman = _broker.GetInterface<IArenaManager>();
@@ -1852,16 +1875,16 @@ namespace SS.Core.Modules
                             aman.GetPopulationSummary(out int total, out int playing);
 
                             // global
-                            _pingData.GlobalTotal = (uint)total;
-                            _pingData.GlobalPlaying = (uint)playing;
+                            _pingData.Global.Total = (uint)total;
+                            _pingData.Global.Playing = (uint)playing;
 
                             // arenas that are associated with ListenData
                             foreach (Arena arena in aman.ArenaList)
                             {
-                                if (_listenConnectAsLookup.TryGetValue(arena.BaseName, out ListenData listenData))
+                                if (_pingData.ConnectAsPopulationStats.TryGetValue(arena.BaseName, out PopulationStats stats))
                                 {
-                                    listenData.PlayersTotal += (uint)arena.Total;
-                                    listenData.PlayersPlaying += (uint)arena.Playing;
+                                    stats.TempTotal += (uint)arena.Total;
+                                    stats.TempPlaying += (uint)arena.Playing;
                                 }
                             }
 
@@ -1875,6 +1898,12 @@ namespace SS.Core.Modules
                     finally
                     {
                         _broker.ReleaseInterface(ref aman);
+                    }
+
+                    foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
+                    {
+                        stats.Total = stats.TempTotal;
+                        stats.Playing = stats.TempPlaying;
                     }
                 }
 
@@ -1897,12 +1926,12 @@ namespace SS.Core.Modules
                     if (string.IsNullOrWhiteSpace(ld.ConnectAs))
                     {
                         // global
-                        BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.GlobalTotal);
+                        BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.Global.Total);
                     }
                     else
                     {
                         // specific arena/zone
-                        BinaryPrimitives.WriteUInt32LittleEndian(span, ld.PlayersTotal);
+                        BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.ConnectAsPopulationStats[ld.ConnectAs].Total);
                     }
 
                     int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
@@ -2759,7 +2788,7 @@ namespace SS.Core.Modules
             }
 
             _listenDataList.Clear();
-            _listenConnectAsLookup.Clear();
+            _pingData.ConnectAsPopulationStats.Clear();
 
             _clientSocket.Close();
             _clientSocket = null;
@@ -3324,6 +3353,42 @@ namespace SS.Core.Modules
             //TODO: _bandwithLimit.
 
             return stats;
+        }
+
+        bool INetwork.TryGetListenData(int index, out IPEndPoint endPoint, out string connectAs)
+        {
+            if (index >= _listenDataList.Count)
+            {
+                endPoint = default;
+                connectAs = default;
+                return false;
+            }
+
+            ListenData ld = _listenDataList[index];
+            endPoint = ld.GameSocket.LocalEndPoint as IPEndPoint;
+
+            if (endPoint == null)
+            {
+                connectAs = default;
+                return false;
+            }
+
+            connectAs = ld.ConnectAs;
+            return true;
+        }
+
+        bool INetwork.TryGetPopulationStats(string connectAs, out uint total, out uint playing)
+        {
+            if (!_pingData.ConnectAsPopulationStats.TryGetValue(connectAs, out var stats))
+            {
+                total = default;
+                playing = default;
+                return false;
+            }
+
+            total = stats.Total;
+            playing = stats.Playing;
+            return true;
         }
 
         IReadOnlyList<ListenData> INetwork.Listening => _readOnlyListenData;
