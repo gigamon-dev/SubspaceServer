@@ -99,7 +99,7 @@ namespace SS.Core.Modules
                         name = defaultName;
 
                     if (string.IsNullOrWhiteSpace(description))
-                        name = defaultDescription;
+                        description = defaultDescription;
 
                     if (string.IsNullOrWhiteSpace(name))
                     {
