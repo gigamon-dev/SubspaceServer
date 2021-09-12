@@ -53,6 +53,16 @@ namespace SS.Core.Packets
         private const int MessageLength = 250;
         private fixed byte messageBytes[MessageLength];
         public Span<byte> MessageBytes => new(Unsafe.AsPointer(ref messageBytes[0]), MessageLength);
+
+        /// <summary>
+        /// Writes encoded bytes of a string into a the message bytes.
+        /// </summary>
+        /// <param name="str">The string to write.</param>
+        /// <returns>The number of bytes written.</returns>
+        public int SetMessage(ReadOnlySpan<char> str)
+        {
+            return MessageBytes.WriteNullTerminatedString(str.TruncateForEncodedByteLimit(MessageLength - 1));
+        }
     }
 }
 

@@ -42,13 +42,13 @@ namespace SS.Core.Packets.S2C
         public string Name
         {
             get { return NameBytes.ReadNullTerminatedString(); }
-            set { NameBytes.WriteNullPaddedString(value, false); }
+            set { NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameLength), false); }
         }
 
         public string Squad
         {
             get { return SquadBytes.ReadNullTerminatedString(); }
-            set { SquadBytes.WriteNullPaddedString(value, false); }
+            set { SquadBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(SquadLength), false); }
         }
 
         public int KillPoints

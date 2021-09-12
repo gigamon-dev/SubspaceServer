@@ -1,12 +1,43 @@
 using System;
-using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
 namespace SS.Utilities
 {
+    /// <summary>
+    /// Extension methods for strings.
+    /// <list type="table">
+    /// <item>
+    ///     <term>ReadNullTerminated</term>
+    ///     <description>Methods that read null terminated C-style strings from encoded byte buffers.</description>
+    /// </item>
+    /// <item>
+    ///     <term>WriteNullTerminated</term>
+    ///     <description>Methods that write null terminated C-style strings to encoded byte buffers.</description>
+    /// </item>
+    /// <item>
+    ///     <term>WriteNullTerminated</term>
+    ///     <description>Methods that write null terminated C-style strings to encoded byte buffers such that remaining bytes are zeroed out.</description>
+    /// </item>
+    /// <item>
+    ///     <term>TruncateForEncodedByteLimit</term>
+    ///     <description>Methods that truncate strings to fit into encoded byte buffers of fixed width.</description>
+    /// </item>
+    /// <item>
+    ///     <term>GetWrappedText</term>
+    ///     <description>Methods that assist with splitting text into multiple lines based on a character column limit.</description>
+    /// </item>
+    /// </list>
+    /// </summary>
     public static class StringUtils
     {
+        /// <summary>
+        /// The default character encoding to use across the application.
+        /// </summary>
+        /// <remarks>
+        /// This is currently set to Windows-1252 since chat messages appear to use a subset of Windows-1252.  See ChatPacket for more on that.
+        /// </remarks>
         public static Encoding DefaultEncoding { get; } = Encoding.GetEncoding(1252); // Windows-1252
 
         #region Read Null Terminated
@@ -271,6 +302,74 @@ namespace SS.Utilities
 
         #endregion
 
+        #region Truncate For Encoded Byte Limit
+
+        /// <summary>
+        /// Truncates a string so that it can fit within a specified number of encoded bytes.
+        /// </summary>
+        /// <param name="str">The string to truncate.</param>
+        /// <param name="byteLimit">The number of bytes to limit encoded bytes to.</param>
+        /// <param name="encoding">The encoding to use. <see langword="null"/> means use the <see cref="DefaultEncoding"/>.</param>
+        /// <returns>The truncated string.</returns>
+        public static ReadOnlySpan<char> TruncateForEncodedByteLimit(this string str, int byteLimit, Encoding encoding = null)
+        {
+            return TruncateForEncodedByteLimit(str.AsSpan(), byteLimit, encoding);
+        }
+
+        /// <summary>
+        /// Truncates a string so that it can fit within a specified number of encoded bytes.
+        /// </summary>
+        /// <param name="str">The string to truncate.</param>
+        /// <param name="byteLimit">The number of bytes to limit encoded bytes to.</param>
+        /// <param name="encoding">The encoding to use. <see langword="null"/> means use the <see cref="DefaultEncoding"/>.</param>
+        /// <returns>The truncated string.</returns>
+        public static ReadOnlySpan<char> TruncateForEncodedByteLimit(this ReadOnlySpan<char> str, int byteLimit, Encoding encoding = null)
+        {
+            if (byteLimit < 0)
+                throw new ArgumentOutOfRangeException(nameof(byteLimit), "Value cannot be negative.");
+
+            if (encoding == null)
+                encoding = DefaultEncoding;
+
+            if (encoding.IsSingleByte)
+                return (str.Length <= byteLimit) ? str : str.Slice(0, byteLimit);
+
+            // TODO: Verify that this works for multi-byte encodings.
+            // Subspace uses a single-byte encoding, so this is just here for completeness. However, I have not tried it and it surely is not an optimal solution.
+
+            // multi-byte encoding
+            while (str.Length > 0)
+            {
+                if (DefaultEncoding.GetByteCount(str) <= byteLimit)
+                    return str;
+
+                // chop off the last displayable character (grapheme)
+
+                /*
+                // implementation using ParseCombiningCharacters
+                int[] indexes = StringInfo.ParseCombiningCharacters(str.ToString()); // ew, no span overload (string allocation), also array allocation
+                if (indexes.Length == 0)
+                    return ReadOnlySpan<char>.Empty; // getting to here means the string is probably not well-formed
+
+                str = str.Slice(0, indexes[^1]);
+                */
+
+                var enumerator = StringInfo.GetTextElementEnumerator(str.ToString()); // ew, no span overload (string allocation), also object allocation (enumerator is a class)
+                int index = 0;
+
+                while (enumerator.MoveNext())
+                    index = enumerator.ElementIndex;
+
+                str = str.Slice(0, index);
+            }
+
+            return str;
+        }
+
+        #endregion
+
+        #region Trimming
+
         /// <summary>
         /// Gets a <see cref="string"/> from a <see cref="StringBuilder"/> trimmed of whitespace.
         /// </summary>
@@ -324,6 +423,10 @@ namespace SS.Utilities
             return str.Substring(startIndex, endIndex - startIndex + 1);
         }
 
+        #endregion
+
+        #region Get Wrapped Text
+
         /// <summary>
         /// Gets an enumerator which can be used to read text as multiple lines.
         /// </summary>
@@ -347,6 +450,8 @@ namespace SS.Utilities
         {
             return new WrapTextEnumerator(text, width, delimiter);
         }
+
+        #endregion
     }
 
     /// <summary>

@@ -49,7 +49,7 @@ namespace SS.Core.Packets.Directory
         public string Name
         {
             get => NameBytes.ReadNullTerminatedASCII();
-            set => NameBytes.WriteNullPaddedString(value);
+            set => NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameLength - 1));
         }
 
         private const int PasswordLength = 48;
@@ -58,7 +58,7 @@ namespace SS.Core.Packets.Directory
         public string Password
         {
             get => PasswordBytes.ReadNullTerminatedASCII();
-            set => PasswordBytes.WriteNullPaddedString(value);
+            set => PasswordBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PasswordLength - 1));
         }
 
         private const int DescriptionLength = 386;
@@ -67,7 +67,7 @@ namespace SS.Core.Packets.Directory
         public string Description
         {
             get => DescriptionBytes.ReadNullTerminatedASCII();
-            set => DescriptionBytes.WriteNullPaddedString(value);
+            set => DescriptionBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(DescriptionLength - 1));
         }
 
         /// <summary>

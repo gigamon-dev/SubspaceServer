@@ -24,13 +24,13 @@ namespace SS.Core.Packets.S2C
         public string Path
         {
             get { return PathBytes.ReadNullTerminatedString(); }
-            set { PathBytes.WriteNullPaddedString(value); }
+            set { PathBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PathLength - 1)); }
         }
 
         public string Filename
         {
             get { return FilenameBytes.ReadNullTerminatedString(); }
-            set { FilenameBytes.WriteNullPaddedString(value); }
+            set { FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameLength - 1)); }
         }
 
         public RequestFilePacket(string path, string filename)

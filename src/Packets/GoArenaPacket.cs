@@ -52,7 +52,7 @@ namespace SS.Core.Packets
         public string ArenaName
         {
             get => ArenaNameBytes.ReadNullTerminatedString();
-            init => ArenaNameBytes.WriteNullPaddedString(value);
+            init => ArenaNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ArenaNameLength - 1));
         }
 
         public GoArenaPacket(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()

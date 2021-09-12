@@ -38,7 +38,7 @@ namespace SS.Core.Packets
                 throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
 
             ref File file = ref Files[0];
-            file.FileName.WriteNullPaddedASCII(fileName);
+            file.FileName = fileName;
             file.Checksum = checksum;
 
             return 1 + File.LengthWithoutSize;
@@ -62,7 +62,7 @@ namespace SS.Core.Packets
                 throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
 
             ref File file = ref Files[fileIndex];
-            file.FileName.WriteNullPaddedASCII(fileName);
+            file.FileName = fileName;
             file.Checksum = checksum;
             file.Size = size;
 
@@ -75,7 +75,12 @@ namespace SS.Core.Packets
             // File Name
             private const int FileNameLength = 16;
             private fixed byte fileName[FileNameLength];
-            public Span<byte> FileName => new(Unsafe.AsPointer(ref fileName[0]), FileNameLength);
+            public Span<byte> FileNameBytes => new(Unsafe.AsPointer(ref fileName[0]), FileNameLength);
+            public string FileName
+            {
+                get => FileNameBytes.ReadNullTerminatedString();
+                set => FileNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FileNameLength), false);
+            }
 
             // Checksum
             public uint Checksum;

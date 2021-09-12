@@ -273,7 +273,7 @@ namespace SS.Core.Modules
             cp.ChatType = (byte)ChatMessageType.RemotePrivate;
             cp.Sound = (byte)sound;
             cp.PlayerId = -1;
-            int length = ChatPacket.HeaderLength + cp.MessageBytes.WriteNullTerminatedASCII(text);
+            int length = ChatPacket.HeaderLength + cp.SetMessage(text);
 
             _net.SendToSet(
                 set,
@@ -422,7 +422,7 @@ namespace SS.Core.Modules
             if(_capabilityManager.HasCapability(p, Constants.Capabilities.SoundMessages))
                 sound = (ChatSound)from.Sound;
 
-            // TODO: Don't convert to string, instead pass the Span<byte> around.
+            // TODO: Don't convert to string, instead pass the Span<byte> around or maybe decode to a stackallocated Span<char>?
             string text = from.MessageBytes.ReadNullTerminatedString();
 
             Player target;
@@ -565,7 +565,7 @@ namespace SS.Core.Modules
             cp.ChatType = (byte)type;
             cp.Sound = (byte)sound;
             cp.PlayerId = from != null ? (short)from.Id : (short)-1;
-            int length = ChatPacket.HeaderLength + cp.MessageBytes.WriteNullTerminatedASCII(text);
+            int length = ChatPacket.HeaderLength + cp.SetMessage(text);
 
             _net.SendToSet(
                 set,
@@ -870,7 +870,7 @@ namespace SS.Core.Modules
             to.ChatType = (byte)type;
             to.Sound = (byte)sound;
             to.PlayerId = (short)fromPid;
-            int length = ChatPacket.HeaderLength + to.MessageBytes.WriteNullTerminatedString(msg);
+            int length = ChatPacket.HeaderLength + to.SetMessage(msg);
 
             LinkedList<Player> filteredSet = null;
             if (_obscene != null)
