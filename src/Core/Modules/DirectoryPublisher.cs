@@ -1,7 +1,7 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Core.Packets.Directory;
-using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -247,14 +247,22 @@ namespace SS.Core.Modules
                     Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref listing.Packet, 1)).Slice(0, length);
 
                     // send
-                    using DataBuffer buffer = Pool<DataBuffer>.Default.Get();
-                    data.CopyTo(buffer.Bytes);
+                    byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
-                    foreach (IPEndPoint endPoint in _servers)
+                    try
                     {
-                        // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
-                        //listing.Socket.SendTo(data, SocketFlags.None, endPoint);
-                        listing.Socket.SendTo(buffer.Bytes, 0, length, SocketFlags.None, endPoint);
+                        data.CopyTo(buffer);
+
+                        foreach (IPEndPoint endPoint in _servers)
+                        {
+                            // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
+                            //listing.Socket.SendTo(data, SocketFlags.None, endPoint);
+                            listing.Socket.SendTo(buffer, 0, length, SocketFlags.None, endPoint);
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
                     }
                 }
             }
