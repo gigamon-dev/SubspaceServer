@@ -126,7 +126,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private class PlayerData
+        private sealed class PlayerData : IDisposable
         {
             private int? _key;
             private readonly byte[] _table = new byte[520];
@@ -260,6 +260,11 @@ namespace SS.Core.Modules
                 {
                     _rwLock.ExitWriteLock();
                 }
+            }
+
+            public void Dispose()
+            {
+                _rwLock.Dispose();
             }
         }
     }
