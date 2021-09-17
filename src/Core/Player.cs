@@ -2,6 +2,7 @@ using SS.Core.Packets;
 using SS.Core.Packets.S2C;
 using SS.Utilities;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Net;
@@ -345,7 +346,7 @@ namespace SS.Core
         /// <summary>
         /// contains some recent information about the player's position
         /// </summary>
-        public PlayerPosition Position = new PlayerPosition();
+        public PlayerPosition Position = new();
 
         /// <summary>
         /// the player's machine id, for standard clients
@@ -374,7 +375,7 @@ namespace SS.Core
 
         public class PlayerFlags
         {
-            private BitVector32 flagVector = new BitVector32(0);
+            private BitVector32 flagVector = new(0);
 
             /// <summary>
             /// if the player has been authenticated by either a billing server or a password file
@@ -497,11 +498,15 @@ namespace SS.Core
         /// <summary>
         /// some extra flags that don't have a better place to go
         /// </summary>
-        public readonly PlayerFlags Flags = new PlayerFlags();
+        public readonly PlayerFlags Flags = new();
 
-        // used for PPD (Per Player Data)
-        // TODO: consider storing this in central lookup instead of a dictionary on each player object
-        private Dictionary<int, object> _playerExtraData = new Dictionary<int,object>();
+        /// <summary>
+        /// Used to store Per Player Data (PPD). 
+        /// </summary>
+        /// <remarks>
+        /// Using ConcurrentDictionary to allow multiple readers and 1 writer (the PlayerData module).
+        /// </remarks>
+        private readonly ConcurrentDictionary<int, object> _extraData = new();
 
         public Player(int id)
         {
@@ -514,12 +519,14 @@ namespace SS.Core
         /// <summary>
         /// Per Player Data
         /// </summary>
-        /// <param name="key">key from IPlayerData.AllocatePlayerData()</param>
-        /// <returns>the per player data</returns>
+        /// <param name="key">Key from <see cref="ComponentInterfaces.IPlayerData.AllocatePlayerData{T}"/>.</param>
+        /// <returns>The data or <see langword="null"/> if not found.</returns>
         public object this[int key]
         {
-            get { return _playerExtraData[key]; }
-            set { _playerExtraData[key] = value; }
+            get => _extraData.TryGetValue(key, out object obj) ? obj : null;
+
+            // Only to be used by the PlayerData module.
+            internal set => _extraData[key] = value;
         }
 
         /// <summary>
@@ -540,47 +547,28 @@ namespace SS.Core
             get { return IsStandard || IsChat; }
         }
 
-        internal void RemovePerPlayerData(int key)
+        // Only to be used by the PlayerData module.
+        internal void RemoveExtraData(int key)
         {
-            object ppd;
-            if (_playerExtraData.TryGetValue(key, out ppd))
+            if (_extraData.Remove(key, out object data)
+                && data is IDisposable disposable)
             {
-                _playerExtraData.Remove(key);
-
-                IDisposable disposable = ppd as IDisposable;
-                if (disposable != null)
-                {
-                    try
-                    {
-                        disposable.Dispose();
-                    }
-                    catch
-                    {
-                        // ignore any exceptions
-                    }
-                }
+                disposable.Dispose();
             }
         }
 
-        internal void RemoveAllPerPlayerData()
+        // Only to be used by the PlayerData module.
+        internal void RemoveAllExtraData()
         {
-            foreach (object ppd in _playerExtraData.Values)
+            foreach (object ppd in _extraData.Values)
             {
-                IDisposable disposable = ppd as IDisposable;
-                if (disposable != null)
+                if (ppd is IDisposable disposable)
                 {
-                    try
-                    {
-                        disposable.Dispose();
-                    }
-                    catch
-                    {
-                        // ignore any exceptions
-                    }
+                    disposable.Dispose();
                 }
             }
 
-            _playerExtraData.Clear();
+            _extraData.Clear();
         }
 
         #region IPlayerTarget Members

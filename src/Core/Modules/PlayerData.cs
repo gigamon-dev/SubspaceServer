@@ -13,11 +13,11 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken _iPlayerDataToken;
 
         /// <summary>
-        /// how many seconds before we re-use a pid
+        /// How long after a PlayerID can be reused after it is freed.
         /// </summary>
-        private const int PID_REUSE_DELAY = 10;
+        private readonly static TimeSpan PlayerReuseDelay = TimeSpan.FromSeconds(10);
 
-        private ReaderWriterLock _globalPlayerDataRwLock = new ReaderWriterLock();
+        private readonly ReaderWriterLockSlim _globalPlayerDataRwLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private int _nextPid = 0;
 
@@ -25,7 +25,7 @@ namespace SS.Core.Modules
         /// Dictionary to look up players by Id.
         /// Doubles as the list of players that can be enumerated on (PlayerList).
         /// </summary>
-        private Dictionary<int, Player> _playerDictionary = new Dictionary<int,Player>();
+        private readonly Dictionary<int, Player> _playerDictionary = new(256);
 
         private class FreePlayerInfo
         {
@@ -47,31 +47,19 @@ namespace SS.Core.Modules
 
             public void SetAvailableTimestampFromNow()
             {
-                AvailableTimestamp = DateTime.UtcNow.AddSeconds(PID_REUSE_DELAY);
+                AvailableTimestamp = DateTime.UtcNow + PlayerReuseDelay;
             }
         }
 
         /// <summary>
-        /// List of unused player objects (sort of like a pool).
-        /// Players objects are stored in here so that they don't have to be reallocated
-        /// every time a player logs off and on.
-        /// This doubles as a way to keep track of which Ids are in use too.
+        /// Queue of unused player objects and when each becomes available again.
+        /// This is used to keep track of the PlayerIDs (and associated <see cref="Player"/> object) can be reused and when.
         /// </summary>
-        private LinkedList<FreePlayerInfo> _freePlayersList = new LinkedList<FreePlayerInfo>();
-
-        /// <summary>
-        /// List of unused nodes for use in the free players list.
-        /// Nodes are stored in here so that they wont have to be reallocated.
-        /// </summary>
-        private LinkedList<FreePlayerInfo> _freeNodesList = new LinkedList<FreePlayerInfo>();
+        private readonly Queue<FreePlayerInfo> _freePlayersQueue = new(256);
 
         // for managing per player data
-        private ReaderWriterLock _perPlayerDataLock = new ReaderWriterLock();
-        private SortedList<int, Type> _perPlayerDataKeys = new SortedList<int, Type>();
-
-        public PlayerData()
-        {
-        }
+        private readonly ReaderWriterLockSlim _perPlayerDataLock = new(LockRecursionPolicy.NoRecursion);
+        private readonly SortedList<int, Type> _perPlayerDataKeys = new();
 
         #region IModule Members
 
@@ -101,12 +89,12 @@ namespace SS.Core.Modules
         /// </summary>
         public void Lock()
         {
-            _globalPlayerDataRwLock.AcquireReaderLock(Timeout.Infinite);
+            _globalPlayerDataRwLock.EnterReadLock();
         }
 
         public void Unlock()
         {
-            _globalPlayerDataRwLock.ReleaseReaderLock();
+            _globalPlayerDataRwLock.ExitReadLock();
         }
 
         /// <summary>
@@ -114,24 +102,24 @@ namespace SS.Core.Modules
         /// </summary>
         public void WriteLock()
         {
-            _globalPlayerDataRwLock.AcquireWriterLock(Timeout.Infinite);
+            _globalPlayerDataRwLock.EnterWriteLock();
         }
 
         public void WriteUnlock()
         {
-            _globalPlayerDataRwLock.ReleaseWriterLock();
+            _globalPlayerDataRwLock.ExitWriteLock();
         }
 
         #endregion
 
-        private IEnumerable<Player> playerList
+        private IEnumerable<Player> PlayerList
         {
             get { return _playerDictionary.Values; }
         }
 
         IEnumerable<Player> IPlayerData.PlayerList
         {
-            get { return playerList; }
+            get { return PlayerList; }
         }
 
         Player IPlayerData.NewPlayer(ClientType clientType)
@@ -142,39 +130,18 @@ namespace SS.Core.Modules
 
             try
             {
-                LinkedListNode<FreePlayerInfo> pidNode = _freePlayersList.First;
-
-                if ((pidNode != null) &&
-                    (DateTime.UtcNow > pidNode.Value.AvailableTimestamp))
+                if (_freePlayersQueue.TryPeek(out FreePlayerInfo free)
+                    && DateTime.UtcNow > free.AvailableTimestamp)
                 {
-                    // got an existing player object
-                    _freePlayersList.Remove(pidNode);
-                    player = pidNode.Value.Player;
-
-                    pidNode.Value.Player = null;
-                    _freeNodesList.AddLast(pidNode);
+                    // reuse an existing player object that is now available
+                    free = _freePlayersQueue.Dequeue();
+                    player = free.Player;
                 }
                 else
                 {
-                    // no available player objects
+                    // no available player objects, create a new one
                     player = new Player(_nextPid++);
                 }
-
-                // initialize the player's per player data
-                _perPlayerDataLock.AcquireReaderLock(Timeout.Infinite);
-                try
-                {
-                    foreach (KeyValuePair<int, Type> kvp in _perPlayerDataKeys)
-                    {
-                        player[kvp.Key] = Activator.CreateInstance(kvp.Value);
-                    }
-                }
-                finally
-                {
-                    _perPlayerDataLock.ReleaseReaderLock();
-                }
-
-                _playerDictionary.Add(player.Id, player);
 
                 // set player info
                 player.Status = PlayerState.Uninitialized;
@@ -185,6 +152,23 @@ namespace SS.Core.Modules
                 player.Attached = -1;
                 player.ConnectTime = DateTime.UtcNow;
                 player.ConnectAs = null;
+
+                // initialize the player's per player data
+                _perPlayerDataLock.EnterReadLock();
+
+                try
+                {
+                    foreach (KeyValuePair<int, Type> kvp in _perPlayerDataKeys)
+                    {
+                        player[kvp.Key] = Activator.CreateInstance(kvp.Value);
+                    }
+                }
+                finally
+                {
+                    _perPlayerDataLock.ExitReadLock();
+                }
+
+                _playerDictionary.Add(player.Id, player);
             }
             finally
             {
@@ -202,28 +186,19 @@ namespace SS.Core.Modules
 
             WriteLock();
 
-            // remove the player from the dictionary
-            _playerDictionary.Remove(player.Id);
-
-            player.RemoveAllPerPlayerData();
-
-            LinkedListNode<FreePlayerInfo> node = _freeNodesList.First;
-            if (node != null)
+            try
             {
-                // got a node
-                _freeNodesList.Remove(node);
-                node.Value.SetAvailableTimestampFromNow();
-                node.Value.Player = player;
+                // remove the player from the dictionary
+                _playerDictionary.Remove(player.Id);
+
+                player.RemoveAllExtraData();
+
+                _freePlayersQueue.Enqueue(new FreePlayerInfo(player));
             }
-            else
+            finally
             {
-                // no free nodes, create one
-                node = new LinkedListNode<FreePlayerInfo>(new FreePlayerInfo(player));
+                WriteUnlock();
             }
-
-            _freePlayersList.AddLast(node);
-
-            WriteUnlock();
         }
 
         void IPlayerData.KickPlayer(Player player)
@@ -232,6 +207,7 @@ namespace SS.Core.Modules
                 return;
 
             WriteLock();
+
             try
             {
                 // this will set state to S_LEAVING_ARENA, if it was anywhere above S_LOGGEDIN
@@ -263,26 +239,25 @@ namespace SS.Core.Modules
 
         Player IPlayerData.PidToPlayer(int pid)
         {
+            _globalPlayerDataRwLock.EnterReadLock();
+
             try
             {
-                _globalPlayerDataRwLock.AcquireReaderLock(Timeout.Infinite);
-
-                Player player;
-                _playerDictionary.TryGetValue(pid, out player);
+                _playerDictionary.TryGetValue(pid, out Player player);
                 return player;
             }
             finally
             {
-                _globalPlayerDataRwLock.ReleaseReaderLock();
+                _globalPlayerDataRwLock.ExitReadLock();
             }
         }
 
         Player IPlayerData.FindPlayer(string name)
         {
+            _globalPlayerDataRwLock.EnterReadLock();
+
             try
             {
-                _globalPlayerDataRwLock.AcquireReaderLock(Timeout.Infinite);
-
                 foreach (Player player in _playerDictionary.Values)
                 {
                     if (string.Equals(player.Name, name, StringComparison.OrdinalIgnoreCase)
@@ -296,7 +271,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _globalPlayerDataRwLock.ReleaseReaderLock();
+                _globalPlayerDataRwLock.ExitReadLock();
             }
 
             return null;
@@ -305,7 +280,7 @@ namespace SS.Core.Modules
         void IPlayerData.TargetToSet(ITarget target, out LinkedList<Player> list)
         {
             if (target == null)
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
 
             if (target.Type == TargetType.List)
             {
@@ -329,7 +304,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player p in _playerDictionary.Values)
                         {
-                            if ((p.Status == PlayerState.Playing) && matches(target, p))
+                            if ((p.Status == PlayerState.Playing) && Matches(target, p))
                                 list.AddLast(p);
                         }
                     }
@@ -343,13 +318,36 @@ namespace SS.Core.Modules
                 default:
                     return;
             }
+
+            static bool Matches(ITarget t, Player p)
+            {
+                switch (t.Type)
+                {
+                    case TargetType.Arena:
+                        return p.Arena == ((IArenaTarget)t).Arena;
+
+                    case TargetType.Freq:
+                        ITeamTarget teamTarget = (ITeamTarget)t;
+                        return (p.Arena == teamTarget.Arena) && (p.Freq == teamTarget.Freq);
+
+                    case TargetType.Zone:
+                        return true;
+
+                    case TargetType.List:
+                    case TargetType.Player:
+                    case TargetType.None:
+                    default:
+                        return false;
+                }
+            }
         }
 
         int IPlayerData.AllocatePlayerData<T>()
         {
             int key = 0;
 
-            _perPlayerDataLock.AcquireWriterLock(Timeout.Infinite);
+            _perPlayerDataLock.EnterWriteLock();
+
             try
             {
                 // find next available key
@@ -363,20 +361,21 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _perPlayerDataLock.ReleaseWriterLock();
+                _perPlayerDataLock.ExitWriteLock();
             }
 
-            Lock();
+            WriteLock();
+
             try
             {
-                foreach (Player player in playerList)
+                foreach (Player player in PlayerList)
                 {
                     player[key] = new T();
                 }
             }
             finally
             {
-                Unlock();
+                WriteUnlock();
             }
 
             return key;
@@ -384,20 +383,22 @@ namespace SS.Core.Modules
 
         void IPlayerData.FreePlayerData(int key)
         {
-            Lock();
+            WriteLock();
+
             try
             {
-                foreach (Player player in playerList)
+                foreach (Player player in PlayerList)
                 {
-                    player.RemovePerPlayerData(key);
+                    player.RemoveExtraData(key);
                 }
             }
             finally
             {
-                Unlock();
+                WriteUnlock();
             }
 
-            _perPlayerDataLock.AcquireWriterLock(Timeout.Infinite);
+            _perPlayerDataLock.EnterWriteLock();
+
             try
             {
                 // remove the key from 
@@ -405,33 +406,10 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _perPlayerDataLock.ReleaseWriterLock();
+                _perPlayerDataLock.ExitWriteLock();
             }
         }
 
         #endregion
-
-        // this is is inlined in asss, the compiler should do it for us automatically if it is a good candidate
-        private static bool matches(ITarget t, Player p)
-        {
-            switch (t.Type)
-            {
-                case TargetType.Arena:
-                    return p.Arena == ((IArenaTarget)t).Arena;
-
-                case TargetType.Freq:
-                    ITeamTarget teamTarget = (ITeamTarget)t;
-                    return (p.Arena == teamTarget.Arena) && (p.Freq == teamTarget.Freq);
-
-                case TargetType.Zone:
-                    return true;
-
-                case TargetType.List:
-                case TargetType.Player:
-                case TargetType.None:
-                default:
-                    return false;
-            }
-        }
     }
 }

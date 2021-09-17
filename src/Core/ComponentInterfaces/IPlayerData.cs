@@ -76,8 +76,18 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">the list to add players to</param>
         void TargetToSet(ITarget target, out LinkedList<Player> set);
 
-        // per player data
+        /// <summary>
+        /// Allocates a slot for Per Player Data.
+        /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Player"/> object.
+        /// </summary>
+        /// <typeparam name="T">The type to store in the slot.</typeparam>
+        /// <returns>The slot allocated for use with <see cref="Player.this(System.Int32)"/>.</returns>
         int AllocatePlayerData<T>() where T : new();
+
+        /// <summary>
+        /// Frees up a previously allocated Per Player Data slot.
+        /// </summary>
+        /// <param name="key">The slot to free.</param>
         void FreePlayerData(int key);
     }
 }
