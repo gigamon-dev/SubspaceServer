@@ -1,8 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Core.Packets;
+﻿using SS.Core.Packets;
+using SS.Core.Packets.S2C;
+using SS.Utilities;
+using System;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -72,20 +71,67 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         public bool Authenticated;
 
+        private string _name;
+
         /// <summary>
         /// The name to assign to the player.
         /// </summary>
-        public string Name;
+        /// <exception cref="ArgumentException">Value cannot be null or white-space.</exception>
+        /// <exception cref="ArgumentException">Value is too long.</exception>
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(value));
+
+                if (StringUtils.DefaultEncoding.GetByteCount(value) > Player.MaxNameLength - 1) // -1 for null-terminator
+                    throw new ArgumentException($"Does not fit into {Player.MaxNameLength - 1} bytes when encoded.", nameof(value));
+
+                _name = value;
+            }
+        }
+
+        private string _sendName;
 
         /// <summary>
-        /// The client visible name (not null-terminated).
+        /// The client visible name.
         /// </summary>
-        public string SendName;
+        /// <exception cref="ArgumentException">Value cannot be null or white-space.</exception>
+        /// <exception cref="ArgumentException">Value is too long.</exception>
+        public string SendName
+        {
+            get => _sendName;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(value));
+
+                if (StringUtils.DefaultEncoding.GetByteCount(value) > PlayerDataPacket.NameLength) // null-terminator not required
+                    throw new ArgumentException($"Does not fit into {PlayerDataPacket.NameLength} bytes when encoded.", nameof(value));
+
+                _sendName = value;
+            }
+        }
+
+        private string _squad;
 
         /// <summary>
         /// The squad to assign the player.
         /// </summary>
-        public string Squad;
+        /// <exception cref="ArgumentException">Value is too long.</exception>
+        public string Squad
+        {
+            get => _squad;
+            set
+            {
+                if (value != null && StringUtils.DefaultEncoding.GetByteCount(value) > Player.MaxSquadLength - 1) // -1 for null-terminator
+                    throw new ArgumentException($"Does not fit into {Player.MaxSquadLength - 1} bytes when encoded.", nameof(value));
+
+                _squad = value;
+            }
+        }
 
         /// <summary>
         /// Custom text to return to the player if <see cref="Code"/> is <see cref="AuthCode.CustomText"/>.

@@ -206,57 +206,6 @@ namespace SS.Core
         TimeWait
     };
 
-    /// <summary>
-    /// this encapsulates a bunch of the typical position information about players in standard clients.
-    /// </summary>
-    public class PlayerPosition
-    {
-        /// <summary>
-        /// x coordinate of current position in pixels
-        /// </summary>
-        public int X;
-
-        /// <summary>
-        /// y coordinate of current position in pixels
-        /// </summary>
-        public int Y;
-
-        /// <summary>
-        /// velocity in positive x direction (pixels/second)
-        /// </summary>
-        public int XSpeed;
-
-        /// <summary>
-        /// velocity in positive y direction (pixels/second)
-        /// </summary>
-        public int YSpeed;
-
-        /// <summary>
-        /// rotation value (0-63)
-        /// </summary>
-        public int Rotation;
-
-        /// <summary>
-        /// current bounty
-        /// </summary>
-        public uint Bounty;
-
-        /// <summary>
-        /// status bitfield
-        /// </summary>
-        public PlayerPositionStatus Status;
-
-        /// <summary>
-        /// current energy
-        /// </summary>
-        public int Energy;
-
-        /// <summary>
-        /// time of last position packet
-        /// </summary>
-        public ServerTick Time;
-    };
-
     // TODO: Investigate thread safety. Possibly the attempt is at locking all player data in the PlayerData module? Though there are places that dont?
     public class Player : IPlayerTarget
     {
@@ -285,93 +234,192 @@ namespace SS.Core
         public short Attached
         {
             get { return _packet.AttachedTo; }
-            set { _packet.AttachedTo = value; }
+            internal set { _packet.AttachedTo = value; }
         }
 
         /// <summary>
-        /// The player ID
+        /// The player ID.
         /// </summary>
         public readonly int Id;
 
         /// <summary>
-        /// The client type
+        /// The client type.
         /// </summary>
-        public ClientType Type = ClientType.Unknown;
+        public ClientType Type { get; internal set; } = ClientType.Unknown;
 
         /// <summary>
-        /// The state code
+        /// The player's state.
+        /// Core modules use this to transition a player between various stages.
+        /// Other modules will mostly just care whether the player is <see cref="PlayerState.Playing"/>.
         /// </summary>
-        public PlayerState Status = PlayerState.Uninitialized;
+        public PlayerState Status { get; internal set; } = PlayerState.Uninitialized;
 
         /// <summary>
-        /// which state to move to after returning to S_LOGGEDIN
+        /// The state to move to after returning to <see cref="PlayerState.LoggedIn"/>.
         /// </summary>
-        public PlayerState WhenLoggedIn = PlayerState.Uninitialized;
+        internal PlayerState WhenLoggedIn = PlayerState.Uninitialized;
 
         /// <summary>
-        /// the player's current arena, or NULL if not in an arena yet
+        /// The player's current arena, or <see langword="null"/> if not in an arena yet.
         /// </summary>
-        public Arena Arena;
+        public Arena Arena { get; internal set; }
 
         /// <summary>
-        /// the arena the player is trying to enter
+        /// The arena the player is trying to enter.
         /// </summary>
-        public Arena NewArena;
+        public Arena NewArena { get; internal set; }
+
+        public const int MaxNameLength = 24; // TODO: find out why ASSS allows longer than can fit in a PlayerDataPacket
+
+        private string _name;
 
         /// <summary>
-        /// the player's name
+        /// The player's name.
         /// </summary>
-        public string Name;
+        /// <exception cref="ArgumentException">Value cannot be null or white-space.</exception>
+        /// <exception cref="ArgumentException">Value is too long.</exception>
+        public string Name
+        {
+            get => _name;
+            internal set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(value));
+
+                if (StringUtils.DefaultEncoding.GetByteCount(value) > MaxNameLength - 1) // -1 for null-terminator
+                    throw new ArgumentException($"Does not fit into {MaxNameLength - 1} bytes when encoded.", nameof(value));
+
+                _name = value;
+            }
+        }
+
+        public const int MaxSquadLength = 24; // TODO: find out why ASSS allows longer than can fit in a PlayerDataPacket
+
+        private string _squad;
 
         /// <summary>
-        /// the player's squad
+        /// The player's squad.
         /// </summary>
-        public string Squad;
+        /// <exception cref="ArgumentException">Value cannot be null or white-space.</exception>
+        /// <exception cref="ArgumentException">Value is too long.</exception>
+        public string Squad
+        {
+            get => _squad;
+            internal set
+            {
+                if (value != null && StringUtils.DefaultEncoding.GetByteCount(value) > MaxSquadLength - 1) // -1 for null-terminator
+                    throw new ArgumentException($"Does not fit into {MaxSquadLength - 1} bytes when encoded.", nameof(value));
+
+                _squad = value;
+            }
+        }
 
         /// <summary>
-        /// X screen resolution, for standard clients
+        /// X screen resolution, for standard clients.
         /// </summary>
-        public short Xres;
+        public short Xres { get; internal set; }
 
         /// <summary>
-        /// Y screen resolution, for standard clients
+        /// Y screen resolution, for standard clients.
         /// </summary>
-        public short Yres;
+        public short Yres { get; internal set; }
 
         /// <summary>
-        /// the time that this player first connected
+        /// The time that this player first connected.
         /// </summary>
-        public DateTime ConnectTime;
+        public DateTime ConnectTime { get; internal set; }
 
         /// <summary>
-        /// contains some recent information about the player's position
+        /// This encapsulates a bunch of the typical position information about players in standard clients.
         /// </summary>
-        public PlayerPosition Position = new();
+        public class PlayerPosition
+        {
+            /// <summary>
+            /// x coordinate of current position in pixels
+            /// </summary>
+            public int X { get; internal set; }
+
+            /// <summary>
+            /// y coordinate of current position in pixels
+            /// </summary>
+            public int Y { get; internal set; }
+
+            /// <summary>
+            /// velocity in positive x direction (pixels/second)
+            /// </summary>
+            public int XSpeed { get; internal set; }
+
+            /// <summary>
+            /// velocity in positive y direction (pixels/second)
+            /// </summary>
+            public int YSpeed { get; internal set; }
+
+            /// <summary>
+            /// rotation value (0-63)
+            /// </summary>
+            public int Rotation { get; internal set; }
+
+            /// <summary>
+            /// current bounty
+            /// </summary>
+            public uint Bounty { get; internal set; }
+
+            /// <summary>
+            /// status bitfield
+            /// </summary>
+            public PlayerPositionStatus Status { get; internal set; }
+
+            /// <summary>
+            /// current energy
+            /// </summary>
+            public int Energy { get; internal set; }
+
+            /// <summary>
+            /// time of last position packet
+            /// </summary>
+            public ServerTick Time { get; internal set; }
+        };
 
         /// <summary>
-        /// the player's machine id, for standard clients
+        /// Recent information about the player's position.
         /// </summary>
-        public uint MacId;
-        public uint PermId;
+        public readonly PlayerPosition Position = new();
 
         /// <summary>
-        /// ip address the player is connecting from
+        /// The player's machine id, for standard clients, from the <see cref="LoginPacket"/>.
         /// </summary>
-        public IPAddress IpAddress;
+        public uint MacId { get; internal set; }
 
         /// <summary>
-        /// if the player has connected through a port that sets a default arena, that will be stored here
+        /// Another identifier (like <see cref="MacId"/>), for standard clients, from the <see cref="LoginPacket"/>.
         /// </summary>
-        public string ConnectAs;
+        public uint PermId { get; internal set; }
 
         /// <summary>
-        /// a text representation of the client connecting
+        /// IP address the player is connecting from.
         /// </summary>
-        public string ClientName;
+        public IPAddress IpAddress { get; internal set; }
 
-        public ServerTick LastDeath;
+        /// <summary>
+        /// If the player has connected through a port that sets a default arena, that will be stored here.
+        /// </summary>
+        public string ConnectAs { get; internal set; }
 
-        public ServerTick NextRespawn;
+        /// <summary>
+        /// A text representation of the client being used.
+        /// </summary>
+        public string ClientName { get; internal set; }
+
+        /// <summary>
+        /// The server recorded time of the player's last death.
+        /// </summary>
+        public ServerTick LastDeath { get; internal set; }
+
+        /// <summary>
+        /// When the server expects the player to respawn after dying.
+        /// This is: <see cref="LastDeath"/> + Kill:EnterDelay.
+        /// </summary>
+        public ServerTick NextRespawn { get; internal set; }
 
         public class PlayerFlags
         {
@@ -383,7 +431,7 @@ namespace SS.Core
             public bool Authenticated
             {
                 get { return flagVector[BitVector32Masks.GetMask(0)]; }
-                set { flagVector[BitVector32Masks.GetMask(0)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(0)] = value; }
             }
 
             /// <summary>
@@ -392,7 +440,7 @@ namespace SS.Core
             public bool DuringChange
             {
                 get { return flagVector[BitVector32Masks.GetMask(1)]; }
-                set { flagVector[BitVector32Masks.GetMask(1)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(1)] = value; }
             }
 
             /// <summary>
@@ -401,7 +449,7 @@ namespace SS.Core
             public bool WantAllLvz
             {
                 get { return flagVector[BitVector32Masks.GetMask(2)]; }
-                set { flagVector[BitVector32Masks.GetMask(2)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(2)] = value; }
             }
 
             /// <summary>
@@ -410,7 +458,7 @@ namespace SS.Core
             public bool DuringQuery
             {
                 get { return flagVector[BitVector32Masks.GetMask(3)]; }
-                set { flagVector[BitVector32Masks.GetMask(3)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(3)] = value; }
             }
 
             /// <summary>
@@ -419,7 +467,7 @@ namespace SS.Core
             public bool NoShip
             {
                 get { return flagVector[BitVector32Masks.GetMask(4)]; }
-                set { flagVector[BitVector32Masks.GetMask(4)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(4)] = value; }
             }
 
             /// <summary>
@@ -428,7 +476,7 @@ namespace SS.Core
             public bool NoFlagsBalls
             {
                 get { return flagVector[BitVector32Masks.GetMask(5)]; }
-                set { flagVector[BitVector32Masks.GetMask(5)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(5)] = value; }
             }
 
             /// <summary>
@@ -437,7 +485,7 @@ namespace SS.Core
             public bool SentPositionPacket
             {
                 get { return flagVector[BitVector32Masks.GetMask(6)]; }
-                set { flagVector[BitVector32Masks.GetMask(6)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(6)] = value; }
             }
 
             /// <summary>
@@ -446,7 +494,7 @@ namespace SS.Core
             public bool SentWeaponPacket
             {
                 get { return flagVector[BitVector32Masks.GetMask(7)]; }
-                set { flagVector[BitVector32Masks.GetMask(7)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(7)] = value; }
             }
 
             /// <summary>
@@ -455,7 +503,7 @@ namespace SS.Core
             public bool SeeAllPositionPackets
             {
                 get { return flagVector[BitVector32Masks.GetMask(8)]; }
-                set { flagVector[BitVector32Masks.GetMask(8)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(8)] = value; }
             }
 
             /// <summary>
@@ -464,7 +512,7 @@ namespace SS.Core
             public bool SeeOwnPosition
             {
                 get { return flagVector[BitVector32Masks.GetMask(9)]; }
-                set { flagVector[BitVector32Masks.GetMask(9)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(9)] = value; }
             }
 
             /// <summary>
@@ -473,7 +521,7 @@ namespace SS.Core
             public bool LeaveArenaWhenDoneWaiting
             {
                 get { return flagVector[BitVector32Masks.GetMask(10)]; }
-                set { flagVector[BitVector32Masks.GetMask(10)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(10)] = value; }
             }
 
             /// <summary>
@@ -482,7 +530,7 @@ namespace SS.Core
             public bool ObscenityFilter
             {
                 get { return flagVector[BitVector32Masks.GetMask(11)]; }
-                set { flagVector[BitVector32Masks.GetMask(11)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(11)] = value; }
             }
 
             /// <summary>
@@ -491,12 +539,12 @@ namespace SS.Core
             public bool IsDead
             {
                 get { return flagVector[BitVector32Masks.GetMask(12)]; }
-                set { flagVector[BitVector32Masks.GetMask(12)] = value; }
+                internal set { flagVector[BitVector32Masks.GetMask(12)] = value; }
             }
         }
 
         /// <summary>
-        /// some extra flags that don't have a better place to go
+        /// Extra flags that don't have a better place to go.
         /// </summary>
         public readonly PlayerFlags Flags = new();
 
@@ -508,6 +556,10 @@ namespace SS.Core
         /// </remarks>
         private readonly ConcurrentDictionary<int, object> _extraData = new();
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Player"/> class with a specified PlayerID.
+        /// </summary>
+        /// <param name="id">The PlayerID.</param>
         public Player(int id)
         {
             Id = id;
@@ -530,24 +582,25 @@ namespace SS.Core
         }
 
         /// <summary>
-        /// checks if the player type is VIE Client or Continuum
+        /// Whether the player is on a client with the ability to play (VIE Client or Continuum).
         /// </summary>
-        public bool IsStandard
-        {
-            get { return (Type == ClientType.VIE) || (Type == ClientType.Continuum); }
-        }
+        public bool IsStandard => (Type == ClientType.VIE) || (Type == ClientType.Continuum);
 
-        public bool IsChat
-        {
-            get { return Type == ClientType.Chat; }
-        }
+        /// <summary>
+        /// Whether the player is on a chat client (no ability to play).
+        /// </summary>
+        public bool IsChat => Type == ClientType.Chat;
 
-        public bool IsHuman
-        {
-            get { return IsStandard || IsChat; }
-        }
+        /// <summary>
+        /// Whether the player is a human (as opposed to an internally controlled fake player).
+        /// </summary>
+        public bool IsHuman => IsStandard || IsChat;
 
-        // Only to be used by the PlayerData module.
+        /// <summary>
+        /// Removes per-player data for a single key.
+        /// </summary>
+        /// <remarks>Only to be used by the PlayerData module.</remarks>
+        /// <param name="key">The key of the per-player data to remove.</param>
         internal void RemoveExtraData(int key)
         {
             if (_extraData.Remove(key, out object data)
@@ -557,7 +610,12 @@ namespace SS.Core
             }
         }
 
-        // Only to be used by the PlayerData module.
+        /// <summary>
+        /// Removes all of the player's per-player data.
+        /// </summary>
+        /// <remarks>
+        /// Only to be used by the PlayerData module.
+        /// </remarks>
         internal void RemoveAllExtraData()
         {
             foreach (object ppd in _extraData.Values)

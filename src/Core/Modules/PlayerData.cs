@@ -210,7 +210,7 @@ namespace SS.Core.Modules
 
             try
             {
-                // this will set state to S_LEAVING_ARENA, if it was anywhere above S_LOGGEDIN
+                // this will set state to PlayerState.LeavingArena, if it was anywhere above PlayerState.LoggedIn
                 if (player.Arena != null)
                 {
                     IArenaManager aman = _broker.GetInterface<IArenaManager>();
@@ -228,7 +228,7 @@ namespace SS.Core.Modules
                 }
 
                 // set this special flag so that the player will be set to leave
-                // the zone when the S_LEAVING_ARENA-initiated actions are completed
+                // the zone when the PlayerState.LeavingArena-initiated actions are completed
                 player.WhenLoggedIn = PlayerState.LeavingZone;
             }
             finally

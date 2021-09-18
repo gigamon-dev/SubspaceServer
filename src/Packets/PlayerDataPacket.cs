@@ -12,11 +12,11 @@ namespace SS.Core.Packets.S2C
         public sbyte Ship;
         public byte AcceptAudio;
 
-        private const int NameLength = 20;
+        public const int NameLength = 20;
         private fixed byte nameBytes[NameLength];
         public Span<byte> NameBytes => new(Unsafe.AsPointer(ref nameBytes[0]), NameLength);
 
-        private const int SquadLength = 20;
+        public const int SquadLength = 20;
         private fixed byte squadBytes[SquadLength];
         public Span<byte> SquadBytes => new(Unsafe.AsPointer(ref squadBytes[0]), SquadLength);
 

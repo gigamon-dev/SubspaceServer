@@ -10,10 +10,14 @@ using System.Runtime.InteropServices;
 namespace SS.Core.Modules
 {
     /// <summary>
-    /// this module handles player login process
-    /// and transitioning the player object through its various states
-    /// 
-    /// that is, the entire lifetime of a player from getting authenticated by server, entering/leaving arenas, all the way to leaving the zone
+    /// This module handles transitioning <see cref="Player"/>s through their various <see cref="PlayerState"/>s.
+    /// That is, it is responsible for moving a player through it's life-cycle: from getting authenticated by server, entering/leaving arenas, all the way to leaving the zone.
+    /// This is done through an intricate series of handoffs between core modules based on <see cref="Player.Status"/>.
+    /// <para>
+    /// This includes handling of the login process. The logic included in this module calls the registered authentication provider (<see cref="IAuth"/>)
+    /// and handles communicating the results of it to the client.  Also, this module provides a default implementation of <see cref="IAuth"/> which 
+    /// allows all logins to succeed as being unauthenticated.
+    /// </para>
     /// </summary>
     [CoreModuleInfo]
     public class Core : IModule, IAuth
@@ -43,45 +47,59 @@ namespace SS.Core.Modules
         private uint _continuumChecksum;
         private uint _codeChecksum;
 
-        private class CorePlayerData
+        private sealed class CorePlayerData : IDisposable
         {
-            public AuthData authdata;
+            public AuthData AuthData;
             public DataBuffer LoginPacketBuffer;
-            public Player replacedBy;
+            public Player ReplacedBy;
 
-            // TODO: maybe use BitVector
-            public bool hasdonegsync; // global sync
-            public bool hasdoneasync; // arena sync
-            public bool hasdonegcallbacks; // global callbacks
+            public bool HasDoneGlobalSync; // global sync
+            public bool HasDoneArenaSync; // arena sync
+            public bool HasDoneGlobalCallbacks; // global callbacks
+
+            public void Dispose()
+            {
+                if (LoginPacketBuffer != null)
+                {
+                    LoginPacketBuffer.Dispose();
+                    LoginPacketBuffer = null;
+                }
+            }
         }
 
-        private uint GetChecksum(string file)
+        private uint GetChecksum(string path)
         {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+
             try
             {
-                using FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read);
-                Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+                Ionic.Crc.CRC32 crc32 = new();
                 return (uint)crc32.GetCrc32(fs);
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting checksum to '{0}'. {1}", file, ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting checksum to '{0}'. {1}", path, ex.Message);
                 return uint.MaxValue;
             }
         }
 
-        private uint GetUInt32(string file, int offset)
+        private uint GetUInt32(string path, int offset)
         {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+
             try
             {
-                using FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read);
-                using BinaryReader br = new BinaryReader(fs);
+                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+                using BinaryReader br = new(fs);
                 fs.Seek(offset, SeekOrigin.Begin);
                 return br.ReadUInt32();
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting UInt32 from '{0}' at offset {1}. {2}", file, offset, ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting UInt32 from '{0}' at offset {1}. {2}", path, offset, ex.Message);
                 return uint.MaxValue;
             }
         }
@@ -143,6 +161,7 @@ namespace SS.Core.Modules
             _net.RemovePacket(C2SPacketType.Login, Packet_Login);
             _net.RemovePacket(C2SPacketType.ContLogin, Packet_Login);
 
+            // TODO: chatnet
             //if (_chatnet != null)
                 //_chatnet.RemoveHandler("LOGIN", chatLogin);
 
@@ -158,11 +177,14 @@ namespace SS.Core.Modules
             public PlayerState OldStatus;
         }
 
+        /// <summary>
+        /// For <see cref="MainloopTimer_ProcessPlayerStates"/> ONLY.
+        /// This list holds pending actions while processing the player list.
+        /// </summary>
+        private readonly List<PlayerStateChange> _actionsList = new();
+
         private bool MainloopTimer_ProcessPlayerStates()
         {
-            // put pending actions here while processing the player list
-            LinkedList<PlayerStateChange> actions = null; // only allocate if we need to
-
             _playerData.WriteLock();
 
             try
@@ -231,14 +253,11 @@ namespace SS.Core.Modules
 
                     player.Status = ns;
 
-                    if(actions == null)
-                        actions = new LinkedList<PlayerStateChange>();
-
                     // add this player to the pending actions list, to be run when we release the status lock.
-                    PlayerStateChange action = new PlayerStateChange();
+                    PlayerStateChange action = new();
                     action.Player = player;
                     action.OldStatus = oldstatus;
-                    actions.AddLast(action);
+                    _actionsList.Add(action);
                 }
             }
             finally
@@ -246,19 +265,18 @@ namespace SS.Core.Modules
                 _playerData.WriteUnlock();
             }
 
-            if (actions == null)
+            if (_actionsList.Count == 0)
                 return true;
 
-            Arena arena;
-            foreach (PlayerStateChange action in actions)
+            foreach (PlayerStateChange action in _actionsList)
             {
                 Player player = action.Player;
-                PlayerState oldstatus = action.OldStatus;
+                PlayerState oldStatus = action.OldStatus;
 
-                if (!(player[_pdkey] is CorePlayerData pdata))
+                if (player[_pdkey] is not CorePlayerData pdata)
                     continue;
 
-                switch (oldstatus)
+                switch (oldStatus)
                 {
                     case PlayerState.NeedAuth:
                         {
@@ -277,10 +295,11 @@ namespace SS.Core.Modules
                                 }
 
                                 pdata.LoginPacketBuffer?.Dispose();
+                                pdata.LoginPacketBuffer = null;
                             }
                             finally
                             {
-                                if(auth != null)
+                                if (auth != null)
                                     _broker.ReleaseInterface(ref auth);
                             }
                         }
@@ -291,12 +310,12 @@ namespace SS.Core.Modules
                             //_persist.GetPlayer(player, null, playerSyncDone);
                         //else
                             PlayerSyncDone(player);
-                        pdata.hasdonegsync = true;
+                        pdata.HasDoneGlobalSync = true;
                         break;
 
                     case PlayerState.DoGlobalCallbacks:
                         FirePlayerActionEvent(player, PlayerAction.Connect, null);
-                        pdata.hasdonegcallbacks = true;
+                        pdata.HasDoneGlobalCallbacks = true;
                         break;
 
                     case PlayerState.SendLoginResponse:
@@ -311,21 +330,20 @@ namespace SS.Core.Modules
                         player.Freq = -1;
 
                         // do pre-callbacks
-                        arena = player.Arena;
-                        FirePlayerActionEvent(player, PlayerAction.PreEnterArena, arena);
+                        FirePlayerActionEvent(player, PlayerAction.PreEnterArena, player.Arena);
 
                         // get a freq
                         if ((int)player.Ship == -1 || player.Freq == -1)
                         {
-                            ShipType ship = player.Ship = requestedShip;
-                            short freq = player.Freq = 0;
+                            short freq = 0;
 
-                            IFreqManager fm = _broker.GetInterface<IFreqManager>();
+                            // If the arena has a manager, use it.
+                            IFreqManager fm = player.Arena.GetInterface<IFreqManager>();
                             if (fm != null)
                             {
                                 try
                                 {
-                                    fm.InitialFreq(player, ref ship, ref freq);
+                                    fm.InitialFreq(player, ref requestedShip, ref freq);
                                 }
                                 finally
                                 {
@@ -334,19 +352,21 @@ namespace SS.Core.Modules
                             }
 
                             // set results back
-                            player.Ship = ship;
+                            player.Ship = requestedShip;
                             player.Freq = freq;
                         }
 
                         // sync scores
+                        // TODO: persist
                         //if (persist)
                             //persist.GetPlayer(player, player.Arena, playerSyncDone);
                         //else
                             PlayerSyncDone(player);
-                        pdata.hasdonegsync = true;
+                        pdata.HasDoneGlobalSync = true;
                         break;
 
                     case PlayerState.ArenaRespAndCBS:
+                        // TODO: stats
                         /*if (stats != null)
                         {
                             // try to get scores in pdata packet
@@ -363,9 +383,7 @@ namespace SS.Core.Modules
                         player.Flags.SentPositionPacket = false;
                         player.Flags.SentWeaponPacket = false;
 
-                        arena = player.Arena;
-                        FirePlayerActionEvent(player, PlayerAction.EnterArena, arena);
-
+                        FirePlayerActionEvent(player, PlayerAction.EnterArena, player.Arena);
                         break;
 
                     case PlayerState.LeavingArena:
@@ -373,27 +391,30 @@ namespace SS.Core.Modules
                         break;
 
                     case PlayerState.DoArenaSync2:
+                        // TODO: persist
                         /*if (persist != null && pdata.hasdonegsync)
                             persist.PutPlayer(player, player.Arena, playerSyncDone);
                         else*/
                             PlayerSyncDone(player);
-                        pdata.hasdoneasync = false;
+                        pdata.HasDoneArenaSync = false;
                         break;
 
                     case PlayerState.LeavingZone:
-                        if (pdata.hasdonegcallbacks)
+                        if (pdata.HasDoneGlobalCallbacks)
                             FirePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
+                        // TODO: persist
                         /*if (_persist != null && pdata.hasdonegsync)
                             _persist.PutPlayer(player, null, playerSyncDone);
                         else*/
                             PlayerSyncDone(player);
 
-                        pdata.hasdonegsync = false;
+                        pdata.HasDoneGlobalSync = false;
                         break;
                 }
             }
 
+            _actionsList.Clear();
             return true;
         }
 
@@ -410,7 +431,18 @@ namespace SS.Core.Modules
 
         private void FailLoginWith(Player p, AuthCode authCode, string text, string logmsg)
         {
-            AuthData auth = new AuthData();
+            if (p == null)
+                return;
+
+            // Calling this method means we're bypassing PlayerState.NeedAuth, so do some cleanup.
+            if (p[_pdkey] is CorePlayerData pdata
+                && pdata.LoginPacketBuffer != null)
+            {
+                pdata.LoginPacketBuffer.Dispose();
+                pdata.LoginPacketBuffer = null;
+            }
+
+            AuthData auth = new();
 
             if (p.Type == ClientType.Continuum && !string.IsNullOrWhiteSpace(text))
             {
@@ -423,6 +455,7 @@ namespace SS.Core.Modules
             }
 
             _playerData.WriteLock();
+
             try
             {
                 p.Status = PlayerState.WaitAuth;
@@ -442,7 +475,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is CorePlayerData pdata))
+            if (p[_pdkey] is not CorePlayerData pdata)
                 return;
 
             if (!p.IsStandard)
@@ -481,6 +514,7 @@ namespace SS.Core.Modules
                 if (len > 512)
                     len = 512;
 
+                pdata.LoginPacketBuffer?.Dispose(); // just in case there already is one, get a brand new one zero'd out
                 pdata.LoginPacketBuffer = Pool<DataBuffer>.Default.Get();
                 Array.Copy(data, pdata.LoginPacketBuffer.Bytes, len);
                 pdata.LoginPacketBuffer.NumBytes = len;
@@ -527,14 +561,14 @@ namespace SS.Core.Modules
                     _playerData.WriteUnlock();
                 }
 
-                _logManager.LogM(LogLevel.Drivel, nameof(Core), "[pid={0}] login request: '{1}'", p.Id, name);
+                _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={p.Id}] login request: '{name}'");
             }
 
             static void CleanupName(Span<byte> nameSpan)
             {
                 // limit name to 20 bytes
                 // the last byte must be the nul-terminator
-                nameSpan.Slice(19).Fill(0);
+                nameSpan[19..].Fill(0);
                 nameSpan = nameSpan.Slice(0, 20);
 
                 // only allow printable characters in names, excluding colon.
@@ -558,23 +592,23 @@ namespace SS.Core.Modules
                 if (l > 0 && nameSpan[l - 1] == (byte)' ')
                     l--;
 
-                nameSpan.Slice(l).Fill(0);
+                nameSpan[l..].Fill(0);
             }
         }
 
         private void AuthDone(Player p, AuthData auth)
         {
-            if (!(p[_pdkey] is CorePlayerData pdata))
+            if (p == null || auth == null || p[_pdkey] is not CorePlayerData pdata)
                 return;
 
             if (p.Status != PlayerState.WaitAuth)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(Core), "[pid={0}] AuthDone called from wrong stage: {1}", p.Id, p.Status);
+                _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={p.Id}] AuthDone called from wrong stage: {p.Status}");
                 return;
             }
 
             // copy the authdata
-            pdata.authdata = auth;
+            pdata.AuthData = auth;
 
             p.Flags.Authenticated = auth.Authenticated;
 
@@ -586,28 +620,34 @@ namespace SS.Core.Modules
                 Player oldp = _playerData.FindPlayer(auth.Name);
 
                 // set new player's name
-                p.Packet.Name = auth.SendName;
+                p.Packet.Name = auth.SendName; // TODO: if SendName != Name, then wouldn't that break remote chat messages?
                 p.Name = auth.Name;
-                p.Packet.Squad = auth.Squad;
+                p.Packet.Squad = auth.Squad; // this can truncate
                 p.Squad = auth.Squad;
 
                 // make sure we don't have two identical players. if so, do not
                 // increment stage yet. we'll do it when the other player leaves
                 if (oldp != null && oldp != p)
                 {
-                    if (!(p[_pdkey] is CorePlayerData oldd))
+                    if (p[_pdkey] is not CorePlayerData oldd)
                         return;
 
-                    _logManager.LogM(LogLevel.Drivel, nameof(Core), "[{0}] player already on, kicking him off (pid {1} replacing {2})", auth.Name, p.Id, oldp.Id);
-                    oldd.replacedBy = p;
+                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] player already on, kicking him off (pid {p.Id} replacing {oldp.Id})");
+                    oldd.ReplacedBy = p;
                     _playerData.KickPlayer(oldp);
                 }
                 else
                 {
                     // increment stage
                     _playerData.WriteLock();
-                    p.Status = PlayerState.NeedGlobalSync;
-                    _playerData.WriteUnlock();
+                    try
+                    {
+                        p.Status = PlayerState.NeedGlobalSync;
+                    }
+                    finally
+                    {
+                        _playerData.WriteUnlock();
+                    }
                 }
             }
             else
@@ -615,6 +655,7 @@ namespace SS.Core.Modules
                 // if the login didn't succeed status should go to PlayerState.Connected
                 // instead of moving forward, and send the login response now, since we won't do it later.
                 SendLoginResponse(p);
+
                 _playerData.WriteLock();
                 try
                 {
@@ -650,17 +691,17 @@ namespace SS.Core.Modules
                 else if (player.Status == PlayerState.WaitGlobalSync2)
                 {
                     CorePlayerData pdata = player[_pdkey] as CorePlayerData;
-                    Player replacedBy = pdata.replacedBy;
+                    Player replacedBy = pdata.ReplacedBy;
                     if (replacedBy != null)
                     {
                         if (replacedBy.Status != PlayerState.WaitAuth)
                         {
-                            _logManager.LogM(LogLevel.Warn, nameof(Core), "[oldpid={0}] [newpid={1}] unexpected status when replacing players: {2}", player.Id, replacedBy.Id, replacedBy.Status);
+                            _logManager.LogM(LogLevel.Warn, nameof(Core), $"[oldpid={player.Id}] [newpid={replacedBy.Id}] unexpected status when replacing players: {replacedBy.Status}");
                         }
                         else
                         {
                             replacedBy.Status = PlayerState.NeedGlobalSync;
-                            pdata.replacedBy = null;
+                            pdata.ReplacedBy = null;
                         }
                     }
 
@@ -668,7 +709,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(Core), "[pid={0}] player_sync_done called from wrong status: {1}", player.Id, player.Status);
+                    _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={player.Id}] player_sync_done called from wrong status: {player.Status}");
                 }
             }
             finally
@@ -677,51 +718,48 @@ namespace SS.Core.Modules
             }
         }
 
-        private static string GetAuthCodeMessage(AuthCode code)
+        private static string GetAuthCodeMessage(AuthCode code) => code switch
         {
-            return code switch
-            {
-                AuthCode.OK => "ok",
-                AuthCode.NewName => "new user",
-                AuthCode.BadPassword => "incorrect password",
-                AuthCode.ArenaFull => "arena full",
-                AuthCode.LockedOut => "you have been locked out",
-                AuthCode.NoPermission => "no permission",
-                AuthCode.SpecOnly => "you can spec only",
-                AuthCode.TooManyPoints => "you have too many points",
-                AuthCode.TooSlow => "too slow (?)",
-                AuthCode.NoPermission2 => "no permission (2)",
-                AuthCode.NoNewConn => "the server is not accepting new connections",
-                AuthCode.BadName => "bad player name",
-                AuthCode.OffensiveName => "offensive player name",
-                AuthCode.NoScores => "the server is not recordng scores",
-                AuthCode.ServerBusy => "the server is busy",
-                AuthCode.TooLowUsage => "too low usage",
-                AuthCode.AskDemographics => "need demographics",
-                AuthCode.TooManyDemo => "too many demo players",
-                AuthCode.NoDemo => "no demo players allowed",
-                _ => "???",
-            };
-        }
+            AuthCode.OK => "ok",
+            AuthCode.NewName => "new user",
+            AuthCode.BadPassword => "incorrect password",
+            AuthCode.ArenaFull => "arena full",
+            AuthCode.LockedOut => "you have been locked out",
+            AuthCode.NoPermission => "no permission",
+            AuthCode.SpecOnly => "you can spec only",
+            AuthCode.TooManyPoints => "you have too many points",
+            AuthCode.TooSlow => "too slow (?)",
+            AuthCode.NoPermission2 => "no permission (2)",
+            AuthCode.NoNewConn => "the server is not accepting new connections",
+            AuthCode.BadName => "bad player name",
+            AuthCode.OffensiveName => "offensive player name",
+            AuthCode.NoScores => "the server is not recordng scores",
+            AuthCode.ServerBusy => "the server is busy",
+            AuthCode.TooLowUsage => "too low usage",
+            AuthCode.AskDemographics => "need demographics",
+            AuthCode.TooManyDemo => "too many demo players",
+            AuthCode.NoDemo => "no demo players allowed",
+            _ => "???",
+        };
 
         private void SendLoginResponse(Player player)
         {
             if (player == null)
                 return;
 
-            if (!(player[_pdkey] is CorePlayerData pdata))
+            if (player[_pdkey] is not CorePlayerData pdata)
                 return;
 
-            AuthData auth = pdata.authdata;
+            AuthData auth = pdata.AuthData;
 
             if (auth == null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "Missing authdata for pid {0}", player.Id);
+                _logManager.LogM(LogLevel.Error, nameof(Core), $"Missing AuthData for pid {player.Id}");
                 _playerData.KickPlayer(player);
             }
             else if (player.IsStandard)
             {
-                LoginResponsePacket lr = new LoginResponsePacket();
+                LoginResponsePacket lr = new();
                 lr.Initialize();
                 lr.Code = (byte)auth.Code;
                 lr.DemoData = auth.DemoData ? (byte)1 : (byte)0;
@@ -729,7 +767,7 @@ namespace SS.Core.Modules
 
                 if (player.Type == ClientType.Continuum)
                 {
-                    ContinuumVersionPacket pkt = new ContinuumVersionPacket();
+                    ContinuumVersionPacket pkt = new();
                     pkt.Type = (byte)S2CPacketType.ContVersion;
                     pkt.ContVersion = ClientVersion_Cont;
                     pkt.Checksum = _continuumChecksum;
@@ -763,7 +801,7 @@ namespace SS.Core.Modules
                         // send custom rejection text
                         Span<byte> customSpan = stackalloc byte[256];
                         customSpan[0] = (byte)S2CPacketType.LoginText;
-                        int bytes = customSpan.Slice(1).WriteNullTerminatedASCII(auth.CustomText.AsSpan(0, Math.Min(auth.CustomText.Length, 254)));
+                        int bytes = customSpan[1..].WriteNullTerminatedASCII(auth.CustomText.TruncateForEncodedByteLimit(254));
                         _net.SendToOne(player, customSpan.Slice(0, 1 + bytes), NetSendFlags.Reliable);
                     }
                     else
@@ -780,25 +818,18 @@ namespace SS.Core.Modules
             }
             else if (player.IsChat)
             {
-                // TODO
+                // TODO: chatnet
             }
 
-            pdata.authdata = null;
+            pdata.AuthData = null;
         }
 
 #region IAuth Members
 
         void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
-            DefaultAuth(p, lp, lplen, done);   
-        }
-
-#endregion
-
-        private void DefaultAuth(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
-        {
-            AuthData auth = new AuthData();
-
+            // Default Auth - allows everyone in, unauthenticated
+            AuthData auth = new();
             auth.DemoData = false;
             auth.Code = AuthCode.OK;
             auth.Authenticated = false;
@@ -810,6 +841,8 @@ namespace SS.Core.Modules
 
             done(p, auth);
         }
+
+#endregion
 
         private bool MainloopTimer_SendKeepAlive()
         {
