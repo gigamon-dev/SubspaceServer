@@ -83,10 +83,20 @@ namespace SS.Core.Packets
             }
 
             // Checksum
-            public uint Checksum;
+            private uint checksum;
+            public uint Checksum
+            {
+                get => LittleEndianConverter.Convert(checksum);
+                set => checksum = LittleEndianConverter.Convert(value);
+            }
 
             // Size (continuum only)
-            public uint Size;
+            private uint size;
+            public uint Size
+            {
+                get => LittleEndianConverter.Convert(size);
+                set => size = LittleEndianConverter.Convert(value);
+            }
 
             public const int Length = 24;
             public const int LengthWithoutSize = 20;

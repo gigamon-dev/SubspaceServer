@@ -46,17 +46,17 @@ namespace SS.Core.Packets
 
         public uint MacId
         {
-            get => macId;
+            get => LittleEndianConverter.Convert(macId);
         }
 
         public short CVersion
         {
-            get => cVersion;
+            get => LittleEndianConverter.Convert(cVersion);
         }
 
         public uint D2
         {
-            get => d2;
+            get => LittleEndianConverter.Convert(d2);
         }
     }
 }
