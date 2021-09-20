@@ -1,19 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
     public struct PingSummary
     {
-        public int curr, avg, min, max;
+        public int Current, Average, Min, Max;
+    }
 
-        // only used in QueryCPing
-        public int s2cslowtotal;
-        public int s2cfasttotal;
-        public short s2cslowcurrent;
-        public short s2cfastcurrent;
+    public struct ClientPingSummary
+    {
+        public int Current, Average, Min, Max;
+        public uint S2CSlowTotal, S2CFastTotal;
+        public ushort S2CSlowCurrent, S2CFastCurrent;
     }
 
     public struct PacketlossSummary
@@ -21,67 +19,61 @@ namespace SS.Core.ComponentInterfaces
         public double s2c, c2s, s2cwpn;
     }
 
-    public struct ReliableLagData
-    {
-        /// <summary>
-        /// the total number of duplicates that have been received
-        /// </summary>
-        public uint reldups;
-            
-        /// <summary>
-        /// the reliable seqnum so far (i.e., the number of reliable packets that should have been received, excluding dups
-        /// </summary>
-        public uint c2sn;
-        
-        /// <summary>
-        /// retries is the number of times the server has had to re-send a reliable packet.
-        /// </summary>
-        public uint retries;
-
-        /// <summary>
-        /// s2cn is the number of reliable packets that should have been sent, excluding retries.
-        /// </summary>
-        public uint s2cn;
-    }
-
+    /// <summary>
+    /// Interface for querying player lag data.
+    /// </summary>
     public interface ILagQuery : IComponentInterface
     {
         /// <summary>
-        /// To get ping info (from position packets)
+        /// Gets a player's ping info (from position packets).
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="ping"></param>
-        void QueryPPing(Player p, out PingSummary ping);
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="ping">The data.</param>
+        void QueryPositionPing(Player player, out PingSummary ping);
 
         /// <summary>
-        /// To get ping info (reported by the client)
+        /// Get a player's ping info (reported by the client).
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="ping"></param>
-        void QueryCPing(Player p, out PingSummary ping);
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="ping">The data.</param>
+        void QueryClientPing(Player player, out ClientPingSummary ping);
 
         /// <summary>
-        /// To get ping info (from reliable packets)
+        /// Gets a player's ping info (from reliable packets).
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="ping"></param>
-        void QueryRPing(Player p, out PingSummary ping);
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="ping">The data.</param>
+        void QueryReliablePing(Player player, out PingSummary ping);
 
         /// <summary>
-        /// To get packetloss info
+        /// Gets a player's packetloss info.
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="packetloss"></param>
-        void QueryPLoss(Player p, out PacketlossSummary packetloss);
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="packetloss">The data</param>
+        void QueryPacketloss(Player player, out PacketlossSummary packetloss);
 
         /// <summary>
-        /// To get reliable lag info
+        /// Gets a player's reliable lag info.
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="reliableLag"></param>
-        void QueryRelLag(Player p, ReliableLagData reliableLag);
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="reliableLag">The data.</param>
+        void QueryReliableLag(Player player, out ReliableLagData reliableLag);
+
+        /// <summary>
+        /// Gets a player's history of time sync requests (0x00 0x05 core packet).
+        /// </summary>
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="history">A collection to be filled with a copy of the data.</param>
+        void QueryTimeSyncHistory(Player player, in ICollection<(uint ServerTime, uint ClientTime)> history);
+
+        /// <summary>
+        /// Gets a player's drift in time sync request.
+        /// </summary>
+        /// <param name="player">The player to get data about.</param>
+        int QueryTimeSyncDrift(Player player);
 
         // DoPHistogram
+
         // DoRHistogram
     }
 }

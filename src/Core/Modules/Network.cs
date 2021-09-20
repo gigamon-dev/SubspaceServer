@@ -1389,15 +1389,18 @@ namespace SS.Core.Modules
             if (_lagCollect == null)
                 return;
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return;
 
-            ReliableLagData rld = new ReliableLagData();
-            rld.reldups = conn.relDups;
-            rld.c2sn = (uint)conn.c2sn;
-            rld.retries = conn.retries;
-            rld.s2cn = (uint)conn.s2cn;
-            _lagCollect.RelStats(p, ref rld);
+            ReliableLagData rld = new()
+            {
+                RelDups = conn.relDups,
+                C2SN = (uint)conn.c2sn,
+                Retries = conn.retries,
+                S2CN = (uint)conn.s2cn,
+            };
+
+            _lagCollect.RelStats(p, in rld);
         }
 
         private void SendRaw(ConnData conn, Span<byte> data)
@@ -2300,13 +2303,16 @@ namespace SS.Core.Modules
                     // submit data to lagdata
                     if (_lagCollect != null && conn.p != null)
                     {
-                        TimeSyncData data;
-                        data.s_pktrcvd = conn.pktReceived;
-                        data.s_pktsent = conn.pktSent;
-                        data.c_pktrcvd = cts.PktRecvd;
-                        data.c_pktsent = cts.PktSent;
-                        data.s_time = serverTime;
-                        data.c_time = clientTime;
+                        TimeSyncData data = new()
+                        {
+                            ServerPacketsReceived = conn.pktReceived,
+                            ServerPacketsSent = conn.pktSent,
+                            ClientPacketsReceived = cts.PktRecvd,
+                            ClientPacketsSent = cts.PktSent,
+                            ServerTime = serverTime,
+                            ClientTime = clientTime,
+                        };
+                        
                         _lagCollect.TimeSync(conn.p, in data);
                     }
                 }

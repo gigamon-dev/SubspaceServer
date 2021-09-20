@@ -955,7 +955,7 @@ namespace SS.Core.Modules
                 _lagCollect.Position(
                     p,
                     (gtc - pos.Time) * 10,
-                    len >= 26 ? pos.Extra.S2CPing * 10 : -1,
+                    len >= 26 ? pos.Extra.S2CPing * 10 : new int?(),
                     pd.wpnSent);
             }
 

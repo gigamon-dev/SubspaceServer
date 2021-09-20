@@ -28,6 +28,7 @@ namespace SS.Core.Modules
         private ICommandManager _commandManager;
         private IGame _game;
         private IGroupManager _groupManager;
+        private ILagQuery _lagQuery;
         private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMapData _mapData;
@@ -48,6 +49,7 @@ namespace SS.Core.Modules
             ICommandManager commandManager,
             IGame game,
             IGroupManager groupManager,
+            ILagQuery lagQuery,
             ILogManager logManager,
             IMainloop mainloop,
             IMapData mapData,
@@ -63,6 +65,7 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _groupManager = groupManager ?? throw new ArgumentNullException(nameof(groupManager));
+            _lagQuery = lagQuery ?? throw new ArgumentNullException(nameof(lagQuery));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
@@ -73,6 +76,7 @@ namespace SS.Core.Modules
             _startedAt = DateTime.UtcNow;
 
             // TODO: do some sort of derivative of that command group thing asss does
+            _commandManager.AddCommand("lag", Command_lag);
             _commandManager.AddCommand("arena", Command_arena);
             _commandManager.AddCommand("shutdown", Command_shutdown);
             _commandManager.AddCommand("recyclezone", Command_recyclezone);
@@ -115,6 +119,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            _commandManager.RemoveCommand("lag", Command_lag);
             _commandManager.RemoveCommand("arena", Command_arena);
             _commandManager.RemoveCommand("shutdown", Command_shutdown);
             _commandManager.RemoveCommand("recyclezone", Command_recyclezone);
@@ -156,6 +161,56 @@ namespace SS.Core.Modules
         }
 
         #endregion
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "[{-v}]",
+            Description = 
+            "Displays lag information about you or a target player.\n" +
+            "Use {-v} for more detail. The format of the ping fields is\n" +
+            "\"last average (min-max)\".\n")]
+        private void Command_lag(string command, string parameters, Player p, ITarget target)
+        {
+            Player targetPlayer = target.Type == TargetType.Player
+                ? ((IPlayerTarget)target).Player
+                : p;
+
+            if (!targetPlayer.IsStandard)
+            {
+                _chat.SendMessage(p, $"{(targetPlayer == p ? "You" : targetPlayer.Name)} {(targetPlayer == p ? "aren't" : "isn't")} a game client.");
+                return;
+            }
+
+            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
+            _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
+            _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
+
+            // weight reliable ping twice the S2C and C2S
+            int average = (positionPing.Average + clientPing.Average + 2 * reliablePing.Average) / 4;
+
+            string prefix = targetPlayer == p ? "lag" : targetPlayer.Name;
+
+            if (!parameters.Contains("-v"))
+            {
+                _chat.SendMessage(p, $"{prefix}: avg ping: {average} ploss: s2c: {packetloss.s2c * 100:F2} c2s: {packetloss.c2s * 100:F2}");
+            }
+            else
+            {
+                _lagQuery.QueryReliableLag(targetPlayer, out ReliableLagData reliableLag);
+
+                _chat.SendMessage(p, $"{prefix}: s2c ping: {clientPing.Current} {clientPing.Average} ({clientPing.Min}-{clientPing.Max}) (reported by client)");
+                _chat.SendMessage(p, $"{prefix}: c2s ping: {positionPing.Current} {positionPing.Average} ({positionPing.Min}-{positionPing.Max}) (from position pkt times)");
+                _chat.SendMessage(p, $"{prefix}: rel ping: {reliablePing.Current} {reliablePing.Average} ({reliablePing.Min}-{reliablePing.Max}) (reliable ping)");
+                _chat.SendMessage(p, $"{prefix}: effective ping: {average} (average of above)");
+
+                _chat.SendMessage(p, $"{prefix}: ploss: s2c: {packetloss.s2c * 100:F2} c2s: {packetloss.c2s * 100:F2} s2cwpn: {packetloss.s2cwpn * 100:F2}");
+                _chat.SendMessage(p, $"{prefix}: reliable dups: {reliableLag.RelDups * 100 / reliableLag.C2SN:F2}% reliable resends: {reliableLag.Retries * 100 / reliableLag.S2CN:F2}%");
+                _chat.SendMessage(p, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal} s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
+
+                SendCommonBandwidthInfo(p, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
+            }
+        }
 
         [CommandHelp(
             Targets = CommandTarget.None,

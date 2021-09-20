@@ -613,7 +613,7 @@ namespace SS.Core.Modules
             }
 
             // submit info to the lag data collector
-            ClientLatencyData cld = new ClientLatencyData()
+            ClientLatencyData cld = new()
             {
                 WeaponCount = pkt.WeaponCount,
                 S2CSlowTotal = pkt.S2CSlowTotal,
@@ -626,7 +626,8 @@ namespace SS.Core.Modules
                 LowestPing = pkt.LowestPing,
                 HighestPing = pkt.HighestPing,
             };
-            lagCollect.ClientLatency(p, ref cld);
+
+            lagCollect.ClientLatency(p, in cld);
         }
 
         /// <summary>
