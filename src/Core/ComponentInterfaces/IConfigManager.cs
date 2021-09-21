@@ -165,6 +165,21 @@ namespace SS.Core.ComponentInterfaces
         int GetInt(ConfigHandle ch, string section, string key, int defvalue);
 
         /// <summary>
+        /// Gets an enum value from a config file.
+        /// </summary>
+        /// <typeparam name="T">The type of Enum.</typeparam>
+        /// <param name="ch">Handle to the config.</param>
+        /// <param name="section">The section to read from.</param>
+        /// <param name="key">They key to read.</param>
+        /// <param name="defaultValue">The value to be returned if the setting could not be found or had an invalid entry.</param>
+        /// <returns>
+        /// The value, or <paramref name="defaultValue"/> if the setting was not found or was invalid.
+        /// If the enum has <see cref="FlagsAttribute"/>, the value can be a combination.
+        /// Otherwise, it will be a defined value of the Enum.
+        /// </returns>
+        T GetEnum<T>(ConfigHandle ch, string section, string key, T defaultValue) where T : struct, Enum;
+
+        /// <summary>
         /// Changes a config file value.
         /// The change will show up immediately in following calls to GetStr
         /// or GetInt, and if permanent is true, it will eventually be
@@ -190,5 +205,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="comment">a string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004"</param>
         /// <param name="permanent">whether this change should be written back to the config file.</param>
         void SetInt(ConfigHandle ch, string section, string key, int value, string comment, bool permanent);
+
+        void SetEnum<T>(ConfigHandle ch, string section, string key, T value, string comment, bool permanent) where T : struct, Enum;
     }
 }

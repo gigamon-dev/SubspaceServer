@@ -345,6 +345,18 @@ namespace SS.Core.Modules
             return value[0] == 'y' || value[0] == 'Y' ? 1 : 0;
         }
 
+        public T GetEnum<T>(ConfigHandle handle, string section, string key, T defaultValue) where T : struct, Enum
+        {
+            string value = GetStr(handle, section, key);
+
+            if (string.IsNullOrWhiteSpace(value))
+                return defaultValue;
+
+            return Enum.TryParse(value, true, out T enumValue) && (typeof(T).IsDefined(typeof(FlagsAttribute), false) || Enum.IsDefined(enumValue)) 
+                ? enumValue 
+                : defaultValue;
+        }
+
         public string GetStr(ConfigHandle handle, string section, string key)
         {
             if (handle == null)
@@ -383,6 +395,11 @@ namespace SS.Core.Modules
         public void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent)
         {
             SetStr(handle, section, key, value.ToString(), comment, permanent);
+        }
+
+        public void SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent) where T : struct, Enum
+        {
+            SetStr(handle, section, key, value.ToString("G"), comment, permanent);
         }
 
         public void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent)
