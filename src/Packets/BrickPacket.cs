@@ -1,10 +1,35 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Core.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct BrickPacket
+    public struct C2SBrick
+    {
+        public static readonly int Length;
+
+        static C2SBrick()
+        {
+            Length = Marshal.SizeOf<C2SBrick>();
+        }
+
+        public readonly byte Type;
+        private readonly short x;
+        private readonly short y;
+
+        public short X
+        {
+            get { return LittleEndianConverter.Convert(x); }
+        }
+
+        public short Y
+        {
+            get { return LittleEndianConverter.Convert(y); }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct S2CBrick
     {
         public readonly byte Type;
         private readonly short x1;
@@ -13,7 +38,7 @@ namespace SS.Core.Packets.S2C
         private readonly short y2;
         private readonly short freq;
         private readonly short brickId;
-        private readonly uint startTime;
+        private uint startTime;
 
         public short X1
         {
@@ -47,10 +72,11 @@ namespace SS.Core.Packets.S2C
 
         public uint StartTime
         {
-            get { return LittleEndianConverter.Convert(startTime); }
+            get => LittleEndianConverter.Convert(startTime);
+            set => startTime = LittleEndianConverter.Convert(value);
         }
 
-        public BrickPacket(short x1, short y1, short x2, short y2, short freq, short brickId, uint startTime)
+        public S2CBrick(short x1, short y1, short x2, short y2, short freq, short brickId, uint startTime)
         {
             Type = (byte)S2CPacketType.Brick;
             this.x1 = LittleEndianConverter.Convert(x1);

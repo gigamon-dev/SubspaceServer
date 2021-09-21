@@ -354,10 +354,34 @@ namespace SS.Core
             /// </summary>
             public int YSpeed { get; internal set; }
 
+            private sbyte rotation;
+
             /// <summary>
-            /// rotation value (0-63)
+            /// rotation value (0-39)
             /// </summary>
-            public int Rotation { get; internal set; }
+            public sbyte Rotation
+            {
+                get => rotation;
+                internal set
+                {
+                    if (value != rotation)
+                    {
+                        switch ((value - rotation) % 40)
+                        {
+                            case > 20: IsLastRotationClockwise = true; break;
+                            case < 20: IsLastRotationClockwise = false; break;
+                            default: break; // can't tell, complete 180 degree turn
+                        }
+                    }
+
+                    rotation = value;
+                }
+            }
+
+            /// <summary>
+            /// Whether the last rotation moved in the clockwise direction.
+            /// </summary>
+            public bool IsLastRotationClockwise { get; private set; }
 
             /// <summary>
             /// current bounty
