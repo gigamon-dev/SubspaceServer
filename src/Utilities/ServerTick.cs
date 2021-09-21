@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Utilities
 {
@@ -23,97 +20,52 @@ namespace SS.Utilities
     {
         private readonly uint tickcount;
 
-        public ServerTick(uint tickcount)
-        {
-            this.tickcount = tickcount;
-        }
+        public ServerTick(uint tickcount) => this.tickcount = tickcount;
 
         /// <summary>
-        /// gets the current server time in ticks (1/100ths of a second)
+        /// Gets the current server time in ticks (1/100ths of a second).
         /// </summary>
-        public static ServerTick Now
-        {
-            get { return new ServerTick(makeTick(Environment.TickCount / 10)); }
-        }
+        public static ServerTick Now => new(MakeTick(Environment.TickCount / 10));
 
-        public static bool operator >(ServerTick a, ServerTick b)
-        {
-            return (a - b) > 0;
-        }
+        public static bool operator >(ServerTick a, ServerTick b) => (a - b) > 0;
 
-        public static bool operator <(ServerTick a, ServerTick b)
-        {
-            return (a - b) < 0;
-        }
+        public static bool operator <(ServerTick a, ServerTick b) => (a - b) < 0;
 
-        public static int operator -(ServerTick a, ServerTick b)
-        {
-            return ((int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1);
-        }
+        public static int operator -(ServerTick a, ServerTick b) => ((int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1);
 
-        public static ServerTick operator +(ServerTick a, uint b)
-        {
-            return new ServerTick(makeTick(a.tickcount + b));
-        }
+        public static ServerTick operator +(ServerTick a, uint b) => new(MakeTick(a.tickcount + b));
 
-        public static bool operator ==(ServerTick a, ServerTick b)
-        {
-            return a.Equals(b);
-        }
+        public static bool operator ==(ServerTick a, ServerTick b) => a.Equals(b);
 
-        public static bool operator !=(ServerTick a, ServerTick b)
-        {
-            return !(a == b);
-        }
+        public static bool operator !=(ServerTick a, ServerTick b) => !(a == b);
 
-        public static implicit operator uint(ServerTick a)
-        {
-            return a.tickcount;
-        }
+        public static ServerTick operator ++(ServerTick a) => new(a.tickcount + 1);
 
-        private static uint makeTick(int a)
-        {
-            return (uint)((a) & 0x7fffffff);
-        }
+        public static ServerTick operator --(ServerTick a) => new(a.tickcount - 1);
 
-        private static uint makeTick(uint a)
-        {
-            return a & 0x7fffffff;
-        }
+        public static implicit operator uint(ServerTick a) => a.tickcount;
 
-        public override bool Equals(object obj)
-        {
-            if (obj is ServerTick)
-                return Equals((ServerTick)obj);
-            else
-                return false;
-        }
+        public static implicit operator ServerTick(uint tickcount) => new(tickcount);
 
-        public override int GetHashCode()
-        {
-            return (int)tickcount;
-        }
+        private static uint MakeTick(int a) => (uint)((a) & 0x7fffffff);
 
-        public override string ToString()
-        {
-            return tickcount.ToString();
-        }
+        private static uint MakeTick(uint a) => a & 0x7fffffff;
+
+        public override bool Equals(object obj) => obj is ServerTick tick && Equals(tick);
+
+        public override int GetHashCode() => (int)tickcount;
+
+        public override string ToString() => tickcount.ToString();
 
         #region IEquatable<ServerTick> Members
 
-        public bool Equals(ServerTick other)
-        {
-            return tickcount == other.tickcount;
-        }
+        public bool Equals(ServerTick other) => tickcount == other.tickcount;
 
         #endregion
 
         #region IComparable<ServerTick> Members
 
-        public int CompareTo(ServerTick other)
-        {
-            return this - other;
-        }
+        public int CompareTo(ServerTick other) => this - other;
 
         #endregion
     }
