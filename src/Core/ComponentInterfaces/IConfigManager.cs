@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -142,33 +139,33 @@ namespace SS.Core.ComponentInterfaces
         /// Closes a previously opened file.
         /// Don't forget to call this when you're done with a config file.
         /// </summary>
-        /// <param name="ch">the config file to close</param>
-        void CloseConfigFile(ConfigHandle ch);
+        /// <param name="handle">the config file to close</param>
+        void CloseConfigFile(ConfigHandle handle);
 
         /// <summary>
         /// Gets a string value from a config file.
         /// </summary>
-        /// <param name="ch">the config file to use (ConfigFile.Global for global.conf)</param>
+        /// <param name="handle">the config file to use (ConfigFile.Global for global.conf)</param>
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to read</param>
         /// <returns>the value of the key as a string, or NULL if the key isn't present</returns>
-        string GetStr(ConfigHandle ch, string section, string key);
+        string GetStr(ConfigHandle handle, string section, string key);
 
         /// <summary>
         /// Gets an integer value from a config file.
         /// </summary>
-        /// <param name="ch">the config file to use</param>
+        /// <param name="handle">the config file to use</param>
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to read</param>
         /// <param name="defvalue">the value to be returned if the key isn't found</param>
         /// <returns>the value of the key converted to an integer, or defvalue if it wasn't found. one special conversion is done: if the key has a string value that starts with a letter "y", then 1 is returned instead of 0.</returns>
-        int GetInt(ConfigHandle ch, string section, string key, int defvalue);
+        int GetInt(ConfigHandle handle, string section, string key, int defvalue);
 
         /// <summary>
         /// Gets an enum value from a config file.
         /// </summary>
         /// <typeparam name="T">The type of Enum.</typeparam>
-        /// <param name="ch">Handle to the config.</param>
+        /// <param name="handle">Handle to the config.</param>
         /// <param name="section">The section to read from.</param>
         /// <param name="key">They key to read.</param>
         /// <param name="defaultValue">The value to be returned if the setting could not be found or had an invalid entry.</param>
@@ -177,7 +174,7 @@ namespace SS.Core.ComponentInterfaces
         /// If the enum has <see cref="FlagsAttribute"/>, the value can be a combination.
         /// Otherwise, it will be a defined value of the Enum.
         /// </returns>
-        T GetEnum<T>(ConfigHandle ch, string section, string key, T defaultValue) where T : struct, Enum;
+        T GetEnum<T>(ConfigHandle handle, string section, string key, T defaultValue) where T : struct, Enum;
 
         /// <summary>
         /// Changes a config file value.
@@ -186,26 +183,37 @@ namespace SS.Core.ComponentInterfaces
         /// written back to the source file. The writing back might not
         /// happen immediately, though.
         /// </summary>
-        /// <param name="ch">the config file to use</param>
+        /// <param name="handle">the config file to use</param>
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to change</param>
         /// <param name="value">the new value of the key</param>
-        /// <param name="comment">a string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004"</param>
-        /// <param name="permanent">whether this change should be written back to the config file.</param>
-        void SetStr(ConfigHandle ch, string section, string key, string value, string comment, bool permanent);
+        /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
+        /// <param name="permanent">Whether this change should be written back to the config file.</param>
+        void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent);
 
         /// <summary>
         /// Changes a config file value.
-        /// The same as <see cref="SetStr"/>, but the as an integer.
+        /// The same as <see cref="SetStr"/>, but as an integer.
         /// </summary>
-        /// <param name="ch">the config file to use</param>
+        /// <param name="handle">the config file to use</param>
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to change</param>
         /// <param name="value">the new value of the key</param>
-        /// <param name="comment">a string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004"</param>
-        /// <param name="permanent">whether this change should be written back to the config file.</param>
-        void SetInt(ConfigHandle ch, string section, string key, int value, string comment, bool permanent);
+        /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
+        /// <param name="permanent">Whether this change should be written back to the config file.</param>
+        void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent);
 
-        void SetEnum<T>(ConfigHandle ch, string section, string key, T value, string comment, bool permanent) where T : struct, Enum;
+        /// <summary>
+        /// Changes a config file value.
+        /// The same as <see cref="SetStr"/>, but as an <see cref="Enum"/>.
+        /// </summary>
+        /// <typeparam name="T">The type of Enum.</typeparam>
+        /// <param name="handle">Handle to the config.</param>
+        /// <param name="section">The section to write to.</param>
+        /// <param name="key">They key to write.</param>
+        /// <param name="value">The value to write.</param>
+        /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
+        /// <param name="permanent">Whether this change should be written back to the config file.</param>
+        void SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent) where T : struct, Enum;
     }
 }
