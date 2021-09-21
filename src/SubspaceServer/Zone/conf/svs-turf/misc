@@ -172,7 +172,7 @@ CloseEnoughBulletAdjust=512
 CloseEnoughBombAdjust=2048
 DeathDistance=2800
 DoubleSendPercent=880
-WallResendCount=2
+WallResendCount=1
 
 [King]
 DeathCount=0

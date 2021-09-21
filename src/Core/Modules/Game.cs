@@ -1073,7 +1073,7 @@ namespace SS.Core.Modules
 
                 // by default, send unreliable droppable packets. 
                 // weapons get a higher priority.
-                NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Dropabble | 
+                NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Droppable | 
                     (pos.Weapon.Type != WeaponCodes.Null ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
 
                 // there are several reasons to send a weapon packet (05) instead of just a position one (28)

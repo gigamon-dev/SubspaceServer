@@ -104,7 +104,7 @@ namespace SS.Core.Modules
                 abd.BrickSpan = _configManager.GetInt(arena.Cfg, "Brick", "BrickSpan", 10);
                 abd.BrickMode = _configManager.GetEnum(arena.Cfg, "Brick", "BrickMode", BrickMode.Lateral);
                 abd.BrickTime = (uint)_configManager.GetInt(arena.Cfg, "Brick", "BrickTime", 6000);
-                abd.WallResendCount = _configManager.GetInt(_configManager.Global, "Routing", "WallResendCount", 0);
+                abd.WallResendCount = _configManager.GetInt(arena.Cfg, "Routing", "WallResendCount", 0);
 
                 if (abd.WallResendCount < 0)
                     abd.WallResendCount = 0;
@@ -266,7 +266,6 @@ namespace SS.Core.Modules
                 return;
 
             ref C2SBrick c2sBrick = ref MemoryMarshal.AsRef<C2SBrick>(data);
-            _logManager.LogP(LogLevel.Drivel, nameof(Bricks), p, $"drop brick ({c2sBrick.X},{c2sBrick.Y})");
 
             IBrickHandler brickHandler = _broker.GetInterface<IBrickHandler>();
             if (brickHandler == null)
@@ -332,9 +331,9 @@ namespace SS.Core.Modules
 
                 abd.Bricks.Enqueue(packet);
 
-                // send it unreliably, urgent (as many times as is configured)
+                // send it unreliably, urgently, and allow it to be dropped (as many times as is configured)
                 for (int i = 0; i < abd.WallResendCount; i++)
-                    _network.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Urgent);
+                    _network.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Unreliable | NetSendFlags.Urgent | NetSendFlags.Droppable);
 
                 // send it reliably (always)
                 _network.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);

@@ -1523,7 +1523,7 @@ namespace SS.Core.Modules
                         pri))
                     {
                         // try dropping it, if we can
-                        if ((buf.Flags & NetSendFlags.Dropabble) != 0)
+                        if ((buf.Flags & NetSendFlags.Droppable) != 0)
                         {
                             Debug.Assert(pri < (int)BandwidthPriorities.Reliable);
                             outlist.Remove(node);
@@ -1979,7 +1979,7 @@ namespace SS.Core.Modules
             Debug.Assert(!(data.Length >= 2 && data[0] == 0x00 && data[1] == 0x03));
 
             // reliable packets can't be droppable
-            Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Dropabble)) != (NetSendFlags.Reliable | NetSendFlags.Dropabble));
+            Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
 
             BandwidthPriorities pri;
 
@@ -2025,7 +2025,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    if ((flags & NetSendFlags.Dropabble) == NetSendFlags.Dropabble)
+                    if ((flags & NetSendFlags.Droppable) == NetSendFlags.Droppable)
                     {
                         conn.pktdropped++;
                         return null;

@@ -1,9 +1,7 @@
 ﻿using SS.Core.Packets;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -16,7 +14,7 @@ namespace SS.Core.ComponentInterfaces
         None = 0x00,
         Unreliable = 0x00,
         Reliable = 0x01,
-        Dropabble = 0x02,
+        Droppable = 0x02,
         Urgent = 0x04,
 
         PriorityN1 = 0x10,
