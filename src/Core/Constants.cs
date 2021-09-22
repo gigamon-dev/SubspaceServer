@@ -207,6 +207,11 @@ namespace SS.Core
             /// if a player can see extra player data of other players
             /// </summary>
             public const string SeeExtraPlayerData = "seeepd";
+
+            /// <summary>
+            /// If a player can set their banner.
+            /// </summary>
+            public const string SetBanner = "setbanner";
         }
     }
 }

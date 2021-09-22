@@ -1,5 +1,8 @@
 ; conf/groups/default
 
+; Banners module
+setbanner
+
 cmd_man
 cmd_help
 cmd_go
