@@ -3,7 +3,6 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 
 namespace SS.Core.Modules
@@ -12,7 +11,7 @@ namespace SS.Core.Modules
     /// The equivalent of ASSS' mainloop.[ch]
     /// </summary>
     [CoreModuleInfo]
-    public class Mainloop : IModule, IMainloop, IMainloopTimer, IServerTimer, IDisposable
+    public sealed class Mainloop : IModule, IMainloop, IMainloopTimer, IServerTimer, IDisposable
     {
         private ComponentBroker _broker;
         private InterfaceRegistrationToken _iMainloopToken;
@@ -20,24 +19,24 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken _iServerTimerToken;
 
         // for main loop
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly CancellationToken _cancellationToken;
         private Thread _mainThread;
         private ExitCode _quitCode = ExitCode.None;
 
         // for main loop workitems
-        private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = new BlockingCollection<IRunInMainWorkItem>(); // TODO: maybe we should use bounding?
-        private readonly AutoResetEvent _runInMainAutoResetEvent = new AutoResetEvent(false);
+        private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = new(); // TODO: maybe we should use bounding?
+        private readonly AutoResetEvent _runInMainAutoResetEvent = new(false);
 
         // for IMainloopTimer
-        private readonly LinkedList<MainloopTimer> _mainloopTimerList = new LinkedList<MainloopTimer>();
-        private readonly AutoResetEvent _mainloopTimerAutoResetEvent = new AutoResetEvent(false);
-        private readonly object _mainloopTimerLock = new object();
+        private readonly LinkedList<MainloopTimer> _mainloopTimerList = new();
+        private readonly AutoResetEvent _mainloopTimerAutoResetEvent = new(false);
+        private readonly object _mainloopTimerLock = new();
         private MainloopTimer _timerProcessing = null;
 
         // for IServerTimer
-        private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new LinkedList<ThreadPoolTimer>();
-        private readonly object _serverTimerLock = new object();
+        private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new();
+        private readonly object _serverTimerLock = new();
 
         public Mainloop()
         {
@@ -144,9 +143,11 @@ namespace SS.Core.Modules
                 if (dueNext != null)
                 {
                     waitTime = DateTime.UtcNow - dueNext.Value.WhenDue;
-                    if (waitTime != waitTime.Duration())
+                    if (waitTime <= TimeSpan.Zero)
                     {
-                        waitTime = TimeSpan.FromMilliseconds(1);
+                        // already due
+                        ProcessTimers();
+                        waitTime = TimeSpan.Zero;
                     }
                 }
                 else
@@ -483,7 +484,7 @@ namespace SS.Core.Modules
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
-            ThreadPoolTimer timer = new ThreadPoolTimer(
+            ThreadPoolTimer timer = new(
                 this,
                 initialDelay,
                 interval,
@@ -650,7 +651,7 @@ namespace SS.Core.Modules
         private class WaitForMainWorkItem : IRunInMainWorkItem
         {
             private bool waitResolved;
-            private readonly object lockObj = new object();
+            private readonly object lockObj = new();
 
             private WaitForMainWorkItem()
             {
@@ -674,7 +675,7 @@ namespace SS.Core.Modules
                 if (runInMainAutoResetEvent == null)
                     throw new ArgumentNullException(nameof(runInMainAutoResetEvent));
 
-                WaitForMainWorkItem workItem = new WaitForMainWorkItem();
+                WaitForMainWorkItem workItem = new();
                 workItem.Wait(runInMainQueue, runInMainAutoResetEvent);
             }
 
@@ -782,10 +783,10 @@ namespace SS.Core.Modules
                 ITimerCallbackInvoker callbackInvoker)
             {
                 if (initialDelay < 0)
-                    throw new ArgumentOutOfRangeException("initialDelay", "must be >= 0");
+                    throw new ArgumentOutOfRangeException(nameof(initialDelay), "must be >= 0");
 
                 if (interval <= 0 && interval != Timeout.Infinite)
-                    throw new ArgumentOutOfRangeException("interval", "must be > 0 or Timeout.Infinite");
+                    throw new ArgumentOutOfRangeException(nameof(interval), "must be > 0 or Timeout.Infinite");
 
                 WhenDue = DateTime.UtcNow.AddMilliseconds(initialDelay);
                 Interval = interval;
@@ -807,9 +808,9 @@ namespace SS.Core.Modules
             public ITimerCallbackInvoker CallbackInvoker;
 
             // for synchronization
-            private readonly object _lockObj = new object();
+            private readonly object _lockObj = new();
             private bool _stop = false;
-            private readonly ManualResetEvent _timerExecuting = new ManualResetEvent(true);
+            private readonly ManualResetEvent _timerExecuting = new(true);
             private bool _disposed = false;
 
             public ThreadPoolTimer(
@@ -820,10 +821,10 @@ namespace SS.Core.Modules
                 ITimerCallbackInvoker callbackInvoker)
             {
                 if (initialDelay < 0)
-                    throw new ArgumentOutOfRangeException("initialDelay", "must be >= 0");
+                    throw new ArgumentOutOfRangeException(nameof(initialDelay), "must be >= 0");
 
                 if (interval <= 0 && interval != Timeout.Infinite)
-                    throw new ArgumentOutOfRangeException("interval", "must be > 0 or Timeout.Infinite");
+                    throw new ArgumentOutOfRangeException(nameof(interval), "must be > 0 or Timeout.Infinite");
 
                 _owner = owner ?? throw new ArgumentNullException(nameof(owner));
                 _initialDelay = initialDelay;
