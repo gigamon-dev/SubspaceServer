@@ -1,3 +1,4 @@
+using SS.Core.Modules;
 using SS.Core.Packets;
 using SS.Core.Packets.S2C;
 using SS.Utilities;
@@ -5,6 +6,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Net;
 
 namespace SS.Core
@@ -242,6 +244,8 @@ namespace SS.Core
         /// </summary>
         public readonly int Id;
 
+        internal readonly PlayerData Manager;
+
         /// <summary>
         /// The client type.
         /// </summary>
@@ -259,15 +263,39 @@ namespace SS.Core
         /// </summary>
         internal PlayerState WhenLoggedIn = PlayerState.Uninitialized;
 
+        private Arena _arena;
+
         /// <summary>
         /// The player's current arena, or <see langword="null"/> if not in an arena yet.
         /// </summary>
-        public Arena Arena { get; internal set; }
+        public Arena Arena
+        {
+            get => _arena;
+            internal set
+            {
+                if (value != null)
+                    Debug.Assert(Manager.Broker == value.Manager.Broker);
+
+                _arena = value;
+            }
+        }
+
+        private Arena _newArena;
 
         /// <summary>
         /// The arena the player is trying to enter.
         /// </summary>
-        public Arena NewArena { get; internal set; }
+        public Arena NewArena
+        {
+            get => _newArena;
+            internal set
+            {
+                if (value != null)
+                    Debug.Assert(Manager.Broker == value.Manager.Broker);
+
+                _newArena = value;
+            }
+        }
 
         public const int MaxNameLength = 24; // TODO: find out why ASSS allows longer than can fit in a PlayerDataPacket
 
@@ -337,12 +365,12 @@ namespace SS.Core
             /// <summary>
             /// x coordinate of current position in pixels
             /// </summary>
-            public int X { get; internal set; }
+            public short X { get; internal set; }
 
             /// <summary>
             /// y coordinate of current position in pixels
             /// </summary>
-            public int Y { get; internal set; }
+            public short Y { get; internal set; }
 
             /// <summary>
             /// velocity in positive x direction (pixels/second)
@@ -584,9 +612,10 @@ namespace SS.Core
         /// Initializes a new instance of the <see cref="Player"/> class with a specified PlayerID.
         /// </summary>
         /// <param name="id">The PlayerID.</param>
-        public Player(int id)
+        internal Player(int id, PlayerData manager)
         {
             Id = id;
+            Manager = manager ?? throw new ArgumentNullException(nameof(manager));
 
             // TODO: maybe change pid to short?  asss uses int all over, wonder why...
             _packet = new() { Type = (byte)S2CPacketType.PlayerEntering, PlayerId = (short)id };
@@ -652,6 +681,13 @@ namespace SS.Core
 
             _extraData.Clear();
         }
+
+        // TODO: Maybe a way to synchronize?
+        //public void Lock()
+        //{
+        //    //Manager.Broker
+        //    //Arena.Manager.Broker
+        //}
 
         #region IPlayerTarget Members
 

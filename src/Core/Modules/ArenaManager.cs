@@ -31,7 +31,7 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly Dictionary<Type, List<Arena>> _attachedModules = new Dictionary<Type, List<Arena>>();
 
-        private ComponentBroker _broker;
+        internal ComponentBroker Broker;
         private IModuleManager _mm;
         private ILogManager _logManager;
         private IPlayerData _playerData;
@@ -166,7 +166,7 @@ namespace SS.Core.Modules
                 _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref whoAmI, 1)), NetSendFlags.Reliable);
                 
                 // send settings
-                IClientSettings clientset = _broker.GetInterface<IClientSettings>();
+                IClientSettings clientset = Broker.GetInterface<IClientSettings>();
                 if (clientset != null)
                 {
                     try
@@ -175,7 +175,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _broker.ReleaseInterface(ref clientset);
+                        Broker.ReleaseInterface(ref clientset);
                     }
                 }
             }
@@ -210,7 +210,7 @@ namespace SS.Core.Modules
                 // send to self
                 _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref player.Packet, 1)), NetSendFlags.Reliable);
 
-                IMapNewsDownload mapNewDownload = _broker.GetInterface<IMapNewsDownload>();
+                IMapNewsDownload mapNewDownload = Broker.GetInterface<IMapNewsDownload>();
                 if (mapNewDownload != null)
                 {
                     try
@@ -219,7 +219,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _broker.ReleaseInterface(ref mapNewDownload);
+                        Broker.ReleaseInterface(ref mapNewDownload);
                     }
                 }
 
@@ -518,7 +518,7 @@ namespace SS.Core.Modules
             if (sb.Length == 0)
             {
                 // this might occur when a player is redirected to us from another zone
-                IArenaPlace ap = _broker.GetInterface<IArenaPlace>();
+                IArenaPlace ap = Broker.GetInterface<IArenaPlace>();
                 if (ap != null)
                 {
                     try
@@ -531,7 +531,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _broker.ReleaseInterface(ref ap);
+                        Broker.ReleaseInterface(ref ap);
                     }
                 }
                 else
@@ -660,7 +660,7 @@ namespace SS.Core.Modules
                     if (RefreshNeeded())
                     {
                         // refresh population stats
-                        ICapabilityManager capman = _broker.GetInterface<ICapabilityManager>();
+                        ICapabilityManager capman = Broker.GetInterface<ICapabilityManager>();
 
                         try
                         {
@@ -701,7 +701,7 @@ namespace SS.Core.Modules
                         finally
                         {
                             if (capman != null)
-                                _broker.ReleaseInterface(ref capman);
+                                Broker.ReleaseInterface(ref capman);
                         }
 
                         _populationLastRefreshed = DateTime.UtcNow;
@@ -935,7 +935,7 @@ namespace SS.Core.Modules
             if (arena != null)
                 ArenaActionCallback.Fire(arena, arena, action);
             else
-                ArenaActionCallback.Fire(_broker, arena, action);
+                ArenaActionCallback.Fire(Broker, arena, action);
         }
 
         private bool MainloopTimer_ProcessArenaStates()
@@ -1105,7 +1105,7 @@ namespace SS.Core.Modules
         // call with writeLock held
         private Arena CreateArena(string name, bool permanent)
         {
-            Arena arena = new Arena(_broker, name);
+            Arena arena = new(Broker, name, this);
             arena.KeepAlive = permanent;
 
             _perArenaDataLock.AcquireReaderLock(Timeout.Infinite);
@@ -1212,7 +1212,7 @@ namespace SS.Core.Modules
             IMainloopTimer mainloopTimer, 
             IServerTimer serverTimer)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            Broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
             _logManager = log ?? throw new ArgumentNullException(nameof(log));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -1240,14 +1240,14 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(ReapArenas, 1700, 1700, null);
             _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
 
-            _iArenaManagerCoreToken = _broker.RegisterInterface<IArenaManager>(this);
+            _iArenaManagerCoreToken = Broker.RegisterInterface<IArenaManager>(this);
 
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerCoreToken) != 0)
+            if (Broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerCoreToken) != 0)
                 return false;
 
             _net.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
@@ -1347,7 +1347,7 @@ namespace SS.Core.Modules
             }
             else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
             {
-                IArenaPlace ap = _broker.GetInterface<IArenaPlace>();
+                IArenaPlace ap = Broker.GetInterface<IArenaPlace>();
 
                 if (ap != null)
                 {
@@ -1360,7 +1360,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _broker.ReleaseInterface(ref ap);
+                        Broker.ReleaseInterface(ref ap);
                     }
                 }
                 else
@@ -1416,7 +1416,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return false;
 
-            ICapabilityManager capabilityManager = _broker.GetInterface<ICapabilityManager>();
+            ICapabilityManager capabilityManager = Broker.GetInterface<ICapabilityManager>();
 
             try
             {
@@ -1426,7 +1426,7 @@ namespace SS.Core.Modules
             {
                 if (capabilityManager != null)
                 {
-                    _broker.ReleaseInterface(ref capabilityManager);
+                    Broker.ReleaseInterface(ref capabilityManager);
                 }
             }
         }

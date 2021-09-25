@@ -9,7 +9,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class PlayerData : IModule, IPlayerData
     {
-        private ComponentBroker _broker;
+        internal ComponentBroker Broker;
         private InterfaceRegistrationToken _iPlayerDataToken;
 
         /// <summary>
@@ -65,7 +65,7 @@ namespace SS.Core.Modules
 
         public bool Load(ComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            Broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _iPlayerDataToken = broker.RegisterInterface<IPlayerData>(this);
             return true;
         }
@@ -140,7 +140,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // no available player objects, create a new one
-                    player = new Player(_nextPid++);
+                    player = new Player(_nextPid++, this);
                 }
 
                 // set player info
@@ -175,14 +175,14 @@ namespace SS.Core.Modules
                 WriteUnlock();
             }
 
-            NewPlayerCallback.Fire(_broker, player, true);
+            NewPlayerCallback.Fire(Broker, player, true);
 
             return player;
         }
 
         void IPlayerData.FreePlayer(Player player)
         {
-            NewPlayerCallback.Fire(_broker, player, false);
+            NewPlayerCallback.Fire(Broker, player, false);
 
             WriteLock();
 
@@ -213,7 +213,7 @@ namespace SS.Core.Modules
                 // this will set state to PlayerState.LeavingArena, if it was anywhere above PlayerState.LoggedIn
                 if (player.Arena != null)
                 {
-                    IArenaManager aman = _broker.GetInterface<IArenaManager>();
+                    IArenaManager aman = Broker.GetInterface<IArenaManager>();
                     if (aman != null)
                     {
                         try
@@ -222,7 +222,7 @@ namespace SS.Core.Modules
                         }
                         finally
                         {
-                            _broker.ReleaseInterface(ref aman);
+                            Broker.ReleaseInterface(ref aman);
                         }
                     }
                 }

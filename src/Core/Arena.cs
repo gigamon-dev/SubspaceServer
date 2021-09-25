@@ -1,6 +1,7 @@
+using SS.Core.Modules;
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Diagnostics;
 
 namespace SS.Core
 {
@@ -111,6 +112,8 @@ namespace SS.Core
         /// </summary>
 	    public readonly string Name;
 
+        internal readonly ArenaManager Manager;
+
 	    /// <summary>
 	    /// the name of the arena, minus any trailing digits.
         /// the basename is used in many places to allow easy sharing of
@@ -154,10 +157,13 @@ namespace SS.Core
         /// </summary>
         Dictionary<int, object> _arenaExtraData = new Dictionary<int,object>();
 
-        public Arena(ComponentBroker parent, string name) : base(parent)
+        internal Arena(ComponentBroker parent, string name, ArenaManager manager) : base(parent)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(name));
+
+            Debug.Assert(parent == manager.Broker);
+            Manager = manager ?? throw new ArgumentNullException(nameof(manager));
 
             Name = name;
             BaseName = name.TrimEnd(new char[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
@@ -216,6 +222,13 @@ namespace SS.Core
                 }
             }
         }
+
+        // TODO: Maybe a way to synchronize?
+        //public void Lock()
+        //{
+        //    //Manager.
+        //    //Manager.Broker
+        //}
 
         #region IArenaTarget Members
 
