@@ -142,7 +142,7 @@ namespace SS.Core.Modules
                 TimeSpan waitTime;
                 if (dueNext != null)
                 {
-                    waitTime = DateTime.UtcNow - dueNext.Value.WhenDue;
+                    waitTime = dueNext.Value.WhenDue - DateTime.UtcNow;
                     if (waitTime <= TimeSpan.Zero)
                     {
                         // already due
