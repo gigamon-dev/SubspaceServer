@@ -1193,6 +1193,14 @@ namespace SS.Core.Modules
             // TODO: estimated memory stats
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[<new # of balls> | +<balls to add> | -<balls to remove>]",
+            Description = 
+            "Displays or changes the number of balls in the arena.\n" +
+            "A number without a plus or minus sign is taken as a new count.\n" +
+            "A plus signifies adding that many, and a minus removes that many.\n" +
+            "Continuum currently supports only eight balls.")]
         private void Command_ballcount(string command, string parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
@@ -1223,25 +1231,191 @@ namespace SS.Core.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "[{-f} [<ball id>]",
+            Description = 
+            "Moves the specified ball to you, or a targeted player.\n" +
+            "If no ball is specified, ball id = is assumed.\n" +
+            "If -f is specified, the ball is forced onto the player and there will be no shot timer, and if the player is already carrying a ball it will be dropped where they are standing.\n" +
+            "If -f is not specified, then the ball is simply moved underneath a player for him to pick up, but any balls already carried are not dropped.")]
         private void Command_giveball(string command, string parameters, Player p, ITarget target)
         {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            bool force = false;
+            byte ballId = 0;
+
+            ReadOnlySpan<char> remaining = parameters.AsSpan();
+
+            do
+            {
+                ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
+                if (token.IsEmpty)
+                    continue;
+
+                if (token.Equals("-f", StringComparison.Ordinal))
+                {
+                    force = true;
+                }
+                else if (!byte.TryParse(token, out ballId))
+                {
+                    _chat.SendMessage(p, "Invalid ball ID.");
+                    return;
+                }
+            }
+            while (!remaining.IsEmpty);
+
+            if (!_balls.TryGetBallSettings(arena, out BallSettings ballSettings)
+                || ballId >= ballSettings.BallCount)
+            {
+                _chat.SendMessage(p, $"Ball {ballId} doesn't exist. Use ?ballcount to add balls to the arena.");
+                return;
+            }
+
+            Player targetPlayer = target.Type == TargetType.Player ? ((IPlayerTarget)target).Player : p;
+
+            if (targetPlayer.Ship == ShipType.Spec)
+            {
+                if (targetPlayer == p)
+                    _chat.SendMessage(p, "You are in spec.");
+                else
+                    _chat.SendMessage(p, $"{targetPlayer.Name} is in spec.");
+            }
+            else if (targetPlayer.Arena != p.Arena || targetPlayer.Status != PlayerState.Playing)
+            {
+                _chat.SendMessage(p, $"{targetPlayer.Name} is not in this arena.");
+            }
+            else
+            {
+                BallData newBallData = new()
+                {
+                    State = BallState.OnMap,
+                    Carrier = null,
+                    Freq = -1,
+                    XSpeed = 0,
+                    YSpeed = 0,
+                    X = targetPlayer.Position.X,
+                    Y = targetPlayer.Position.Y,
+                    Time = ServerTick.Now,
+                    LastUpdate = 0,
+                };
+
+                if (force)
+                {
+                    for (byte i = 0; i < ballSettings.BallCount; i++)
+                    {
+                        if (_balls.TryGetBallData(arena, i, out BallData bd)
+                            && bd.Carrier == targetPlayer
+                            && bd.State == BallState.Carried)
+                        {
+                            _balls.TryPlaceBall(arena, i, ref newBallData);
+                        }
+                    }
+
+                    newBallData.State = BallState.Carried;
+                    newBallData.Carrier = targetPlayer;
+                    newBallData.Freq = targetPlayer.Freq;
+                    newBallData.Time = 0;
+                }
+
+                if (_balls.TryPlaceBall(arena, ballId, ref newBallData))
+                {
+                    if (targetPlayer != p)
+                    {
+                        _chat.SendMessage(p, $"Gave ball {ballId} to {targetPlayer.Name}.");
+                    }
+                }
+            }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<ball id> <x-coord> <y-coord>", 
+            Description = "Move the specified ball to the specified coordinates.")]
         private void Command_moveball(string command, string parameters, Player p, ITarget target)
         {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            ReadOnlySpan<char> token = parameters.AsSpan().GetToken(' ', out ReadOnlySpan<char> remaining);
+            if (token.IsEmpty || !byte.TryParse(token, out byte ballId))
+            {
+                _chat.SendMessage(p, "Invalid ball ID.");
+                return;
+            }
+
+            if (!_balls.TryGetBallSettings(arena, out BallSettings ballSettings)
+                || ballId >= ballSettings.BallCount)
+            {
+                _chat.SendMessage(p, $"Ball {ballId} doesn't exist. Use ?ballcount to add balls to the arena.");
+                return;
+            }
+
+            token = remaining.GetToken(' ', out remaining);
+            if (token.IsEmpty || !short.TryParse(token, out short x) || x < 0 || x >= 1024)
+            {
+                _chat.SendMessage(p, "Invalid x-coordinate.");
+                return;
+            }
+
+            if (!short.TryParse(remaining, out short y) || y < 0 || y >= 1024)
+            {
+                _chat.SendMessage(p, "Invalid y-coordinate.");
+                return;
+            }
+
+            BallData newBallData = new()
+            {
+                State = BallState.OnMap,
+                Carrier = null,
+                Freq = -1,
+                XSpeed = 0,
+                YSpeed = 0,
+                X = (short)((x << 4) + 8),
+                Y = (short)((y << 4) + 8),
+                Time = ServerTick.Now,
+                LastUpdate = 0,
+            };
+
+            if (_balls.TryPlaceBall(arena, ballId, ref newBallData))
+            {
+                _chat.SendMessage(p, $"Moved ball {ballId} to ({x},{y}).");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"Failed to moved ball {ballId} to ({x},{y}).");
+            }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[<ball id>]",
+            Description = 
+            "Resets the specified existing ball back to its spawn location.\n" +
+            "If no ball is specified, ball id 0 is assumed.")]
         private void Command_spawnball(string command, string parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
                 return;
 
-            if (!int.TryParse(parameters, out int ballId))
+            int ballId;
+
+            if (string.IsNullOrWhiteSpace(parameters))
+            {
+                ballId = 0;
+            }
+            else if (!int.TryParse(parameters, out ballId))
             {
                 _chat.SendMessage(p, "Invalid ball ID.");
+                return;
             }
-            else if (_balls.TrySpawnBall(arena, ballId))
+
+            if (_balls.TrySpawnBall(arena, ballId))
             {
                 _chat.SendMessage(p, $"Respawned ball {ballId}.");
             }
@@ -1251,6 +1425,10 @@ namespace SS.Core.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Displays the last known position of balls, as well as the player who is carrying it or who fired it, if applicable.")]
         private void Command_ballinfo(string command, string parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;

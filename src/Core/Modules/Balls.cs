@@ -649,8 +649,7 @@ namespace SS.Core.Modules
 
                 if (ballCount < 0)
                     ballCount = 0;
-
-                if (ballCount > MaxBalls)
+                else if (ballCount > MaxBalls)
                     ballCount = MaxBalls;
 
                 ad.Settings.Mode = _configManager.GetEnum(arena.Cfg, "Soccer", "Mode", SoccerMode.All);

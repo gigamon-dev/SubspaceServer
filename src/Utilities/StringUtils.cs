@@ -452,6 +452,31 @@ namespace SS.Utilities
         }
 
         #endregion
+
+        /// <summary>
+        /// Splits off a token from the beginning of a string stopping at a specified <paramref name="delimiter"/>.
+        /// Any leading occurances of the <paramref name="delimiter"/> are skipped and not included in the return value.
+        /// </summary>
+        /// <param name="str">The string to get a token from.</param>
+        /// <param name="delimiter">The delimiter to stop at.</param>
+        /// <param name="remaining">The remaining part of the string, including the delimiter if one was found.</param>
+        /// <returns>The token.</returns>
+        public static ReadOnlySpan<char> GetToken(this ReadOnlySpan<char> str, char delimiter, out ReadOnlySpan<char> remaining)
+        {
+            str = str.TrimStart(delimiter);
+
+            int index = str.IndexOf(delimiter);
+            if (index == -1)
+            {
+                remaining = ReadOnlySpan<char>.Empty;
+                return str;
+            }
+            else
+            {
+                remaining = str[index..];
+                return str.Slice(0, index);
+            }
+        }
     }
 
     /// <summary>
