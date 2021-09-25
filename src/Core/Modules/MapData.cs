@@ -320,7 +320,7 @@ namespace SS.Core.Modules
 
                     // check if it's a valid coordinate and that it's empty
                     if (context.X < 0 || context.X > 1023 || context.Y < 0 || context.Y > 1023
-                        || (ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile) && tile != MapTile.None))
+                        || (ad.Lvl.TryGetTile(new MapCoordinate(context.X, context.Y), out MapTile tile) && tile != MapTile.None))
                     {
                         if (context.UpTo < 35)
                             continue;
