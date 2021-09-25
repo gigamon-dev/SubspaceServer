@@ -133,7 +133,7 @@ namespace SS.Core.Map
             {
                 accessor.Read(position, out MapTileData td);
 
-                if (td.X < 1024 && td.Y < 1024)
+                if (td.X < 1024 && td.Y < 1024 && td.Type != MapTile.None)
                 {
                     MapCoordinate coord = new MapCoordinate(td.X, td.Y);
                     MapTile tile = new MapTile(td.Type);

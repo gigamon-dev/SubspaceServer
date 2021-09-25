@@ -33,6 +33,14 @@ namespace SS.Core.Map
             return !(left == right);
         }
 
+        public static implicit operator MapCoordinate((short X, short Y) coordTuple) => new(coordTuple.X, coordTuple.Y);
+
+        public void Deconstruct(out short x, out short y)
+        {
+            x = X;
+            y = Y;
+        }
+
         public override int GetHashCode()
         {
             return (((ushort)X) << 10) | ((ushort)Y);

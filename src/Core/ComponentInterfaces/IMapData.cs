@@ -85,7 +85,16 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>The tile, null for no tile.</returns>
         MapTile? GetTile(Arena arena, MapCoordinate coord);
 
-        bool FindEmptyTileNear(Arena arena, ref short x, ref short y);
+        /// <summary>
+        /// Tries to find an empty tile nearest to the given coords.
+        /// </summary>
+        /// <param name="arena">The arena.</param>
+        /// <param name="x">The X-coordinate to start searching from. Upon return, the resulting X-coordinate if an empty spot was found.</param>
+        /// <param name="y">The Y-Coordinate to start searching from. Upon return, the resulting Y-coordinate if an empty spot was found.</param>
+        /// <returns>
+        /// True if a coordinate with no tile was found. Otherwise, false.
+        /// </returns>
+        bool TryFindEmptyTileNear(Arena arena, ref short x, ref short y);
 
         bool FindEmptyTileInRegion(Arena arena, MapRegion region);
 

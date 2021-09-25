@@ -262,16 +262,17 @@ namespace SS.Core.Modules
                 ad.Lock.ExitReadLock();
             }
         }
-/*
+
+        private enum Direction { Up, Right, Down, Left };
+
         private struct FindEmptyTileContext
         {
-            public enum Direction { up, right, down, left };
-            public Direction dir;
-            public int upto, remaining;
-            public int x, y;
+            public Direction Dir;
+            public int UpTo, Remaining;
+            public short X, Y;
         }
-*/
-        bool IMapData.FindEmptyTileNear(Arena arena, ref short x, ref short y)
+
+        bool IMapData.TryFindEmptyTileNear(Arena arena, ref short x, ref short y)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
@@ -279,12 +280,64 @@ namespace SS.Core.Modules
             if (arena[adKey] is not ArenaData ad)
                 throw new Exception("missing lvl data");
 
-            if (!ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile))
-                return true;
+            ad.Lock.EnterReadLock();
 
-            // TODO
+            try
+            {
+                // Look for an empty tile, from the staring coordinate and spiral around it (starting at the top, going clockwise).
 
-            return false;
+                FindEmptyTileContext context = new()
+                {
+                    Dir = Direction.Left,
+                    UpTo = 0,
+                    Remaining = 1,
+                    X = (short)(x + 1),
+                    Y = y,
+                };
+
+                while (true)
+                {
+                    // move 1 in current direction
+                    switch (context.Dir)
+                    {
+                        case Direction.Down: context.Y++; break;
+                        case Direction.Right: context.X++; break;
+                        case Direction.Up: context.Y--; break;
+                        case Direction.Left: context.X--; break;
+                    }
+
+                    context.Remaining--;
+
+                    // if we are at the end of the line
+                    if (context.Remaining == 0)
+                    {
+                        context.Dir = (Direction)(((int)context.Dir + 1) % 4);
+                        if (context.Dir == Direction.Up || context.Dir == Direction.Up)
+                            context.UpTo++;
+
+                        context.Remaining = context.UpTo;
+                    }
+
+                    // check if it's a valid coordinate and that it's empty
+                    if (context.X < 0 || context.X > 1023 || context.Y < 0 || context.Y > 1023
+                        || (ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile) && tile != MapTile.None))
+                    {
+                        if (context.UpTo < 35)
+                            continue;
+                        else
+                            return false;
+                    }
+
+                    // Found it!
+                    x = context.X;
+                    y = context.Y;
+                    return true;
+                }
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
         }
 
         bool IMapData.FindEmptyTileInRegion(Arena arena, MapRegion region)
@@ -418,7 +471,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
@@ -426,33 +479,11 @@ namespace SS.Core.Modules
             if (arena[adKey] is not ArenaData ad)
                 return;
 
-            if (action == ArenaAction.Create)
+            if (action == ArenaAction.PreCreate)
             {
                 _arenaManager.HoldArena(arena);
-
-                try
-                {
-                    // load the level asynchronously
-                    ExtendedLvl lvl = await LoadMapAsync(arena).ConfigureAwait(false);
-
-                    // Note: The await is purposely not within the lock
-                    // since the lock/unlock has to be performed on the same thread.
-
-                    ad.Lock.EnterWriteLock();
-
-                    try
-                    {
-                        ad.Lvl = lvl;
-                    }
-                    finally
-                    {
-                        ad.Lock.ExitWriteLock();
-                    }
-                }
-                finally
-                {
-                    _arenaManager.UnholdArena(arena);
-                }
+                _mainloop.QueueMainWorkItem(MainloopWork_ActionActionWork, arena);
+                
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -469,7 +500,33 @@ namespace SS.Core.Modules
             }
         }
 
-        private async Task<ExtendedLvl> LoadMapAsync(Arena arena)
+        private void MainloopWork_ActionActionWork(Arena arena)
+        {
+            if (arena == null)
+                return;
+
+            if (arena[adKey] is not ArenaData ad)
+                return;
+
+            try
+            {
+                lock (ad.Lock)
+                {
+                    ad.Lvl = null;
+
+                    if (arena.Status < ArenaState.Running)
+                    {
+                        ad.Lvl = LoadMap(arena);
+                    }
+                }
+            }
+            finally
+            {
+                _arenaManager.UnholdArena(arena);
+            }
+        }
+
+        private ExtendedLvl LoadMap(Arena arena)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
@@ -477,15 +534,15 @@ namespace SS.Core.Modules
             string path = GetMapFilename(arena, null);
             ExtendedLvl lvl = null;
 
-            if (!string.IsNullOrEmpty(path))
+            if (!string.IsNullOrWhiteSpace(path))
             {
                 try
                 {
-                    lvl = await Task.Run(() => new ExtendedLvl(path)).ConfigureAwait(false);
+                    lvl = new ExtendedLvl(path);
                 }
                 catch (Exception ex)
                 {
-                    _logManager.LogA(LogLevel.Warn, nameof(MapData), arena, "Error reading map file '{0}'. {1}", path, ex.Message);
+                    _logManager.LogA(LogLevel.Warn, nameof(MapData), arena, $"Error reading map file '{path}'. {ex.Message}");
                 }
             }
             else
@@ -495,7 +552,7 @@ namespace SS.Core.Modules
 
             if (lvl != null)
             {
-                _logManager.LogA(LogLevel.Info, nameof(MapData), arena, "Successfully processed map file '{0}' with {1} tiles, {2} flags, {3} regions, {4} errors", path, lvl.TileCount, lvl.FlagCount, lvl.RegionCount, lvl.Errors.Count);
+                _logManager.LogA(LogLevel.Info, nameof(MapData), arena, $"Successfully processed map file '{path}' with {lvl.TileCount} tiles, {lvl.FlagCount} flags, {lvl.RegionCount} regions, {lvl.Errors.Count} errors");
 
                 /*
                 // useful check to visually see that the lvl tiles were loaded correctly
