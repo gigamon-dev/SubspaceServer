@@ -22,6 +22,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
+        private IBalls _balls;
         private IChat _chat;
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
@@ -43,6 +44,7 @@ namespace SS.Core.Modules
         public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
+            IBalls balls,
             IChat chat,
             ICapabilityManager capabilityManager,
             IConfigManager configManager,
@@ -59,6 +61,7 @@ namespace SS.Core.Modules
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _balls = balls ?? throw new ArgumentNullException(nameof(balls));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -113,6 +116,11 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("listmod", Command_listmod);
             _commandManager.AddCommand("where", Command_where);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
+            _commandManager.AddCommand("ballcount", Command_ballcount);
+            _commandManager.AddCommand("giveball", Command_giveball);
+            _commandManager.AddCommand("moveball", Command_moveball);
+            _commandManager.AddCommand("spawnball", Command_spawnball);
+            _commandManager.AddCommand("ballinfo", Command_ballinfo);
 
             return true;
         }
@@ -156,6 +164,11 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("listmod", Command_listmod);
             _commandManager.RemoveCommand("where", Command_where);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
+            _commandManager.RemoveCommand("ballcount", Command_ballcount);
+            _commandManager.RemoveCommand("giveball", Command_giveball);
+            _commandManager.RemoveCommand("moveball", Command_moveball);
+            _commandManager.RemoveCommand("spawnball", Command_spawnball);
+            _commandManager.RemoveCommand("ballinfo", Command_ballinfo);
 
             return true;
         }
@@ -1178,6 +1191,109 @@ namespace SS.Core.Modules
             }
 
             // TODO: estimated memory stats
+        }
+
+        private void Command_ballcount(string command, string parameters, Player p, ITarget target)
+        {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(parameters))
+            {
+                if (_balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+                {
+                    _chat.SendMessage(p, $"Ball count: {ballSettings.BallCount}");
+                }
+            }
+            else if (parameters[0] == '+' || parameters[0] == '-')
+            {
+                if (int.TryParse(parameters, out int numToAddOrRemove)
+                    && _balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+                {
+                    _balls.TrySetBallCount(arena, ballSettings.BallCount + numToAddOrRemove);
+                }
+            }
+            else
+            {
+                if (int.TryParse(parameters, out int newBallCount))
+                {
+                    _balls.TrySetBallCount(arena, newBallCount);
+                }
+            }
+        }
+
+        private void Command_giveball(string command, string parameters, Player p, ITarget target)
+        {
+        }
+
+        private void Command_moveball(string command, string parameters, Player p, ITarget target)
+        {
+        }
+
+        private void Command_spawnball(string command, string parameters, Player p, ITarget target)
+        {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            if (!int.TryParse(parameters, out int ballId))
+            {
+                _chat.SendMessage(p, "Invalid ball ID.");
+            }
+            else if (_balls.TrySpawnBall(arena, ballId))
+            {
+                _chat.SendMessage(p, $"Respawned ball {ballId}.");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"Failed to respawn ball {ballId}. Check that the ball exists. Use ?ballcount to add more balls to the arena.");
+            }
+        }
+
+        private void Command_ballinfo(string command, string parameters, Player p, ITarget target)
+        {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            if (!_balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+                return;
+
+            for (int ballId = 0; ballId < ballSettings.BallCount; ballId++)
+            {
+                if (_balls.TryGetBallData(arena, ballId, out BallData ballData))
+                {
+                    var x = (ballData.X >> 4) * 20 / 1024;
+                    var y = (ballData.X >> 4) * 20 / 1024;
+
+                    switch (ballData.State)
+                    {
+                        case BallState.OnMap:
+                            if (ballData.Carrier != null)
+                            {
+                                _chat.SendMessage(p, $"Ball {ballId}: shot by {ballData.Carrier.Name} (freq {ballData.Freq}) " +
+                                    $"from {(char)('A' + x)}{y + 1} ({ballData.X / 16},{ballData.Y / 16})");
+                            }
+                            else
+                            {
+                                _chat.SendMessage(p, $"Ball {ballId}: on map (freq {ballData.Freq}) " +
+                                    $"{((ballData.XSpeed != 0 || ballData.YSpeed != 0) ? "last seen" : "still")} " +
+                                    $"at {(char)('A' + x)}{y + 1} ({ballData.X / 16},{ballData.Y / 16})");
+                            }
+                            break;
+
+                        case BallState.Carried:
+                            _chat.SendMessage(p, $"Ball {ballId}: carried by {ballData.Carrier.Name} (freq {ballData.Freq}) " +
+                                $"at {(char)('A' + x)}{y + 1} ({ballData.Carrier.Position.X / 16},{ballData.Carrier.Position.Y / 16})");
+                            break;
+
+                        case BallState.Waiting:
+                            _chat.SendMessage(p, $"Ball {ballId}: waiting to be respawned.");
+                            break;
+                    }
+                }
+            }
         }
     }
 }

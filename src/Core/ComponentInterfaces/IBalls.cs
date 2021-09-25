@@ -173,6 +173,14 @@ namespace SS.Core.ComponentInterfaces
         bool TryPlaceBall(Arena arena, byte ballId, ref BallData ballData);
 
         /// <summary>
+        /// Trys to respawn a specified ball.
+        /// </summary>
+        /// <param name="arena">The arena to respawn the ball in..</param>
+        /// <param name="ballId">The Id of the ball to respawn.</param>
+        /// <returns></returns>
+        bool TrySpawnBall(Arena arena, int ballId);
+
+        /// <summary>
         /// Ends the ball game. This phases balls which will respawn.
         /// </summary>
         /// <param name="arena">The arena to end the ball game for.</param>

@@ -25,6 +25,7 @@ namespace SS.Core.Modules
         private INetwork _network;
         private IPlayerData _playerData;
         private IPrng _prng;
+        private InterfaceRegistrationToken _iBallsToken;
 
         private int _adKey;
 
@@ -64,11 +65,14 @@ namespace SS.Core.Modules
 
             _mainloopTimer.SetTimer(MainloopTimer_BasicBallTimer, 3000, 250, null);
 
+            _iBallsToken = _broker.RegisterInterface<IBalls>(this);
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
+            _broker.UnregisterInterface<IBalls>(ref _iBallsToken);
+
             _mainloopTimer.ClearTimer(MainloopTimer_BasicBallTimer, null);
 
             _network.RemovePacket(C2SPacketType.PickupBall, Packet_PickupBall);
@@ -153,6 +157,8 @@ namespace SS.Core.Modules
 
         bool IBalls.TryPlaceBall(Arena arena, byte ballId, ref BallData ballData) => TryPlaceBall(arena, ballId, ref ballData);
 
+        bool IBalls.TrySpawnBall(Arena arena, int ballId) => TrySpawnBall(arena, ballId);
+
         [ConfigHelp("Soccer", "NewGameDelay", ConfigScope.Arena, typeof(int), DefaultValue = "-3000",
             Description = "How long to wait between games (in ticks). If this is negative, the actual delay is random, betwen zero and the absolute value.")]
         void IBalls.EndGame(Arena arena)
@@ -206,7 +212,7 @@ namespace SS.Core.Modules
                     {
                         if (i < ad.BallCount)
                         {
-                            SpawnBall(arena, i);
+                            TrySpawnBall(arena, i);
                         }
                         else
                         {
@@ -573,7 +579,7 @@ namespace SS.Core.Modules
                             {
                                 if (now >= b.Time)
                                 {
-                                    SpawnBall(arena, ballId);
+                                    TrySpawnBall(arena, ballId);
                                 }
                             }
                         }
@@ -738,7 +744,7 @@ namespace SS.Core.Modules
                 {
                     for (int i = oldBallCount; i < newBallCount; i++)
                     {
-                        SpawnBall(arena, i);
+                        TrySpawnBall(arena, i);
                     }
                 }
 
@@ -783,67 +789,78 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SpawnBall(Arena arena, int ballId)
+        private bool TrySpawnBall(Arena arena, int ballId)
         {
             if (arena == null)
-                return;
+                return false;
+
+            if (ballId < 0)
+                return false;
 
             if (arena[_adKey] is not ArenaData ad)
-                return;
+                return false;
 
-            BallData d;
-            d.State = BallState.OnMap;
-            d.XSpeed = d.YSpeed = 0;
-            d.Carrier = null;
-            d.Freq = -1;
-            d.Time = ServerTick.Now;
-            d.LastUpdate = 0;
-
-            int idx;
-            if (ballId < ad.Spawns.Length)
+            lock (ad.Lock)
             {
-                // We have a defined spawn for this ball.
-                idx = ballId;
+                if (ballId >= ad.BallCount)
+                    return false;
+
+                BallData d;
+                d.State = BallState.OnMap;
+                d.XSpeed = d.YSpeed = 0;
+                d.Carrier = null;
+                d.Freq = -1;
+                d.Time = ServerTick.Now;
+                d.LastUpdate = 0;
+
+                int idx;
+                if (ballId < ad.Spawns.Length)
+                {
+                    // We have a defined spawn for this ball.
+                    idx = ballId;
+                }
+                else
+                {
+                    // We don't have a specific spawn for this ball, borrow another one.
+                    idx = ballId % ad.Spawns.Length;
+                }
+
+                int radius = ad.Spawns[idx].Radius;
+
+                double randomRadius = _prng.Uniform() * radius;
+                double randomAngle = _prng.Uniform() * Math.PI * 2d;
+                int x = ad.Spawns[idx].X + (int)(randomRadius * Math.Cos(randomAngle));
+                int y = ad.Spawns[idx].Y + (int)(randomRadius * Math.Sin(randomAngle));
+
+                // wrap around, don't clip, so raddii of 2048 from a corner work properly
+                while (x < 0) x += 1024;
+                while (x > 1023) x -= 1024;
+                while (y < 0) y += 1024;
+                while (y > 1023) y -= 1024;
+
+                // Ask map data to move it to the nearest empty tile.
+                short sx = (short)x;
+                short sy = (short)y;
+                if (!_mapData.TryFindEmptyTileNear(arena, ref sx, ref sy))
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(Balls), arena, "Unable to find empty tile to spawn ball at.");
+                    return false;
+                }
+
+                // Place it randomly within the chosen tile.
+                radius = (int)_prng.Get32() & 0xff; // random 8 bits
+                sx <<= 4;
+                sy <<= 4;
+                sx |= (short)(radius / 16); // 4 most significant bits of the 8
+                sy |= (short)(radius % 16); // 4 least significant bits of the 8
+
+                d.X = sx;
+                d.Y = sy;
+
+                TryPlaceBall(arena, ballId, ref d);
             }
-            else
-            {
-                // We don't have a specific spawn for this ball, borrow another one.
-                idx = ballId % ad.Spawns.Length;
-            }
 
-            int radius = ad.Spawns[idx].Radius;
-
-            double randomRadius = _prng.Uniform() * radius;
-            double randomAngle = _prng.Uniform() * Math.PI * 2d;
-            int x = ad.Spawns[idx].X + (int)(randomRadius * Math.Cos(randomAngle));
-            int y = ad.Spawns[idx].Y + (int)(randomRadius * Math.Sin(randomAngle));
-
-            // wrap around, don't clip, so raddii of 2048 from a corner work properly
-            while (x < 0) x += 1024;
-            while (x > 1023) x -= 1024;
-            while (y < 0) y += 1024;
-            while (y > 1023) y -= 1024;
-
-            // Ask map data to move it to the nearest empty tile.
-            short sx = (short)x;
-            short sy = (short)y;
-            if (!_mapData.TryFindEmptyTileNear(arena, ref sx, ref sy))
-            {
-                _logManager.LogA(LogLevel.Warn, nameof(Balls), arena, "Unable to find empty tile to spawn ball at.");
-                return;
-            }
-
-            // Place it randomly within the chosen tile.
-            radius = (int)_prng.Get32() & 0xff; // random 8 bits
-            sx <<= 4;
-            sy <<= 4;
-            sx |= (short)(radius / 16); // 4 most significant bits of the 8
-            sy |= (short)(radius % 16); // 4 least significant bits of the 8
-
-            d.X = sx;
-            d.Y = sy;
-
-            TryPlaceBall(arena, ballId, ref d);
+            return true;
         }
 
         private bool TryPlaceBall(Arena arena, int ballId, ref BallData newPos)
@@ -975,7 +992,7 @@ namespace SS.Core.Modules
                     else if (ad.Settings.RespawnTimeAfterGoal == 0)
                     {
                         // No delay, spawn it now.
-                        SpawnBall(arena, ballId);
+                        TrySpawnBall(arena, ballId);
                     }
                     else
                     {

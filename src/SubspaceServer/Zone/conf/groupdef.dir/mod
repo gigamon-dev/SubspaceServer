@@ -20,6 +20,10 @@ higher_than_default
 prefix_+
 
 cmd_ballcount
+cmd_ballinfo
+cmd_giveball
+cmd_moveball
+cmd_spawnball
 cmd_flagreset
 cmd_listmod
 cmd_a
