@@ -598,15 +598,7 @@ namespace SS.Core.Modules
 
         [ConfigHelp("Soccer", "BallCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-8", // TODO: C# 10 will allow constant interpolated strings, use $"0-{MaxBalls}"
             Description = "The number of balls in this arena.")]
-        [ConfigHelp("Soccer", "Mode", ConfigScope.Arena, typeof(SoccerMode), DefaultValue = "All", 
-            Description = "Goal configuration:" +
-            "All = All goals are open for scoring by any freq, " +
-            "LeftRight = Left vs Right: Even freqs (defend left side) vs odd freqs (defend right side), " +
-            "TopBottom = Top vs Bottom: Even freqs (defend top) vs odd freqs (defend bottom), " +
-            "QuadrantsDefend1 = 4 quadrants, 1 quadrant to defend, " +
-            "QuadrantsDefend3 = 4 quadrants, 3 quadrants to defend, " +
-            "SidesDefend1 = 4 sides, 1 side to defend, " +
-            "SidesDefend3 = 4 sides, 3 sides to defend")]
+        // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
         [ConfigHelp("Soccer", "SpawnX[N]", ConfigScope.Arena, typeof(int), 
             Description = "The X coordinate that the ball spawns at (in tiles). " +
             "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
@@ -842,7 +834,7 @@ namespace SS.Core.Modules
                 short sy = (short)y;
                 if (!_mapData.TryFindEmptyTileNear(arena, ref sx, ref sy))
                 {
-                    _logManager.LogA(LogLevel.Warn, nameof(Balls), arena, "Unable to find empty tile to spawn ball at.");
+                    _logManager.LogA(LogLevel.Warn, nameof(Balls), arena, $"Unable to find empty tile to spawn ball at ({x},{y}).");
                     return false;
                 }
 

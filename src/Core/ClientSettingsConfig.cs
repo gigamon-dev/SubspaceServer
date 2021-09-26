@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Core.ComponentInterfaces;
+using System;
 
 namespace SS.Core
 {
@@ -30,28 +31,28 @@ namespace SS.Core
 	    [ConfigHelp("Wormhole", "SwitchTime", ConfigScope.Arena, typeof(int), "How often the wormhole switches its destination")]
 	    [ConfigHelp("Misc", "ActivateAppShutdownTime", ConfigScope.Arena, typeof(int), "Amount of time a ship is shutdown after application is reactivated")]
 	    [ConfigHelp("Shrapnel", "ShrapnelSpeed", ConfigScope.Arena, typeof(int), "Speed that shrapnel travels")]
-		public static readonly string[] LongNames = 
+		public static readonly (string Section, string Key)[] LongNames = 
         {
-	        "Bullet:BulletDamageLevel", /* * 1000 */
-	        "Bomb:BombDamageLevel", /* * 1000 */
-	        "Bullet:BulletAliveTime",
-	        "Bomb:BombAliveTime",
-	        "Misc:DecoyAliveTime",
-	        "Misc:SafetyLimit",
-	        "Misc:FrequencyShift",
-	        "Team:MaxFrequency",
-	        "Repel:RepelSpeed",
-	        "Mine:MineAliveTime",
-	        "Burst:BurstDamageLevel", /* * 1000 */
-	        "Bullet:BulletDamageUpgrade", /* * 1000 */
-	        "Flag:FlagDropDelay",
-	        "Flag:EnterGameFlaggingDelay",
-	        "Rocket:RocketThrust",
-	        "Rocket:RocketSpeed",
-	        "Shrapnel:InactiveShrapDamage", /* * 1000 */
-	        "Wormhole:SwitchTime",
-	        "Misc:ActivateAppShutdownTime",
-	        "Shrapnel:ShrapnelSpeed",
+	        ("Bullet", "BulletDamageLevel"), /* * 1000 */
+	        ("Bomb", "BombDamageLevel"), /* * 1000 */
+	        ("Bullet", "BulletAliveTime"),
+	        ("Bomb", "BombAliveTime"),
+	        ("Misc", "DecoyAliveTime"),
+	        ("Misc", "SafetyLimit"),
+	        ("Misc", "FrequencyShift"),
+	        ("Team", "MaxFrequency"),
+	        ("Repel", "RepelSpeed"),
+	        ("Mine", "MineAliveTime"),
+	        ("Burst", "BurstDamageLevel"), /* * 1000 */
+	        ("Bullet", "BulletDamageUpgrade"), /* * 1000 */
+	        ("Flag", "FlagDropDelay"),
+	        ("Flag", "EnterGameFlaggingDelay"),
+	        ("Rocket", "RocketThrust"),
+	        ("Rocket", "RocketSpeed"),
+	        ("Shrapnel", "InactiveShrapDamage"), /* * 1000 */
+	        ("Wormhole", "SwitchTime"),
+	        ("Misc", "ActivateAppShutdownTime"),
+	        ("Shrapnel", "ShrapnelSpeed"),
         };
 
 		[ConfigHelp("Latency", "SendRoutePercent", ConfigScope.Arena, typeof(short), "Percentage of the ping time that is spent on the C2S portion of the ping (used in more accurately syncronizing clocks)")]
@@ -107,73 +108,81 @@ namespace SS.Core
 		[ConfigHelp("Flag", "FlaggerThrustAdjustment", ConfigScope.Arena, typeof(short), "Amount of thrust adjustment player carrying flag gets (negative numbers mean less thrust)")]
 		[ConfigHelp("Flag", "FlaggerSpeedAdjustment", ConfigScope.Arena, typeof(short), "Amount of speed adjustment player carrying flag gets (negative numbers mean slower)")]
 		[ConfigHelp("Latency", "ClientSlowPacketSampleSize", ConfigScope.Arena, typeof(short), "Number of packets to sample S2C before checking for kickout")]
-        public static readonly string[] ShortNames = 
+        public static readonly (string Section, string Key)[] ShortNames = 
         {
-			"Latency:SendRoutePercent",
-			"Bomb:BombExplodeDelay",
-			"Misc:SendPositionDelay",
-			"Bomb:BombExplodePixels",
-			"Prize:DeathPrizeTime",
-			"Bomb:JitterTime",
-			"Kill:EnterDelay",
-			"Prize:EngineShutdownTime",
-			"Bomb:ProximityDistance",
-			"Kill:BountyIncreaseForKill",
-			"Misc:BounceFactor",
-			"Radar:MapZoomFactor",
-			"Kill:MaxBonus",
-			"Kill:MaxPenalty",
-			"Kill:RewardBase",
-			"Repel:RepelTime",
-			"Repel:RepelDistance",
-			"Misc:TickerDelay",
-			"Flag:FlaggerOnRadar",
-			"Flag:FlaggerKillMultiplier",
-			"Prize:PrizeFactor",
-			"Prize:PrizeDelay",
-			"Prize:MinimumVirtual",
-			"Prize:UpgradeVirtual",
-			"Prize:PrizeMaxExist",
-			"Prize:PrizeMinExist",
-			"Prize:PrizeNegativeFactor",
-			"Door:DoorDelay",
-			"Toggle:AntiWarpPixels",
-			"Door:DoorMode",
-			"Flag:FlagBlankDelay",
-			"Flag:NoDataFlagDropDelay",
-			"Prize:MultiPrizeCount",
-			"Brick:BrickTime",
-			"Misc:WarpRadiusLimit",
-			"Bomb:EBombShutdownTime",
-			"Bomb:EBombDamagePercent",
-			"Radar:RadarNeutralSize",
-			"Misc:WarpPointDelay",
-			"Misc:NearDeathLevel",
-			"Bomb:BBombDamagePercent",
-			"Shrapnel:ShrapnelDamagePercent",
-			"Latency:ClientSlowPacketTime",
-			"Flag:FlagDropResetReward",
-			"Flag:FlaggerFireCostPercent",
-			"Flag:FlaggerDamagePercent",
-			"Flag:FlaggerBombFireDelay",
-			"Soccer:PassDelay",
-			"Soccer:BallBlankDelay",
-			"Latency:S2CNoDataKickoutDelay",
-			"Flag:FlaggerThrustAdjustment",
-			"Flag:FlaggerSpeedAdjustment",
-			"Latency:ClientSlowPacketSampleSize",
-			"Unused:Unused5",
-			"Unused:Unused4",
-			"Unused:Unused3",
-			"Unused:Unused2",
-			"Unused:Unused1"
+			("Latency", "SendRoutePercent"),
+			("Bomb", "BombExplodeDelay"),
+			("Misc", "SendPositionDelay"),
+			("Bomb", "BombExplodePixels"),
+			("Prize", "DeathPrizeTime"),
+			("Bomb", "JitterTime"),
+			("Kill", "EnterDelay"),
+			("Prize", "EngineShutdownTime"),
+			("Bomb", "ProximityDistance"),
+			("Kill", "BountyIncreaseForKill"),
+			("Misc", "BounceFactor"),
+			("Radar", "MapZoomFactor"),
+			("Kill", "MaxBonus"),
+			("Kill", "MaxPenalty"),
+			("Kill", "RewardBase"),
+			("Repel", "RepelTime"),
+			("Repel", "RepelDistance"),
+			("Misc", "TickerDelay"),
+			("Flag", "FlaggerOnRadar"),
+			("Flag", "FlaggerKillMultiplier"),
+			("Prize", "PrizeFactor"),
+			("Prize", "PrizeDelay"),
+			("Prize", "MinimumVirtual"),
+			("Prize", "UpgradeVirtual"),
+			("Prize", "PrizeMaxExist"),
+			("Prize", "PrizeMinExist"),
+			("Prize", "PrizeNegativeFactor"),
+			("Door", "DoorDelay"),
+			("Toggle", "AntiWarpPixels"),
+			("Door", "DoorMode"),
+			("Flag", "FlagBlankDelay"),
+			("Flag", "NoDataFlagDropDelay"),
+			("Prize", "MultiPrizeCount"),
+			("Brick", "BrickTime"),
+			("Misc", "WarpRadiusLimit"),
+			("Bomb", "EBombShutdownTime"),
+			("Bomb", "EBombDamagePercent"),
+			("Radar", "RadarNeutralSize"),
+			("Misc", "WarpPointDelay"),
+			("Misc", "NearDeathLevel"),
+			("Bomb", "BBombDamagePercent"),
+			("Shrapnel", "ShrapnelDamagePercent"),
+			("Latency", "ClientSlowPacketTime"),
+			("Flag", "FlagDropResetReward"),
+			("Flag", "FlaggerFireCostPercent"),
+			("Flag", "FlaggerDamagePercent"),
+			("Flag", "FlaggerBombFireDelay"),
+			("Soccer", "PassDelay"),
+			("Soccer", "BallBlankDelay"),
+			("Latency", "S2CNoDataKickoutDelay"),
+			("Flag", "FlaggerThrustAdjustment"),
+			("Flag", "FlaggerSpeedAdjustment"),
+			("Latency", "ClientSlowPacketSampleSize"),
+			("Unused", "Unused5"),
+			("Unused", "Unused4"),
+			("Unused", "Unused3"),
+			("Unused", "Unused2"),
+			("Unused", "Unused1"),
         };
 
 		[ConfigHelp("Shrapnel", "Random", ConfigScope.Arena, typeof(bool), "Whether shrapnel spreads in circular or random patterns")]
 		[ConfigHelp("Soccer", "BallBounce", ConfigScope.Arena, typeof(bool), "Whether the ball bounces off walls")]
 		[ConfigHelp("Soccer", "AllowBombs", ConfigScope.Arena, typeof(bool), "Whether the ball carrier can fire his bombs")]
 		[ConfigHelp("Soccer", "AllowGuns", ConfigScope.Arena, typeof(bool), "Whether the ball carrier can fire his guns")]
-		[ConfigHelp("Soccer", "Mode", ConfigScope.Arena, typeof(Enum), "Goal configuration ($GOAL_ALL, $GOAL_LEFTRIGHT, $GOAL_TOPBOTTOM, $GOAL_CORNERS_3_1, $GOAL_CORNERS_1_3, $GOAL_SIDES_3_1, $GOAL_SIDES_1_3)")]
+		[ConfigHelp("Soccer", "Mode", ConfigScope.Arena, typeof(SoccerMode), 
+			Description = "Goal configuration: " +
+			"All = All goals are open for scoring by any freq, " +
+			"LeftRight = Left vs Right: Even freqs (defend left side) vs odd freqs (defend right side), " +
+			"TopBottom = Top vs Bottom: Even freqs (defend top) vs odd freqs (defend bottom), " +
+			"QuadrantsDefend1 = 4 quadrants, 1 quadrant to defend, " +
+			"QuadrantsDefend3 = 4 quadrants, 3 quadrants to defend, " +
+			"SidesDefend1 = 4 sides, 1 side to defend, " +
+			"SidesDefend3 = 4 sides, 3 sides to defend")]
 		//Team:MaxPerTeam
 		//Team:MaxPerPrivateTeam
 		[ConfigHelp("Mine", "TeamMaxMines", ConfigScope.Arena, typeof(byte), "Maximum number of mines allowed to be placed by an entire team")]
@@ -194,40 +203,40 @@ namespace SS.Core
 		[ConfigHelp("Soccer", "UseFlagger", ConfigScope.Arena, typeof(bool), "If player with soccer ball should use the Flag:Flagger* ship adjustments or not")]
 		[ConfigHelp("Soccer", "BallLocation", ConfigScope.Arena, typeof(bool), "Whether the balls location is displayed at all times or not")]
 		[ConfigHelp("Misc", "AntiWarpSettleDelay", ConfigScope.Arena, typeof(byte), "How many ticks to activate a fake antiwarp after attaching, portaling, or warping.")]
-        public static readonly string[] ByteNames = 
+        public static readonly (string Section, string Key)[] ByteNames = 
         {
-			"Shrapnel:Random",
-			"Soccer:BallBounce",
-			"Soccer:AllowBombs",
-			"Soccer:AllowGuns",
-			"Soccer:Mode",
-			"Team:MaxPerTeam",
-			"Team:MaxPerPrivateTeam",
-			"Mine:TeamMaxMines",
-			"Wormhole:GravityBombs",
-			"Bomb:BombSafety",
-			"Chat:MessageReliable",
-			"Prize:TakePrizeReliable",
-			"Message:AllowAudioMessages",
-			"Prize:PrizeHideCount",
-			"Misc:ExtraPositionData",
-			"Misc:SlowFrameCheck",
-			"Flag:CarryFlags",
-			"Misc:AllowSavedShips",
-			"Radar:RadarMode",
-			"Misc:VictoryMusic",
-			"Flag:FlaggerGunUpgrade",
-			"Flag:FlaggerBombUpgrade",
-			"Soccer:UseFlagger",
-			"Soccer:BallLocation",
-			"Misc:AntiWarpSettleDelay",
-			"Unused:Unused7",
-			"Unused:Unused6",
-			"Unused:Unused5",
-			"Unused:Unused4",
-			"Unused:Unused3",
-			"Unused:Unused2",
-			"Unused:Unused1"
+			("Shrapnel", "Random"),
+			("Soccer", "BallBounce"),
+			("Soccer", "AllowBombs"),
+			("Soccer", "AllowGuns"),
+			("Soccer", "Mode"),
+			("Team", "MaxPerTeam"),
+			("Team", "MaxPerPrivateTeam"),
+			("Mine", "TeamMaxMines"),
+			("Wormhole", "GravityBombs"),
+			("Bomb", "BombSafety"),
+			("Chat", "MessageReliable"),
+			("Prize", "TakePrizeReliable"),
+			("Message", "AllowAudioMessages"),
+			("Prize", "PrizeHideCount"),
+			("Misc", "ExtraPositionData"),
+			("Misc", "SlowFrameCheck"),
+			("Flag", "CarryFlags"),
+			("Misc", "AllowSavedShips"),
+			("Radar", "RadarMode"),
+			("Misc", "VictoryMusic"),
+			("Flag", "FlaggerGunUpgrade"),
+			("Flag", "FlaggerBombUpgrade"),
+			("Soccer", "UseFlagger"),
+			("Soccer", "BallLocation"),
+			("Misc", "AntiWarpSettleDelay"),
+			("Unused", "Unused7"),
+			("Unused", "Unused6"),
+			("Unused", "Unused5"),
+			("Unused", "Unused4"),
+			("Unused", "Unused3"),
+			("Unused", "Unused2"),
+			("Unused", "Unused1"),
         };
 
 		[ConfigHelp("PrizeWeight", "QuickCharge", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Recharge' prize appearing")]
@@ -258,36 +267,36 @@ namespace SS.Core
 		[ConfigHelp("PrizeWeight", "Brick", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Brick' prize appearing")]
 		[ConfigHelp("PrizeWeight", "Rocket", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Rocket' prize appearing")]
 		[ConfigHelp("PrizeWeight", "Portal", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Portal' prize appearing")]
-		public static readonly string[] PrizeWeightNames = 
+		public static readonly (string Section, string Key)[] PrizeWeightNames = 
         {
-			"PrizeWeight:QuickCharge",
-			"PrizeWeight:Energy",
-			"PrizeWeight:Rotation",
-			"PrizeWeight:Stealth",
-			"PrizeWeight:Cloak",
-			"PrizeWeight:XRadar",
-			"PrizeWeight:Warp",
-			"PrizeWeight:Gun",
-			"PrizeWeight:Bomb",
-			"PrizeWeight:BouncingBullets",
-			"PrizeWeight:Thruster",
-			"PrizeWeight:TopSpeed",
-			"PrizeWeight:Recharge",
-			"PrizeWeight:Glue",
-			"PrizeWeight:MultiFire",
-			"PrizeWeight:Proximity",
-			"PrizeWeight:AllWeapons",
-			"PrizeWeight:Shields",
-			"PrizeWeight:Shrapnel",
-			"PrizeWeight:AntiWarp",
-			"PrizeWeight:Repel",
-			"PrizeWeight:Burst",
-			"PrizeWeight:Decoy",
-			"PrizeWeight:Thor",
-			"PrizeWeight:MultiPrize",
-			"PrizeWeight:Brick",
-			"PrizeWeight:Rocket",
-			"PrizeWeight:Portal"
+			("PrizeWeight", "QuickCharge"),
+			("PrizeWeight", "Energy"),
+			("PrizeWeight", "Rotation"),
+			("PrizeWeight", "Stealth"),
+			("PrizeWeight", "Cloak"),
+			("PrizeWeight", "XRadar"),
+			("PrizeWeight", "Warp"),
+			("PrizeWeight", "Gun"),
+			("PrizeWeight", "Bomb"),
+			("PrizeWeight", "BouncingBullets"),
+			("PrizeWeight", "Thruster"),
+			("PrizeWeight", "TopSpeed"),
+			("PrizeWeight", "Recharge"),
+			("PrizeWeight", "Glue"),
+			("PrizeWeight", "MultiFire"),
+			("PrizeWeight", "Proximity"),
+			("PrizeWeight", "AllWeapons"),
+			("PrizeWeight", "Shields"),
+			("PrizeWeight", "Shrapnel"),
+			("PrizeWeight", "AntiWarp"),
+			("PrizeWeight", "Repel"),
+			("PrizeWeight", "Burst"),
+			("PrizeWeight", "Decoy"),
+			("PrizeWeight", "Thor"),
+			("PrizeWeight", "MultiPrize"),
+			("PrizeWeight", "Brick"),
+			("PrizeWeight", "Rocket"),
+			("PrizeWeight", "Portal"),
         };
 
 		[ConfigHelp("DPrizeWeight", "QuickCharge", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Recharge' prize appearing")]
@@ -318,36 +327,36 @@ namespace SS.Core
 		[ConfigHelp("DPrizeWeight", "Brick", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Brick' prize appearing")]
 		[ConfigHelp("DPrizeWeight", "Rocket", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Rocket' prize appearing")]
 		[ConfigHelp("DPrizeWeight", "Portal", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Range = "0-255", Description = "Likelihood of 'Portal' prize appearing")]
-		public static readonly string[] DeathPrizeWeightNames =
+		public static readonly (string Section, string Key)[] DeathPrizeWeightNames =
 		{
-			"DPrizeWeight:QuickCharge",
-			"DPrizeWeight:Energy",
-			"DPrizeWeight:Rotation",
-			"DPrizeWeight:Stealth",
-			"DPrizeWeight:Cloak",
-			"DPrizeWeight:XRadar",
-			"DPrizeWeight:Warp",
-			"DPrizeWeight:Gun",
-			"DPrizeWeight:Bomb",
-			"DPrizeWeight:BouncingBullets",
-			"DPrizeWeight:Thruster",
-			"DPrizeWeight:TopSpeed",
-			"DPrizeWeight:Recharge",
-			"DPrizeWeight:Glue",
-			"DPrizeWeight:MultiFire",
-			"DPrizeWeight:Proximity",
-			"DPrizeWeight:AllWeapons",
-			"DPrizeWeight:Shields",
-			"DPrizeWeight:Shrapnel",
-			"DPrizeWeight:AntiWarp",
-			"DPrizeWeight:Repel",
-			"DPrizeWeight:Burst",
-			"DPrizeWeight:Decoy",
-			"DPrizeWeight:Thor",
-			"DPrizeWeight:MultiPrize",
-			"DPrizeWeight:Brick",
-			"DPrizeWeight:Rocket",
-			"DPrizeWeight:Portal"
+			("DPrizeWeight", "QuickCharge"),
+			("DPrizeWeight", "Energy"),
+			("DPrizeWeight", "Rotation"),
+			("DPrizeWeight", "Stealth"),
+			("DPrizeWeight", "Cloak"),
+			("DPrizeWeight", "XRadar"),
+			("DPrizeWeight", "Warp"),
+			("DPrizeWeight", "Gun"),
+			("DPrizeWeight", "Bomb"),
+			("DPrizeWeight", "BouncingBullets"),
+			("DPrizeWeight", "Thruster"),
+			("DPrizeWeight", "TopSpeed"),
+			("DPrizeWeight", "Recharge"),
+			("DPrizeWeight", "Glue"),
+			("DPrizeWeight", "MultiFire"),
+			("DPrizeWeight", "Proximity"),
+			("DPrizeWeight", "AllWeapons"),
+			("DPrizeWeight", "Shields"),
+			("DPrizeWeight", "Shrapnel"),
+			("DPrizeWeight", "AntiWarp"),
+			("DPrizeWeight", "Repel"),
+			("DPrizeWeight", "Burst"),
+			("DPrizeWeight", "Decoy"),
+			("DPrizeWeight", "Thor"),
+			("DPrizeWeight", "MultiPrize"),
+			("DPrizeWeight", "Brick"),
+			("DPrizeWeight", "Rocket"),
+			("DPrizeWeight", "Portal"),
 		};
 
         /* the following names are only key names, not key+section names */

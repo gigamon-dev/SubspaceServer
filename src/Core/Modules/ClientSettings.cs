@@ -340,19 +340,19 @@ namespace SS.Core.Modules
 
             // rest of settings
             for (int i = 0; i < cs.Int32Settings.Length; i++)
-                cs.Int32Settings[i] = _configManager.GetInt(ch, ClientSettingsConfig.LongNames[i], null, 0);
+                cs.Int32Settings[i] = _configManager.GetInt(ch, ClientSettingsConfig.LongNames[i].Section, ClientSettingsConfig.LongNames[i].Key, 0);
 
             for (int i = 0; i < cs.Int16Settings.Length; i++)
-                cs.Int16Settings[i] = (short)_configManager.GetInt(ch, ClientSettingsConfig.ShortNames[i], null, 0);
+                cs.Int16Settings[i] = (short)_configManager.GetInt(ch, ClientSettingsConfig.ShortNames[i].Section, ClientSettingsConfig.ShortNames[i].Key, 0);
 
             for (int i = 0; i < cs.ByteSettings.Length; i++)
-                cs.ByteSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.ByteNames[i], null, 0);
+                cs.ByteSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.ByteNames[i].Section, ClientSettingsConfig.ByteNames[i].Key, 0);
 
             ushort total = 0;
             ad.pwps[0] = 0;
             for (int i = 0; i < cs.PrizeWeightSettings.Length; i++)
             {
-                cs.PrizeWeightSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.PrizeWeightNames[i], null, 0);
+                cs.PrizeWeightSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.PrizeWeightNames[i].Section, ClientSettingsConfig.PrizeWeightNames[i].Key, 0);
                 ad.pwps[i + 1] = (total += cs.PrizeWeightSettings[i]);
             }
 
@@ -364,7 +364,7 @@ namespace SS.Core.Modules
                 total = ad.pwps[0] = (ushort)_configManager.GetInt(ch, "DPrizeWeight", "NullPrize", 0);
                 for (int i = 0; i < cs.PrizeWeightSettings.Length; i++)
                 {
-                    ad.pwps[i + 1] = (total += (ushort)_configManager.GetInt(ch, ClientSettingsConfig.DeathPrizeWeightNames[i], null, 0));
+                    ad.pwps[i + 1] = (total += (ushort)_configManager.GetInt(ch, ClientSettingsConfig.DeathPrizeWeightNames[i].Section, ClientSettingsConfig.DeathPrizeWeightNames[i].Key, 0));
                 }
             }
 

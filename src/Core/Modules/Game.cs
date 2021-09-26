@@ -605,6 +605,36 @@ namespace SS.Core.Modules
 
         #endregion
 
+        [ConfigHelp("Misc", "RegionCheckInterval", ConfigScope.Arena, typeof(int), DefaultValue = "100", 
+            Description = "How often to check for region enter/exit events (in ticks).")]
+        [ConfigHelp("Misc", "SpecSeeExtra", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
+            Description = "Whether spectators can see extra data for the person they're spectating.")]
+        [ConfigHelp("Misc", "SpecSeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "All", 
+            Description = "Whose energy levels spectators can see. The options are the same as for Misc:SeeEnergy, with one addition: 'Spec' means only the player you're spectating.")]
+        [ConfigHelp("Misc", "SeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "None", 
+            Description = "Whose energy levels everyone can see: 'None' means nobody else's, 'All' is everyone's, 'Team' is only teammates.")]
+        [ConfigHelp("Security", "MaxDeathWithoutFiring", ConfigScope.Arena, typeof(int), DefaultValue = "5", 
+            Description = "The number of times a player can die without firing a weapon before being placed in spectator mode.")]
+        [ConfigHelp("Misc", "NoSafeAntiwarp", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            Description = "Disables antiwarp on players in safe zones.")]
+        [ConfigHelp("Misc", "WarpTresholdDelta", ConfigScope.Arena, typeof(int), DefaultValue = "320", 
+            Description = "The amount of change in a players position (in pixels) that is considered a warp (only while he is flashing).")]
+        [ConfigHelp("Prize", "DontShareThor", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
+            Description = "Whether Thor greens don't go to the whole team.")]
+        [ConfigHelp("Prize", "DontShareBurst", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            Description = "Whether Burst greens don't go to the whole team.")]
+        [ConfigHelp("Prize", "DontShareBrick", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            Description = "Whether Brick greens don't go to the whole team.")]
+        [ConfigHelp("Net", "BulletPixels", ConfigScope.Arena, typeof(int), DefaultValue = "1500", 
+            Description = "How far away to always send bullets (in pixels).")]
+        [ConfigHelp("Net", "WeaponPixels", ConfigScope.Arena, typeof(int), DefaultValue = "2000",
+            Description = "How far away to always weapons (in pixels).")]
+        [ConfigHelp("Net", "PositionExtraPixels", ConfigScope.Arena, typeof(int), DefaultValue = "8000",
+            Description = "How far away to to send positions of players on radar (in pixels).")]
+        [ConfigHelp("Net", "AntiwarpSendPercent", ConfigScope.Arena, typeof(int), DefaultValue = "5", 
+            Description = "Percent of position packets with antiwarp enabled to send to the whole arena.")]
+        // Note: Toggle:AntiwarpPixels is a client setting, so it's [ConfigHelp] is in ClientSettingsConfig.cs
+        // Note: Kill:EnterDelay is a client setting, so it's [ConfigHelp] is in ClientSettingsConfig.cs
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
@@ -614,20 +644,13 @@ namespace SS.Core.Modules
             {
                 ArenaData ad = arena[_adkey] as ArenaData;
 
-                // How often to check for region enter/exit events (in ticks).
                 ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "RegionCheckInterval", 100) * 10);
 
-                // Whether spectators can see extra data for the person they're spectating.
                 ad.SpecSeeExtra = _configManager.GetInt(arena.Cfg, "Misc", "SpecSeeExtra", 1) != 0;
 
-                // Whose energy levels spectators can see. The options are the
-                // same as for Misc:SeeEnergy, with one addition: SEE_SPEC
-                // means only the player you're spectating.
-                ad.SpecSeeEnergy = (SeeEnergy)_configManager.GetInt(arena.Cfg, "Misc", "SpecSeeEnergy", (int)SeeEnergy.All);
-                
-                // Whose energy levels everyone can see: SEE_NONE means nobody
-                // else's, SEE_ALL is everyone's, SEE_TEAM is only teammates.
-                ad.AllSeeEnergy = (SeeEnergy)_configManager.GetInt(arena.Cfg, "Misc", "SeeEnergy", (int)SeeEnergy.None);
+                ad.SpecSeeEnergy = _configManager.GetEnum(arena.Cfg, "Misc", "SpecSeeEnergy", SeeEnergy.All);
+
+                ad.AllSeeEnergy = _configManager.GetEnum(arena.Cfg, "Misc", "SeeEnergy", SeeEnergy.None);
 
                 ad.MaxDeathWithoutFiring = _configManager.GetInt(arena.Cfg, "Security", "MaxDeathWithoutFiring", 5);
 
@@ -638,30 +661,23 @@ namespace SS.Core.Modules
 
                 PersonalGreen pg = PersonalGreen.None;
 
-                // Whether Thor greens don't go to the whole team.
                 if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareThor", 0) != 0)
                     pg |= PersonalGreen.Thor;
 
-                // Whether Burst greens don't go to the whole team.
                 if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareBurst", 0) != 0)
                     pg |= PersonalGreen.Burst;
 
-                // Whether Brick greens don't go to the whole team.
                 if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareBrick", 0) != 0)
                     pg |= PersonalGreen.Brick;
 
                 ad.personalGreen = pg;
 
-                // How far away to always send bullets (in pixels).
                 int cfg_bulletpix = _configManager.GetInt(_configManager.Global, "Net", "BulletPixels", 1500);
 
-                // How far away to always send weapons (in pixels).
                 int cfg_wpnpix = _configManager.GetInt(_configManager.Global, "Net", "WeaponPixels", 2000);
 
-                // How far away to send positions of players on radar.
                 ad.cfg_pospix = _configManager.GetInt(_configManager.Global, "Net", "PositionExtraPixels", 8000);
 
-                // Percent of position packets with antiwarp enabled to send to the whole arena.
                 ad.cfg_sendanti = _configManager.GetInt(_configManager.Global, "Net", "AntiwarpSendPercent", 5);
                 ad.cfg_sendanti = Constants.RandMax / 100 * ad.cfg_sendanti;
 
@@ -673,7 +689,6 @@ namespace SS.Core.Modules
                 // setting of 0 or less means respawn in place, with 1 second delay
                 if (ad.cfg_EnterDelay <= 0)
                     ad.cfg_EnterDelay = 100;
-
 
                 for (int x = 0; x < ad.wpnRange.Length; x++)
                 {

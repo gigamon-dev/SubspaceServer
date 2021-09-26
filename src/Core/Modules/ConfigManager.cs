@@ -259,7 +259,9 @@ namespace SS.Core.Modules
             return OpenConfigFile(
                 arena, 
                 name, 
-                (documentInfo) => documentInfo.CreateHandle());
+                (documentInfo) => documentInfo.CreateHandle(
+                    arena != null ? ConfigScope.Arena : ConfigScope.Global, 
+                    name));
         }
 
         public ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate changedCallback)
@@ -267,7 +269,10 @@ namespace SS.Core.Modules
             return OpenConfigFile(
                 arena,
                 name,
-                (documentInfo) => documentInfo.CreateHandle(changedCallback));
+                (documentInfo) => documentInfo.CreateHandle(
+                    arena != null ? ConfigScope.Arena : ConfigScope.Global,
+                    name,
+                    changedCallback));
         }
 
         public ConfigHandle OpenConfigFile<TState>(string arena, string name, ConfigChangedDelegate<TState> changedCallback, TState state)
@@ -275,7 +280,11 @@ namespace SS.Core.Modules
             return OpenConfigFile(
                 arena, 
                 name, 
-                (documentInfo) => documentInfo.CreateHandle(changedCallback, state));
+                (documentInfo) => documentInfo.CreateHandle(
+                    arena != null ? ConfigScope.Arena : ConfigScope.Global,
+                    name,
+                    changedCallback,
+                    state));
         }
 
         private ConfigHandle OpenConfigFile(string arena, string name, Func<DocumentInfo, ConfigHandle> createHandle)
@@ -334,6 +343,9 @@ namespace SS.Core.Modules
 
         public int GetInt(ConfigHandle handle, string section, string key, int defaultValue)
         {
+            if (handle is not DocumentHandle documentHandle)
+                throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
+
             string value = GetStr(handle, section, key);
 
             if (string.IsNullOrWhiteSpace(value))
@@ -342,7 +354,46 @@ namespace SS.Core.Modules
             if (int.TryParse(value, out int result))
                 return result;
 
-            return value[0] == 'y' || value[0] == 'Y' ? 1 : 0;
+            // Check if there's a ConfigHelp attribute for it being an enum type.
+            IConfigHelp configHelp = broker.GetInterface<IConfigHelp>();
+            if (configHelp != null)
+            {
+                try
+                {
+                    if (configHelp.Sections.Contains(section))
+                    {
+                        var helpAttributes =
+                            from helpTuple in configHelp.Sections[section]
+                            where string.Equals(helpTuple.Attr.Key, key, StringComparison.OrdinalIgnoreCase)
+                                && helpTuple.Attr.Type.IsEnum
+                                && helpTuple.Attr.Scope == documentHandle.Scope
+                                && string.Equals(helpTuple.Attr.FileName, documentHandle.FileName, StringComparison.OrdinalIgnoreCase)
+                            select helpTuple.Attr;
+
+                        foreach (var attribute in helpAttributes)
+                        {
+                            if (Enum.TryParse(attribute.Type, value, out object enumResult))
+                            {
+                                return (int)enumResult;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    broker.ReleaseInterface(ref configHelp);
+                }
+            }
+
+            ReadOnlySpan<char> valueSpan = value.AsSpan().Trim();
+            if (valueSpan.Equals("Y", StringComparison.OrdinalIgnoreCase)
+                || valueSpan.Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                || valueSpan.Equals(bool.TrueString, StringComparison.OrdinalIgnoreCase))
+            {
+                return 1;
+            }
+
+            return defaultValue; // Note: This differs from ASSS which returns 0.
         }
 
         public T GetEnum<T>(ConfigHandle handle, string section, string key, T defaultValue) where T : struct, Enum
@@ -559,13 +610,21 @@ namespace SS.Core.Modules
 
             public DocumentHandle(
                 DocumentInfo documentInfo,
+                ConfigScope scope,
+                string filename,
                 IConfigChangedInvoker invoker)
             {
                 DocumentInfo = documentInfo ?? throw new ArgumentNullException(nameof(documentInfo));
+                Scope = scope;
+                FileName = filename;
                 this.invoker = invoker; // can be null
             }
 
             public DocumentInfo DocumentInfo { get; internal set; }
+
+            public ConfigScope Scope { get; private set; }
+
+            public string FileName { get; private set; }
 
             public void NotifyConfigChanged()
             {
@@ -609,9 +668,9 @@ namespace SS.Core.Modules
                 }
             }
 
-            public DocumentHandle CreateHandle()
+            public DocumentHandle CreateHandle(ConfigScope scope, string fileName)
             {
-                DocumentHandle handle = new DocumentHandle(this, null);
+                DocumentHandle handle = new DocumentHandle(this, scope, fileName,  null);
 
                 lock (lockObj)
                 {
@@ -621,10 +680,12 @@ namespace SS.Core.Modules
                 return handle;
             }
 
-            public DocumentHandle CreateHandle(ConfigChangedDelegate callback)
+            public DocumentHandle CreateHandle(ConfigScope scope, string fileName, ConfigChangedDelegate callback)
             {
                 DocumentHandle handle = new DocumentHandle(
                     this,
+                    scope,
+                    fileName,
                     callback != null ? new ConfigChangedInvoker(callback) : null);
 
                 lock (lockObj)
@@ -635,10 +696,12 @@ namespace SS.Core.Modules
                 return handle;
             }
 
-            public DocumentHandle CreateHandle<TState>(ConfigChangedDelegate<TState> callback, TState state)
+            public DocumentHandle CreateHandle<TState>(ConfigScope scope, string fileName, ConfigChangedDelegate<TState> callback, TState state)
             {
                 DocumentHandle handle = new DocumentHandle(
                     this,
+                    scope,
+                    fileName,
                     callback != null ? new ConfigChangedInvoker<TState>(callback, state) : null);
 
                 lock (lockObj)
