@@ -1,5 +1,6 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -253,6 +254,9 @@ namespace SS.Core.Modules
                     try
                     {
                         workItem.Process();
+
+                        if (workItem is IDisposable disposable)
+                            disposable.Dispose();
                     }
                     catch (Exception ex)
                     {
@@ -273,8 +277,10 @@ namespace SS.Core.Modules
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            // TODO: pool RunInMainWorkItem objects to reduce allocations even further
-            bool ret = _runInMainQueue.TryAdd(new RunInMainWorkItem<TState>(callback, state));
+            // TODO: keep track of all the pools we use, so that we can get stats on them later
+            var workItem = Pool<RunInMainWorkItem<TState>>.Default.Get();
+            workItem.Set(callback, state);
+            bool ret = _runInMainQueue.TryAdd(workItem);
             _runInMainAutoResetEvent.Set();
             return ret;
         }
@@ -702,12 +708,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private class RunInMainWorkItem<TState> : IRunInMainWorkItem
+        private class RunInMainWorkItem<TState> :  PooledObject, IRunInMainWorkItem
         {
-            private readonly Action<TState> _callback;
-            private readonly TState _state;
+            private Action<TState> _callback;
+            private TState _state;
 
-            public RunInMainWorkItem(Action<TState> callback, TState state)
+            public void Set(Action<TState> callback, TState state)
             {
                 _callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 _state = state;
@@ -715,7 +721,18 @@ namespace SS.Core.Modules
 
             public void Process()
             {
-                _callback(_state);
+                _callback?.Invoke(_state);
+            }
+
+            protected override void Dispose(bool isDisposing)
+            {
+                if (isDisposing)
+                {
+                    _callback = null;
+                    _state = default;
+                }
+
+                base.Dispose(isDisposing);
             }
         }
 
