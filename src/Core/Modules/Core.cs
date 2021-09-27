@@ -36,6 +36,8 @@ namespace SS.Core.Modules
         //private IStats _stats;
         private InterfaceRegistrationToken _iAuthToken;
 
+        private IPool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
+
         private int _pdkey;
 
         private const ushort ClientVersion_VIE = 134;
@@ -126,6 +128,19 @@ namespace SS.Core.Modules
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+
+            IObjectPoolManager objectPoolManager = _broker.GetInterface<IObjectPoolManager>();
+            if (objectPoolManager != null)
+            {
+                try
+                {
+                    _bufferPool = objectPoolManager.GetPool<DataBuffer>();
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref objectPoolManager);
+                }
+            }
 
             _continuumChecksum = GetChecksum(ContinuumExeFile);
             _codeChecksum = GetUInt32(ContinuumChecksumFile, 4);
@@ -515,7 +530,7 @@ namespace SS.Core.Modules
                     len = 512;
 
                 pdata.LoginPacketBuffer?.Dispose(); // just in case there already is one, get a brand new one zero'd out
-                pdata.LoginPacketBuffer = Pool<DataBuffer>.Default.Get();
+                pdata.LoginPacketBuffer = _bufferPool.Get();
                 Array.Copy(data, pdata.LoginPacketBuffer.Bytes, len);
                 pdata.LoginPacketBuffer.NumBytes = len;
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(pdata.LoginPacketBuffer.Bytes);

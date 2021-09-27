@@ -15,6 +15,7 @@ namespace SS.Core.Modules
     public sealed class Mainloop : IModule, IMainloop, IMainloopTimer, IServerTimer, IDisposable
     {
         private ComponentBroker _broker;
+        private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken _iMainloopToken;
         private InterfaceRegistrationToken _iMainloopTimerToken;
         private InterfaceRegistrationToken _iServerTimerToken;
@@ -49,9 +50,13 @@ namespace SS.Core.Modules
         public bool Load(ComponentBroker broker)
         {
             _broker = broker;
+
+            _objectPoolManager = _broker.GetInterface<IObjectPoolManager>();
+
             _iMainloopTimerToken = broker.RegisterInterface<IMainloopTimer>(this);
             _iServerTimerToken = broker.RegisterInterface<IServerTimer>(this);
             _iMainloopToken = broker.RegisterInterface<IMainloop>(this);
+
             return true;
         }
 
@@ -93,6 +98,9 @@ namespace SS.Core.Modules
 
             if (broker.UnregisterInterface<IMainloopTimer>(ref _iMainloopTimerToken) != 0)
                 return false;
+
+            if (_objectPoolManager != null)
+                _broker.ReleaseInterface(ref _objectPoolManager);
 
             return true;
         }
@@ -175,6 +183,13 @@ namespace SS.Core.Modules
                     case 1:
                         // at least one workitem was added
                         DrainRunInMain();
+
+                        if (_runInMainQueue.Count > 0)
+                        {
+                            // make sure we come back around to process more
+                            _runInMainAutoResetEvent.Set();
+                        }
+
                         break;
 
                     case 2:
@@ -247,20 +262,30 @@ namespace SS.Core.Modules
 
         private void DrainRunInMain()
         {
-            while (_runInMainQueue.TryTake(out IRunInMainWorkItem workItem))
+            // This differs from ASSS in is that it will only process up to the initial count.
+            // This protects against the possibility not being able to fully drain if producers
+            // out produce what the single consumer (mainloop thread) can process.
+
+            int maxToProcess = _runInMainQueue.Count;
+            int count = 0;
+
+            while (++count <= maxToProcess 
+                && _runInMainQueue.TryTake(out IRunInMainWorkItem workItem))
             {
                 if (workItem != null)
                 {
                     try
                     {
                         workItem.Process();
-
-                        if (workItem is IDisposable disposable)
-                            disposable.Dispose();
                     }
                     catch (Exception ex)
                     {
                         WriteLog(LogLevel.Warn, $"Caught an exception while processing a work item. {ex}");
+                    }
+                    finally
+                    {
+                        if (workItem is IDisposable disposable)
+                            disposable.Dispose();
                     }
                 }
             }
@@ -277,8 +302,17 @@ namespace SS.Core.Modules
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            // TODO: keep track of all the pools we use, so that we can get stats on them later
-            var workItem = Pool<RunInMainWorkItem<TState>>.Default.Get();
+            RunInMainWorkItem<TState> workItem;
+
+            if (_objectPoolManager != null)
+            {
+                workItem = _objectPoolManager.Get<RunInMainWorkItem<TState>>();
+            }
+            else
+            {
+                workItem = Pool<RunInMainWorkItem<TState>>.Default.Get();
+            }
+            
             workItem.Set(callback, state);
             bool ret = _runInMainQueue.TryAdd(workItem);
             _runInMainAutoResetEvent.Set();
@@ -708,7 +742,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class RunInMainWorkItem<TState> :  PooledObject, IRunInMainWorkItem
+        private class RunInMainWorkItem<TState> : PooledObject, IRunInMainWorkItem
         {
             private Action<TState> _callback;
             private TState _state;

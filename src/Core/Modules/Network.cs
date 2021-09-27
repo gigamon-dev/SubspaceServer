@@ -93,7 +93,7 @@ namespace SS.Core.Modules
             #endregion
         }
         
-        private readonly Pool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
+        private IPool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
 
         private interface ISizedSendData
         {
@@ -1761,12 +1761,12 @@ namespace SS.Core.Modules
             if (buffer == null)
                 return;
 
-            ConnData conn = buffer.Conn;
-            if (conn == null)
-                return;
-
             try
             {
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
+
                 CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes);
             }
             finally
@@ -2714,6 +2714,19 @@ namespace SS.Core.Modules
             _config.PerPacketOverhead = _configManager.GetInt(_configManager.Global, "Net", "PerPacketOverhead", 28);
             _config.PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200));
             _config.simplepingpopulationmode = (PingPopulationMode)_configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
+
+            IObjectPoolManager objectPoolManager = _broker.GetInterface<IObjectPoolManager>();
+            if (objectPoolManager != null)
+            {
+                try
+                {
+                    _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref objectPoolManager);
+                }
+            }
 
             if (InitializeSockets() == false)
                 return false;

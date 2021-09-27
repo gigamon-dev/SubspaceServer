@@ -56,7 +56,7 @@ namespace SS.Core.Modules
             IMainloop mainloop,
             IMapData mapData,
             IModuleManager mm,
-            INetwork net, 
+            INetwork net,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -121,6 +121,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("moveball", Command_moveball);
             _commandManager.AddCommand("spawnball", Command_spawnball);
             _commandManager.AddCommand("ballinfo", Command_ballinfo);
+            _commandManager.AddCommand("serverstats", Command_serverstats);
 
             return true;
         }
@@ -169,6 +170,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("moveball", Command_moveball);
             _commandManager.RemoveCommand("spawnball", Command_spawnball);
             _commandManager.RemoveCommand("ballinfo", Command_ballinfo);
+            _commandManager.RemoveCommand("serverstats", Command_serverstats);
 
             return true;
         }
@@ -178,7 +180,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "[{-v}]",
-            Description = 
+            Description =
             "Displays lag information about you or a target player.\n" +
             "Use {-v} for more detail. The format of the ping fields is\n" +
             "\"last average (min-max)\".\n")]
@@ -228,7 +230,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[{-a}] [{-t}]",
-            Description = 
+            Description =
             "Lists the available arenas. Specifying {-a} will also include\n" +
             "empty arenas that the server knows about. The {-t} switch forces\n" +
             "the output to be in text even for regular clients (useful when using\n" +
@@ -291,8 +293,8 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[{-r}]",
-            Description = 
-            "Immediately shuts down the server, exiting with {EXIT_NONE}. If\n" + 
+            Description =
+            "Immediately shuts down the server, exiting with {EXIT_NONE}. If\n" +
             "{-r} is specified, exit with {EXIT_RECYCLE} instead. The {run-asss}\n" +
             "script, if it is being used, will notice {EXIT_RECYCLE} and restart\n" +
             "the server.")]
@@ -343,7 +345,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[{-v}]",
-            Description = 
+            Description =
             "Prints out information about the server.\n" +
             "For staff members, it will print more detailed version information.\n" +
             "If staff members specify the {-v} arg, it will print even more verbose information.")]
@@ -426,8 +428,8 @@ namespace SS.Core.Modules
             Command = "setg",
             Targets = CommandTarget.None,
             Args = "[{-t}] section:key=value",
-            Description = "Sets the value of a global setting. Make sure there are no\n"+
-            "spaces around either the colon or the equals sign. A {-t} makes\n"+
+            Description = "Sets the value of a global setting. Make sure there are no\n" +
+            "spaces around either the colon or the equals sign. A {-t} makes\n" +
             "the setting temporary.\n")]
         private void Command_setX(string command, string parameters, Player p, ITarget target)
         {
@@ -457,7 +459,7 @@ namespace SS.Core.Modules
             ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
 
             IReadOnlyNetStats stats = _net.GetStats();
-            _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}", 
+            _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}",
                 stats.PingsReceived, stats.PacketsSent, stats.PacketsReceived);
 
             // IP Header (20 bytes) + UDP Header (8 bytes) = 28 bytes total overhead for each packet
@@ -495,7 +497,7 @@ namespace SS.Core.Modules
             "been connected, and bandwidth usage information.")]
         private void Command_info(string command, string parameters, Player p, ITarget target)
         {
-            if (target == null 
+            if (target == null
                 || target.Type != TargetType.Player
                 || !(target is IPlayerTarget playerTarget))
             {
@@ -511,10 +513,10 @@ namespace SS.Core.Modules
             TimeSpan connectedTimeSpan = DateTime.UtcNow - t.ConnectTime;
 
             _chat.SendMessage(p, $"{prefix}: pid={t.Id} name='{t.Name}' squad='{t.Squad}' " +
-                $"auth={(t.Flags.Authenticated?'Y':'N')} ship={t.Ship} freq={t.Freq}");
+                $"auth={(t.Flags.Authenticated ? 'Y' : 'N')} ship={t.Ship} freq={t.Freq}");
             _chat.SendMessage(p, $"{prefix}: arena={(t.Arena != null ? t.Arena.Name : "(none)")} " +
                 $"client={t.ClientName} res={t.Xres}x{t.Yres} onFor={connectedTimeSpan} " +
-                $"connectAs={(!string.IsNullOrWhiteSpace(t.ConnectAs)? t.ConnectAs : "<default>")}");
+                $"connectAs={(!string.IsNullOrWhiteSpace(t.ConnectAs) ? t.ConnectAs : "<default>")}");
 
             if (t.IsStandard)
             {
@@ -726,7 +728,7 @@ namespace SS.Core.Modules
             if (!string.IsNullOrWhiteSpace(parameters))
             {
                 string[] args = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                foreach(string arg in args)
+                foreach (string arg in args)
                 {
                     if (string.Equals(arg, "-a", StringComparison.OrdinalIgnoreCase))
                     {
@@ -772,7 +774,7 @@ namespace SS.Core.Modules
             {
                 if (sb.Length > 0)
                     sb.Append(", ");
-                
+
                 sb.Append(str);
             }
 
@@ -795,7 +797,7 @@ namespace SS.Core.Modules
 
             if (infoArray.Length > 0)
             {
-                foreach(var info in infoArray)
+                foreach (var info in infoArray)
                 {
                     _chat.SendMessage(p, info.ModuleTypeName);
                     _chat.SendMessage(p, $"  Type: {info.ModuleQualifiedName}");
@@ -840,7 +842,7 @@ namespace SS.Core.Modules
                 moduleTypeName = tokens[0];
                 path = null;
             }
-            else if(tokens.Length == 2)
+            else if (tokens.Length == 2)
             {
                 moduleTypeName = tokens[0];
                 path = tokens[1];
@@ -1041,7 +1043,7 @@ namespace SS.Core.Modules
             Args = "<group name> <password>",
             Description = "Logs you in to the specified group, if the password is correct.")]
         private void Command_grplogin(string command, string parameters, Player p, ITarget target)
-        {            
+        {
             string[] parameterArray = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             if (parameterArray.Length != 2)
@@ -1149,7 +1151,7 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.Arena, 
+            Targets = CommandTarget.Arena,
             Args = null,
             Description = "Displays information about the map in this arena.")]
         private void Command_mapinfo(string command, string parameters, Player p, ITarget target)
@@ -1164,7 +1166,7 @@ namespace SS.Core.Modules
 
             const string NotSet = "<not set>";
 
-            _chat.SendMessage(p, 
+            _chat.SendMessage(p,
                 $"name: {_mapData.GetAttribute(arena, MapAttributeKeys.Name) ?? NotSet}, " +
                 $"version: {_mapData.GetAttribute(arena, MapAttributeKeys.Version) ?? NotSet}");
 
@@ -1175,9 +1177,9 @@ namespace SS.Core.Modules
 
             var errors = _mapData.GetErrors(arena);
 
-            _chat.SendMessage(p, 
+            _chat.SendMessage(p,
                 $"tiles:{_mapData.GetTileCount(arena)} " +
-                $"flags:{_mapData.GetFlagCount(arena)} " + 
+                $"flags:{_mapData.GetFlagCount(arena)} " +
                 $"regions:{_mapData.GetRegionCount(arena)} " +
                 $"errors:{errors.Count}");
 
@@ -1196,7 +1198,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[<new # of balls> | +<balls to add> | -<balls to remove>]",
-            Description = 
+            Description =
             "Displays or changes the number of balls in the arena.\n" +
             "A number without a plus or minus sign is taken as a new count.\n" +
             "A plus signifies adding that many, and a minus removes that many.\n" +
@@ -1234,7 +1236,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "[{-f} [<ball id>]",
-            Description = 
+            Description =
             "Moves the specified ball to you, or a targeted player.\n" +
             "If no ball is specified, ball id = is assumed.\n" +
             "If -f is specified, the ball is forced onto the player and there will be no shot timer, and if the player is already carrying a ball it will be dropped where they are standing.\n" +
@@ -1333,7 +1335,7 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<ball id> <x-coord> <y-coord>", 
+            Args = "<ball id> <x-coord> <y-coord>",
             Description = "Move the specified ball to the specified coordinates.")]
         private void Command_moveball(string command, string parameters, Player p, ITarget target)
         {
@@ -1394,7 +1396,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[<ball id>]",
-            Description = 
+            Description =
             "Resets the specified existing ball back to its spawn location.\n" +
             "If no ball is specified, ball id 0 is assumed.")]
         private void Command_spawnball(string command, string parameters, Player p, ITarget target)
@@ -1470,6 +1472,30 @@ namespace SS.Core.Modules
                             _chat.SendMessage(p, $"Ball {ballId}: waiting to be respawned.");
                             break;
                     }
+                }
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None, 
+            Description = "Displays information about server internals. It currently includes information about object pooling.")]
+        private void Command_serverstats(string command, string parameters, Player p, ITarget target)
+        {
+            IObjectPoolManager poolManager = _broker.GetInterface<IObjectPoolManager>();
+            if (poolManager != null)
+            {
+                try
+                {
+                    _chat.SendMessage(p, "Object Pooling Statistics (available/total):");
+
+                    foreach (var pool in poolManager.Pools)
+                    {
+                        _chat.SendMessage(p, $"{pool.Type} ({pool.ObjectsAvailable}/{pool.ObjectsCreated})");
+                    }
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref poolManager);
                 }
             }
         }
