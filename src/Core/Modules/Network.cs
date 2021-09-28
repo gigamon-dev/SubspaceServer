@@ -1403,7 +1403,7 @@ namespace SS.Core.Modules
             _lagCollect.RelStats(p, in rld);
         }
 
-        private void SendRaw(ConnData conn, Span<byte> data)
+        private void SendRaw(ConnData conn, ReadOnlySpan<byte> data)
         {
             if (conn == null)
                 return;
@@ -1968,7 +1968,7 @@ namespace SS.Core.Modules
             // TODO
         }
 
-        private SubspaceBuffer BufferPacket(ConnData conn, Span<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
+        private SubspaceBuffer BufferPacket(ConnData conn, ReadOnlySpan<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
         {
             int len = data.Length;
 
@@ -3055,7 +3055,7 @@ namespace SS.Core.Modules
 
         #region INetwork Members
 
-        void INetwork.SendToOne(Player p, Span<byte> data, NetSendFlags flags)
+        void INetwork.SendToOne(Player p, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             if (p == null)
                 return;
@@ -3085,7 +3085,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendToArena(Arena arena, Player except, Span<byte> data, NetSendFlags flags)
+        void INetwork.SendToArena(Arena arena, Player except, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             if (data == null)
                 return;
@@ -3114,12 +3114,12 @@ namespace SS.Core.Modules
             SendToSet(set, data, flags);
         }
 
-        void INetwork.SendToSet(IEnumerable<Player> set, Span<byte> data, NetSendFlags flags)
+        void INetwork.SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             SendToSet(set, data, flags);
         }
 
-        private void SendToSet(IEnumerable<Player> set, Span<byte> data, NetSendFlags flags)
+        private void SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             if (set == null)
                 return;
@@ -3172,17 +3172,17 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendWithCallback(Player p, Span<byte> data, ReliableDelegate callback)
+        void INetwork.SendWithCallback(Player p, ReadOnlySpan<byte> data, ReliableDelegate callback)
         {
             SendWithCallback(p, data, new ReliableCallbackInvoker(callback));
         }
 
-        void INetwork.SendWithCallback<T>(Player p, Span<byte> data, ReliableDelegate<T> callback, T clos)
+        void INetwork.SendWithCallback<T>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<T> callback, T clos)
         {
             SendWithCallback(p, data, new ReliableCallbackInvoker<T>(callback, clos));
         }
 
-        private void SendWithCallback(Player p, Span<byte> data, IReliableCallbackInvoker callbackInvoker)
+        private void SendWithCallback(Player p, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
         {
             if (p == null)
                 throw new ArgumentNullException(nameof(p));
@@ -3211,7 +3211,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendToTarget(ITarget target, Span<byte> data, NetSendFlags flags)
+        void INetwork.SendToTarget(ITarget target, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             _playerData.TargetToSet(target, out LinkedList<Player> set);
             SendToSet(set, data, flags);

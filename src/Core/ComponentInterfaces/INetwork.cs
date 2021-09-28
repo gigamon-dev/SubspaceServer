@@ -135,7 +135,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="p">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToOne(Player p, Span<byte> data, NetSendFlags flags);
+        void SendToOne(Player p, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// Sends data to players in a specific arena or all arenas,
@@ -145,7 +145,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="except">The player to exclude from the send.  <see langword="null"/> for no exclusion.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToArena(Arena arena, Player except, Span<byte> data, NetSendFlags flags);
+        void SendToArena(Arena arena, Player except, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// To send data to a set of players.
@@ -153,7 +153,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flag(s) specifying options for the send.</param>
-        void SendToSet(IEnumerable<Player> set, Span<byte> data, NetSendFlags flags);
+        void SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// Sends data to a target of players
@@ -161,7 +161,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">The target describing which players to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToTarget(ITarget target, Span<byte> data, NetSendFlags flags);
+        void SendToTarget(ITarget target, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// Reliably sends data to a player and invokes a callback after the data has been sent.
@@ -169,7 +169,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="p">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        void SendWithCallback(Player p, Span<byte> data, ReliableDelegate callback);
+        void SendWithCallback(Player p, ReadOnlySpan<byte> data, ReliableDelegate callback);
 
         /// <summary>
         /// Reliably sends data to a player and invokes a callback after the data has been sent.
@@ -179,7 +179,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
         /// <param name="clos">The state to send when invoking the callback.</param>
-        void SendWithCallback<T>(Player p, Span<byte> data, ReliableDelegate<T> callback, T clos);
+        void SendWithCallback<T>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<T> callback, T clos);
 
         /// <summary>
         /// Sends 'sized' data to a player.
