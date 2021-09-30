@@ -1,16 +1,13 @@
-﻿using System;
+﻿using SS.Utilities;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Collections.Specialized;
-using SS.Utilities;
 
 namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
     /// types of chat messages
     /// </summary>
-    public enum ChatMessageType
+    public enum ChatMessageType : byte
     {
         /// <summary>
         /// arena messages (in green)
@@ -31,11 +28,6 @@ namespace SS.Core.ComponentInterfaces
         /// team message
         /// </summary>
         Freq = 3, 
-
-        /// <summary>
-        /// team message (alias of Freq)
-        /// </summary>
-        Team = 3, 
 
         /// <summary>
         /// enemy team messages

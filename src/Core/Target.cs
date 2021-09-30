@@ -1,27 +1,26 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace SS.Core
 {
     public enum TargetType
     {
-        /// <summary>refers to no players</summary>
+        /// <summary>Refers to no players.</summary>
         None,
 
-        /// <summary>refers to one single player (u.p must be filled in)</summary>
+        /// <summary>Refers to one single player, <see cref="IPlayerTarget"/>.</summary>
         Player,
 
-        /// <summary>refers to a whole arena (u.arena must be filled in)</summary>
+        /// <summary>Refers to a whole arena, <see cref="IArenaTarget"/>.</summary>
         Arena,
 
-        /// <summary>refers to one freq (u.freq must be filled in)</summary>
+        /// <summary>Refers to one freq, <see cref="ITeamTarget"/>.</summary>
         Freq,
 
-        ///<summary>refers to the whole zone</summary>
+        ///<summary>Refers to the whole zone.</summary>
         Zone,
 
-        /// <summary>refers to an arbitrary set of players (u.list)</summary>
+        /// <summary>Refers to an arbitrary set of players, <see cref="IListTarget"/>.</summary>
         List
     }
 
@@ -73,7 +72,7 @@ namespace SS.Core
         public TeamTarget(Arena arena, int freq)
         {
             if (arena == null)
-                throw new ArgumentNullException("arena");
+                throw new ArgumentNullException(nameof(arena));
 
             _arena = arena;
             _freq = freq;
@@ -160,8 +159,7 @@ namespace SS.Core
         /// <param name="p"></param>
         public static IPlayerTarget PlayerTarget(Player p)
         {
-            return null;
-            //return p;
+            return p;
         }
 
         /// <summary>
@@ -170,8 +168,7 @@ namespace SS.Core
         /// <param name="arena"></param>
         public static IArenaTarget ArenaTarget(Arena arena)
         {
-            return null;
-            //return arena;
+            return arena;
         }
 
         /// <summary>

@@ -1,8 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Core.ComponentInterfaces;
+﻿using SS.Core.ComponentInterfaces;
+using System;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -20,7 +17,7 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="playerTo"></param>
         /// <param name="freq"></param>
         /// <param name="message"></param>
-        public delegate void ChatMessageDelegate(Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message);
+        public delegate void ChatMessageDelegate(Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, ReadOnlySpan<char> message);
 
         public static void Register(ComponentBroker broker, ChatMessageDelegate handler)
         {
@@ -32,7 +29,7 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, string message)
+        public static void Fire(ComponentBroker broker, Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, ReadOnlySpan<char> message)
         {
             broker?.GetCallback<ChatMessageDelegate>()?.Invoke(playerFrom, type, sound, playerTo, freq, message);
 
