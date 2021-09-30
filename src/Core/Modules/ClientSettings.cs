@@ -404,7 +404,7 @@ namespace SS.Core.Modules
             {
                 _net.SendToOne(
                     p,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ad.cs, 1)),
+                    ref ad.cs,
                     NetSendFlags.Reliable);
             }
         }

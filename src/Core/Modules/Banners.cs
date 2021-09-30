@@ -74,7 +74,7 @@ namespace SS.Core.Modules
                                 if (opd.Status == BannerStatus.Good)
                                 {
                                     S2CBanner packet = new((short)other.Id, in opd.Banner);
-                                    _network.SendToOne(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable | NetSendFlags.PriorityP1);
+                                    _network.SendToOne(p, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityP1);
                                 }
                             }
                         }
@@ -170,7 +170,7 @@ namespace SS.Core.Modules
 
                     // send to everyone
                     S2CBanner packet = new((short)p.Id, pd.Banner);
-                    _network.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable | NetSendFlags.PriorityN1);
+                    _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
 
                     if (notify)
                     {

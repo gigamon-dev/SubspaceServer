@@ -331,12 +331,14 @@ namespace SS.Core.Modules
 
                 abd.Bricks.Enqueue(packet);
 
+                ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
+
                 // send it unreliably, urgently, and allow it to be dropped (as many times as is configured)
                 for (int i = 0; i < abd.WallResendCount; i++)
-                    _network.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Unreliable | NetSendFlags.Urgent | NetSendFlags.Droppable);
+                    _network.SendToArena(arena, null, data, NetSendFlags.Unreliable | NetSendFlags.Urgent | NetSendFlags.Droppable);
 
                 // send it reliably (always)
-                _network.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+                _network.SendToArena(arena, null, data, NetSendFlags.Reliable);
 
                 _logManager.LogA(LogLevel.Drivel, nameof(Bricks), arena, $"Brick dropped ({x1},{y1})-({x2},{y2}) (freq={freq}) (id={packet.BrickId})");
 
@@ -383,7 +385,7 @@ namespace SS.Core.Modules
                 foreach (S2CBrick packet in abd.Bricks)
                 {
                     S2CBrick copy = packet; // TODO: is there a way to avoid the copy?
-                    _network.SendToOne(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref copy, 1)), NetSendFlags.Reliable);
+                    _network.SendToOne(p, ref copy, NetSendFlags.Reliable);
                 }
             }
         }

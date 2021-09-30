@@ -914,7 +914,7 @@ namespace SS.Core.Modules
                     (short)(bd.Carrier?.Id ?? -1),
                     time);
 
-                var bpBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref bp, 1));
+                var bpBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref bp, 1));
 
                 _network.SendToArena(arena, extraInfo.LastKiller, bpBytes, NetSendFlags.Unreliable | BallSendFlags);
 

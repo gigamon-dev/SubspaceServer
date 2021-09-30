@@ -3085,6 +3085,11 @@ namespace SS.Core.Modules
             }
         }
 
+        void INetwork.SendToOne<TData>(Player p, ref TData data, NetSendFlags flags) where TData : struct
+        {
+            ((INetwork)this).SendToOne(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+        }
+
         void INetwork.SendToArena(Arena arena, Player except, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             if (data == null)
@@ -3114,9 +3119,19 @@ namespace SS.Core.Modules
             SendToSet(set, data, flags);
         }
 
+        void INetwork.SendToArena<TData>(Arena arena, Player except, ref TData data, NetSendFlags flags) where TData : struct
+        {
+            ((INetwork)this).SendToArena(arena, except, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+        }
+
         void INetwork.SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             SendToSet(set, data, flags);
+        }
+
+        void INetwork.SendToSet<TData>(IEnumerable<Player> set, ref TData data, NetSendFlags flags) where TData : struct
+        {
+            ((INetwork)this).SendToSet(set, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
         private void SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
@@ -3177,9 +3192,19 @@ namespace SS.Core.Modules
             SendWithCallback(p, data, new ReliableCallbackInvoker(callback));
         }
 
-        void INetwork.SendWithCallback<T>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<T> callback, T clos)
+        void INetwork.SendWithCallback<TData>(Player p, ref TData data, ReliableDelegate callback)
         {
-            SendWithCallback(p, data, new ReliableCallbackInvoker<T>(callback, clos));
+            ((INetwork)this).SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback);
+        }
+        
+        void INetwork.SendWithCallback<TState>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
+        {
+            SendWithCallback(p, data, new ReliableCallbackInvoker<TState>(callback, clos));
+        }
+
+        void INetwork.SendWithCallback<TData, TState>(Player p, ref TData data, ReliableDelegate<TState> callback, TState clos)
+        {
+            ((INetwork)this).SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback, clos);
         }
 
         private void SendWithCallback(Player p, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
@@ -3215,6 +3240,11 @@ namespace SS.Core.Modules
         {
             _playerData.TargetToSet(target, out LinkedList<Player> set);
             SendToSet(set, data, flags);
+        }
+
+        void INetwork.SendToTarget<TData>(ITarget target, ref TData data, NetSendFlags flags)
+        {
+            ((INetwork)this).SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
         bool INetwork.SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestCallback, T clos)

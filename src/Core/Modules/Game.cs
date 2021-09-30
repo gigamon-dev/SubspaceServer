@@ -304,7 +304,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(target));
 
             WarpToPacket warpTo = new(x, y);
-            _net.SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref warpTo, 1)), NetSendFlags.Reliable | NetSendFlags.Urgent);
+            _net.SendToTarget(target, ref warpTo, NetSendFlags.Reliable | NetSendFlags.Urgent);
         }
 
         void IGame.GivePrize(ITarget target, Prize prize, short count)
@@ -313,7 +313,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(target));
 
             PrizeReceivePacket packet = new(count, prize);
-            _net.SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+            _net.SendToTarget(target, ref packet, NetSendFlags.Reliable);
         }
 
         void IGame.Lock(ITarget target, bool notify, bool spec, int timeout)
@@ -408,7 +408,7 @@ namespace SS.Core.Modules
             if (target == null)
                 throw new ArgumentNullException(nameof(target));
 
-            Span<byte> shipResetBytes = stackalloc byte[1] { (byte)S2CPacketType.ShipReset };
+            ReadOnlySpan<byte> shipResetBytes = stackalloc byte[1] { (byte)S2CPacketType.ShipReset };
             _net.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
 
             _playerData.Lock();
@@ -911,7 +911,7 @@ namespace SS.Core.Modules
             if (t == null)
                 return;
 
-            Span<byte> specBytes = stackalloc byte[2] { (byte)S2CPacketType.SpecData, sendExtraPositionData ? (byte)1 : (byte)0 };
+            ReadOnlySpan<byte> specBytes = stackalloc byte[2] { (byte)S2CPacketType.SpecData, sendExtraPositionData ? (byte)1 : (byte)0 };
             _net.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
@@ -1279,7 +1279,7 @@ namespace SS.Core.Modules
                                         if (wpn.Weapon.Type != 0)
                                             idata.wpnSent++;
 
-                                        Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref wpn, 1));
+                                        ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref wpn, 1));
                                         if (data.Length > length)
                                             data = data.Slice(0, length);
 
@@ -1310,7 +1310,7 @@ namespace SS.Core.Modules
                                             posDirty = modified;
                                         }
 
-                                        Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref sendpos, 1));
+                                        ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref sendpos, 1));
                                         if (data.Length > length)
                                             data = data.Slice(0, length);
 
@@ -1602,15 +1602,17 @@ namespace SS.Core.Modules
             }
 
             ShipChangePacket packet = new((sbyte)ship, (short)p.Id, freq);
-            
+            ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
+
+
             if (p.IsStandard)
             {
                 // send it to him, with a callback
-                _net.SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), ResetDuringChange);
+                _net.SendWithCallback(p, data, ResetDuringChange);
             }
 
             // send it to everyone else
-            _net.SendToArena(arena, p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+            _net.SendToArena(arena, p, data, NetSendFlags.Reliable);
 
             //if(_chatnet != null)
 
@@ -1676,13 +1678,14 @@ namespace SS.Core.Modules
             }
 
             FreqChangePacket packet = new((short)p.Id, freq);
+            ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
 
             // him with callback
             if (p.IsStandard)
-                _net.SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), ResetDuringChange);
+                _net.SendWithCallback(p, data, ResetDuringChange);
                 
             // everyone else
-            _net.SendToArena(arena, p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+            _net.SendToArena(arena, p, data, NetSendFlags.Reliable);
 
             //if(_chatNet != null)
 
@@ -1897,7 +1900,7 @@ namespace SS.Core.Modules
                 return;
 
             KillPacket packet = new(green, (short)killer.Id, (short)killed.Id, pts, flagCount);
-            _net.SendToArena(killer.Arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+            _net.SendToArena(killer.Arena, null, ref packet, NetSendFlags.Reliable);
 
             //if(_chatnet != null)
         }
@@ -1936,7 +1939,7 @@ namespace SS.Core.Modules
             {
                 g.PlayerId = (short)p.Id;
                 g.Type = (byte)S2CPacketType.Green; // HACK: reuse the buffer that it came in on
-                _net.SendToArena(arena, p, data.AsSpan(0, GreenPacket.S2CLength), NetSendFlags.Unreliable);
+                _net.SendToArena(arena, p, new ReadOnlySpan<byte>(data, 0, GreenPacket.S2CLength), NetSendFlags.Unreliable);
                 //g.Type = C2SPacketType.Green; // asss sets it back, i dont think this is necessary though
             }
 
@@ -1967,7 +1970,7 @@ namespace SS.Core.Modules
             {
                 // Send the packet
                 TurretPacket packet = new((short)p.Id, toPlayerId);
-                _net.SendToArena(p.Arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+                _net.SendToArena(p.Arena, null, ref packet, NetSendFlags.Reliable);
 
                 // Update the state
                 p.Attached = toPlayerId;
@@ -2033,7 +2036,7 @@ namespace SS.Core.Modules
                 return;
 
             TurretKickoffPacket packet = new((short)p.Id);
-            _net.SendToArena(arena, null, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+            _net.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
         }
 
         private int Hypot(int dx, int dy)

@@ -314,7 +314,7 @@ namespace SS.Core.Modules
 
                 _network.SendToSet(
                     set,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref cp, 1)).Slice(0, length),
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref cp, 1)).Slice(0, length),
                     NetSendFlags.Reliable);
             }
 
@@ -621,7 +621,7 @@ namespace SS.Core.Modules
 
                 _network.SendToSet(
                     set,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref cp, 1)).Slice(0, length),
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref cp, 1)).Slice(0, length),
                     NetSendFlags.Reliable);
             }
 

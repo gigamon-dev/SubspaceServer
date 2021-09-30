@@ -163,7 +163,7 @@ namespace SS.Core.Modules
             {
                 // send whoami packet
                 WhoAmIPacket whoAmI = new((short)player.Id);
-                _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref whoAmI, 1)), NetSendFlags.Reliable);
+                _net.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                 
                 // send settings
                 IClientSettings clientset = Broker.GetInterface<IClientSettings>();
@@ -208,7 +208,7 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send to self
-                _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref player.Packet, 1)), NetSendFlags.Reliable);
+                _net.SendToOne(player, ref player.Packet, NetSendFlags.Reliable);
 
                 IMapNewsDownload mapNewDownload = Broker.GetInterface<IMapNewsDownload>();
                 if (mapNewDownload != null)
@@ -237,7 +237,7 @@ namespace SS.Core.Modules
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
                         WarpToPacket warpTo = new(sp.X, sp.Y);
-                        _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref warpTo, 1)), NetSendFlags.Reliable);
+                        _net.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
                     }
                 }
             }
@@ -337,7 +337,7 @@ namespace SS.Core.Modules
                             if (player.IsStandard)
                             {
                                 whoAmI.PlayerId = (short)player.Id;
-                                _net.SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref whoAmI, 1)), NetSendFlags.Reliable);
+                                _net.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                             }
                             else if (player.IsChat)
                             {
@@ -636,7 +636,7 @@ namespace SS.Core.Modules
             if (notify)
             {
                 PlayerLeavingPacket packet = new((short)player.Id);
-                _net.SendToArena(arena, player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+                _net.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
                 //chatnet.SendToArena(
 
                 _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "leaving arena");
@@ -892,7 +892,7 @@ namespace SS.Core.Modules
         {
             if (playerTo.IsStandard)
             {
-                _net.SendToOne(playerTo, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref player.Packet, 1)), NetSendFlags.Reliable);
+                _net.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
             }
             else if (playerTo.IsChat)
             {

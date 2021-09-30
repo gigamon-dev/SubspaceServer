@@ -116,7 +116,7 @@ namespace SS.Core.Modules
             ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
 
             RequestFilePacket packet = new(path, "unused-field");
-            _network.SendToOne(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), NetSendFlags.Reliable);
+            _network.SendToOne(p, ref packet, NetSendFlags.Reliable);
 
             _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Requesting file '{0}'.", path);
 

@@ -311,7 +311,7 @@ namespace SS.Core.Modules
 
             _net.SendToOne(
                 p, 
-                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref mf, 1)).Slice(0, len), 
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref mf, 1)).Slice(0, len), 
                 NetSendFlags.Reliable);
         }
 

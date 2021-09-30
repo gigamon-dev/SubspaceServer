@@ -789,7 +789,7 @@ namespace SS.Core.Modules
 
                     _net.SendToOne(
                         player,
-                        MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref pkt, 1)),
+                        ref pkt,
                         NetSendFlags.Reliable);
 
                     lr.ExeChecksum = _continuumChecksum;
@@ -828,7 +828,7 @@ namespace SS.Core.Modules
 
                 _net.SendToOne(
                     player, 
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref lr, 1)),  
+                    ref lr, 
                     NetSendFlags.Reliable);
             }
             else if (player.IsChat)
@@ -863,7 +863,7 @@ namespace SS.Core.Modules
         {
             if (_net != null)
             {
-                Span<byte> keepAlive = stackalloc byte[1] { (byte)S2CPacketType.KeepAlive };
+                ReadOnlySpan<byte> keepAlive = stackalloc byte[1] { (byte)S2CPacketType.KeepAlive };
                 _net.SendToArena(null, null, keepAlive, NetSendFlags.Reliable);
             }
 

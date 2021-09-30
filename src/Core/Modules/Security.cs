@@ -351,8 +351,7 @@ namespace SS.Core.Modules
                     packet.Key = 0;
 
                     // Send the packet without a key (just syncing the client, not requesting the client to respond).
-                    Span<byte> packetSpan = MemoryMarshal.Cast<S2CSecurity, byte>(MemoryMarshal.CreateSpan(ref packet, 1));
-                    network.SendToOne(p, packetSpan, NetSendFlags.Reliable);
+                    network.SendToOne(p, ref packet, NetSendFlags.Reliable);
 
                     packet.Key = key;
                 }
@@ -417,8 +416,7 @@ namespace SS.Core.Modules
                 // Send the requests
                 //
 
-                Span<byte> packetSpan = MemoryMarshal.Cast<S2CSecurity, byte>(MemoryMarshal.CreateSpan(ref packet, 1));
-                network.SendToSet(sendPlayerList, packetSpan, NetSendFlags.Reliable);
+                network.SendToSet(sendPlayerList, ref packet, NetSendFlags.Reliable);
             }
 
             logManager.LogM(LogLevel.Drivel, nameof(Security),
