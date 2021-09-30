@@ -17,7 +17,7 @@ namespace SS.Core.Modules
         private string _helpCommandName;
         private ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> _settingsLookup;
         public ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> Sections => _settingsLookup;
-        private Dictionary<string, string> _sectionAllKeysDictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _sectionAllKeysDictionary = new(StringComparer.OrdinalIgnoreCase);
         private string _sectionGroupsStr;
 
         public bool Load(
@@ -64,6 +64,19 @@ namespace SS.Core.Modules
 
         private void LoadConfigHelp()
         {
+            static Type GetModuleType(Type type)
+            {
+                if (type == null)
+                    return null;
+
+                if (typeof(IModule).IsAssignableFrom(type))
+                    return type;
+                else if (type.DeclaringType != null)
+                    return GetModuleType(type.DeclaringType);
+                else
+                    return null;
+            }
+
             var helpAttributes =
                 from assembly in AppDomain.CurrentDomain.GetAssemblies()
                 let assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>()
@@ -84,12 +97,12 @@ namespace SS.Core.Modules
                     select attr
                 let allAttributes = typeAttributes.Concat(methodAttributes).Concat(fieldAttributes).Concat(propertyAttributes)
                 from attr in allAttributes
-                let moduleType = typeof(IModule).IsAssignableFrom(type) ? type : null
+                let moduleType = GetModuleType(type)
                 select (attr, moduleType?.FullName);
 
             _settingsLookup = helpAttributes.ToLookup(tuple => tuple.attr.Section, StringComparer.OrdinalIgnoreCase);
 
-            StringBuilder sectionGroupsBuilder = new StringBuilder();
+            StringBuilder sectionGroupsBuilder = new();
             foreach (var sectionGroup in _settingsLookup)
             {
                 if (sectionGroupsBuilder.Length > 0)
@@ -102,7 +115,7 @@ namespace SS.Core.Modules
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(key => key, StringComparer.OrdinalIgnoreCase);
 
-                StringBuilder allKeysBuilder = new StringBuilder();
+                StringBuilder allKeysBuilder = new();
                 foreach (string key in keys)
                 {
                     if (allKeysBuilder.Length > 0)
@@ -129,7 +142,7 @@ namespace SS.Core.Modules
             {
                 if (parameters[0] == '?' || parameters[0] == '*' || parameters[0] == '!')
                 {
-                    parameters = parameters.Substring(1);
+                    parameters = parameters[1..];
                 }
             }
 
@@ -142,7 +155,7 @@ namespace SS.Core.Modules
             if (colonIndex != -1)
             {
                 string section = parameters.Substring(0, colonIndex);
-                string key = parameters.Substring(colonIndex + 1);
+                string key = parameters[(colonIndex + 1)..];
 
                 if (string.IsNullOrWhiteSpace(section))
                 {
@@ -196,27 +209,27 @@ namespace SS.Core.Modules
                 return;
             }
 
-            foreach (var keyTuple in keys)
+            foreach ((ConfigHelpAttribute attr, string moduleTypeName) in keys)
             {
-                _chat.SendMessage(p, $"Help on setting {section}:{keyTuple.Attr.Key}:");
+                _chat.SendMessage(p, $"Help on setting {section}:{attr.Key}:");
                 
-                if (!string.IsNullOrWhiteSpace(keyTuple.ModuleTypeName))
-                    _chat.SendMessage(p, $"  Requires module: {keyTuple.ModuleTypeName}");
+                if (!string.IsNullOrWhiteSpace(moduleTypeName))
+                    _chat.SendMessage(p, $"  Requires module: {moduleTypeName}");
 
-                if(string.IsNullOrWhiteSpace(keyTuple.Attr.FileName))
-                    _chat.SendMessage(p, $"  Location: {keyTuple.Attr.Scope}");
+                if(string.IsNullOrWhiteSpace(attr.FileName))
+                    _chat.SendMessage(p, $"  Location: {attr.Scope}");
                 else
-                    _chat.SendMessage(p, $"  Location: {keyTuple.Attr.Scope}, File: {keyTuple.Attr.FileName}");
+                    _chat.SendMessage(p, $"  Location: {attr.Scope}, File: {attr.FileName}");
 
-                _chat.SendMessage(p, $"  Type: {keyTuple.Attr.Type.Name}");
+                _chat.SendMessage(p, $"  Type: {attr.Type.Name}");
 
-                if (!string.IsNullOrWhiteSpace(keyTuple.Attr.Range))
-                    _chat.SendMessage(p, $"  Range: {keyTuple.Attr.Range}");
+                if (!string.IsNullOrWhiteSpace(attr.Range))
+                    _chat.SendMessage(p, $"  Range: {attr.Range}");
 
-                if (!string.IsNullOrWhiteSpace(keyTuple.Attr.DefaultValue))
-                    _chat.SendMessage(p, $"  Default: {keyTuple.Attr.DefaultValue}");
+                if (!string.IsNullOrWhiteSpace(attr.DefaultValue))
+                    _chat.SendMessage(p, $"  Default: {attr.DefaultValue}");
 
-                _chat.SendWrappedText(p, keyTuple.Attr.Description);
+                _chat.SendWrappedText(p, attr.Description);
             }
         }
 
