@@ -1,8 +1,6 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace SS.Core.Packets
 {
@@ -16,8 +14,9 @@ namespace SS.Core.Packets
         public byte Type;
 
         // Files
-        private fixed byte filesBytes[File.Length * MaxFiles];
-        private Span<File> Files => new(Unsafe.AsPointer(ref filesBytes[0]), MaxFiles);
+        private const int FileBytesLength = File.Length * MaxFiles;
+        private fixed byte filesBytes[FileBytesLength];
+        private Span<File> Files => MemoryMarshal.Cast<byte, File>(MemoryMarshal.CreateSpan(ref filesBytes[0], FileBytesLength));
 
         public void Initialize()
         {
@@ -73,13 +72,13 @@ namespace SS.Core.Packets
         public unsafe struct File
         {
             // File Name
-            private const int FileNameLength = 16;
-            private fixed byte fileName[FileNameLength];
-            public Span<byte> FileNameBytes => new(Unsafe.AsPointer(ref fileName[0]), FileNameLength);
+            private const int FileNameBytesLength = 16;
+            private fixed byte fileNameBytes[FileNameBytesLength];
+            public Span<byte> FileNameBytes => MemoryMarshal.CreateSpan(ref fileNameBytes[0], FileNameBytesLength);
             public string FileName
             {
                 get => FileNameBytes.ReadNullTerminatedString();
-                set => FileNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FileNameLength), false);
+                set => FileNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FileNameBytesLength), false);
             }
 
             // Checksum

@@ -1,6 +1,5 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets.S2C
@@ -13,24 +12,24 @@ namespace SS.Core.Packets.S2C
     {
         public readonly byte Type;
 
-        private const int PathLength = 256;
-        private fixed byte pathBytes[PathLength];
-        public Span<byte> PathBytes => new(Unsafe.AsPointer(ref pathBytes[0]), PathLength);
+        private const int PathBytesLength = 256;
+        private fixed byte pathBytes[PathBytesLength];
+        public Span<byte> PathBytes => MemoryMarshal.CreateSpan(ref pathBytes[0], PathBytesLength);
 
-        private const int FilenameLength = 16;
-        private fixed byte filenameBytes[FilenameLength];
-        public Span<byte> FilenameBytes => new(Unsafe.AsPointer(ref filenameBytes[0]), FilenameLength);
+        private const int FilenameBytesLength = 16;
+        private fixed byte filenameBytes[FilenameBytesLength];
+        public Span<byte> FilenameBytes => MemoryMarshal.CreateSpan(ref filenameBytes[0], FilenameBytesLength);
 
         public string Path
         {
             get { return PathBytes.ReadNullTerminatedString(); }
-            set { PathBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PathLength - 1)); }
+            set { PathBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PathBytesLength - 1)); }
         }
 
         public string Filename
         {
             get { return FilenameBytes.ReadNullTerminatedString(); }
-            set { FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameLength - 1)); }
+            set { FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameBytesLength - 1)); }
         }
 
         public RequestFilePacket(string path, string filename)

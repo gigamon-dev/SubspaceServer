@@ -108,8 +108,8 @@ namespace SS.Core.ComponentInterfaces
                 if (string.IsNullOrWhiteSpace(value))
                     throw new ArgumentException("Cannot be null or white-space.", nameof(value));
 
-                if (StringUtils.DefaultEncoding.GetByteCount(value) > PlayerDataPacket.NameLength) // null-terminator not required
-                    throw new ArgumentException($"Does not fit into {PlayerDataPacket.NameLength} bytes when encoded.", nameof(value));
+                if (StringUtils.DefaultEncoding.GetByteCount(value) > PlayerDataPacket.NameBytesLength) // null-terminator not required
+                    throw new ArgumentException($"Does not fit into {PlayerDataPacket.NameBytesLength} bytes when encoded.", nameof(value));
 
                 _sendName = value;
             }

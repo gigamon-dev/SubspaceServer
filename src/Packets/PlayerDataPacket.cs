@@ -1,6 +1,5 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets.S2C
@@ -12,13 +11,13 @@ namespace SS.Core.Packets.S2C
         public sbyte Ship;
         public byte AcceptAudio;
 
-        public const int NameLength = 20;
-        private fixed byte nameBytes[NameLength];
-        public Span<byte> NameBytes => new(Unsafe.AsPointer(ref nameBytes[0]), NameLength);
+        public const int NameBytesLength = 20;
+        private fixed byte nameBytes[NameBytesLength];
+        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
 
-        public const int SquadLength = 20;
-        private fixed byte squadBytes[SquadLength];
-        public Span<byte> SquadBytes => new(Unsafe.AsPointer(ref squadBytes[0]), SquadLength);
+        public const int SquadBytesLength = 20;
+        private fixed byte squadBytes[SquadBytesLength];
+        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], SquadBytesLength);
 
         private int killPoints;
         private int flagPoints;
@@ -42,13 +41,13 @@ namespace SS.Core.Packets.S2C
         public string Name
         {
             get { return NameBytes.ReadNullTerminatedString(); }
-            set { NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameLength), false); }
+            set { NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameBytesLength), false); }
         }
 
         public string Squad
         {
             get { return SquadBytes.ReadNullTerminatedString(); }
-            set { SquadBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(SquadLength), false); }
+            set { SquadBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(SquadBytesLength), false); }
         }
 
         public int KillPoints

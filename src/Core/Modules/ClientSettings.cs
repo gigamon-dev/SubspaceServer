@@ -333,9 +333,10 @@ namespace SS.Core.Modules
             // spawn locations
             for (int i = 0; i < 4; i++)
             {
-                cs.SpawnPositions[i].X = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-X", 0);
-                cs.SpawnPositions[i].Y = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Y", 0);
-                cs.SpawnPositions[i].Radius = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Radius", 0);
+                ref SpawnPosition spawnPosition = ref cs.SpawnPositions[i];
+                spawnPosition.X = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-X", 0);
+                spawnPosition.Y = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Y", 0);
+                spawnPosition.Radius = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Radius", 0);
             }
 
             // rest of settings

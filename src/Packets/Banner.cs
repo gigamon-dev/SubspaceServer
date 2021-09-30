@@ -1,6 +1,5 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
@@ -10,7 +9,7 @@ namespace SS.Core.Packets
     {
         private const int DataLength = 96;
         private fixed byte dataBytes[DataLength];
-        public Span<byte> Data => new(Unsafe.AsPointer(ref dataBytes[0]), DataLength);
+        public Span<byte> Data => MemoryMarshal.CreateSpan(ref dataBytes[0], DataLength);
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

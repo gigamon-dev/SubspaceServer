@@ -1,6 +1,5 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
@@ -25,9 +24,9 @@ namespace SS.Core.Packets
         private readonly short yRes;
         private readonly short arenaType;
 
-        private const int ArenaNameLength = 16;
-        private fixed byte arenaNameBytes[ArenaNameLength];
-        public Span<byte> ArenaNameBytes => new(Unsafe.AsPointer(ref arenaNameBytes[0]), ArenaNameLength);
+        private const int ArenaNameBytesLength = 16;
+        private fixed byte arenaNameBytes[ArenaNameBytesLength];
+        public Span<byte> ArenaNameBytes => MemoryMarshal.CreateSpan(ref arenaNameBytes[0], ArenaNameBytesLength);
 
         public readonly byte OptionalGraphics; // continuum
 
@@ -52,7 +51,7 @@ namespace SS.Core.Packets
         public string ArenaName
         {
             get => ArenaNameBytes.ReadNullTerminatedString();
-            init => ArenaNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ArenaNameLength - 1));
+            init => ArenaNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ArenaNameBytesLength - 1));
         }
 
         public GoArenaPacket(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()

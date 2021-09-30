@@ -1,6 +1,5 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets.Directory
@@ -43,31 +42,31 @@ namespace SS.Core.Packets.Directory
             set => version = LittleEndianConverter.Convert(value);
         }
 
-        private const int NameLength = 32;
-        private fixed byte nameBytes[NameLength];
-        public Span<byte> NameBytes => new(Unsafe.AsPointer(ref nameBytes[0]), NameLength);
+        private const int NameBytesLength = 32;
+        private fixed byte nameBytes[NameBytesLength];
+        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
         public string Name
         {
             get => NameBytes.ReadNullTerminatedASCII();
-            set => NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameLength - 1));
+            set => NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameBytesLength - 1));
         }
 
-        private const int PasswordLength = 48;
-        private fixed byte passwordBytes[PasswordLength];
-        public Span<byte> PasswordBytes => new(Unsafe.AsPointer(ref passwordBytes[0]), PasswordLength);
+        private const int PasswordBytesLength = 48;
+        private fixed byte passwordBytes[PasswordBytesLength];
+        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
         public string Password
         {
             get => PasswordBytes.ReadNullTerminatedASCII();
-            set => PasswordBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PasswordLength - 1));
+            set => PasswordBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PasswordBytesLength - 1));
         }
 
-        private const int DescriptionLength = 386;
-        private fixed byte descriptionBytes[DescriptionLength];
-        public Span<byte> DescriptionBytes => new(Unsafe.AsPointer(ref descriptionBytes[0]), DescriptionLength);
+        private const int DescriptionBytesLength = 386;
+        private fixed byte descriptionBytes[DescriptionBytesLength];
+        public Span<byte> DescriptionBytes => MemoryMarshal.CreateSpan(ref descriptionBytes[0], DescriptionBytesLength);
         public string Description
         {
             get => DescriptionBytes.ReadNullTerminatedASCII();
-            set => DescriptionBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(DescriptionLength - 1));
+            set => DescriptionBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(DescriptionBytesLength - 1));
         }
 
         /// <summary>

@@ -1,7 +1,6 @@
 ﻿using SS.Utilities;
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
@@ -14,34 +13,30 @@ namespace SS.Core.Packets
         public ClientBits BitSet;
 
         // Ship settings
-        private const int NumShips = 8;
-        private fixed byte shipBytes[144 * NumShips];
-        public Span<ShipSettings> Ships => new Span<ShipSettings>(Unsafe.AsPointer(ref shipBytes[0]), NumShips);
+        public AllShipSettings Ships;
 
         // Int32 settings
-        private const int NumInt32Settings = 20;
-        private fixed int int32Settings[NumInt32Settings];
-        public Span<int> Int32Settings => new Span<int>(Unsafe.AsPointer(ref int32Settings[0]), NumInt32Settings);
+        private const int Int32SettingsLength = 20;
+        private fixed int int32Settings[Int32SettingsLength];
+        public Span<int> Int32Settings => MemoryMarshal.CreateSpan(ref int32Settings[0], Int32SettingsLength);
 
         // SpawnPosition settings
-        private const int NumSpawnPositions = 4;
-        private fixed byte spawnPositionBytes[4 * NumSpawnPositions];
-        public Span<SpawnPosition> SpawnPositions => new Span<SpawnPosition>(Unsafe.AsPointer(ref spawnPositionBytes[0]), NumSpawnPositions);
+        public SpawnPositions SpawnPositions;
 
         // Int16 settings
-        private const int NumInt16Settings = 58;
-        private fixed short int16Settings[NumInt16Settings];
-        public Span<short> Int16Settings => new Span<short>(Unsafe.AsPointer(ref int16Settings[0]), NumInt16Settings);
+        private const int Int16SettingsLength = 58;
+        private fixed short int16Settings[Int16SettingsLength];
+        public Span<short> Int16Settings => MemoryMarshal.CreateSpan(ref int16Settings[0], Int16SettingsLength);
 
         // Byte settings
-        private const int NumByteSettings = 32;
-        private fixed byte byteSettings[NumByteSettings];
-        public Span<byte> ByteSettings => new Span<byte>(Unsafe.AsPointer(ref byteSettings[0]), NumByteSettings);
+        private const int ByteSettingsLength = 32;
+        private fixed byte byteSettings[ByteSettingsLength];
+        public Span<byte> ByteSettings => MemoryMarshal.CreateSpan(ref byteSettings[0], ByteSettingsLength);
 
         // PrizeWeight settings
-        private const int NumPrizeWeightSettings = 28;
-        private fixed byte prizeWeightSettings[NumPrizeWeightSettings];
-        public Span<byte> PrizeWeightSettings => new Span<byte>(Unsafe.AsPointer(ref prizeWeightSettings[0]), NumPrizeWeightSettings);
+        private const int PrizeWeightSettingsLength = 28;
+        private fixed byte prizeWeightSettings[PrizeWeightSettingsLength];
+        public Span<byte> PrizeWeightSettings => MemoryMarshal.CreateSpan(ref prizeWeightSettings[0], PrizeWeightSettingsLength);
 
         public uint GetChecksum(uint key)
         {
@@ -127,23 +122,49 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct AllShipSettings
+    {
+        public ShipSettings Warbird;
+        public ShipSettings Javelin;
+        public ShipSettings Spider;
+        public ShipSettings Leviathan;
+        public ShipSettings Terrier;
+        public ShipSettings Weasel;
+        public ShipSettings Lancaster;
+        public ShipSettings Shark;
+
+        private Span<ShipSettings> ships => MemoryMarshal.CreateSpan(ref Warbird, 8);
+
+        public ref ShipSettings this[int index]
+        {
+            get
+            {
+                if (index < 0 || index > 7)
+                    throw new IndexOutOfRangeException();
+
+                return ref ships[index];
+            }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct ShipSettings
     {
         // Int32 settings
-        private const int NumInt32Settings = 2;
-        private fixed int int32Settings[NumInt32Settings];
-        public Span<int> Int32Settings => new Span<int>(Unsafe.AsPointer(ref int32Settings[0]), NumInt32Settings);
+        private const int Int32SettingsLength = 2;
+        private fixed int int32Settings[Int32SettingsLength];
+        public Span<int> Int32Settings => MemoryMarshal.CreateSpan(ref int32Settings[0], Int32SettingsLength);
 
         // Int16 settings
-        private const int NumInt16Settings = 49;
-        private fixed short int16Settings[NumInt16Settings];
-        public Span<short> Int16Settings => new Span<short>(Unsafe.AsPointer(ref int16Settings[0]), NumInt16Settings);
+        private const int Int16SettingsLength = 49;
+        private fixed short int16Settings[Int16SettingsLength];
+        public Span<short> Int16Settings => MemoryMarshal.CreateSpan(ref int16Settings[0], Int16SettingsLength);
         public ref MiscBits MiscBits => ref MemoryMarshal.Cast<short, MiscBits>(Int16Settings.Slice(10, 1))[0];
 
         // Byte settings
-        private const int NumByteSettings = 18;
-        private fixed byte byteSettings[NumByteSettings];
-        public Span<byte> ByteSettings => new Span<byte>(Unsafe.AsPointer(ref byteSettings[0]), NumByteSettings);
+        private const int ByteSettingsLength = 18;
+        private fixed byte byteSettings[ByteSettingsLength];
+        public Span<byte> ByteSettings => MemoryMarshal.CreateSpan(ref byteSettings[0], ByteSettingsLength);
 
         public WeaponBits Weapons;
 
@@ -279,6 +300,28 @@ namespace SS.Core.Packets
         {
             get { return ((bitfield & SeeMinesMask) >> 28) != 0; }
             set { bitfield = (bitfield & ~SeeMinesMask) | (((value ? 1u : 0u) << 28) & SeeMinesMask); }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SpawnPositions
+    {
+        public SpawnPosition SpawnPosition1;
+        public SpawnPosition SpawnPosition2;
+        public SpawnPosition SpawnPosition3;
+        public SpawnPosition SpawnPosition4;
+
+        private Span<SpawnPosition> spawnPositions => MemoryMarshal.CreateSpan(ref SpawnPosition1, 4);
+
+        public ref SpawnPosition this[int index]
+        {
+            get
+            {
+                if (index < 0 || index > 3)
+                    throw new IndexOutOfRangeException();
+
+                return ref spawnPositions[index];
+            }
         }
     }
 

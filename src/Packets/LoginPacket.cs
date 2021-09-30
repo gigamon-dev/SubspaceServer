@@ -1,6 +1,5 @@
 ﻿using SS.Utilities;
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Packets
@@ -20,13 +19,13 @@ namespace SS.Core.Packets
         public byte Type;
         public byte Flags;
 
-        private const int NameLength = 32;
-        private fixed byte nameBytes[NameLength];
-        public Span<byte> NameBytes => new(Unsafe.AsPointer(ref nameBytes[0]), NameLength);
+        private const int NameBytesLength = 32;
+        private fixed byte nameBytes[NameBytesLength];
+        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
 
-        private const int PasswordLength = 32;
-        private fixed byte passwordBytes[PasswordLength];
-        public Span<byte> PasswordBytes => new(Unsafe.AsPointer(ref passwordBytes[0]), PasswordLength);
+        private const int PasswordBytesLength = 32;
+        private fixed byte passwordBytes[PasswordBytesLength];
+        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
 
         private uint macId;
         private byte blah;
