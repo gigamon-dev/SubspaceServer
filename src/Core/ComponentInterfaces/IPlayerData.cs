@@ -69,12 +69,12 @@ namespace SS.Core.ComponentInterfaces
         Player FindPlayer(string name);
 
         /// <summary>
-        /// Converts a Target to a specific list of players.
-        /// The players represented by the target will be added to the given list.
+        /// Converts an <see cref="ITarget"/> to a specific list of players.
+        /// The players represented by the target will be added to the given set.
         /// </summary>
-        /// <param name="target">the target to convert</param>
-        /// <param name="set">the list to add players to</param>
-        void TargetToSet(ITarget target, out LinkedList<Player> set);
+        /// <param name="target">The target to convert.</param>
+        /// <param name="set">The set to add players to.</param>
+        void TargetToSet(ITarget target, HashSet<Player> set);
 
         /// <summary>
         /// Allocates a slot for Per Player Data.

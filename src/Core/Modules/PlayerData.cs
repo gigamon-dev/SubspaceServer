@@ -277,23 +277,18 @@ namespace SS.Core.Modules
             return null;
         }
 
-        void IPlayerData.TargetToSet(ITarget target, out LinkedList<Player> list)
+        void IPlayerData.TargetToSet(ITarget target, HashSet<Player> set)
         {
             if (target == null)
                 throw new ArgumentNullException(nameof(target));
 
-            if (target.Type == TargetType.List)
-            {
-                list = new LinkedList<Player>(((IListTarget)target).List);
-                return;
-            }
-
-            list = new LinkedList<Player>();
+            if (set == null)
+                throw new ArgumentNullException(nameof(set));
 
             switch (target.Type)
             {
                 case TargetType.Player:
-                    list.AddLast(((IPlayerTarget)target).Player);
+                    set.Add(((IPlayerTarget)target).Player);
                     return;
 
                 case TargetType.Arena:
@@ -305,13 +300,17 @@ namespace SS.Core.Modules
                         foreach (Player p in _playerDictionary.Values)
                         {
                             if ((p.Status == PlayerState.Playing) && Matches(target, p))
-                                list.AddLast(p);
+                                set.Add(p);
                         }
                     }
                     finally
                     {
                         Unlock();
                     }
+                    return;
+
+                case TargetType.List:
+                    set.UnionWith(((IListTarget)target).List);
                     return;
 
                 case TargetType.None:
@@ -321,24 +320,16 @@ namespace SS.Core.Modules
 
             static bool Matches(ITarget t, Player p)
             {
-                switch (t.Type)
+                if (t == null || p == null)
+                    return false;
+
+                return t.Type switch
                 {
-                    case TargetType.Arena:
-                        return p.Arena == ((IArenaTarget)t).Arena;
-
-                    case TargetType.Freq:
-                        ITeamTarget teamTarget = (ITeamTarget)t;
-                        return (p.Arena == teamTarget.Arena) && (p.Freq == teamTarget.Freq);
-
-                    case TargetType.Zone:
-                        return true;
-
-                    case TargetType.List:
-                    case TargetType.Player:
-                    case TargetType.None:
-                    default:
-                        return false;
-                }
+                    TargetType.Arena => p.Arena == ((IArenaTarget)t).Arena,
+                    TargetType.Freq => (t is ITeamTarget teamTarget) && (p.Arena == teamTarget.Arena) && (p.Freq == teamTarget.Freq),
+                    TargetType.Zone => true,
+                    _ => false,
+                };
             }
         }
 

@@ -165,9 +165,9 @@ namespace SS.Core.ComponentInterfaces
         /// Gets whether a player is being antiwarped by another player.
         /// </summary>
         /// <param name="p">The player to check.</param>
-        /// <param name="playersList">An optional list to populate with the players that are antiwarping.</param>
+        /// <param name="playersAntiwarping">An optional list to populate with the players that are antiwarping.</param>
         /// <returns>True if antiwarped, false otherwise.</returns>
-        bool IsAntiwarped(Player p, LinkedList<Player> playersList);
+        bool IsAntiwarped(Player p, HashSet<Player> playersAntiwarping);
 
         /// <summary>
         /// Forcefully attach a player to another player.

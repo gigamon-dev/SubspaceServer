@@ -1,5 +1,7 @@
-﻿using SS.Utilities;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Utilities;
 using System.Collections.Generic;
+using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -28,5 +30,21 @@ namespace SS.Core.ComponentInterfaces
         IEnumerable<IPool> Pools { get; }
 
         // TODO: add methods to free up memory by clearing pools or reducing their size
+
+        //
+        // Other pools
+        //
+
+        /// <summary>
+        /// Pool of <see cref="Player"/> HashSets that can be reused.
+        /// The set is guaranteed to be empty when it is taken from the pool.
+        /// The set is automatically cleared when it is returned to the pool.
+        /// </summary>
+        ObjectPool<HashSet<Player>> PlayerSetPool { get; }
+
+        /// <summary>
+        /// Pool of <see cref="StringBuilder"/> objects.
+        /// </summary>
+        ObjectPool<StringBuilder> StringBuilderPool { get; }
     }
 }

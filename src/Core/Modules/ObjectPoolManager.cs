@@ -1,8 +1,10 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -15,9 +17,18 @@ namespace SS.Core.Modules
 
         private readonly ConcurrentDictionary<Type, IPool> _poolDictionary = new();
 
+        private DefaultObjectPoolProvider _provider;
+        private ObjectPool<HashSet<Player>> _playerHashSetPool;
+        private ObjectPool<StringBuilder> _stringBuilderPool;
+
         public bool Load(ComponentBroker broker)
         {
             _iObjectPoolManagerToken = broker.RegisterInterface<IObjectPoolManager>(this);
+
+            _provider = new DefaultObjectPoolProvider();
+            _playerHashSetPool = _provider.Create(new PlayerHashSetPooledObjectPolicy());
+            _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
+
             return true;
         }
 
@@ -45,6 +56,26 @@ namespace SS.Core.Modules
 
         IEnumerable<IPool> IObjectPoolManager.Pools => _poolDictionary.Values;
 
+        ObjectPool<HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
+
+        ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
+
         #endregion
+
+        private class PlayerHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<Player>>
+        {
+            public int InitialCapacity { get; set; } = 256;
+
+            public override HashSet<Player> Create()
+            {
+                return new HashSet<Player>(InitialCapacity);
+            }
+
+            public override bool Return(HashSet<Player> obj)
+            {
+                obj.Clear();
+                return true;
+            }
+        }
     }
 }

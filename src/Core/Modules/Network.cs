@@ -1,4 +1,3 @@
-using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
@@ -20,7 +19,7 @@ namespace SS.Core.Modules
     /// TODO: revisit this module, it is basically 95% a direct port from asss
     /// </summary>
     [CoreModuleInfo]
-    public class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient, IDisposable
+    public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient, IDisposable
     {
         /// <summary>
         /// specialized data buffer which keeps track of what connection it is for and other useful info
@@ -272,7 +271,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// For receiving sized packets, protected by <see cref="bigmtx"/>
             /// </summary>
-            public SizedReceive sizedrecv = new SizedReceive();
+            public SizedReceive sizedrecv = new();
 
             internal class BigReceive
             {
@@ -290,12 +289,12 @@ namespace SS.Core.Modules
             /// <summary>
             /// stuff for recving big packets, protected by <see cref="bigmtx"/>
             /// </summary>
-            public readonly BigReceive bigrecv = new BigReceive();
+            public readonly BigReceive bigrecv = new();
 
             /// <summary>
             /// stuff for sending sized packets, protected by <see cref="olmtx"/>
             /// </summary>
-            public LinkedList<ISizedSendData> sizedsends = new LinkedList<ISizedSendData>();
+            public LinkedList<ISizedSendData> sizedsends = new();
 
             /// <summary>
             /// bandwidth limiting
@@ -315,17 +314,17 @@ namespace SS.Core.Modules
             /// <summary>
             /// mutex for <see cref="outlist"/>
             /// </summary>
-            public object olmtx = new object();
+            public object olmtx = new();
 
             /// <summary>
             /// mutex for <see cref="relbuf"/>
             /// </summary>
-            public object relmtx = new object();
+            public object relmtx = new();
 
             /// <summary>
             /// mutex for (<see cref="bigrecv"/> and <see cref="sizedrecv"/>)
             /// </summary>
-            public object bigmtx = new object();
+            public object bigmtx = new();
 
             public ConnData()
             {
@@ -360,13 +359,14 @@ namespace SS.Core.Modules
         }
 
         private ComponentBroker _broker;
-        private IPlayerData _playerData;
+        private IBandwidthLimit _bandwithLimit;
         private IConfigManager _configManager;
+        private ILagCollect _lagCollect;
         private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
-        private IBandwidthLimit _bandwithLimit;
-        private ILagCollect _lagCollect;
+        private IObjectPoolManager _objectPoolManager;
+        private IPlayerData _playerData;
         private InterfaceRegistrationToken _iNetworkToken;
         private InterfaceRegistrationToken _iNetworkClientToken;
         private InterfaceRegistrationToken _iNetworkEncryptionToken;
@@ -432,7 +432,7 @@ namespace SS.Core.Modules
             public PingPopulationMode simplepingpopulationmode;
         }
 
-        private readonly Config _config = new Config();
+        private readonly Config _config = new();
 
         private class PopulationStats
         {
@@ -474,8 +474,8 @@ namespace SS.Core.Modules
         /// </summary>
         private int _connKey;
 
-        private readonly Dictionary<EndPoint, Player> _clienthash = new Dictionary<EndPoint, Player>();
-        private readonly object _hashmtx = new object();
+        private readonly Dictionary<EndPoint, Player> _clienthash = new();
+        private readonly object _hashmtx = new();
 
         /*
         /// <summary>
@@ -688,13 +688,13 @@ namespace SS.Core.Modules
 
         private const int MICROSECONDS_PER_MILLISECOND = 1000;
 
-        private readonly MessagePassingQueue<ConnData> _relqueue = new MessagePassingQueue<ConnData>();
+        private readonly MessagePassingQueue<ConnData> _relqueue = new();
 
-        private readonly CancellationTokenSource _stopCancellationTokenSource = new CancellationTokenSource();
+        private readonly CancellationTokenSource _stopCancellationTokenSource = new();
         private CancellationToken _stopToken;
 
-        private readonly List<Thread> _threadList = new List<Thread>();
-        private readonly List<Thread> _reliableThreads = new List<Thread>();
+        private readonly List<Thread> _threadList = new();
+        private readonly List<Thread> _reliableThreads = new();
 
         /// <summary>
         /// info about sockets this object has created, etc...
@@ -732,7 +732,7 @@ namespace SS.Core.Modules
             public ReadOnlySpan<ulong> PriorityStats => pri_stats;
         }
 
-        private readonly NetStats _globalStats = new NetStats();
+        private readonly NetStats _globalStats = new();
 
         // delegates to prevent allocating a new delegate object per call
         private readonly Action<BigPacketWork> mainloopWork_CallBigPacketHandlersAction;
@@ -777,7 +777,7 @@ namespace SS.Core.Modules
 
         private Socket CreateSocket(int port, IPAddress bindAddress)
         {
-            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -930,11 +930,11 @@ namespace SS.Core.Modules
 
         private void ReceiveThread()
         {
-            List<Socket> socketList = new List<Socket>(_listenDataList.Count * 2 + 1);
-            List<Socket> checkReadList = new List<Socket>(_listenDataList.Count * 2 + 1);
+            List<Socket> socketList = new(_listenDataList.Count * 2 + 1);
+            List<Socket> checkReadList = new(_listenDataList.Count * 2 + 1);
             
             Dictionary<EndPoint, (char Type, ListenData ListenData)> endpointLookup 
-                = new Dictionary<EndPoint, (char type, ListenData listenData)>(_listenDataList.Count * 2);
+                = new(_listenDataList.Count * 2);
 
             foreach (ListenData ld in _listenDataList)
             {
@@ -995,13 +995,13 @@ namespace SS.Core.Modules
 
         private void SendThread()
         {
-            GroupedPacketManager groupedPacketManager = new GroupedPacketManager(this);
+            GroupedPacketManager groupedPacketManager = new(this);
             //GroupedPacketManager groupedPacketManager = new GroupedPacketManager(this, new byte[Constants.MaxPacket]);
 
             while (_stopToken.IsCancellationRequested == false)
             {
-                List<Player> toKick = new List<Player>();
-                List<Player> toFree = new List<Player>();
+                List<Player> toKick = new();
+                List<Player> toFree = new();
 
                 // first send outgoing packets (players)
                 _playerData.Lock();
@@ -1014,7 +1014,7 @@ namespace SS.Core.Modules
                             && p.Status < PlayerState.TimeWait
                             && IsOurs(p))
                         {
-                            if (!(p[_connKey] is ConnData conn))
+                            if (p[_connKey] is not ConnData conn)
                                 continue;
 
                             if (Monitor.TryEnter(conn.olmtx))
@@ -1165,7 +1165,7 @@ namespace SS.Core.Modules
             if (buffer == null || buffer.Length < requestAtOnce + _queueDataHeader.Length)
                 buffer = _queueDataBuffer = new byte[requestAtOnce + _queueDataHeader.Length];
 
-            Span<byte> sizedLengthSpan = new Span<byte>(_queueDataHeader, 2, 4);
+            Span<byte> sizedLengthSpan = new(_queueDataHeader, 2, 4);
             _playerData.Lock();
 
             try
@@ -1175,7 +1175,7 @@ namespace SS.Core.Modules
                     if(!IsOurs(p) || p.Status >= PlayerState.TimeWait)
                         continue;
 
-                    if (!(p[_connKey] is ConnData conn))
+                    if (p[_connKey] is not ConnData conn)
                         continue;
 
                     if (Monitor.TryEnter(conn.olmtx) == false)
@@ -1241,7 +1241,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return;
 
             lock (conn.olmtx)
@@ -1305,7 +1305,7 @@ namespace SS.Core.Modules
             if (toFree == null)
                 throw new ArgumentNullException(nameof(toFree));
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return;
 
             // this is used for lagouts and also for timewait
@@ -1484,7 +1484,7 @@ namespace SS.Core.Modules
             {
                 outlist = conn.outlist[pri];
 
-                LinkedListNode<SubspaceBuffer> nextNode = null;
+                LinkedListNode<SubspaceBuffer> nextNode;
                 for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
                 {
                     nextNode = node.Next;
@@ -1569,7 +1569,7 @@ namespace SS.Core.Modules
                 conn.HitMaxOutlist = true;
         }
 
-        private void Clip(ref uint timeout, uint low, uint high)
+        private static void Clip(ref uint timeout, uint low, uint high)
         {
             if(timeout > high)
                 timeout = high;
@@ -1609,7 +1609,7 @@ namespace SS.Core.Modules
             DumpPk($"RECV: {buffer.NumBytes} bytes", buffer.Bytes.AsSpan(0, buffer.NumBytes));
 #endif
 
-            if (!(receivedFrom is IPEndPoint remoteEndPoint))
+            if (receivedFrom is not IPEndPoint remoteEndPoint)
             {
                 buffer.Dispose();
                 return;
@@ -1847,7 +1847,7 @@ namespace SS.Core.Modules
                 EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
                 buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref receivedFrom);
 
-                if (!(receivedFrom is IPEndPoint remoteEndPoint))
+                if (receivedFrom is not IPEndPoint remoteEndPoint)
                     return;
 
                 if (buffer.NumBytes <= 0)
@@ -1924,7 +1924,7 @@ namespace SS.Core.Modules
 
                     // # of clients
                     // Note: ASSS documentation says it's a UInt32, but it appears Continuum looks at only the first 2 bytes as an UInt16.
-                    Span<byte> span = new Span<byte>(buffer.Bytes, 0, 4);
+                    Span<byte> span = new(buffer.Bytes, 0, 4);
 
                     if (string.IsNullOrWhiteSpace(ld.ConnectAs))
                     {
@@ -1994,21 +1994,12 @@ namespace SS.Core.Modules
             else
             {
                 // figure out priority (ignoring the reliable, droppable, and urgent flags)
-                switch ((int)flags & 0x70)
+                pri = ((int)flags & 0x70) switch
                 {
-                    case (int)NetSendFlags.PriorityN1 & 0x70:
-                        pri = BandwidthPriorities.UnreliableLow;
-                        break;
-
-                    case (int)NetSendFlags.PriorityP4 & 0x70:
-                    case (int)NetSendFlags.PriorityP5 & 0x70:
-                        pri = BandwidthPriorities.UnreliableHigh;
-                        break;
-
-                    default:
-                        pri = BandwidthPriorities.Unreliable;
-                        break;
-                }
+                    (int)NetSendFlags.PriorityN1 & 0x70 => BandwidthPriorities.UnreliableLow,
+                    (int)NetSendFlags.PriorityP4 & 0x70 or (int)NetSendFlags.PriorityP5 & 0x70 => BandwidthPriorities.UnreliableHigh,
+                    _ => BandwidthPriorities.Unreliable,
+                };
             }
 
             // update global stats based on requested priority
@@ -2597,7 +2588,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return;
 
             if (conn.sizedrecv.offset != 0)
@@ -2684,22 +2675,24 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IPlayerData playerData,
+            IBandwidthLimit bandwidthLimit,
             IConfigManager configManager,
+            ILagCollect lagCollect,
             ILogManager logManager,
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
-            IBandwidthLimit bandwidthLimit,
-            ILagCollect lagCollect)
+            IObjectPoolManager objectPoolManager,
+            IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
-            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _connKey = _playerData.AllocatePlayerData<ConnData>();
 
@@ -2715,18 +2708,7 @@ namespace SS.Core.Modules
             _config.PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * _configManager.GetInt(_configManager.Global, "Net", "PingDataRefreshTime", 200));
             _config.simplepingpopulationmode = (PingPopulationMode)_configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
 
-            IObjectPoolManager objectPoolManager = _broker.GetInterface<IObjectPoolManager>();
-            if (objectPoolManager != null)
-            {
-                try
-                {
-                    _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
-                }
-                finally
-                {
-                    _broker.ReleaseInterface(ref objectPoolManager);
-                }
-            }
+            _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
 
             if (InitializeSockets() == false)
                 return false;
@@ -2734,22 +2716,26 @@ namespace SS.Core.Modules
             _stopToken = _stopCancellationTokenSource.Token;
 
             // receive thread
-            Thread thread = new Thread(ReceiveThread);
+            Thread thread = new(ReceiveThread);
             thread.Name = "network-recv";
             thread.Start();
             _threadList.Add(thread);
 
             // send thread
-            thread = new Thread(SendThread);
-            thread.Name = "network-send";
+            thread = new Thread(SendThread)
+            {
+                Name = "network-send"
+            };
             thread.Start();
             _threadList.Add(thread);
 
             // reliable threads
             for (int i = 0; i < reliableThreadCount; i++)
             {
-                thread = new Thread(RelThread);
-                thread.Name = "network-rel-" + i;
+                thread = new Thread(RelThread)
+                {
+                    Name = "network-rel-" + i
+                };
                 thread.Start();
                 _reliableThreads.Add(thread);
                 _threadList.Add(thread);
@@ -2843,7 +2829,7 @@ namespace SS.Core.Modules
                 {
                     if (IsOurs(player))
                     {
-                        if (!(player[_connKey] is ConnData conn))
+                        if (player[_connKey] is not ConnData conn)
                             continue;
 
                         SendRaw(conn, disconnectSpan);
@@ -3060,13 +3046,13 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (data.Length <= 0)
+            if (data.Length < 1)
                 return;
 
             if (!IsOurs(p))
                 return;
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return;
 
             // see if we can do it the quick way
@@ -3079,9 +3065,17 @@ namespace SS.Core.Modules
             }
             else
             {
-                // TODO: investigate a way to not allocate
-                Player[] set = new Player[] { p };
-                SendToSet(set, data, flags);
+                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+                try
+                {
+                    set.Add(p);
+                    SendToSet(set, data, flags);
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(set);
+                }
             }
         }
 
@@ -3092,31 +3086,39 @@ namespace SS.Core.Modules
 
         void INetwork.SendToArena(Arena arena, Player except, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
-            if (data == null)
+            if (data.Length < 1)
                 return;
 
-            LinkedList<Player> set = new();
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-            _playerData.Lock();
             try
             {
-                foreach (Player p in _playerData.PlayerList)
+                _playerData.Lock();
+
+                try
                 {
-                    if (p.Status == PlayerState.Playing
-                        && (p.Arena == arena || arena == null) 
-                        && p != except 
-                        && IsOurs(p))
+                    foreach (Player p in _playerData.PlayerList)
                     {
-                        set.AddLast(p);
+                        if (p.Status == PlayerState.Playing
+                            && (p.Arena == arena || arena == null)
+                            && p != except
+                            && IsOurs(p))
+                        {
+                            set.Add(p);
+                        }
                     }
                 }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                SendToSet(set, data, flags);
             }
             finally
             {
-                _playerData.Unlock();
+                _objectPoolManager.PlayerSetPool.Return(set);
             }
-
-            SendToSet(set, data, flags);
         }
 
         void INetwork.SendToArena<TData>(Arena arena, Player except, ref TData data, NetSendFlags flags) where TData : struct
@@ -3152,7 +3154,7 @@ namespace SS.Core.Modules
                 buffer.Bytes[0] = 0x00;
                 buffer.Bytes[1] = 0x08;
 
-                Span<byte> bufferSpan = new Span<byte>(buffer.Bytes, 2, Constants.ChunkSize);
+                Span<byte> bufferSpan = new(buffer.Bytes, 2, Constants.ChunkSize);
                 int position = 0;
 
                 // first send the 08 packets
@@ -3173,7 +3175,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player p in set)
                 {
-                    if (!(p[_connKey] is ConnData conn))
+                    if (p[_connKey] is not ConnData conn)
                         continue;
 
                     if (!IsOurs(p))
@@ -3221,7 +3223,7 @@ namespace SS.Core.Modules
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return;
 
             // we can't handle big packets here
@@ -3238,8 +3240,20 @@ namespace SS.Core.Modules
 
         void INetwork.SendToTarget(ITarget target, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
-            _playerData.TargetToSet(target, out LinkedList<Player> set);
-            SendToSet(set, data, flags);
+            if (data.Length < 1)
+                return;
+
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.TargetToSet(target, set);
+                SendToSet(set, data, flags);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         void INetwork.SendToTarget<TData>(ITarget target, ref TData data, NetSendFlags flags)
@@ -3265,10 +3279,10 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return false;
 
-            SizedSendData<T> sd = new SizedSendData<T>(requestCallback, clos, len, 0);
+            SizedSendData<T> sd = new(requestCallback, clos, len, 0);
 
             lock (conn.olmtx)
             {
@@ -3380,10 +3394,10 @@ namespace SS.Core.Modules
 
         NetClientStats INetwork.GetClientStats(Player p)
         {
-            if (!(p[_connKey] is ConnData conn))
+            if (p[_connKey] is not ConnData conn)
                 return null;
 
-            NetClientStats stats = new NetClientStats();
+            NetClientStats stats = new();
             stats.s2cn = conn.s2cn;
             stats.c2sn = conn.c2sn;
             stats.PacketsSent = conn.pktSent;
@@ -3473,13 +3487,13 @@ namespace SS.Core.Modules
         }
 
 #if CFG_DUMP_RAW_PACKETS
-        private void DumpPk(string description, ReadOnlySpan<byte> d)
+        private static void DumpPk(string description, ReadOnlySpan<byte> d)
         {
-            StringBuilder sb = new StringBuilder(description.Length + 2 + (int)Math.Ceiling(d.Length / 16d) * 67);
+            StringBuilder sb = new(description.Length + 2 + (int)Math.Ceiling(d.Length / 16d) * 67);
             sb.AppendLine(description);
 
             int pos = 0;
-            StringBuilder asciiBuilder = new StringBuilder(16);
+            StringBuilder asciiBuilder = new(16);
 
             while (pos < d.Length)
             {

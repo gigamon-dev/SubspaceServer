@@ -19,18 +19,19 @@ namespace SS.Core.Modules
         private ComponentBroker _broker;
        
         // required dependencies
-        private IPlayerData _playerData;
+        private IArenaManager _arenaManager;
+        private ICapabilityManager _capabilityManager;
+        private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
-        private IArenaManager _arenaManager;
-        private ICommandManager _commandManager;
-        private ICapabilityManager _capabilityManager;
+        private IObjectPoolManager _objectPoolManager;
+        private IPlayerData _playerData;
 
         // optional dependencies
-        private INetwork _network;
         private IChatNet _chatNet;
-        private IPersist _persist;
+        private INetwork _network;
         private IObscene _obscene;
+        private IPersist _persist;
 
         private InterfaceRegistrationToken _iChatToken;
 
@@ -114,20 +115,22 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IPlayerData playerData,
+            IArenaManager arenaManager,
+            ICapabilityManager capabilityManager,
+            ICommandManager commandManager,
             IConfigManager configManager,
             ILogManager logManager,
-            IArenaManager arenaManager,
-            ICommandManager commandManager,
-            ICapabilityManager capabilityManager)
+            IObjectPoolManager objectPoolManager,
+            IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _network = broker.GetInterface<INetwork>();
             _chatNet = broker.GetInterface<IChatNet>();
@@ -214,8 +217,17 @@ namespace SS.Core.Modules
 
         void IChat.SendSoundMessage(Player p, ChatSound sound, string format, params object[] args)
         {
-            Player[] set = { p };
-            SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                set.Add(p);
+                SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         void IChat.SendSetSoundMessage(IEnumerable<Player> set, ChatSound sound, string format, params object[] args)
@@ -230,15 +242,28 @@ namespace SS.Core.Modules
 
         void IChat.SendArenaMessage(Arena arena, string format, params object[] args)
         {
-            IEnumerable<Player> set = GetArenaSet(arena, null);
-            if (set != null)
-                SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetArenaSet(set, arena, null);
+
+                if (set.Count > 0)
+                    SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
-        private LinkedList<Player> GetArenaSet(Arena arena, Player except)
+        private void GetArenaSet(HashSet<Player> set, Arena arena, Player except)
         {
-            LinkedList<Player> set = new(); // TODO: player collection object pooling
+            if (set == null)
+                throw new ArgumentNullException(nameof(set));
+
             _playerData.Lock();
+
             try
             {
                 foreach (Player p in _playerData.PlayerList)
@@ -247,7 +272,7 @@ namespace SS.Core.Modules
                         (p.Arena == arena || arena == null) && 
                         p != except)
                     {
-                        set.AddLast(p);
+                        set.Add(p);
                     }
                 }
             }
@@ -255,23 +280,27 @@ namespace SS.Core.Modules
             {
                 _playerData.Unlock();
             }
-
-            return set;
         }
 
-        private LinkedList<Player> GetCapabilitySet(string capability, Player except)
+        private void GetCapabilitySet(HashSet<Player> set, string capability, Player except)
         {
-            LinkedList<Player> set = new(); // TODO: player collection object pooling
+            if (set == null)
+                throw new ArgumentNullException(nameof(set));
+
+            if (string.IsNullOrWhiteSpace(capability))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(capability));
+
             _playerData.Lock();
+
             try
             {
                 foreach (Player p in _playerData.PlayerList)
                 {
-                    if (p.Status == PlayerState.Playing &&
-                        _capabilityManager.HasCapability(p, capability) &&
-                        p != except)
+                    if (p.Status == PlayerState.Playing
+                        && _capabilityManager.HasCapability(p, capability)
+                        && p != except)
                     {
-                        set.AddLast(p);
+                        set.Add(p);
                     }
                 }
             }
@@ -279,22 +308,40 @@ namespace SS.Core.Modules
             {
                 _playerData.Unlock();
             }
-
-            return set;
         }
 
         void IChat.SendArenaSoundMessage(Arena arena, ChatSound sound, string format, params object[] args)
         {
-            IEnumerable<Player> set = GetArenaSet(arena, null);
-            if (set != null)
-                SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetArenaSet(set, arena, null);
+
+                if (set.Count > 0)
+                    SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         void IChat.SendModMessage(string format, params object[] args)
         {
-            IEnumerable<Player> set = GetCapabilitySet(Constants.Capabilities.ModChat, null);
-            if (set != null)
-                SendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, format, args);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetCapabilitySet(set, Constants.Capabilities.ModChat, null);
+
+                if (set.Count > 0)
+                    SendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, format, args);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         void IChat.SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, string squad, string sender, string message)
@@ -597,8 +644,17 @@ namespace SS.Core.Modules
 
         private void SendMessage(Player p, string format, params object[] args)
         {
-            Player[] set = { p };
-            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                set.Add(p);
+                SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         private void SendMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
@@ -700,8 +756,6 @@ namespace SS.Core.Modules
                     if (d.Status != PlayerState.Playing)
                         return;
 
-                    Player[] set = new Player[] { d }; // TODO: player collection object pooling
-
                     Span<char> messageToSend = stackalloc char[1 + p.Name.Length + 2 + message.Length];
                     messageToSend[0] = '(';
                     p.Name.AsSpan().CopyTo(messageToSend[1..]);
@@ -709,7 +763,16 @@ namespace SS.Core.Modules
                     messageToSend[1 + p.Name.Length + 1] = '>';
                     message.CopyTo(messageToSend[(p.Name.Length + 3)..]);
 
-                    SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, messageToSend, p.Name.Length + 3);
+                    HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+                    try
+                    {
+                        set.Add(d);
+                        SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, messageToSend, p.Name.Length + 3);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(set);
+                    }
                 }
 
                 FireChatMessageCallback(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
@@ -739,8 +802,17 @@ namespace SS.Core.Modules
             }
             else if (Ok(p, ChatMessageType.Private))
             {
-                Player[] set = new Player[] { dst }; // TODO: player collection object pooling
-                SendReply(set, ChatMessageType.Private, sound, p, p.Id, text, 0);
+                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+                try
+                {
+                    set.Add(dst);
+                    SendReply(set, ChatMessageType.Private, sound, p, p.Id, text, 0);
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(set);
+                }
 
                 FireChatMessageCallback(arena, p, ChatMessageType.Private, sound, null, -1, text);
 #if CFG_LOG_PRIVATE
@@ -783,26 +855,32 @@ namespace SS.Core.Modules
             else if(Ok(p, type))
             {
                 _playerData.Lock();
+
                 try
                 {
-                    LinkedList<Player> set = null;
-                    foreach (Player i in _playerData.PlayerList)
+                    HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+                    try
                     {
-                        if (i.Freq == freq &&
-                            i.Arena == arena &&
-                            i != p)
+                        foreach (Player i in _playerData.PlayerList)
                         {
-                            if (set == null)
-                                set = new LinkedList<Player>();
-
-                            set.AddLast(i);
+                            if (i.Freq == freq
+                                && i.Arena == arena
+                                && i != p)
+                            {
+                                set.Add(i);
+                            }
                         }
+
+                        if (set.Count <= 0)
+                            return;
+
+                        SendReply(set, type, sound, p, p.Id, text, 0);
                     }
-
-                    if (set == null)
-                        return;
-
-                    SendReply(set, type, sound, p, p.Id, text, 0);
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(set);
+                    }
 
                     FireChatMessageCallback(arena, p, type, sound, null, freq, text);
                     _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat($"freq msg ({freq}): ", text)); // TODO: .NET 6 to allow interpolated strings with Span<char>
@@ -829,17 +907,27 @@ namespace SS.Core.Modules
 
             if (_capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat) && Ok(p, ChatMessageType.ModChat))
             {
-                LinkedList<Player> set = GetCapabilitySet(Constants.Capabilities.ModChat, p);
-                if (set != null)
-                {
-                    Span<char> messageToSend = stackalloc char[p.Name.Length + 1 + message.Length];
-                    p.Name.AsSpan().CopyTo(messageToSend);
-                    messageToSend[p.Name.Length] = '>';
-                    message.CopyTo(messageToSend[(p.Name.Length + 1)..]);
+                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-                    SendReply(set, ChatMessageType.ModChat, sound, p, p.Id, message, p.Name.Length + 2);
-                    FireChatMessageCallback(null, p, ChatMessageType.ModChat, sound, null, -1, message);
-                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("mod chat: ", message)); // TODO: .NET 6 interpolated string to support span
+                try
+                {
+                    GetCapabilitySet(set, Constants.Capabilities.ModChat, p);
+
+                    if (set.Count > 0)
+                    {
+                        Span<char> messageToSend = stackalloc char[p.Name.Length + 1 + message.Length];
+                        p.Name.AsSpan().CopyTo(messageToSend);
+                        messageToSend[p.Name.Length] = '>';
+                        message.CopyTo(messageToSend[(p.Name.Length + 1)..]);
+
+                        SendReply(set, ChatMessageType.ModChat, sound, p, p.Id, message, p.Name.Length + 2);
+                        FireChatMessageCallback(null, p, ChatMessageType.ModChat, sound, null, -1, message);
+                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("mod chat: ", message)); // TODO: .NET 6 interpolated string to support span
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(set);
                 }
             }
             else
@@ -873,12 +961,22 @@ namespace SS.Core.Modules
                 ChatMessageType type = isMacro ? ChatMessageType.PubMacro : ChatMessageType.Pub;
                 if (Ok(p, type))
                 {
-                    LinkedList<Player> set = GetArenaSet(arena, p);
-                    if(set != null)
-                        SendReply(set, type, sound, p, p.Id, msg, 0);
+                    HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-                    FireChatMessageCallback(arena, p, type, sound, null, -1, msg);
-                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("pub msg: ", msg)); // TODO: change to interpolated string with .NET 6
+                    try
+                    {
+                        GetArenaSet(set, arena, p);
+
+                        if (set.Count > 0)
+                            SendReply(set, type, sound, p, p.Id, msg, 0);
+
+                        FireChatMessageCallback(arena, p, type, sound, null, -1, msg);
+                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("pub msg: ", msg)); // TODO: change to interpolated string with .NET 6
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(set);
+                    }
                 }
             }
         }

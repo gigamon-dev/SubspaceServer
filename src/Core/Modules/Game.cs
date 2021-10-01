@@ -28,6 +28,7 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IMapData _mapData;
         private INetwork _net;
+        private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         //private IPersist _persist;
         private IPrng _prng;
@@ -36,8 +37,8 @@ namespace SS.Core.Modules
         private int _pdkey;
         private int _adkey;
 
-        private readonly object _specmtx = new object();
-        private readonly object _freqshipmtx = new object();
+        private readonly object _specmtx = new();
+        private readonly object _freqshipmtx = new();
 
         private const int WeaponCount = 32;
 
@@ -52,7 +53,7 @@ namespace SS.Core.Modules
 
         private class PlayerData
         {
-            public C2SPositionPacket pos = new C2SPositionPacket();
+            public C2SPositionPacket pos = new();
 
             /// <summary>
             /// who the player is spectating, null means not spectating
@@ -184,6 +185,7 @@ namespace SS.Core.Modules
             IMainloop mainloop,
             IMapData mapData,
             INetwork net,
+            IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             //IPersist persist,
             IPrng prng)
@@ -200,6 +202,7 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _net = net ?? throw new ArgumentNullException(nameof(net));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             //_persist = persist ?? throw new ArgumentNullException(nameof(persist));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
@@ -328,7 +331,7 @@ namespace SS.Core.Modules
 
         bool IGame.HasLock(Player p)
         {
-            if (p == null || !(p[_pdkey] is PlayerData pd))
+            if (p == null || p[_pdkey] is not PlayerData pd)
                 return false;
 
             return pd.lockship;
@@ -336,7 +339,7 @@ namespace SS.Core.Modules
 
         void IGame.LockArena(Arena arena, bool notify, bool onlyArenaState, bool initial, bool spec)
         {
-            if (!(arena[_adkey] is ArenaData ad))
+            if (arena[_adkey] is not ArenaData ad)
                 return;
 
             ad.initLockship = true;
@@ -351,7 +354,7 @@ namespace SS.Core.Modules
 
         void IGame.UnlockArena(Arena arena, bool notify, bool onlyArenaState)
         {
-            if (!(arena[_adkey] is ArenaData ad))
+            if (arena[_adkey] is not ArenaData ad)
                 return;
 
             ad.initLockship = false;
@@ -365,7 +368,7 @@ namespace SS.Core.Modules
 
         bool IGame.HasLock(Arena arena)
         {
-            if (arena == null || !(arena[_adkey] is ArenaData ad))
+            if (arena == null || arena[_adkey] is not ArenaData ad)
                 return false;
 
             return ad.initLockship;
@@ -386,7 +389,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return 0;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return 0;
 
             return pd.ignoreWeapons / (float)Constants.RandMax;
@@ -397,7 +400,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             pd.ignoreWeapons = (int)((float)Constants.RandMax * proportion);
@@ -415,22 +418,30 @@ namespace SS.Core.Modules
 
             try
             {
+                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-                _playerData.TargetToSet(target, out LinkedList<Player> list);
-
-                foreach (Player p in list)
+                try
                 {
-                    if (p.Ship == ShipType.Spec)
-                        continue;
+                    _playerData.TargetToSet(target, set);
 
-                    SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipReset;
-                    if (p.Flags.IsDead)
+                    foreach (Player p in set)
                     {
-                        p.Flags.IsDead = false;
-                        flags |= SpawnCallback.SpawnReason.AfterDeath;
-                    }
+                        if (p.Ship == ShipType.Spec)
+                            continue;
 
-                    DoSpawnCallback(p, flags);
+                        SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipReset;
+                        if (p.Flags.IsDead)
+                        {
+                            p.Flags.IsDead = false;
+                            flags |= SpawnCallback.SpawnReason.AfterDeath;
+                        }
+
+                        DoSpawnCallback(p, flags);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(set);
                 }
             }
             finally
@@ -444,7 +455,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             pd.wpnSent = (uint)(pd.wpnSent + packets);
@@ -455,7 +466,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             pd.pl_epd.seeNrg = value;
@@ -466,7 +477,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             pd.pl_epd.seeNrgSpec = value;
@@ -477,10 +488,10 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
-            if (!(p.Arena[_adkey] is ArenaData ad))
+            if (p.Arena[_adkey] is not ArenaData ad)
                 return;
 
             SeeEnergy seeNrg = SeeEnergy.None;
@@ -501,10 +512,10 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
-            if (!(p.Arena[_adkey] is ArenaData ad))
+            if (p.Arena[_adkey] is not ArenaData ad)
                 return;
 
             SeeEnergy seeNrgSpec = SeeEnergy.None;
@@ -520,12 +531,12 @@ namespace SS.Core.Modules
             pd.pl_epd.seeNrgSpec = seeNrgSpec;
         }
 
-        bool IGame.IsAntiwarped(Player p, LinkedList<Player> playersList)
+        bool IGame.IsAntiwarped(Player p, HashSet<Player> playersAntiwarping)
         {
-            if (p == null || !(p[_pdkey] is PlayerData pd))
+            if (p == null || p[_pdkey] is not PlayerData pd)
                 return false;
 
-            if (!(p.Arena[_adkey] is ArenaData ad))
+            if (p.Arena[_adkey] is not ArenaData ad)
                 return false;
 
             if (pd.MapRegionNoAnti)
@@ -539,7 +550,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player i in _playerData.PlayerList)
                 {
-                    if (p == null || !(p[_pdkey] is PlayerData iData))
+                    if (p == null || p[_pdkey] is not PlayerData iData)
                         continue;
 
                     if (i.Arena == p.Arena
@@ -557,9 +568,9 @@ namespace SS.Core.Modules
                         {
                             antiwarped = true;
 
-                            if (playersList != null)
+                            if (playersAntiwarping != null)
                             {
-                                playersList.AddLast(i);
+                                playersAntiwarping.Add(i);
                             }
                             else
                             {
@@ -710,7 +721,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             ArenaData ad = null;
@@ -793,7 +804,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.PlayerList)
                         {
-                            if (!(i[_pdkey] is PlayerData idata))
+                            if (i[_pdkey] is not PlayerData idata)
                                 continue;
 
                             if (idata.speccing == p)
@@ -839,7 +850,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.PlayerList)
                         {
-                            if (!(i[_pdkey] is PlayerData idata))
+                            if (i[_pdkey] is not PlayerData idata)
                                 continue;
 
                             if (idata.speccing == p)
@@ -868,7 +879,7 @@ namespace SS.Core.Modules
                 {
                     if (data.pl_epd.seeEpd)
                     {
-                        if (!(data.speccing[_pdkey] is PlayerData odata))
+                        if (data.speccing[_pdkey] is not PlayerData odata)
                             return;
 
                         if (--odata.epdQueries <= 0)
@@ -955,10 +966,10 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
-            if (!(arena[_adkey] is ArenaData ad))
+            if (arena[_adkey] is not ArenaData ad)
                 return;
 
             DateTime now = DateTime.UtcNow;
@@ -1144,9 +1155,9 @@ namespace SS.Core.Modules
                     nflags = NetSendFlags.Reliable;
                 }
 
-                C2SPositionPacket copy = new C2SPositionPacket();
-                S2CWeaponsPacket wpn = new S2CWeaponsPacket();
-                S2CPositionPacket sendpos = new S2CPositionPacket();
+                C2SPositionPacket copy = new();
+                S2CWeaponsPacket wpn = new();
+                S2CPositionPacket sendpos = new();
 
                 // ensure that all packets get build before use
                 bool modified = true;
@@ -1168,7 +1179,7 @@ namespace SS.Core.Modules
 
                     foreach (Player i in _playerData.PlayerList)
                     {
-                        if (!(i[_pdkey] is PlayerData idata))
+                        if (i[_pdkey] is not PlayerData idata)
                             continue;
 
                         if (i.Status == PlayerState.Playing
@@ -1335,7 +1346,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             Arena arena = p.Arena;
@@ -1426,7 +1437,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             ShipType ship = (ShipType)data[1];
@@ -1510,7 +1521,7 @@ namespace SS.Core.Modules
             if(p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             Arena arena = p.Arena;
@@ -1564,7 +1575,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             ShipType oldShip = p.Ship;
@@ -1711,7 +1722,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (!(p[_pdkey] is PlayerData pd))
+            if (p[_pdkey] is not PlayerData pd)
                 return;
 
             lock (_freqshipmtx)
@@ -1878,7 +1889,7 @@ namespace SS.Core.Modules
             p.Flags.SentWeaponPacket = false;
         }
 
-        private void FireKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
+        private static void FireKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
             if (arena == null || killer == null || killed == null)
                 return;
@@ -1886,7 +1897,7 @@ namespace SS.Core.Modules
             KillCallback.Fire(arena, arena, killer, killed, bty, flagCount, pts, green);
         }
 
-        private void FirePostKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
+        private static void FirePostKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
             if (arena == null || killer == null || killed == null)
                 return;
@@ -2039,7 +2050,7 @@ namespace SS.Core.Modules
             _net.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
         }
 
-        private int Hypot(int dx, int dy)
+        private static int Hypot(int dx, int dy)
         {
             uint dd = (uint)((dx * dx) + (dy * dy));
 
@@ -2061,32 +2072,39 @@ namespace SS.Core.Modules
 
         private void LockWork(ITarget target, bool nval, bool notify, bool spec, int timeout)
         {
-            _playerData.TargetToSet(target, out LinkedList<Player> set);
-            if (set == null)
-                return;
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-            foreach (Player p in set)
+            try
             {
-                if (!(p[_pdkey] is PlayerData pd))
-                    continue;
+                _playerData.TargetToSet(target, set);
 
-                if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
-                    SetShipAndFreq(p, ShipType.Spec, p.Arena.SpecFreq);
-
-                if (notify && (pd.lockship != nval) && (_chat != null))
+                foreach (Player p in set)
                 {
-                    _chat.SendMessage(p, nval ?
-                        (p.Ship == ShipType.Spec ?
-                        "You have been locked to spectator mode." :
-                        "You have been locked to your ship.") :
-                        "Your ship has been unlocked.");
-                }
+                    if (p[_pdkey] is not PlayerData pd)
+                        continue;
 
-                pd.lockship = nval;
-                if(nval == false || timeout == 0)
-                    pd.expires = null;
-                else
-                    pd.expires =  DateTime.UtcNow.AddSeconds(timeout);
+                    if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
+                        SetShipAndFreq(p, ShipType.Spec, p.Arena.SpecFreq);
+
+                    if (notify && (pd.lockship != nval) && (_chat != null))
+                    {
+                        _chat.SendMessage(p, nval ?
+                            (p.Ship == ShipType.Spec ?
+                            "You have been locked to spectator mode." :
+                            "You have been locked to your ship.") :
+                            "Your ship has been unlocked.");
+                    }
+
+                    pd.lockship = nval;
+                    if (nval == false || timeout == 0)
+                        pd.expires = null;
+                    else
+                        pd.expires = DateTime.UtcNow.AddSeconds(timeout);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
             }
         }
 
@@ -2107,7 +2125,7 @@ namespace SS.Core.Modules
                 targetPlayer = p;
 
             int specCount = 0;
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
 
             _playerData.Lock();
             try
@@ -2197,7 +2215,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (!(p.Arena[_adkey] is ArenaData ad))
+                if (p.Arena[_adkey] is not ArenaData ad)
                     return;
 
                 if (spec)

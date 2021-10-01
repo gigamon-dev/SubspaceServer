@@ -96,7 +96,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// For synchronizing access to this class' data.
         /// </summary>
-        private readonly object lockObj = new object();
+        private readonly object lockObj = new();
 
         [ConfigHelp("Security", "SecurityKickoff", ConfigScope.Global, typeof(bool), DefaultValue = "false", 
             Description = "Whether to kick players off of the server for violating security checks.")]
@@ -170,7 +170,7 @@ namespace SS.Core.Modules
                 scrty = new uint[ScrtyLength];
 
                 using FileStream fs = File.OpenRead("scrty");
-                using BinaryReader br = new BinaryReader(fs);
+                using BinaryReader br = new(fs);
 
                 for (int i = 0; i < ScrtyLength; i++)
                 {
@@ -209,7 +209,7 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in arenaManager.ArenaList)
                 {
-                    if (!(arena[adKey] is ArenaData ad))
+                    if (arena[adKey] is not ArenaData ad)
                         continue;
 
                     if (arena.Status == ArenaState.Running)
@@ -231,7 +231,7 @@ namespace SS.Core.Modules
         }
 
         // straight from ASSS, dont know what's going on with all the magic numbers
-        private uint GetVieExeChecksum(uint key)
+        private static uint GetVieExeChecksum(uint key)
         {
             uint part, sum = 0;
 
@@ -389,7 +389,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in playerData.PlayerList)
                     {
-                        if (!(p[pdKey] is PlayerData pd))
+                        if (p[pdKey] is not PlayerData pd)
                             continue;
 
                         if (p.Status == PlayerState.Playing
@@ -444,7 +444,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in playerData.PlayerList)
                     {
-                        if (!(p[pdKey] is PlayerData pd))
+                        if (p[pdKey] is not PlayerData pd)
                             continue;
 
                         if (pd.Sent)
@@ -515,10 +515,10 @@ namespace SS.Core.Modules
 
             logManager.LogP(LogLevel.Drivel, nameof(Security), p, "Got a security response.");
 
-            if (!(p[pdKey] is PlayerData pd))
+            if (p[pdKey] is not PlayerData pd)
                 return;
 
-            if (!(arena[adKey] is ArenaData ad))
+            if (arena[adKey] is not ArenaData ad)
                 return;
 
             ref C2SSecurity pkt = ref MemoryMarshal.AsRef<C2SSecurity>(new Span<byte>(data, 0, length));
@@ -667,7 +667,7 @@ namespace SS.Core.Modules
         /// </summary>
         private class SendTimerData
         {
-            public readonly List<Player> SendPlayerList = new List<Player>();
+            public readonly List<Player> SendPlayerList = new(256);
         }
     }
 }

@@ -35,6 +35,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private IModuleManager _mm;
         private INetwork _net;
+        private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
 
         private DateTime _startedAt;
@@ -57,6 +58,7 @@ namespace SS.Core.Modules
             IMapData mapData,
             IModuleManager mm,
             INetwork net,
+            IObjectPoolManager objectPoolManager,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -74,6 +76,7 @@ namespace SS.Core.Modules
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _mm = mm ?? throw new ArgumentNullException(nameof(mm));
             _net = net ?? throw new ArgumentNullException(nameof(net));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _startedAt = DateTime.UtcNow;
@@ -257,7 +260,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaManager.ArenaList)
                 {
-                    int nameLength = arena.Name.Length + 1; // +1 because the name in the packet is null terminated
+                    int nameLength = StringUtils.DefaultEncoding.GetByteCount(arena.Name) + 1; // +1 because the name in the packet is null terminated
                     int additionalLength = nameLength + 2;
 
                     if (length + additionalLength > (Constants.MaxPacket - Constants.ReliableHeaderLen))
@@ -269,11 +272,11 @@ namespace SS.Core.Modules
                         && (!arena.IsPrivate || includePrivateArenas || p.Arena == arena))
                     {
                         // arena name
-                        Span<byte> remainingSpan = bufferSpan.Slice(length);
-                        remainingSpan.Slice(remainingSpan.WriteNullTerminatedASCII(arena.Name));
+                        Span<byte> remainingSpan = bufferSpan[length..];
+                        remainingSpan = remainingSpan[remainingSpan.WriteNullTerminatedASCII(arena.Name)..];
 
                         // player count (a negative value denotes the player's current arena)
-                        Span<byte> playerCountSpan = remainingSpan.Slice(nameLength, 2);
+                        Span<byte> playerCountSpan = remainingSpan.Slice(0, 2);
                         BinaryPrimitives.WriteInt16LittleEndian(playerCountSpan, arena == p.Arena ? (short)-arena.Total : (short)arena.Total);
 
                         length += additionalLength;
@@ -443,7 +446,7 @@ namespace SS.Core.Modules
             if (line.StartsWith("-t"))
             {
                 permanent = false;
-                line = line.Slice(2);
+                line = line[2..];
             }
 
             Configuration.ConfFile.ParseConfProperty(line, out string section, out string key, out ReadOnlySpan<char> value, out _);
@@ -499,7 +502,7 @@ namespace SS.Core.Modules
         {
             if (target == null
                 || target.Type != TargetType.Player
-                || !(target is IPlayerTarget playerTarget))
+                || target is not IPlayerTarget playerTarget)
             {
                 _chat.SendMessage(p, "info: must use on a player");
                 return;
@@ -530,8 +533,17 @@ namespace SS.Core.Modules
             Description = "Displays the text as an arena (green) message to the targets.")]
         private void Command_a(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            _playerData.TargetToSet(target, out LinkedList<Player> set);
-            _chat.SendSetSoundMessage(set, sound, $"{parameters} -{p.Name}");
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.TargetToSet(target, set);
+                _chat.SendSetSoundMessage(set, sound, "{0} -{1}", parameters, p.Name); // TODO: use interpolated string after we get rid of format string, otherwise a player could type placeholders into their text and break it
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         [CommandHelp(
@@ -540,8 +552,17 @@ namespace SS.Core.Modules
             Description = "Displays the text as an anonymous arena (green) message to the targets.")]
         private void Command_aa(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            _playerData.TargetToSet(target, out LinkedList<Player> set);
-            _chat.SendSetSoundMessage(set, sound, "{0}", parameters);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.TargetToSet(target, set);
+                _chat.SendSetSoundMessage(set, sound, "{0}", parameters); // TODO: change after we get rid of format string, otherwise a player could type placeholders into their text and break it
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         [CommandHelp(
@@ -578,14 +599,24 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Player[] set = { playerTarget.Player };
-            if (_capabilityManager.HasCapability(p, Constants.Capabilities.IsStaff))
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
             {
-                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters} -{p.Name}");
+                set.Add(playerTarget.Player);
+
+                if (_capabilityManager.HasCapability(p, Constants.Capabilities.IsStaff))
+                {
+                    _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters} -{p.Name}");
+                }
+                else
+                {
+                    _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters}");
+                }
             }
-            else
+            finally
             {
-                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters}");
+                _objectPoolManager.PlayerSetPool.Return(set);
             }
 
             _chat.SendMessage(p, $"Player '{playerTarget.Player.Name}' has been warned.");
@@ -604,9 +635,18 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Player[] set = { playerTarget.Player };
-            _chat.SendAnyMessage(set, ChatMessageType.Private, ChatSound.None, p, "{0}", parameters);
-            _chat.SendMessage(p, $"Private message sent to player '{playerTarget.Player.Name}'.");
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                set.Add(playerTarget.Player);
+                _chat.SendAnyMessage(set, ChatMessageType.Private, ChatSound.None, p, "{0}", parameters);
+                _chat.SendMessage(p, $"Private message sent to player '{playerTarget.Player.Name}'.");
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         private void SendCommonBandwidthInfo(Player p, Player t, TimeSpan connectedTimeSpan, string prefix, bool includeSensitive)
@@ -677,10 +717,19 @@ namespace SS.Core.Modules
             Description = "Sends all of the targets to spectator mode.")]
         private void Command_specall(string command, string parameters, Player p, ITarget target)
         {
-            _playerData.TargetToSet(target, out LinkedList<Player> set);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-            foreach (Player player in set)
-                _game.SetShipAndFreq(player, ShipType.Spec, p.Arena.SpecFreq);
+            try
+            {
+                _playerData.TargetToSet(target, set);
+
+                foreach (Player player in set)
+                    _game.SetShipAndFreq(player, ShipType.Spec, p.Arena.SpecFreq);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         [CommandHelp(
@@ -749,7 +798,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            LinkedList<string> modulesList = new LinkedList<string>();
+            LinkedList<string> modulesList = new();
 
             _mm.EnumerateModules(
                 (moduleType, _) =>
@@ -769,7 +818,7 @@ namespace SS.Core.Modules
                           select str;
             }
 
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             foreach (string str in modules)
             {
                 if (sb.Length > 0)
