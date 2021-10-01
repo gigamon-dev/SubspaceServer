@@ -73,6 +73,9 @@ namespace SS.Core.Modules
 
             public override bool Return(HashSet<Player> obj)
             {
+                if (obj == null)
+                    return false;
+
                 obj.Clear();
                 return true;
             }
