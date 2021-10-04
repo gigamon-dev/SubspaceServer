@@ -2,6 +2,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Core.Packets;
 using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -153,7 +154,60 @@ namespace SS.Core.Modules
             }
         }
 
-        private class ConnData
+        /// <summary>
+        /// Helper for receiving of 'Big' data streams of the 'Core' protocol, which is the subspace protocol's transport layer.
+        /// "Big" data streams consist of zero or more 0x00 0x08 packets followed by a single 0x00 0x09 packet indicating the end.
+        /// These packets are sent reliably and therefore are processed in order, effectively being a stream.
+        /// </summary>
+        /// <remarks>
+        /// This class is similar to a <see cref="System.IO.MemoryStream"/>. Though not a stream, and it rents arrays using <see cref="ArrayPool{byte}"/>.
+        /// </remarks>
+        private class BigReceive : PooledObject
+        {
+            public byte[] Buffer { get; private set; } = null;
+            public int Size { get; private set; } = 0;
+
+            public void Append(ReadOnlySpan<byte> data)
+            {
+                if (Buffer == null)
+                {
+                    Buffer = ArrayPool<byte>.Shared.Rent(data.Length);
+                }
+                else if (Buffer.Length < data.Length)
+                {
+                    byte[] newBuffer = ArrayPool<byte>.Shared.Rent(Size + data.Length);
+                    Array.Copy(Buffer, newBuffer, Size);
+                    ArrayPool<byte>.Shared.Return(Buffer, true);
+                    Buffer = newBuffer;
+                }
+
+                data.CopyTo(Buffer.AsSpan(Size));
+                Size += data.Length;
+            }
+
+            public void Clear()
+            {
+                if (Buffer != null)
+                {
+                    ArrayPool<byte>.Shared.Return(Buffer, true);
+                    Buffer = null;
+                }
+
+                Size = 0;
+            }
+
+            protected override void Dispose(bool isDisposing)
+            {
+                if (isDisposing)
+                {
+                    Clear();
+                }
+
+                base.Dispose(isDisposing);
+            }
+        }
+
+        private sealed class ConnData : IDisposable
         {
             /// <summary>
             /// The player this connection is for, or NULL for a client connection
@@ -269,30 +323,17 @@ namespace SS.Core.Modules
             }
 
             /// <summary>
-            /// For receiving sized packets, protected by <see cref="bigmtx"/>
+            /// For receiving sized packets, synchronized with <see cref="bigmtx"/>.
             /// </summary>
             public SizedReceive sizedrecv = new();
 
-            internal class BigReceive
-            {
-                public int size, room;
-                public byte[] buf; //byte *buf; in asss
-
-                internal void Free()
-                {
-                    buf = null;
-                    size = 0;
-                    room = 0;
-                }
-            }
-
             /// <summary>
-            /// stuff for recving big packets, protected by <see cref="bigmtx"/>
+            /// For receiving big packets, synchronized with <see cref="bigmtx"/>.
             /// </summary>
-            public readonly BigReceive bigrecv = new();
+            public BigReceive BigRecv;
 
             /// <summary>
-            /// stuff for sending sized packets, protected by <see cref="olmtx"/>
+            /// For sending sized packets, synchronized with <see cref="olmtx"/>.
             /// </summary>
             public LinkedList<ISizedSendData> sizedsends = new();
 
@@ -322,7 +363,7 @@ namespace SS.Core.Modules
             public object relmtx = new();
 
             /// <summary>
-            /// mutex for (<see cref="bigrecv"/> and <see cref="sizedrecv"/>)
+            /// mutex for (<see cref="BigRecv"/> and <see cref="sizedrecv"/>)
             /// </summary>
             public object bigmtx = new();
 
@@ -344,6 +385,16 @@ namespace SS.Core.Modules
                 for (int x = 0; x < outlist.Length; x++)
                 {
                     outlist[x] = new LinkedList<SubspaceBuffer>();
+                }
+            }
+
+            public void Dispose()
+            {
+                if (BigRecv != null)
+                {
+                    // make sure any rented arrays are returned to their pool
+                    BigRecv.Dispose();
+                    BigRecv = null;
                 }
             }
         }
@@ -998,11 +1049,11 @@ namespace SS.Core.Modules
             GroupedPacketManager groupedPacketManager = new(this);
             //GroupedPacketManager groupedPacketManager = new GroupedPacketManager(this, new byte[Constants.MaxPacket]);
 
+            List<Player> toKick = new();
+            List<Player> toFree = new();
+
             while (_stopToken.IsCancellationRequested == false)
             {
-                List<Player> toKick = new();
-                List<Player> toFree = new();
-
                 // first send outgoing packets (players)
                 _playerData.Lock();
 
@@ -1208,13 +1259,13 @@ namespace SS.Core.Modules
                         while (needed > Constants.ChunkSize)
                         {
                             Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6); // write the header in front of the data
-                            BufferPacket(conn, buffer.AsSpan(bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
+                            BufferPacket(conn, new ReadOnlySpan<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
                             bufferIndex += Constants.ChunkSize;
                             needed -= Constants.ChunkSize;
                         }
 
                         Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6); // write the header in front of the data
-                        BufferPacket(conn, buffer.AsSpan(bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
+                        BufferPacket(conn, new ReadOnlySpan<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
 
                         // check if we need more
                         if (sd.Offset >= sd.TotalLength)
@@ -1740,19 +1791,36 @@ namespace SS.Core.Modules
                 if (packetType < _handlers.Length)
                     handler = _handlers[packetType];
 
-                if (handler != null)
+                if (handler == null)
+                {
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No handler for packet type 0x{packetType:X2}.");
+                    return;
+                }
+
+                try
+                {
                     handler(conn.p, bytes, len);
-                else
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "no handler for packet type [0x{0:X2}]", packetType);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                }
             }
             else if (conn.cc != null)
             {
                 // client connection
-                conn.cc.i.HandlePacket(bytes, len);
+                try
+                {
+                    conn.cc.i.HandlePacket(bytes, len);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                }
             }
             else
             {
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), "no player or client connection, but got packet type [0x{0:X2}] of length {1}", packetType, len);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No player or client connection, but got packet type [0x{packetType:X2}] of length {len}.");
             }
         }
 
@@ -2142,7 +2210,7 @@ namespace SS.Core.Modules
                 {
                     BufferPacket(
                         conn, 
-                        MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ap, 1)), 
+                        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref ap, 1)), 
                         NetSendFlags.Ack);
                 }
 
@@ -2349,13 +2417,26 @@ namespace SS.Core.Modules
         private struct BigPacketWork
         {
             public ConnData ConnData;
-            public byte[] PacketBytes;
-            public int PacketLength;
+            public BigReceive BigReceive;
         }
 
         private void MainloopWork_CallBigPacketHandlers(BigPacketWork work)
         {
-            CallPacketHandlers(work.ConnData, work.PacketBytes, work.PacketLength);
+            try
+            {
+                if (work.ConnData == null || work.BigReceive == null || work.BigReceive.Buffer == null || work.BigReceive.Size < 1)
+                    return;
+
+                CallPacketHandlers(work.ConnData, work.BigReceive.Buffer, work.BigReceive.Size);
+            }
+            finally
+            {
+                if (work.BigReceive != null)
+                {
+                    // return the buffer to its pool
+                    work.BigReceive.Dispose();
+                }
+            }
         }
 
         private void ProcessBigData(SubspaceBuffer buffer)
@@ -2374,72 +2455,59 @@ namespace SS.Core.Modules
 
                 lock (conn.bigmtx)
                 {
-                    int newsize = conn.bigrecv.size + buffer.NumBytes - 2;
-                    if (newsize <= 0 || newsize > Constants.MaxBigPacket)
+                    if (conn.BigRecv == null)
+                    {
+                        // Get a BigReceive object and give it to the ConnData object to 'own'.
+                        conn.BigRecv = _objectPoolManager.Get<BigReceive>();
+                    }
+
+                    int newSize = conn.BigRecv.Size + buffer.NumBytes - 2;
+
+                    if (newSize <= 0 || newSize > Constants.MaxBigPacket)
                     {
                         if (conn.p != null)
-                            _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
+                            _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, $"Refusing to allocate {newSize} bytes (> {Constants.MaxBigPacket}).");
                         else
-                            _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) refusing to allocate {0} bytes (> {1})", newsize, Constants.MaxBigPacket);
+                            _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Refusing to allocate {newSize} bytes (> {Constants.MaxBigPacket}).");
 
-                        conn.bigrecv.Free();
+                        conn.BigRecv.Dispose();
+                        conn.BigRecv = null;
                         return;
                     }
 
-                    byte[] newbuf = null;
-
-                    if (conn.bigrecv.room < newsize)
-                    {
-                        conn.bigrecv.room *= 2;
-                        if (conn.bigrecv.room < newsize)
-                            conn.bigrecv.room = newsize;
-
-                        newbuf = new byte[conn.bigrecv.room];
-                        Array.Copy(conn.bigrecv.buf, newbuf, conn.bigrecv.buf.Length);
-                        conn.bigrecv.buf = newbuf;
-                    }
-                    else
-                        newbuf = conn.bigrecv.buf;
-
-                    if (newbuf == null)
-                    {
-                        if (conn.p != null)
-                            _logManager.LogP(LogLevel.Error, nameof(Network), conn.p, "cannot allocate {0} bytes for bigpacket", newsize);
-                        else
-                            _logManager.LogM(LogLevel.Error, nameof(Network), "(client connection) cannot allocate {0} bytes for bigpacket", newsize);
-
-                        conn.bigrecv.Free();
-                        return;
-                    }
-
-                    Array.Copy(buffer.Bytes, 2, newbuf, conn.bigrecv.size, buffer.NumBytes - 2);
-                    conn.bigrecv.buf = newbuf;
-                    conn.bigrecv.size = newsize;
+                    // Append the data.
+                    conn.BigRecv.Append(new(buffer.Bytes, 2, buffer.NumBytes - 2)); // data only, header removed
 
                     if (buffer.Bytes[1] == 0x08)
                         return;
 
-                    // Getting here means the we got 0x09 (end of "Big" data packet), so we should process it now.
-                    if (newbuf[0] > 0 && newbuf[0] < MAXTYPES)
+                    // Getting here means the we got 0x09 (end of "Big" data packet stream), so we should process it now.
+                    if (conn.BigRecv.Buffer[0] > 0 && conn.BigRecv.Buffer[0] < MAXTYPES)
                     {
+                        // Take ownership of the BigReceive object from the ConnData object.
+                        BigReceive bigReceive = conn.BigRecv;
+                        conn.BigRecv = null;
+
+                        // Process it on the mainloop thread.
+                        // Ownership of the BigReceive object is transferred to the workitem. The workitem is responsible for disposing it.
                         _mainloop.QueueMainWorkItem(
                             mainloopWork_CallBigPacketHandlersAction,
                             new BigPacketWork()
                             {
                                 ConnData = conn,
-                                PacketBytes = newbuf,
-                                PacketLength = newsize,
+                                BigReceive = bigReceive,
                             });
                     }
                     else
                     {
                         if (conn.p != null)
-                            _logManager.LogP(LogLevel.Warn, nameof(Network), conn.p, "bad type for bigpacket: {0}", newbuf[0]);
+                            _logManager.LogP(LogLevel.Warn, nameof(Network), conn.p, $"Bad type for bigpacket: {conn.BigRecv.Buffer[0]}.");
                         else
-                            _logManager.LogM(LogLevel.Warn, nameof(Network), "(client connection) bad type for bigpacket: {0}", newbuf[0]);
-                    }
+                            _logManager.LogM(LogLevel.Warn, nameof(Network), $"(client connection) Bad type for bigpacket: {conn.BigRecv.Buffer[0]}.");
 
-                    conn.bigrecv.Free();
+                        conn.BigRecv.Dispose();
+                        conn.BigRecv = null;
+                    }
                 }
             }
             finally
@@ -2544,7 +2612,7 @@ namespace SS.Core.Modules
                         conn.sizedsends.RemoveFirst();
                     }
 
-                    Span<byte> cancelPresizedAckSpan = stackalloc byte[2] { 0x00, 0x0C };
+                    ReadOnlySpan<byte> cancelPresizedAckSpan = stackalloc byte[2] { 0x00, 0x0C };
                     BufferPacket(conn, cancelPresizedAckSpan, NetSendFlags.Reliable);
                 }
             }
