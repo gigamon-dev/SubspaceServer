@@ -42,55 +42,81 @@ namespace SS.Core.Modules
                 Tries = 0;
                 Flags = NetSendFlags.None;
                 LastRetry = DateTime.MinValue;
-                CallbackInvoker = null;
+
+                if (CallbackInvoker != null)
+                {
+                    CallbackInvoker.Dispose();
+                    CallbackInvoker = null;
+                }
 
                 base.Clear();
             }
         }
         
-        private interface IReliableCallbackInvoker
+        private interface IReliableCallbackInvoker : IDisposable
         {
             void Invoke(Player p, bool success);
         }
 
-        private class ReliableCallbackInvoker : IReliableCallbackInvoker
+        private class ReliableCallbackInvoker : PooledObject, IReliableCallbackInvoker
         {
-            private readonly ReliableDelegate callback;
+            private ReliableDelegate _callback;
 
-            public ReliableCallbackInvoker(ReliableDelegate callback)
+            public void SetCallback(ReliableDelegate callback)
             {
-                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
             }
 
             #region IReliableDelegateInvoker Members
 
             public void Invoke(Player p, bool success)
             {
-                callback(p, success);
+                _callback?.Invoke(p, success);
             }
 
             #endregion
+
+            protected override void Dispose(bool isDisposing)
+            {
+                if (isDisposing)
+                {
+                    _callback = null;
+                }
+
+                base.Dispose(isDisposing);
+            }
         }
 
-        private class ReliableCallbackInvoker<T> : IReliableCallbackInvoker
+        private class ReliableCallbackInvoker<T> : PooledObject, IReliableCallbackInvoker
         {
-            private readonly ReliableDelegate<T> callback;
-            private readonly T clos;
+            private ReliableDelegate<T> _callback;
+            private T _clos;
 
-            public ReliableCallbackInvoker(ReliableDelegate<T> callback, T clos)
+            public void SetCallback(ReliableDelegate<T> callback, T clos)
             {
-                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
-                this.clos = clos;
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                _clos = clos;
             }
 
             #region IReliableDelegateInvoker Members
 
             public void Invoke(Player p, bool success)
             {
-                callback(p, success, clos);
+                _callback?.Invoke(p, success, _clos);
             }
 
             #endregion
+
+            protected override void Dispose(bool isDisposing)
+            {
+                if (isDisposing)
+                {
+                    _callback = null;
+                    _clos = default;
+                }
+
+                base.Dispose(isDisposing);
+            }
         }
         
         private IPool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
@@ -1119,13 +1145,13 @@ namespace SS.Core.Modules
                 // and free ...
                 foreach (Player p in toFree)
                 {
-                    if (!(p[_connKey] is ConnData))
+                    if (p[_connKey] is not ConnData conn)
                         continue;
 
                     // one more time, just to be sure
                     ClearBuffers(p);
 
-                    //bwlimit->Free(conn->bw);
+                    // TODO: _bandwithLimit.Free(conn.bw);
 
                     _playerData.FreePlayer(p);
                 }
@@ -1311,6 +1337,7 @@ namespace SS.Core.Modules
                         if (b.CallbackInvoker != null)
                         {
                             QueueMainloopWorkItem(b.CallbackInvoker, p, false);
+                            b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
                         }
 
                         outlist.Remove(node);
@@ -2077,7 +2104,7 @@ namespace SS.Core.Modules
             if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
             {
                 // urgent and not reliable
-                if (conn.bw.Check(len, (int)pri))
+                if (conn.bw.Check(len + _config.PerPacketOverhead, (int)pri))
                 {
                     SendRaw(conn, data);
                     return null;
@@ -2227,74 +2254,70 @@ namespace SS.Core.Modules
             if (buffer == null)
                 return;
 
-            if (buffer.NumBytes != 6)
+            using (buffer)
             {
-                // ack packets are 6 bytes long
-                buffer.Dispose();
-                return;
-            }
+                if (buffer.NumBytes != 6) // ack packets are 6 bytes long
+                    return;
 
-            ConnData conn = buffer.Conn;
-            if (conn == null)
-            {
-                buffer.Dispose();
-                return;
-            }
+                ConnData conn = buffer.Conn;
+                if (conn == null)
+                    return;
 
-            ref AckPacket ack = ref MemoryMarshal.AsRef<AckPacket>(buffer.Bytes);
-            int seqNum = ack.SeqNum;
+                ref AckPacket ack = ref MemoryMarshal.AsRef<AckPacket>(buffer.Bytes);
+                int seqNum = ack.SeqNum;
 
-            Monitor.Enter(conn.olmtx);
+                Monitor.Enter(conn.olmtx);
 
-            LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriorities.Reliable];
-            LinkedListNode<SubspaceBuffer> nextNode = null;
-            for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
-            {
-                nextNode = node.Next;
-
-                SubspaceBuffer b = node.Value;
-                ref ReliableHeader brp = ref MemoryMarshal.AsRef<ReliableHeader>(b.Bytes);
-                if (seqNum == brp.SeqNum)
+                LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriorities.Reliable];
+                LinkedListNode<SubspaceBuffer> nextNode = null;
+                for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
                 {
-                    outlist.Remove(node);
-                    Monitor.Exit(conn.olmtx);
+                    nextNode = node.Next;
 
-                    if (b.CallbackInvoker != null)
+                    SubspaceBuffer b = node.Value;
+                    ref ReliableHeader brp = ref MemoryMarshal.AsRef<ReliableHeader>(b.Bytes);
+                    if (seqNum == brp.SeqNum)
                     {
-                        QueueMainloopWorkItem(b.CallbackInvoker, conn.p, true);
-                    }
+                        outlist.Remove(node);
+                        Monitor.Exit(conn.olmtx);
 
-                    if (b.Tries == 1)
-                    {
-                        int rtt = (int)DateTime.UtcNow.Subtract(b.LastRetry).TotalMilliseconds;
-                        if (rtt < 0)
+                        if (b.CallbackInvoker != null)
                         {
-                            _logManager.LogM(LogLevel.Error, nameof(Network), "negative rtt ({0}); clock going backwards", rtt);
-                            rtt = 100;
+                            QueueMainloopWorkItem(b.CallbackInvoker, conn.p, true);
+                            b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
                         }
 
-                        int dev = conn.avgrtt - rtt;
-                        if (dev < 0)
-                            dev = -dev;
+                        if (b.Tries == 1)
+                        {
+                            int rtt = (int)DateTime.UtcNow.Subtract(b.LastRetry).TotalMilliseconds;
+                            if (rtt < 0)
+                            {
+                                _logManager.LogM(LogLevel.Error, nameof(Network), "negative rtt ({0}); clock going backwards", rtt);
+                                rtt = 100;
+                            }
 
-                        conn.rttdev = (conn.rttdev * 3 + dev) / 4;
-                        conn.avgrtt = (conn.avgrtt * 7 + rtt) / 8;
+                            int dev = conn.avgrtt - rtt;
+                            if (dev < 0)
+                                dev = -dev;
 
-                        if (_lagCollect != null && conn.p != null)
-                            _lagCollect.RelDelay(conn.p, rtt);
+                            conn.rttdev = (conn.rttdev * 3 + dev) / 4;
+                            conn.avgrtt = (conn.avgrtt * 7 + rtt) / 8;
+
+                            if (_lagCollect != null && conn.p != null)
+                                _lagCollect.RelDelay(conn.p, rtt);
+                        }
+
+                        b.Dispose();
+
+                        // handle limit adjustment
+                        conn.bw.AdjustForAck();
+
+                        return;
                     }
-
-                    // handle limit adjustment
-                    conn.bw.AdjustForAck();
-
-                    b.Dispose();
-                    buffer.Dispose();
-                    return;
                 }
-            }
 
-            Monitor.Exit(conn.olmtx);
-            buffer.Dispose();
+                Monitor.Exit(conn.olmtx);
+            }
         }
 
         private void QueueMainloopWorkItem(IReliableCallbackInvoker callbackInvoker, Player p, bool success)
@@ -2327,10 +2350,13 @@ namespace SS.Core.Modules
             if (dto.CallbackInvoker == null)
                 return;
 
-            if (dto.Player == null)
-                return;
+            using (dto.CallbackInvoker)
+            {
+                if (dto.Player == null)
+                    return;
 
-            dto.CallbackInvoker.Invoke(dto.Player, dto.Success);
+                dto.CallbackInvoker.Invoke(dto.Player, dto.Success);
+            }
         }
 
         private void ProcessSyncRequest(SubspaceBuffer buffer)
@@ -3259,7 +3285,9 @@ namespace SS.Core.Modules
 
         void INetwork.SendWithCallback(Player p, ReadOnlySpan<byte> data, ReliableDelegate callback)
         {
-            SendWithCallback(p, data, new ReliableCallbackInvoker(callback));
+            ReliableCallbackInvoker invoker = _objectPoolManager.Get<ReliableCallbackInvoker>();
+            invoker.SetCallback(callback);
+            SendWithCallback(p, data, invoker);
         }
 
         void INetwork.SendWithCallback<TData>(Player p, ref TData data, ReliableDelegate callback)
@@ -3269,7 +3297,9 @@ namespace SS.Core.Modules
         
         void INetwork.SendWithCallback<TState>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
         {
-            SendWithCallback(p, data, new ReliableCallbackInvoker<TState>(callback, clos));
+            ReliableCallbackInvoker<TState> invoker = _objectPoolManager.Get<ReliableCallbackInvoker<TState>>();
+            invoker.SetCallback(callback, clos);
+            SendWithCallback(p, data, invoker);
         }
 
         void INetwork.SendWithCallback<TData, TState>(Player p, ref TData data, ReliableDelegate<TState> callback, TState clos)
