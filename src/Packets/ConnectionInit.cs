@@ -15,14 +15,20 @@ namespace SS.Core.Packets
 
         public byte T1;
         public byte T2;
+
         private int key;
+        public int Key => LittleEndianConverter.Convert(key);
+
         public byte ClientType;
         public byte Zero;
 
-        public int Key
+        public ConnectionInitPacket(int key, byte clientType)
         {
-            get => LittleEndianConverter.Convert(key);
-            set => key = LittleEndianConverter.Convert(value);
+            T1 = 0x00;
+            T2 = 0x01;
+            this.key = LittleEndianConverter.Convert(key);
+            ClientType = clientType;
+            Zero = 0;
         }
     }
 

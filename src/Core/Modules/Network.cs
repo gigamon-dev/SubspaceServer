@@ -4,6 +4,7 @@ using SS.Utilities;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -236,19 +237,19 @@ namespace SS.Core.Modules
         private sealed class ConnData : IDisposable
         {
             /// <summary>
-            /// The player this connection is for, or NULL for a client connection
+            /// The player this connection is for, or <see langword="null"/> for a client connection.
             /// </summary>
             public Player p;
 
             /// <summary>
-            /// The client this is a part of, or NULL for a player connection
+            /// The client this is a part of, or <see langword="null"/> for a player connection.
             /// </summary>
-            public ClientConnection cc;
+            public NetClientConnection cc;
 
             /// <summary>
-            /// the address to send packets to
+            /// The remote address to communicate with.
             /// </summary>
-            public IPEndPoint sin;
+            public IPEndPoint RemoteEndpoint;
 
             /// <summary>
             /// which of our sockets to use when sending
@@ -425,14 +426,21 @@ namespace SS.Core.Modules
             }
         }
 
-        private class ClientConnection : BaseClientConnection
+        private class NetClientConnection : ClientConnection
         {
-            public ConnData c;
-
-            public ClientConnection(IClientConn i, IClientEncrypt enc)
-                : base(i, enc)
+            public NetClientConnection(IPEndPoint remoteEndpoint, Socket socket, IClientConnectionHandler handler, IClientEncrypt encryptor, IBWLimit bwLimit)
+                : base(handler, encryptor)
             {
+                ConnData = new();
+                ConnData.cc = this;
+                ConnData.RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
+                ConnData.whichSock = socket ?? throw new ArgumentNullException(nameof(socket));
+                ConnData.Initalize(null, null, bwLimit);
             }
+
+            public ConnData ConnData { get; private set; }
+
+            public override EndPoint ServerEndpoint => ConnData.RemoteEndpoint;
         }
 
         private ComponentBroker _broker;
@@ -444,6 +452,7 @@ namespace SS.Core.Modules
         private IMainloopTimer _mainloopTimer;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
+        private IPrng _prng;
         private InterfaceRegistrationToken _iNetworkToken;
         private InterfaceRegistrationToken _iNetworkClientToken;
         private InterfaceRegistrationToken _iNetworkEncryptionToken;
@@ -551,8 +560,9 @@ namespace SS.Core.Modules
         /// </summary>
         private int _connKey;
 
-        private readonly Dictionary<EndPoint, Player> _clienthash = new();
-        private readonly object _hashmtx = new();
+        private readonly ConcurrentDictionary<EndPoint, Player> _clienthash = new();
+
+        private readonly ConcurrentDictionary<EndPoint, NetClientConnection> _clientConnections = new();
 
         /*
         /// <summary>
@@ -1158,7 +1168,23 @@ namespace SS.Core.Modules
                 toFree.Clear();
 
                 // outgoing packets and lagouts for client connections
-                // TODO
+                now = DateTime.UtcNow;
+                foreach (NetClientConnection cc in _clientConnections.Values)
+                {
+                    ConnData conn = cc.ConnData;
+                    lock (conn.olmtx)
+                    {
+                        SendOutgoing(conn, groupedPacketManager);
+                    }
+
+                    // Special limit of 65 seconds, unless we haevn't gotten any packets, then use 10.
+                    if (conn.HitMaxRetries 
+                        || now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
+                    {
+                        cc.Handler.Disconnected();
+                        DropConnection(cc);
+                    }
+                }
 
                 if (_stopToken.IsCancellationRequested)
                     return;
@@ -1449,11 +1475,8 @@ namespace SS.Core.Modules
                 // log message
                 _logManager.LogM(LogLevel.Info, nameof(Network), "[{0}] [pid={1}] disconnected", p.Name, p.Id);
 
-                lock (_hashmtx)
-                {
-                    if (_clienthash.Remove(conn.sin) == false)
-                        _logManager.LogM(LogLevel.Error, nameof(Network), "internal error: established connection not in hash table");
-                }
+                if (_clienthash.TryRemove(conn.RemoteEndpoint, out _) == false)
+                    _logManager.LogM(LogLevel.Error, nameof(Network), "internal error: established connection not in hash table");
 
                 toFree.Add(p);
             }
@@ -1501,8 +1524,10 @@ namespace SS.Core.Modules
             {
                 len = conn.enc.Encrypt(p, encryptedBuffer, len);
             }
-            //else if ((conn.cc != null) && (conn.cc.enc != null))
-            //    len = conn.cc.enc.e
+            else if ((conn.cc != null) && (conn.cc.Encryptor != null))
+            {
+                len = conn.cc.Encryptor.Encrypt(conn.cc, encryptedBuffer, len);
+            }
 
             if (len == 0)
                 return;
@@ -1510,7 +1535,7 @@ namespace SS.Core.Modules
             encryptedBuffer = encryptedBuffer.Slice(0, len);
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk($"SEND: {len} bytes to pid {p.Id} (after encryption) ", encryptedBuffer);
+            DumpPk($"SEND: {len} bytes to pid {p.Id} (after encryption)", encryptedBuffer);
 #endif
 
             // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
@@ -1518,7 +1543,7 @@ namespace SS.Core.Modules
             {
                 encryptedBuffer.CopyTo(new Span<byte>(buffer.Bytes, 0, len));
 
-                conn.whichSock.SendTo(buffer.Bytes, 0, len, SocketFlags.None, conn.sin);
+                conn.whichSock.SendTo(buffer.Bytes, 0, len, SocketFlags.None, conn.RemoteEndpoint);
             }
 
             conn.bytesSent += (ulong)len;
@@ -1838,7 +1863,7 @@ namespace SS.Core.Modules
                 // client connection
                 try
                 {
-                    conn.cc.i.HandlePacket(bytes, len);
+                    conn.cc.Handler.HandlePacket(bytes, len);
                 }
                 catch (Exception ex)
                 {
@@ -2060,7 +2085,41 @@ namespace SS.Core.Modules
             DumpPk($"RAW CLIENT DATA: {buffer.NumBytes} bytes", buffer.Bytes.AsSpan(0, buffer.NumBytes));
 #endif
 
-            // TODO
+            if (_clientConnections.TryGetValue(receivedFrom, out NetClientConnection cc))
+            {
+                ConnData conn = cc.ConnData;
+
+                if (cc.Encryptor != null)
+                {
+                    buffer.NumBytes = cc.Encryptor.Decrypt(cc, buffer.Bytes, buffer.NumBytes);
+
+#if CFG_DUMP_RAW_PACKETS
+                    DumpPk($"DECRYPTED CLIENT DATA: {buffer.NumBytes} bytes", new ReadOnlySpan<byte>(buffer.Bytes, 0, buffer.NumBytes));
+#endif
+                }
+
+                if (buffer.NumBytes > 0)
+                {
+                    buffer.Conn = conn;
+                    conn.lastPkt = DateTime.UtcNow;
+                    conn.bytesReceived += (ulong)buffer.NumBytes;
+                    conn.pktReceived++;
+                    _globalStats.byterecvd += (ulong)buffer.NumBytes;
+                    _globalStats.pktrecvd++;
+
+                    ProcessBuffer(buffer);
+                }
+                else
+                {
+                    buffer.Dispose();
+                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Failed to decrypt packet.");
+                }
+
+                return;
+            }
+
+            buffer.Dispose();
+            _logManager.LogM(LogLevel.Warn, nameof(Network), $"Got data on the client port that was not from any known connection ({receivedFrom}).");
         }
 
         private SubspaceBuffer BufferPacket(ConnData conn, ReadOnlySpan<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
@@ -2164,7 +2223,7 @@ namespace SS.Core.Modules
                     return;
 
                 if (conn.cc != null)
-                    conn.cc.i.Connected();
+                    conn.cc.Handler.Connected();
                 else if (conn.p != null)
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "got key response packet");
             }
@@ -2776,7 +2835,8 @@ namespace SS.Core.Modules
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
+            IPlayerData playerData,
+            IPrng prng)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
@@ -2787,6 +2847,7 @@ namespace SS.Core.Modules
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             _connKey = _playerData.AllocatePlayerData<ConnData>();
 
@@ -2909,6 +2970,8 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
+            ReadOnlySpan<byte> disconnectSpan = stackalloc byte[] { 0x00, 0x07 };
+
             //
             // Disconnect all clients nicely
             //
@@ -2917,8 +2980,6 @@ namespace SS.Core.Modules
 
             try
             {
-                Span<byte> disconnectSpan = stackalloc byte[] { 0x00, 0x07 };
-
                 foreach (Player player in _playerData.PlayerList)
                 {
                     if (IsOurs(player))
@@ -2944,8 +3005,19 @@ namespace SS.Core.Modules
             //
             // And disconnect our client connections
             //
-            
-            // TODO: 
+
+            foreach (NetClientConnection cc in _clientConnections.Values)
+            {
+                SendRaw(cc.ConnData, disconnectSpan);
+                cc.Handler.Disconnected();
+
+                if (cc.Encryptor != null)
+                {
+                    cc.Encryptor.Void(cc);
+                }
+            }
+
+            _clientConnections.Clear();
 
             return true;
         }
@@ -3101,12 +3173,9 @@ namespace SS.Core.Modules
 
             if (remoteEndpoint != null)
             {
-                conn.sin = remoteEndpoint;
+                conn.RemoteEndpoint = remoteEndpoint;
 
-                lock (_hashmtx)
-                {
-                    _clienthash[remoteEndpoint] = p;
-                }
+                _clienthash[remoteEndpoint] = p;
             }
 
             _playerData.WriteLock();
@@ -3244,26 +3313,26 @@ namespace SS.Core.Modules
             {
                 // use 00 08/9 packets (big data packets)
                 // send these reliably (to maintain ordering with sequence #)
-                using DataBuffer buffer = Pool<DataBuffer>.Default.Get();
-                buffer.Bytes[0] = 0x00;
-                buffer.Bytes[1] = 0x08;
+                Span<byte> bufferSpan = stackalloc byte[Constants.ChunkSize + 2];
+                Span<byte> bufferDataSpan = bufferSpan[2..];
+                bufferSpan[0] = 0x00;
+                bufferSpan[1] = 0x08;
 
-                Span<byte> bufferSpan = new(buffer.Bytes, 2, Constants.ChunkSize);
                 int position = 0;
 
                 // first send the 08 packets
                 while (len > Constants.ChunkSize)
                 {
-                    data.Slice(position, Constants.ChunkSize).CopyTo(bufferSpan);
-                    SendToSet(set, buffer.Bytes.AsSpan(0, Constants.ChunkSize + 2), flags | NetSendFlags.Reliable); // ASSS only sends the 09 reliably, but I think 08 needs to also be reliable too.  So I added Reliable here.
+                    data.Slice(position, Constants.ChunkSize).CopyTo(bufferDataSpan);
+                    SendToSet(set, bufferSpan, flags | NetSendFlags.Reliable); // ASSS only sends the 09 reliably, but I think 08 needs to also be reliable too.  So I added Reliable here.
                     position += Constants.ChunkSize;
                     len -= Constants.ChunkSize;
                 }
 
                 // final packet is the 09 (signals the end of the big data)
-                buffer.Bytes[1] = 0x09;
-                data.Slice(position, len).CopyTo(bufferSpan);
-                SendToSet(set, buffer.Bytes.AsSpan(0, len + 2), flags | NetSendFlags.Reliable);
+                bufferSpan[1] = 0x09;
+                data.Slice(position, len).CopyTo(bufferDataSpan);
+                SendToSet(set, bufferSpan.Slice(0, len + 2), flags | NetSendFlags.Reliable);
             }
             else
             {
@@ -3509,7 +3578,7 @@ namespace SS.Core.Modules
                 stats.EncryptionName = conn.iEncryptName;
             }
 
-            stats.IPEndPoint = conn.sin;
+            stats.IPEndPoint = conn.RemoteEndpoint;
 
             //TODO: _bandwithLimit.
 
@@ -3558,31 +3627,122 @@ namespace SS.Core.Modules
 
         #region INetworkClient Members
 
-        BaseClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConn icc, IClientEncrypt ice)
+        
+        ClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConnectionHandler handler, IClientEncrypt encryptor)
         {
-            // TODO: it looks like billing_ssc uses this
-            return null;
-        }
+            if (string.IsNullOrWhiteSpace(address))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(address));
 
-        void INetworkClient.SendPacket(BaseClientConnection cc, byte[] pkt, int len, int flags)
-        {
-            // TODO: it looks like billing_ssc uses this
-        }
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
 
-        void INetworkClient.DropConnection(BaseClientConnection cc)
-        {
-            // TODO: it looks like billing_ssc uses this
-            if (cc is ClientConnection clientConnection)
+            if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
+                throw new ArgumentOutOfRangeException(nameof(port));
+
+            IPAddress ipAddress;
+
+            try
             {
-                DropConnection(clientConnection);
+                ipAddress = Dns.GetHostAddresses(address).FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+
+                if (ipAddress == null)
+                    throw new Exception("Unable to resolve to an IPv4 address.");
+            }
+            catch (Exception ex)
+            {
+                throw new ArgumentException("Unable to resolve to an IP address.", nameof(address), ex);
+            }
+
+            IPEndPoint remoteEndpoint = new(ipAddress, port);
+
+            // TODO: should the encryptor really be in passed in, or maybe just the name of the one to use should be?
+            // IClientEncrypt encryptor = _broker.GetInterface<IClientEncrypt>(encryptorName)
+
+            NetClientConnection cc = new(remoteEndpoint, _clientSocket, handler, encryptor, _bandwithLimit.New());
+
+            encryptor?.Initialze(cc);
+
+            if (!_clientConnections.TryAdd(remoteEndpoint, cc))
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Attempt to make a client connection to {remoteEndpoint} when one already exists.");
+                return null;
+            }
+
+            ConnectionInitPacket packet = new((int)(_prng.Get32() | 0x80000000), 1);
+            SendRaw(cc.ConnData, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)));
+
+            return cc;
+        }
+
+        void INetworkClient.SendPacket(ClientConnection cc, ReadOnlySpan<byte> data, NetSendFlags flags)
+        {
+            if (cc is not NetClientConnection ncc)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+
+            if (data.Length < 1)
+                return;
+
+            lock (ncc.ConnData.olmtx)
+            {
+                if (data.Length > Constants.MaxPacket - Constants.ReliableHeaderLen)
+                {
+                    int len = data.Length;
+
+                    // use 00 08 and 00 09 packets (big data packets)
+                    // send these reliably (to maintain ordering with sequence #)
+                    Span<byte> bufferSpan = stackalloc byte[Constants.ChunkSize + 2];
+                    Span<byte> bufferDataSpan = bufferSpan[2..];
+                    bufferSpan[0] = 0x00;
+                    bufferSpan[1] = 0x08;
+
+                    int position = 0;
+
+                    // first send the 08 packets
+                    while (len > Constants.ChunkSize)
+                    {
+                        data.Slice(position, Constants.ChunkSize).CopyTo(bufferDataSpan);
+                        BufferPacket(ncc.ConnData, bufferSpan, flags | NetSendFlags.Reliable);
+                        position += Constants.ChunkSize;
+                        len -= Constants.ChunkSize;
+                    }
+
+                    // final packet is the 09 (signals the end of the big data)
+                    bufferSpan[1] = 0x09;
+                    data.Slice(position, len).CopyTo(bufferDataSpan);
+                    BufferPacket(ncc.ConnData, bufferSpan.Slice(0, len + 2), flags | NetSendFlags.Reliable);
+                }
+                else
+                {
+                    BufferPacket(ncc.ConnData, data, flags);
+                }
             }
         }
 
-        #endregion
-
-        private void DropConnection(ClientConnection cc)
+        void INetworkClient.DropConnection(ClientConnection cc)
         {
+            if (cc is not NetClientConnection ncc)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+
+            DropConnection(ncc);
         }
+
+        private void DropConnection(NetClientConnection cc)
+        {
+            if (cc == null)
+                return;
+
+            ReadOnlySpan<byte> disconnectSpan = stackalloc byte[] { 0x00, 0x07 };
+            SendRaw(cc.ConnData, disconnectSpan);
+
+            if (cc.Encryptor != null)
+            {
+                cc.Encryptor.Void(cc);
+            }
+
+            _clientConnections.TryRemove(cc.ConnData.RemoteEndpoint, out _);
+        }
+
+        #endregion
 
 #if CFG_DUMP_RAW_PACKETS
         private static void DumpPk(string description, ReadOnlySpan<byte> d)

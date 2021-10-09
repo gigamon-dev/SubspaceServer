@@ -7,12 +7,13 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
-    public class EncryptionVIE : IModule, IEncrypt
+    public class EncryptionVIE : IModule, IEncrypt, IClientEncrypt
     {
         private INetworkEncryption _networkEncryption;
         private IPlayerData _playerData;
-        private const string IEncryptID = "enc-vie";
+        private const string InterfaceIdentifier = "enc-vie";
         private InterfaceRegistrationToken _iEncryptToken;
+        private InterfaceRegistrationToken _iClientEncryptToken;
 
         private int _pdKey;
 
@@ -26,9 +27,10 @@ namespace SS.Core.Modules
             _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            _pdKey = playerData.AllocatePlayerData<PlayerData>();
+            _pdKey = playerData.AllocatePlayerData<EncData>();
             _networkEncryption.AppendConnectionInitHandler(ProcessConnectionInit);
-            _iEncryptToken = broker.RegisterInterface<IEncrypt>(this, IEncryptID);
+            _iEncryptToken = broker.RegisterInterface<IEncrypt>(this, InterfaceIdentifier);
+            _iClientEncryptToken = broker.RegisterInterface<IClientEncrypt>(this, InterfaceIdentifier);
 
             return true;
         }
@@ -36,6 +38,9 @@ namespace SS.Core.Modules
         public bool Unload(ComponentBroker broker)
         {
             if (broker.UnregisterInterface<IEncrypt>(ref _iEncryptToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface<IClientEncrypt>(ref _iClientEncryptToken) != 0)
                 return false;
 
             if (!_networkEncryption.RemoveConnectionInitHandler(ProcessConnectionInit))
@@ -52,7 +57,7 @@ namespace SS.Core.Modules
 
         int IEncrypt.Encrypt(Player p, Span<byte> data, int len)
         {
-            if (p[_pdKey] is not PlayerData pd)
+            if (p[_pdKey] is not EncData pd)
                 return len;
 
             return pd.Encrypt(data, len);
@@ -60,18 +65,68 @@ namespace SS.Core.Modules
 
         int IEncrypt.Decrypt(Player p, Span<byte> data, int len)
         {
-            if (p[_pdKey] is not PlayerData pd)
-                return data.Length;
+            if (p[_pdKey] is not EncData pd)
+                return len;
 
             return pd.Decrypt(data, len);
         }
 
         void IEncrypt.Void(Player p)
         {
-            if (p[_pdKey] is not PlayerData pd)
+            if (p[_pdKey] is not EncData pd)
                 return;
 
             pd.Reset();
+        }
+
+        #endregion
+
+        #region IClientEncrypt members
+
+        void IClientEncrypt.Initialze(ClientConnection cc)
+        {
+            cc?.TryAddExtraData(new EncData());
+        }
+
+        int IClientEncrypt.Encrypt(ClientConnection cc, Span<byte> data, int len)
+        {
+            if (cc == null || !cc.TryGetExtraData(out EncData ed) || ed == null)
+                return len;
+
+            if (data[0] == 0x00 && data[1] == 0x01)
+            {
+                // sending key init, keep track of the key we're sending
+                ref ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(data);
+                ed.SetPendingKeyResponse(packet.Key);
+                return len;
+            }
+            else
+            {
+                return ed.Encrypt(data, len);
+            }
+        }
+
+        int IClientEncrypt.Decrypt(ClientConnection cc, Span<byte> data, int len)
+        {
+            if (cc == null || !cc.TryGetExtraData(out EncData ed) || ed == null)
+                return len;
+
+            if (data[0] == 0x00 && data[1] == 0x02)
+            {
+                // got key response
+                ref ConnectionInitResponsePacket packet = ref MemoryMarshal.AsRef<ConnectionInitResponsePacket>(data);
+                ed.Init(packet.Key);
+                return len;
+            }
+            else
+            {
+                return ed.Decrypt(data, len);
+            }
+        }
+
+        void IClientEncrypt.Void(ClientConnection cc)
+        {
+            cc?.TryRemoveExtraData(out EncData _);
         }
 
         #endregion
@@ -101,7 +156,7 @@ namespace SS.Core.Modules
                     return false; // unknown type
             }
 
-            Player p = _networkEncryption.NewConnection(clientType, remoteEndpoint, IEncryptID, ld);
+            Player p = _networkEncryption.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
 
             if (p == null)
             {
@@ -111,7 +166,7 @@ namespace SS.Core.Modules
                 return true;
             }
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (p[_pdKey] is not EncData pd)
                 return false; // should not happen, sanity
 
             int key = -packet.Key;
@@ -126,11 +181,34 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private sealed class PlayerData : IDisposable
+        private sealed class EncData : IDisposable
         {
+            private enum EncDataStatus
+            {
+                Uninitialized = 0,
+                PendingKeyResponse, // only for client connections
+                Ready,
+            }
+
+            private EncDataStatus _status = EncDataStatus.Uninitialized;
             private int? _key;
             private readonly byte[] _table = new byte[520];
             private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
+
+            public void SetPendingKeyResponse(int requestedKey)
+            {
+                _rwLock.EnterWriteLock();
+
+                try
+                {
+                    _status = EncDataStatus.PendingKeyResponse;
+                    _key = requestedKey;
+                }
+                finally
+                {
+                    _rwLock.ExitWriteLock();
+                }
+            }
 
             public void Init(int key)
             {
@@ -138,10 +216,21 @@ namespace SS.Core.Modules
 
                 try
                 {
+                    if (_status == EncDataStatus.PendingKeyResponse)
+                    {
+                        // encryption for a client connection
+                        if (key == _key)
+                        {
+                            // we've been told to not use encryption
+                            key = 0;
+                        }
+                    }
+
+                    _status = EncDataStatus.Ready;
                     _key = key;
 
                     if (key == 0)
-                        return;
+                        return; // no encryption
 
                     Span<short> myTable = MemoryMarshal.Cast<byte, short>(_table);
 
@@ -166,12 +255,12 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_key == null)
+                    if (_status != EncDataStatus.Ready)
                         return len;
 
                     int work = _key.Value;
                     if (work == 0)
-                        return len;
+                        return len; // no encryption
 
                     int until;
 
@@ -209,12 +298,12 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_key == null)
+                    if (_status != EncDataStatus.Ready)
                         return len;
 
                     int work = _key.Value;
                     if (work == 0)
-                        return len;
+                        return len; // no encryption
 
                     int until;
 
@@ -253,6 +342,7 @@ namespace SS.Core.Modules
 
                 try
                 {
+                    _status = EncDataStatus.Uninitialized;
                     _key = null;
                     Array.Clear(_table, 0, _table.Length);
                 }
