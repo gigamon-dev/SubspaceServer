@@ -1,8 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Text;
-using SS.Core.ComponentInterfaces;
 using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
+using System;
 
 namespace SS.Core.Modules
 {
@@ -11,10 +9,10 @@ namespace SS.Core.Modules
     {
         private ILogManager _logManager;
 
-        private void logToConsole(string message)
+        private void LogToConsole(in LogEntry logEntry)
         {
-            if (_logManager.FilterLog(message, "log_console"))
-                Console.WriteLine(message);
+            if (_logManager.FilterLog(in logEntry, "log_console"))
+                Console.Out.WriteLine(logEntry.LogText);
         }
 
         #region IModule Members
@@ -22,15 +20,13 @@ namespace SS.Core.Modules
         public bool Load(ComponentBroker broker, ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
-            LogCallback.Register(broker, logToConsole);
-
+            LogCallback.Register(broker, LogToConsole);
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            LogCallback.Unregister(broker, logToConsole);
+            LogCallback.Unregister(broker, LogToConsole);
             return true;
         }
 

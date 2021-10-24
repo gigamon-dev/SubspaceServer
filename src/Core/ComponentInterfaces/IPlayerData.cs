@@ -64,9 +64,9 @@ namespace SS.Core.ComponentInterfaces
         /// Finds the player with the given name.
         /// The name is matched case-insensitively.
         /// </summary>
-        /// <param name="name">the name to match</param>
-        /// <returns>the player with the given name, or NULL if not found</returns>
-        Player FindPlayer(string name);
+        /// <param name="name">The name to match.</param>
+        /// <returns>The player with the given name, or <see langword="null"/> if not found.</returns>
+        Player FindPlayer(ReadOnlySpan<char> name);
 
         /// <summary>
         /// Converts an <see cref="ITarget"/> to a specific list of players.

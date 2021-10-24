@@ -179,7 +179,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                logManager.LogM(LogLevel.Info, nameof(Security), "Unable to read scrty file. {0}", ex.Message);
+                logManager.LogM(LogLevel.Info, nameof(Security), $"Unable to read scrty file. {ex.Message}");
                 scrty = null;
             }
         }
@@ -343,9 +343,7 @@ namespace SS.Core.Modules
                 if (action == PlayerAction.EnterArena)
                 {
                     logManager.LogP(LogLevel.Drivel, nameof(Security), p,
-                        "send seeds: green={0:X}, door={1:X}, timestamp={2:X}",
-                        packet.GreenSeed, packet.DoorSeed, packet.Timestamp);
-
+                        $"Send seeds: green={packet.GreenSeed:X}, door={packet.DoorSeed:X}, timestamp={packet.Timestamp:X}.");
                     
                     uint key = packet.Key;
                     packet.Key = 0;
@@ -420,11 +418,7 @@ namespace SS.Core.Modules
             }
 
             logManager.LogM(LogLevel.Drivel, nameof(Security),
-                "Sent security packet to {0} players: green={1:X}, door={2:X}, timestamp={3:X}",
-                sendPlayerList.Count,
-                packet.GreenSeed,
-                packet.DoorSeed,
-                packet.Timestamp);
+                $"Sent security packet to {sendPlayerList.Count} players: green={packet.GreenSeed:X}, door={packet.DoorSeed:X}, timestamp={packet.Timestamp:X}.");
 
             sendPlayerList.Clear();
 
@@ -495,7 +489,7 @@ namespace SS.Core.Modules
             {
                 if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                 {
-                    logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response with a bad packet length={0}.", length);
+                    logManager.LogP(LogLevel.Malicious, nameof(Security), p, $"Got a security response with a bad packet length={length}.");
                 }
 
                 return;

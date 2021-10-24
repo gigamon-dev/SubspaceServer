@@ -6,14 +6,15 @@ namespace SS.Core.ComponentInterfaces
 {
     public abstract class ClientConnection
     {
-        protected ClientConnection(IClientConnectionHandler handler, IClientEncrypt encryptor)
+        protected ClientConnection(IClientConnectionHandler handler, string encryptorName)
         {
             Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-            Encryptor = encryptor; // null means no encryption
+            EncryptorName = encryptorName;
         }
 
         public IClientConnectionHandler Handler { get; private set; }
-        public IClientEncrypt Encryptor { get; private set; }
+        
+        public string EncryptorName { get; private set; }
         public abstract EndPoint ServerEndpoint { get; }
 
         #region Extra Data
@@ -85,8 +86,9 @@ namespace SS.Core.ComponentInterfaces
     /// </remarks>
     public interface INetworkClient : IComponentInterface
     {
-        ClientConnection MakeClientConnection(string address, int port, IClientConnectionHandler handler, IClientEncrypt encryptor);
+        ClientConnection MakeClientConnection(string address, int port, IClientConnectionHandler handler, string iClientEncryptName);
         void SendPacket(ClientConnection cc, ReadOnlySpan<byte> data, NetSendFlags flags);
+        void SendPacket<T>(ClientConnection cc, ref T data, NetSendFlags flags) where T : struct;
         void DropConnection(ClientConnection cc);
     }
 }

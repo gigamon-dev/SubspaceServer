@@ -273,7 +273,7 @@ namespace SS.Core.Modules
                     {
                         // arena name
                         Span<byte> remainingSpan = bufferSpan[length..];
-                        remainingSpan = remainingSpan[remainingSpan.WriteNullTerminatedASCII(arena.Name)..];
+                        remainingSpan = remainingSpan[remainingSpan.WriteNullTerminatedString(arena.Name)..];
 
                         // player count (a negative value denotes the player's current arena)
                         Span<byte> playerCountSpan = remainingSpan.Slice(0, 2);
@@ -342,7 +342,7 @@ namespace SS.Core.Modules
         {
             TimeSpan ts = DateTime.UtcNow - _startedAt;
 
-            _chat.SendMessage(p, "uptime: {0} days {1} hours {2} minutes {3} seconds", ts.Days, ts.Hours, ts.Minutes, ts.Seconds);
+            _chat.SendMessage(p, $"uptime: {ts.Days} days {ts.Hours} hours {ts.Minutes} minutes {ts.Seconds} seconds");
         }
 
         [CommandHelp(
@@ -386,9 +386,9 @@ namespace SS.Core.Modules
             string sheepMessage = _configManager.GetStr(p.Arena.Cfg, "Misc", "SheepMessage");
 
             if (sheepMessage != null)
-                _chat.SendSoundMessage(p, ChatSound.Sheep, sheepMessage);
+                _chat.SendMessage(p, ChatSound.Sheep, sheepMessage);
             else
-                _chat.SendSoundMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
+                _chat.SendMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
         }
 
         [CommandHelp(
@@ -462,33 +462,31 @@ namespace SS.Core.Modules
             ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
 
             IReadOnlyNetStats stats = _net.GetStats();
-            _chat.SendMessage(p, "netstats: pings={0}  pkts sent={1}  pkts recvd={2}",
-                stats.PingsReceived, stats.PacketsSent, stats.PacketsReceived);
+            _chat.SendMessage(p, $"netstats: pings={stats.PingsReceived}  pkts sent={stats.PacketsSent}  pkts recvd={stats.PacketsReceived}");
 
             // IP Header (20 bytes) + UDP Header (8 bytes) = 28 bytes total overhead for each packet
             ulong bwout = (stats.BytesSent + stats.PacketsSent * 28) / secs;
             ulong bwin = (stats.BytesReceived + stats.PacketsReceived * 28) / secs;
-            _chat.SendMessage(p, "netstats: bw out={0}  bw in={1}", bwout, bwin);
+            _chat.SendMessage(p, $"netstats: bw out={bwout}  bw in={bwin}");
 
-            _chat.SendMessage(p, "netstats: buffers used={0}/{1} ({2:p})",
-                stats.BuffersUsed, stats.BuffersTotal, (double)stats.BuffersUsed / (double)stats.BuffersTotal);
+            _chat.SendMessage(p, $"netstats: buffers used={stats.BuffersUsed}/{stats.BuffersTotal} ({(double)stats.BuffersUsed / stats.BuffersTotal:p})");
 
-            _chat.SendMessage(p, "netstats: grouped={0}/{1}/{2}/{3}/{4}/{5}/{6}/{7}",
-                stats.GroupedStats[0],
-                stats.GroupedStats[1],
-                stats.GroupedStats[2],
-                stats.GroupedStats[3],
-                stats.GroupedStats[4],
-                stats.GroupedStats[5],
-                stats.GroupedStats[6],
-                stats.GroupedStats[7]);
+            _chat.SendMessage(p, $"netstats: grouped=" +
+                $"{stats.GroupedStats[0]}/" +
+                $"{stats.GroupedStats[1]}/" +
+                $"{stats.GroupedStats[2]}/" +
+                $"{stats.GroupedStats[3]}/" +
+                $"{stats.GroupedStats[4]}/" +
+                $"{stats.GroupedStats[5]}/" +
+                $"{stats.GroupedStats[6]}/" +
+                $"{stats.GroupedStats[7]}");
 
-            _chat.SendMessage(p, "netstats: pri={0}/{1}/{2}/{3}/{4}",
-                stats.PriorityStats[0],
-                stats.PriorityStats[1],
-                stats.PriorityStats[2],
-                stats.PriorityStats[3],
-                stats.PriorityStats[4]);
+            _chat.SendMessage(p, $"netstats: pri=" +
+                $"{stats.PriorityStats[0]}/" +
+                $"{stats.PriorityStats[1]}/" +
+                $"{stats.PriorityStats[2]}/" +
+                $"{stats.PriorityStats[3]}/" +
+                $"{stats.PriorityStats[4]}");
         }
 
         [CommandHelp(
@@ -533,16 +531,21 @@ namespace SS.Core.Modules
             Description = "Displays the text as an arena (green) message to the targets.")]
         private void Command_a(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
             try
             {
                 _playerData.TargetToSet(target, set);
-                _chat.SendSetSoundMessage(set, sound, "{0} -{1}", parameters, p.Name); // TODO: use interpolated string after we get rid of format string, otherwise a player could type placeholders into their text and break it
+                sb.Append(parameters);
+                sb.Append(" -");
+                sb.Append(p.Name);
+                _chat.SendSetMessage(set, sound, sb);
             }
             finally
             {
                 _objectPoolManager.PlayerSetPool.Return(set);
+                _objectPoolManager.StringBuilderPool.Return(sb);
             }
         }
 
@@ -557,7 +560,7 @@ namespace SS.Core.Modules
             try
             {
                 _playerData.TargetToSet(target, set);
-                _chat.SendSetSoundMessage(set, sound, "{0}", parameters); // TODO: change after we get rid of format string, otherwise a player could type placeholders into their text and break it
+                _chat.SendSetMessage(set, sound, parameters);
             }
             finally
             {
@@ -571,7 +574,20 @@ namespace SS.Core.Modules
             Description = "Displays the text as an arena (green) message to the whole zone.")]
         private void Command_z(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            _chat.SendArenaSoundMessage(null, sound, $"{parameters} -{p.Name}");
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                sb.Append(parameters);
+                sb.Append(" -");
+                sb.Append(p.Name);
+
+                _chat.SendArenaMessage(null, sound, sb);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
 
             // TODO: peer
         }
@@ -582,7 +598,7 @@ namespace SS.Core.Modules
             Description = "Displays the text as an anonymous arena (green) message to the whole zone.")]
         private void Command_az(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            _chat.SendArenaSoundMessage(null, sound, "{0}", parameters);
+            _chat.SendArenaMessage(null, sound, parameters);
 
             // TODO: peer
         }
@@ -640,7 +656,7 @@ namespace SS.Core.Modules
             try
             {
                 set.Add(playerTarget.Player);
-                _chat.SendAnyMessage(set, ChatMessageType.Private, ChatSound.None, p, "{0}", parameters);
+                _chat.SendAnyMessage(set, ChatMessageType.Private, ChatSound.None, p, parameters);
                 _chat.SendMessage(p, $"Private message sent to player '{playerTarget.Player.Name}'.");
             }
             finally
@@ -1120,47 +1136,58 @@ namespace SS.Core.Modules
             bool canSeePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
             bool canSeeAllStaff = _capabilityManager.HasCapability(p, Constants.Capabilities.SeeAllStaff);
 
-            _playerData.Lock();
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
             try
             {
-                foreach (Player player in _playerData.PlayerList)
+                _playerData.Lock();
+
+                try
                 {
-                    if (player.Status != PlayerState.Playing)
-                        continue;
+                    foreach (Player player in _playerData.PlayerList)
+                    {
+                        if (player.Status != PlayerState.Playing)
+                            continue;
 
-                    string group = _groupManager.GetGroup(player);
-                    string format;
+                        string group = _groupManager.GetGroup(player);
+                        string format;
 
-                    if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
-                    {
-                        format = ": {0} {1} {2}";
-                    }
-                    else if (canSeeAllStaff
-                        && !string.Equals(group, "default", StringComparison.Ordinal)
-                        && !string.Equals(group, "none", StringComparison.Ordinal))
-                    {
-                        format = ": {0} {1} ({2})";
-                    }
-                    else
-                    {
-                        format = null;
-                    }
+                        if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
+                        {
+                            format = ": {0,20} {1,10} {2}";
+                        }
+                        else if (canSeeAllStaff
+                            && !string.Equals(group, "default", StringComparison.Ordinal)
+                            && !string.Equals(group, "none", StringComparison.Ordinal))
+                        {
+                            format = ": {0,20} {1,10} ({2})";
+                        }
+                        else
+                        {
+                            format = null;
+                        }
 
-                    if (format != null)
-                    {
-                        _chat.SendMessage(
-                            p,
-                            format,
-                            player.Name,
-                            (!player.Arena.IsPrivate || canSeePrivateArenas || p.Arena == player.Arena) ? player.Arena.Name : "(private)",
-                            group);
+                        if (format != null)
+                        {
+                            sb.Clear();
+                            sb.AppendFormat(
+                                format,
+                                player.Name,
+                                (!player.Arena.IsPrivate || canSeePrivateArenas || p.Arena == player.Arena) ? player.Arena.Name : "(private)",
+                                group);
+
+                            _chat.SendMessage(p, sb);                                
+                        }
                     }
+                }
+                finally
+                {
+                    _playerData.Unlock();
                 }
             }
             finally
             {
-                _playerData.Unlock();
+                _objectPoolManager.StringBuilderPool.Return(sb);
             }
         }
 
@@ -1211,7 +1238,7 @@ namespace SS.Core.Modules
 
             string fileName = _mapData.GetMapFilename(arena, null);
 
-            _chat.SendMessage(p, "LVL file loaded from '{0}'.", !string.IsNullOrWhiteSpace(fileName) ? fileName : "<nowhere>");
+            _chat.SendMessage(p, $"LVL file loaded from '{(!string.IsNullOrWhiteSpace(fileName) ? fileName : "<nowhere>")}'.");
 
             const string NotSet = "<not set>";
 

@@ -10,7 +10,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that authenticates players based on hashed passwords stored in a configuration file ('conf/passwd.conf').
     /// </summary>
-    public sealed class AuthFile : IModule, IAuth, IDisposable
+    public sealed class AuthFile : IModule, IAuth, IBillingFallback, IDisposable
     {
         private IPlayerData playerData;
         private IConfigManager config;
@@ -18,6 +18,7 @@ namespace SS.Core.Modules
         private IChat chat;
         private ILogManager log;
         private InterfaceRegistrationToken iAuthToken;
+        private InterfaceRegistrationToken iBillingFallbackToken;
 
         private ConfigHandle pwdFile;
         private HashAlgorithm hashAlgorithm;
@@ -92,13 +93,16 @@ namespace SS.Core.Modules
             commandManager.AddUnlogged("local_password");
 
             iAuthToken = broker.RegisterInterface<IAuth>(this);
-            // TODO: billing fallback
+            iBillingFallbackToken = broker.RegisterInterface<IBillingFallback>(this);
 
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
+            if (broker.UnregisterInterface<IBillingFallback>(ref iBillingFallbackToken) != 0)
+                return false;
+
             if (broker.UnregisterInterface<IAuth>(ref iAuthToken) != 0)
                 return false;
 
@@ -125,9 +129,16 @@ namespace SS.Core.Modules
             if (p[pdKey] is not PlayerData pd)
                 return;
 
-            string name = lp.Name;
-            string pwd = StringUtils.ReadNullTerminatedString(lp.PasswordBytes);
-            pd.PasswordHash = GetPasswordHash(name, pwd);
+            Span<byte> nameBytes = lp.NameBytes.SliceNullTerminated();
+            Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+            StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
+            string name = nameSpan.ToString(); // TODO: investigate reducing allocations
+
+            Span<byte> passwordBytes = lp.PasswordBytes.SliceNullTerminated();
+            Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
+            StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+
+            pd.PasswordHash = GetPasswordHash(nameSpan, passwordSpan); // TODO: maybe not create strings and instead use a pool of byte[] or IMemoryOwner<byte>
 
             AuthData authData = new AuthData()
             {
@@ -171,6 +182,49 @@ namespace SS.Core.Modules
             done(p, authData);
         }
 
+        void IBillingFallback.Check<T>(Player p, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state)
+        {
+            if (p[pdKey] is not PlayerData pd)
+            {
+                done(state, BillingFallbackResult.NotFound);
+                return;
+            }
+
+            string nameStr = name.ToString(); // TODO: investigate reducing allocations
+            pd.PasswordHash = GetPasswordHash(name, password);
+
+            string line = config.GetStr(pwdFile, "users", nameStr);
+            if (line != null)
+            {
+                if (string.Equals(line, "lock", StringComparison.OrdinalIgnoreCase))
+                {
+                    done(state, BillingFallbackResult.Mismatch);
+                    return;
+                }
+
+                if (string.Equals(line, "any", StringComparison.OrdinalIgnoreCase))
+                {
+                    done(state, BillingFallbackResult.Match);
+                    return;
+                }
+
+                if (string.Equals(pd.PasswordHash, line, StringComparison.Ordinal))
+                {
+                    done(state, BillingFallbackResult.Match);
+                    return;
+                }
+
+                done(state, BillingFallbackResult.Mismatch);
+            }
+
+            bool allow = config.GetInt(pwdFile, "General", "AllowUnknown", 1) != 0;
+
+            if (allow)
+                done(state, BillingFallbackResult.NotFound);
+            else
+                done(state, BillingFallbackResult.Mismatch);
+        }
+
         private string GetPasswordHash(ReadOnlySpan<char> name, ReadOnlySpan<char> pwd)
         {
             if (name.Length == 0 || name.Length > 24)
@@ -183,13 +237,14 @@ namespace SS.Core.Modules
             {
                 // ignore case on name
                 Span<char> lowerName = stackalloc char[name.Length];
-                MemoryExtensions.ToLowerInvariant(name, lowerName);
+                if (MemoryExtensions.ToLowerInvariant(name, lowerName) == -1)
+                    return null;
                 
                 // combine name and password into bytes that we'll hash
                 Span<byte> data = stackalloc byte[56];
                 data.Clear();
-                Encoding.ASCII.GetBytes(lowerName, data.Slice(0, 24));
-                Encoding.ASCII.GetBytes(pwd, data.Slice(24, 32));
+                StringUtils.DefaultEncoding.GetBytes(lowerName, data.Slice(0, 24));
+                StringUtils.DefaultEncoding.GetBytes(pwd, data.Slice(24, 32));
 
                 // get the hash
                 Span<byte> hashSpan = stackalloc byte[hashAlgorithm.HashSize / 8];

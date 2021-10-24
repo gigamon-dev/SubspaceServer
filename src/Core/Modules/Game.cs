@@ -817,7 +817,7 @@ namespace SS.Core.Modules
                     }
 
                     if (pd.epdQueries > 0)
-                        _logManager.LogP(LogLevel.Error, nameof(Game), p, "extra position data queries is still nonzero");
+                        _logManager.LogP(LogLevel.Error, nameof(Game), p, "Extra position data queries is still nonzero.");
 
                     ClearSpeccing(pd);
                 }
@@ -943,7 +943,7 @@ namespace SS.Core.Modules
             if (len != C2SPositionPacket.Length && len != C2SPositionPacket.LengthWithExtra)
 #endif
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad position packet len={len}.");
                 return;
             }
 
@@ -954,7 +954,7 @@ namespace SS.Core.Modules
             // Verify checksum
             if (!isFake && !pos.IsValidChecksum)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad position packet checksum");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "Bad position packet checksum.");
                 return;
             }
 
@@ -1390,7 +1390,7 @@ namespace SS.Core.Modules
 
             if (len != SpecRequestPacket.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad spec req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad spec req packet len={len}.");
                 return;
             }
 
@@ -1426,14 +1426,14 @@ namespace SS.Core.Modules
 
             if (len != 2)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad ship req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad ship req packet len={len}.");
                 return;
             }
 
             Arena arena = p.Arena;
             if (p.Status != PlayerState.Playing || arena == null)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: ship request from bad status");
+                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "State sync problem: Ship request from bad status.");
                 return;
             }
 
@@ -1443,7 +1443,7 @@ namespace SS.Core.Modules
             ShipType ship = (ShipType)data[1];
             if (ship < ShipType.Warbird || ship > ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad ship number: {0}", ship);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad ship number: {ship}.");
                 return;
             }
 
@@ -1453,13 +1453,13 @@ namespace SS.Core.Modules
             {
                 if (p.Flags.DuringChange)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: ship request before ack from previous change");
+                    _logManager.LogP(LogLevel.Warn, nameof(Game), p, "State sync problem: Ship request before ack from previous change.");
                     return;
                 }
 
                 if (ship == p.Ship)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: already in requested ship");
+                    _logManager.LogP(LogLevel.Warn, nameof(Game), p, "State sync problem: Already in requested ship.");
                     return;
                 }
 
@@ -1473,7 +1473,7 @@ namespace SS.Core.Modules
                 !(_capabilityManager != null && _capabilityManager.HasCapability(p, Constants.Capabilities.BypassLock)))
             {
                 if (_chat != null)
-                    _chat.SendMessage(p, "You have been locked in {0}.", p.Ship == ShipType.Spec ? "spectator mode" : "your ship");
+                    _chat.SendMessage(p, $"You have been locked in {(p.Ship == ShipType.Spec ? "spectator mode" : "your ship")}.");
 
                 return;
             }
@@ -1503,11 +1503,11 @@ namespace SS.Core.Modules
 
             if (len != SetFreqPacket.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad freq req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad freq req packet len={len}.");
             }
             else if (p.Flags.DuringChange)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "state sync problem: freq change before ack from previous change");
+                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "State sync problem: Freq change before ack from previous change.");
             }
             else
             {
@@ -1529,7 +1529,7 @@ namespace SS.Core.Modules
 
             if (p.Status != PlayerState.Playing || arena == null)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "freq change from bad arena");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "Freq change from bad arena.");
                 return;
             }
 
@@ -1543,7 +1543,8 @@ namespace SS.Core.Modules
                 !(_capabilityManager != null && _capabilityManager.HasCapability(p, Constants.Capabilities.BypassLock)))
             {
                 if (_chat != null)
-                    _chat.SendMessage(p, "You have been locked in {0}.", (p.Ship == ShipType.Spec) ? "spectator mode" : "your ship");
+                    _chat.SendMessage(p, $"You have been locked in {(p.Ship == ShipType.Spec ? "spectator mode" : "your ship")}.");
+
                 return;
             }
 
@@ -1584,7 +1585,7 @@ namespace SS.Core.Modules
 
             if (p.Type == ClientType.Chat && ship != ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "someone tried to forced chat client into playing ship");
+                _logManager.LogP(LogLevel.Warn, nameof(Game), p, "Attempted to force a chat client into a playing ship.");
                 return;
             }
 
@@ -1660,7 +1661,7 @@ namespace SS.Core.Modules
                 DoSpawnCallback(p, flags);
             }
 
-            _logManager.LogP(LogLevel.Info, nameof(Game), p, "changed ship/freq to ship {0}, freq {1}", ship, freq);
+            _logManager.LogP(LogLevel.Info, nameof(Game), p, $"Changed ship/freq to ship {ship}, freq {freq}.");
         }
 
         private void SetFreq(Player p, short freq)
@@ -1703,7 +1704,7 @@ namespace SS.Core.Modules
             PreShipFreqChangeCallback.Fire(arena, p, p.Ship, p.Ship, freq, oldFreq);
             DoShipFreqChangeCallback(p, p.Ship, p.Ship, freq, oldFreq);
 
-            _logManager.LogP(LogLevel.Info, nameof(Game), p, "changed freq to {0}", freq);
+            _logManager.LogP(LogLevel.Info, nameof(Game), p, $"Changed freq to {freq}.");
         }
 
         private void ResetDuringChange(Player p, bool success)
@@ -1732,7 +1733,7 @@ namespace SS.Core.Modules
                     {
                         pd.lockship = false;
                         pd.expires = null;
-                        _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "lock expired");
+                        _logManager.LogP(LogLevel.Drivel, nameof(Game), p, "Lock expired.");
                     }
             }
         }
@@ -1747,7 +1748,7 @@ namespace SS.Core.Modules
 
             if (len != DiePacket.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad death packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad death packet len={len}.");
                 return;
             }
 
@@ -1767,7 +1768,7 @@ namespace SS.Core.Modules
             Player killer = _playerData.PidToPlayer(packet.Killer);
             if (killer == null || killer.Status != PlayerState.Playing || killer.Arena != arena)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Reported kill by bad pid {packet.Killer}");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Reported kill by bad pid {packet.Killer}.");
                 return;
             }
 
@@ -1871,7 +1872,7 @@ namespace SS.Core.Modules
 
             FirePostKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
-            _logManager.LogA(LogLevel.Info, nameof(Game), arena, "{0} killed by {1} (bty={2},flags={3},pts={4})", p.Name, killer.Name, bty, flagCount, pts);
+            _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{p.Name} killed by {killer.Name} (bty={bty},flags={flagCount},pts={pts})");
 
             if (p.Flags.SentWeaponPacket == false)
             {
@@ -1879,7 +1880,7 @@ namespace SS.Core.Modules
                 {
                     if (pd.deathWithoutFiring++ == ad.MaxDeathWithoutFiring)
                     {
-                        _logManager.LogP(LogLevel.Info, nameof(Game), p, "specced for too many deaths without firing");
+                        _logManager.LogP(LogLevel.Info, nameof(Game), p, "Specced for too many deaths without firing.");
                         SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                     }
                 }
@@ -1926,7 +1927,7 @@ namespace SS.Core.Modules
 
             if (len != GreenPacket.C2SLength)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad green packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad green packet len={len}.");
                 return;
             }
 
@@ -1999,7 +2000,7 @@ namespace SS.Core.Modules
 
             if (len != AttachToPacket.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, "bad attach req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), p, $"Bad attach req packet len={len}.");
                 return;
             }
 
@@ -2156,12 +2157,12 @@ namespace SS.Core.Modules
 
             if (specCount > 1)
             {
-                _chat.SendMessage(p, "{0} spectators: ", specCount);
+                _chat.SendMessage(p, $"{specCount} spectators: ");
                 _chat.SendWrappedText(p, sb.ToString());
             }
             else if (specCount == 1)
             {
-                _chat.SendMessage(p, "1 spectator: {0}", sb.ToString());
+                _chat.SendMessage(p, $"1 spectator: {sb}");
             }
             else if (p == targetPlayer)
             {
@@ -2169,7 +2170,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                _chat.SendMessage(p, "No players are spectating {0}.", targetPlayer.Name);
+                _chat.SendMessage(p, $"No players are spectating {targetPlayer.Name}.");
             }
         }
 

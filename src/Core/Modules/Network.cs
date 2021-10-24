@@ -428,17 +428,21 @@ namespace SS.Core.Modules
 
         private class NetClientConnection : ClientConnection
         {
-            public NetClientConnection(IPEndPoint remoteEndpoint, Socket socket, IClientConnectionHandler handler, IClientEncrypt encryptor, IBWLimit bwLimit)
-                : base(handler, encryptor)
+            public NetClientConnection(IPEndPoint remoteEndpoint, Socket socket, IClientConnectionHandler handler, IClientEncrypt encryptor, string encryptorName, IBWLimit bwLimit)
+                : base(handler, encryptorName)
             {
                 ConnData = new();
                 ConnData.cc = this;
                 ConnData.RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
                 ConnData.whichSock = socket ?? throw new ArgumentNullException(nameof(socket));
                 ConnData.Initalize(null, null, bwLimit);
+
+                Encryptor = encryptor;
             }
 
             public ConnData ConnData { get; private set; }
+
+            public IClientEncrypt Encryptor;
 
             public override EndPoint ServerEndpoint => ConnData.RemoteEndpoint;
         }
@@ -883,7 +887,7 @@ namespace SS.Core.Modules
             catch (Exception ex)
             {
                 // not fatal, just warn
-                _logManager.LogM(LogLevel.Warn, nameof(Network), "can't make socket nonblocking: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Warn, nameof(Network), $"Can't make socket nonblocking. {ex.Message}");
             }
 
             if (bindAddress == null)
@@ -944,7 +948,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Network), "unable to create game socket: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to create game socket. {ex.Message}");
                 return null;
             }
 
@@ -955,7 +959,7 @@ namespace SS.Core.Modules
             catch (Exception ex)
             {
                 gameSocket.Close();
-                _logManager.LogM(LogLevel.Error, nameof(Network), "unable to create ping socket: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to create ping socket: {ex.Message}");
                 return null;
             }
 
@@ -992,7 +996,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), "listening on {0}", listenData.GameSocket.LocalEndPoint);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Listening on {listenData.GameSocket.LocalEndPoint}.");
             }
 
             //
@@ -1007,7 +1011,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Network), "unable to create socket for client connections: {0}", ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to create socket for client connections. {ex.Message}");
             }
 
             return true;
@@ -1075,7 +1079,7 @@ namespace SS.Core.Modules
                 }
                 catch (Exception ex)
                 {
-                    _logManager.LogM(LogLevel.Error, nameof(LogManager), "Caught an exception in ReceiveThread. {0}", ex);
+                    _logManager.LogM(LogLevel.Error, nameof(LogManager), $"Caught an exception in ReceiveThread. {ex}");
                 }
             }
         }
@@ -1177,7 +1181,17 @@ namespace SS.Core.Modules
                         SendOutgoing(conn, groupedPacketManager);
                     }
 
-                    // Special limit of 65 seconds, unless we haevn't gotten any packets, then use 10.
+                    if (conn.HitMaxRetries)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(Network), "Client connection hit max retries.");
+                    }
+
+                    if (now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(Network), $"Client connection {now-conn.lastPkt} > {(conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10))}.");
+                    }
+
+                    // Special limit of 65 seconds, unless we haven't gotten any packets, then use 10.
                     if (conn.HitMaxRetries 
                         || now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
                     {
@@ -1444,7 +1458,7 @@ namespace SS.Core.Modules
                     SendRaw(conn, buf.Bytes.AsSpan(0, buf.NumBytes));
                 }
 
-                _logManager.LogM(LogLevel.Info, nameof(Network), "[{0}] [pid={1}] player kicked for {2}", p.Name, p.Id, reason);
+                _logManager.LogM(LogLevel.Info, nameof(Network), $"[{p.Name}] [pid={p.Id}] Player kicked for {reason}.");
 
                 toKick.Add(p);
             }
@@ -1473,10 +1487,10 @@ namespace SS.Core.Modules
                 }
 
                 // log message
-                _logManager.LogM(LogLevel.Info, nameof(Network), "[{0}] [pid={1}] disconnected", p.Name, p.Id);
+                _logManager.LogM(LogLevel.Info, nameof(Network), $"[{p.Name}] [pid={p.Id}] Disconnected.");
 
                 if (_clienthash.TryRemove(conn.RemoteEndpoint, out _) == false)
-                    _logManager.LogM(LogLevel.Error, nameof(Network), "internal error: established connection not in hash table");
+                    _logManager.LogM(LogLevel.Error, nameof(Network), "Established connection not in hash table.");
 
                 toFree.Add(p);
             }
@@ -1514,7 +1528,10 @@ namespace SS.Core.Modules
             Player p = conn.p;
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk($"SEND: {len} bytes to pid {p.Id}", data);
+            if(p != null)
+                DumpPk($"SEND: {len} bytes to {p.Id}", data);
+            else if(conn.cc != null)
+                DumpPk($"SEND: {len} bytes to client connection {conn.cc.ServerEndpoint}", data);
 #endif
 
             Span<byte> encryptedBuffer = stackalloc byte[Constants.MaxPacket + 4];
@@ -1535,7 +1552,10 @@ namespace SS.Core.Modules
             encryptedBuffer = encryptedBuffer.Slice(0, len);
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk($"SEND: {len} bytes to pid {p.Id} (after encryption)", encryptedBuffer);
+            if(p != null)
+                DumpPk($"SEND: {len} bytes to pid {p.Id} (after encryption)", encryptedBuffer);
+            else if(conn.cc != null)
+                DumpPk($"SEND: {len} bytes to client connection {conn.cc.ServerEndpoint} (after encryption)", encryptedBuffer);
 #endif
 
             // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
@@ -1728,16 +1748,11 @@ namespace SS.Core.Modules
 #if CFG_LOG_STUPID_STUFF
                 else if (buffer.NumBytes > 1)
                 {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "recvd data ({0:X2} {1:X2} ; {2} bytes) before connection established",
-                        buffer.Bytes[0],
-                        buffer.Bytes[1],
-                        buffer.NumBytes);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({buffer.Bytes[0]:X2} {buffer.Bytes[1]:X2} ; {buffer.NumBytes} bytes) before connection established.");
                 }
                 else
                 {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "recvd data ({0:X2} ; {1} bytes) before connection established",
-                        buffer.Bytes[0],
-                        buffer.NumBytes);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({buffer.Bytes[0]:X2} ; {buffer.NumBytes} bytes) before connection established.");
                 }
 #endif
                 buffer.Dispose();
@@ -1786,7 +1801,7 @@ namespace SS.Core.Modules
 
             if (p.Status > PlayerState.TimeWait)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(Network), "[pid={0}] packet received from bad state {1}", p.Id, p.Status);
+                _logManager.LogM(LogLevel.Warn, nameof(Network), $"[pid={p.Id}] Packet received from bad state {p.Status}.");
 
                 // don't set lastpkt time here
 
@@ -1810,7 +1825,7 @@ namespace SS.Core.Modules
             if (buffer.NumBytes == 0)
             {
                 // bad crc, or something
-                _logManager.LogM(LogLevel.Malicious, nameof(Network), "[pid={0}] failure decrypting packet", p.Id);
+                _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[pid={p.Id}] Failure decrypting packet.");
                 buffer.Dispose();
                 return;
             }
@@ -1919,11 +1934,11 @@ namespace SS.Core.Modules
                 {
                     if (conn.p != null)
                     {
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "[{0}] [pid={1}] unknown network subtype {2}", conn.p.Name, conn.p.Id, t2);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[{conn.p.Name}] [pid={conn.p.Id}] Unknown network subtype {t2}.");
                     }
                     else
                     {
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) unknown network subtype {0}", t2);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Unknown network subtype {t2}.");
                     }
                     buffer.Dispose();
                 }
@@ -1937,9 +1952,9 @@ namespace SS.Core.Modules
                 try
                 {
                     if (conn.p != null)
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "[{0}] [pid={1}] unknown packet type {2}", conn.p.Name, conn.p.Id, t1);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[{conn.p.Name}] [pid={conn.p.Id}] Unknown packet type {t1}.");
                     else
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) unknown packet type {0}", t1);
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Unknown packet type {t1}.");
                 }
                 finally
                 {
@@ -2225,7 +2240,7 @@ namespace SS.Core.Modules
                 if (conn.cc != null)
                     conn.cc.Handler.Connected();
                 else if (conn.p != null)
-                    _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "got key response packet");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Got key response packet.");
             }
             finally
             {
@@ -2262,9 +2277,9 @@ namespace SS.Core.Modules
 
                 // just drop it
                 if (conn.p != null)
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "[{0}] [pid={1}] reliable packet with too big delta ({2} - {3})", conn.p.Name, conn.p.Id, sn, conn.c2sn);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"[{conn.p.Name}] [pid={conn.p.Id}] Reliable packet with too big delta ({sn} - {conn.c2sn}).");
                 else
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), "(client connection) reliable packet with too big delta ({0} - {1})", sn, conn.c2sn);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"(client connection) Reliable packet with too big delta ({sn} - {conn.c2sn}).");
 
                 buffer.Dispose();
             }
@@ -2351,7 +2366,7 @@ namespace SS.Core.Modules
                             int rtt = (int)DateTime.UtcNow.Subtract(b.LastRetry).TotalMilliseconds;
                             if (rtt < 0)
                             {
-                                _logManager.LogM(LogLevel.Error, nameof(Network), "negative rtt ({0}); clock going backwards", rtt);
+                                _logManager.LogM(LogLevel.Error, nameof(Network), $"Negative rtt ({rtt}); clock going backwards.");
                                 rtt = 100;
                             }
 
@@ -2643,12 +2658,12 @@ namespace SS.Core.Modules
 
                     if (conn.sizedrecv.totallen != size)
                     {
-                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "length mismatch in sized packet");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Length mismatch in sized packet.");
                         EndSized(conn.p, false);
                     }
                     else if ((conn.sizedrecv.offset + buffer.NumBytes - 6) > size)
                     {
-                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "sized packet overflow");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Sized packet overflow.");
                         EndSized(conn.p, false);
                     }
                     else
@@ -3014,6 +3029,7 @@ namespace SS.Core.Modules
                 if (cc.Encryptor != null)
                 {
                     cc.Encryptor.Void(cc);
+                    broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
                 }
             }
 
@@ -3125,8 +3141,8 @@ namespace SS.Core.Modules
             // try to find a matching player for the endpoint
             if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out Player p))
             {
-                /* we found it. if its status is S_CONNECTED, just return the
-		            * pid. it means we have to redo part of the connection init. */
+                // We found it. If its status is Connected, just return the pid.
+                // It means we have to redo part of the connection init.
 
                 if (p.Status <= PlayerState.Connected)
                 {
@@ -3135,7 +3151,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // otherwise, something is horribly wrong. make a note to this effect
-                    _logManager.LogM(LogLevel.Error, nameof(Network), "[pid={0}] NewConnection called for an established address", p.Id);
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"[pid={p.Id}] NewConnection called for an established address.");
                     return null;
                 }
             }
@@ -3150,7 +3166,7 @@ namespace SS.Core.Modules
 
                 if (enc == null)
                 {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), "[pid={0}] NewConnection called to use IEncrypt '{0}', but interface not found", p.Id, iEncryptName);
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"[pid={p.Id}] NewConnection called to use IEncrypt '{iEncryptName}', but not found.");
                     return null;
                 }
             }
@@ -3190,11 +3206,11 @@ namespace SS.Core.Modules
 
             if (remoteEndpoint != null)
             {
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), "[pid={0}] new connection from {1}", p.Id, remoteEndpoint);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"[pid={p.Id}] New connection from {remoteEndpoint}.");
             }
             else
             {
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), "[pid={0}] new internal connection", p.Id);
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"[pid={p.Id}] New internal connection.");
             }
 
             return p;
@@ -3442,7 +3458,7 @@ namespace SS.Core.Modules
 
             if (!IsOurs(p))
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, "tried to send sized data to non-udp client");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, "Tried to send sized data to non-udp client.");
                 return false;
             }
 
@@ -3628,7 +3644,7 @@ namespace SS.Core.Modules
         #region INetworkClient Members
 
         
-        ClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConnectionHandler handler, IClientEncrypt encryptor)
+        ClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConnectionHandler handler, string iClientEncryptName)
         {
             if (string.IsNullOrWhiteSpace(address))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(address));
@@ -3639,26 +3655,23 @@ namespace SS.Core.Modules
             if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
                 throw new ArgumentOutOfRangeException(nameof(port));
 
-            IPAddress ipAddress;
-
-            try
-            {
-                ipAddress = Dns.GetHostAddresses(address).FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
-
-                if (ipAddress == null)
-                    throw new Exception("Unable to resolve to an IPv4 address.");
-            }
-            catch (Exception ex)
-            {
-                throw new ArgumentException("Unable to resolve to an IP address.", nameof(address), ex);
-            }
+            if (!IPAddress.TryParse(address, out IPAddress ipAddress))
+                throw new ArgumentException("Unable to parse as an IP address.", nameof(address));
 
             IPEndPoint remoteEndpoint = new(ipAddress, port);
 
-            // TODO: should the encryptor really be in passed in, or maybe just the name of the one to use should be?
-            // IClientEncrypt encryptor = _broker.GetInterface<IClientEncrypt>(encryptorName)
+            IClientEncrypt encryptor = null;
+            if (!string.IsNullOrWhiteSpace(iClientEncryptName))
+            {
+                encryptor = _broker.GetInterface<IClientEncrypt>(iClientEncryptName);
+                if (encryptor == null)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to find an {nameof(IClientEncrypt)} named {iClientEncryptName}.");
+                    return null;
+                }
+            }
 
-            NetClientConnection cc = new(remoteEndpoint, _clientSocket, handler, encryptor, _bandwithLimit.New());
+            NetClientConnection cc = new(remoteEndpoint, _clientSocket, handler, encryptor, iClientEncryptName, _bandwithLimit.New());
 
             encryptor?.Initialze(cc);
 
@@ -3676,6 +3689,9 @@ namespace SS.Core.Modules
 
         void INetworkClient.SendPacket(ClientConnection cc, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
+            if (cc == null)
+                return;
+
             if (cc is not NetClientConnection ncc)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
 
@@ -3718,6 +3734,14 @@ namespace SS.Core.Modules
             }
         }
 
+        void INetworkClient.SendPacket<T>(ClientConnection cc, ref T data, NetSendFlags flags)
+        {
+            if (cc is not NetClientConnection)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+
+            ((INetworkClient)this).SendPacket(cc, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+        }
+
         void INetworkClient.DropConnection(ClientConnection cc)
         {
             if (cc is not NetClientConnection ncc)
@@ -3737,6 +3761,7 @@ namespace SS.Core.Modules
             if (cc.Encryptor != null)
             {
                 cc.Encryptor.Void(cc);
+                _broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
             }
 
             _clientConnections.TryRemove(cc.ConnData.RemoteEndpoint, out _);

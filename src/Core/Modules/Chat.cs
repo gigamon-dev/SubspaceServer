@@ -5,6 +5,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -200,117 +201,53 @@ namespace SS.Core.Modules
 
         #region IChat Members
 
-        void IChat.SendMessage(Player p, string format, params object[] args)
+        void IChat.SendMessage(Player p, ReadOnlySpan<char> message)
         {
-            SendMessage(p, format, args);
+            SendMessage(p, message);
         }
 
-        void IChat.SendCmdMessage(Player p, string format, params object[] args)
+        void IChat.SendMessage(Player p, StringBuilder message)
         {
-            SendMessage(p, format, args);
+            SendMessage(p, message);
         }
 
-        void IChat.SendSetMessage(IEnumerable<Player> set, string format, params object[] args)
+        void IChat.SendMessage(Player p, ChatSound sound, ReadOnlySpan<char> message)
         {
-            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+            SendMessage(p, ChatMessageType.Arena, sound, null, message);
         }
 
-        void IChat.SendSoundMessage(Player p, ChatSound sound, string format, params object[] args)
+        void IChat.SendMessage(Player p, ChatSound sound, StringBuilder message)
         {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
-            {
-                set.Add(p);
-                SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(set);
-            }
+            Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+            message.CopyTo(0, text, text.Length);
+            SendMessage(p, ChatMessageType.Arena, sound, null, text);
         }
 
-        void IChat.SendSetSoundMessage(IEnumerable<Player> set, ChatSound sound, string format, params object[] args)
+        void IChat.SendSetMessage(IEnumerable<Player> set, ReadOnlySpan<char> message)
         {
-            SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, message);
         }
 
-        void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
+        void IChat.SendSetMessage(IEnumerable<Player> set, StringBuilder message)
         {
-            SendMessage(set, type, sound, from, format, args);
+            Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+            message.CopyTo(0, text, text.Length);
+            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, text);
         }
 
-        void IChat.SendArenaMessage(Arena arena, string format, params object[] args)
+        void IChat.SendSetMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> message)
         {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
-            {
-                GetArenaSet(set, arena, null);
-
-                if (set.Count > 0)
-                    SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(set);
-            }
+            SendMessage(set, ChatMessageType.Arena, sound, null, message);
         }
 
-        private void GetArenaSet(HashSet<Player> set, Arena arena, Player except)
+        void IChat.SendSetMessage(IEnumerable<Player> set, ChatSound sound, StringBuilder message)
         {
-            if (set == null)
-                throw new ArgumentNullException(nameof(set));
-
-            _playerData.Lock();
-
-            try
-            {
-                foreach (Player p in _playerData.PlayerList)
-                {
-                    if (p.Status == PlayerState.Playing &&
-                        (p.Arena == arena || arena == null) && 
-                        p != except)
-                    {
-                        set.Add(p);
-                    }
-                }
-            }
-            finally
-            {
-                _playerData.Unlock();
-            }
+            Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+            message.CopyTo(0, text, text.Length);
+            SendMessage(set, ChatMessageType.Arena, sound, null, text);
         }
 
-        private void GetCapabilitySet(HashSet<Player> set, string capability, Player except)
-        {
-            if (set == null)
-                throw new ArgumentNullException(nameof(set));
-
-            if (string.IsNullOrWhiteSpace(capability))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(capability));
-
-            _playerData.Lock();
-
-            try
-            {
-                foreach (Player p in _playerData.PlayerList)
-                {
-                    if (p.Status == PlayerState.Playing
-                        && _capabilityManager.HasCapability(p, capability)
-                        && p != except)
-                    {
-                        set.Add(p);
-                    }
-                }
-            }
-            finally
-            {
-                _playerData.Unlock();
-            }
-        }
-
-        void IChat.SendArenaSoundMessage(Arena arena, ChatSound sound, string format, params object[] args)
+        void IChat.SendArenaMessage(Arena arena, ReadOnlySpan<char> message)
         {
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
@@ -319,7 +256,7 @@ namespace SS.Core.Modules
                 GetArenaSet(set, arena, null);
 
                 if (set.Count > 0)
-                    SendMessage(set, ChatMessageType.Arena, sound, null, format, args);
+                    SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, message);
             }
             finally
             {
@@ -327,7 +264,78 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendModMessage(string format, params object[] args)
+        void IChat.SendArenaMessage(Arena arena, StringBuilder message)
+        {
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetArenaSet(set, arena, null);
+
+                if (set.Count > 0)
+                {
+                    Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+                    message.CopyTo(0, text, text.Length);
+                    SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, text);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        void IChat.SendArenaMessage(Arena arena, ChatSound sound, ReadOnlySpan<char> message)
+        {
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetArenaSet(set, arena, null);
+
+                if (set.Count > 0)
+                    SendMessage(set, ChatMessageType.Arena, sound, null, message);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        void IChat.SendArenaMessage(Arena arena, ChatSound sound, StringBuilder message)
+        {
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetArenaSet(set, arena, null);
+
+                if (set.Count > 0)
+                {
+                    Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+                    message.CopyTo(0, text, text.Length);
+                    SendMessage(set, ChatMessageType.Arena, sound, null, text);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
+        {
+            SendMessage(set, type, sound, from, message);
+        }
+
+        void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message)
+        {
+            Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+            message.CopyTo(0, text, text.Length);
+            SendMessage(set, type, sound, from, text);
+        }
+
+        void IChat.SendModMessage(ReadOnlySpan<char> message)
         {
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
@@ -336,7 +344,7 @@ namespace SS.Core.Modules
                 GetCapabilitySet(set, Constants.Capabilities.ModChat, null);
 
                 if (set.Count > 0)
-                    SendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, format, args);
+                    SendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, message);
             }
             finally
             {
@@ -344,25 +352,70 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, string squad, string sender, string message)
+        void IChat.SendModMessage(StringBuilder message)
+        {
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetCapabilitySet(set, Constants.Capabilities.ModChat, null);
+
+                if (set.Count > 0)
+                {
+                    Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+                    message.CopyTo(0, text, text.Length);
+                    SendMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, text);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        void IChat.SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message)
         {
             if (_network != null)
             {
-                string text = !string.IsNullOrWhiteSpace(squad)
-                    ? $"({squad})({sender})>{message}"
-                    : $"({sender})>{message}";
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-                ChatPacket cp = new();
-                cp.Type = (byte)C2SPacketType.Chat;
-                cp.ChatType = (byte)ChatMessageType.RemotePrivate;
-                cp.Sound = (byte)sound;
-                cp.PlayerId = -1;
-                int length = ChatPacket.HeaderLength + cp.SetMessage(text);
+                try
+                {
+                    if (!squad.IsEmpty)
+                    {
+                        //sb.Append($"(#{squad})"); // TODO: .NET 6
+                        sb.Append('(');
+                        sb.Append('#');
+                        sb.Append(squad);
+                        sb.Append(')');
+                    }
 
-                _network.SendToSet(
-                    set,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref cp, 1)).Slice(0, length),
-                    NetSendFlags.Reliable);
+                    //sb.Append($"({sender})>{message}"); // TODO: .NET 6
+                    sb.Append('(');
+                    sb.Append(sender);
+                    sb.Append(')');
+                    sb.Append('>');
+                    sb.Append(message);
+
+                    Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, sb.Length)];
+                    sb.CopyTo(0, text, text.Length);
+
+                    ChatPacket cp = new();
+                    cp.Type = (byte)C2SPacketType.Chat;
+                    cp.ChatType = (byte)ChatMessageType.RemotePrivate;
+                    cp.Sound = (byte)sound;
+                    cp.PlayerId = -1;
+                    int length = ChatPacket.LengthWithoutMessage + cp.SetMessage(text);
+
+                    _network.SendToSet(
+                        set,
+                        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref cp, 1)).Slice(0, length),
+                        NetSendFlags.Reliable);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
             }
 
             if (_chatNet != null)
@@ -443,9 +496,22 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
-            foreach (ReadOnlySpan<char> line in text.GetWrappedText(78, ' '))
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
             {
-                SendMessage(p, string.Concat("  ", line));
+                foreach (ReadOnlySpan<char> line in text.GetWrappedText(78, ' '))
+                {
+                    sb.Clear();
+                    sb.Append("  ");
+                    sb.Append(line);
+
+                    SendMessage(p, sb);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
             }
         }
 
@@ -503,17 +569,13 @@ namespace SS.Core.Modules
 
             ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
 
-            // Null terminate if it isn't already.
-            // Also, truncate the message if the length is over the limit that we will allow.
-            from.MessageBytes[Math.Min(len - ChatPacket.HeaderLength, from.MessageBytes.Length) - 1] = 0;
-
             // Determine which bytes are part of the message.
-            int index = from.MessageBytes.IndexOf((byte)0);
-            Span<byte> messageSpan = (index == -1) ? from.MessageBytes : from.MessageBytes.Slice(0, index);
+            Span<byte> messageBytes = from.GetMessageBytes(len);
+            messageBytes = messageBytes.SliceNullTerminated();
 
             // Decode the bytes.
-            Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(messageSpan)];
-            StringUtils.DefaultEncoding.GetChars(messageSpan, text);
+            Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(messageBytes)];
+            StringUtils.DefaultEncoding.GetChars(messageBytes, text);
 
             // Remove control characters from the chat message.
             RemoveControlCharacters(text);
@@ -588,6 +650,59 @@ namespace SS.Core.Modules
             // TODO: chatnet
         }
 
+        private void GetArenaSet(HashSet<Player> set, Arena arena, Player except)
+        {
+            if (set == null)
+                throw new ArgumentNullException(nameof(set));
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player p in _playerData.PlayerList)
+                {
+                    if (p.Status == PlayerState.Playing &&
+                        (p.Arena == arena || arena == null) &&
+                        p != except)
+                    {
+                        set.Add(p);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+        }
+
+        private void GetCapabilitySet(HashSet<Player> set, string capability, Player except)
+        {
+            if (set == null)
+                throw new ArgumentNullException(nameof(set));
+
+            if (string.IsNullOrWhiteSpace(capability))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(capability));
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player p in _playerData.PlayerList)
+                {
+                    if (p.Status == PlayerState.Playing
+                        && _capabilityManager.HasCapability(p, capability)
+                        && p != except)
+                    {
+                        set.Add(p);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+        }
+
         private static void RemoveControlCharacters(Span<char> characters)
         {
             for (int i = 0; i < characters.Length ; i++)
@@ -636,20 +751,32 @@ namespace SS.Core.Modules
                     pm.mask.SetRestricted(ChatMessageType.ModChat);
                     pm.mask.SetRestricted(ChatMessageType.BillerCommand);
 
-                    SendMessage(p, "You have been shut up for {0} seconds for flooding.", _cfg.FloodShutup);
-                    _logManager.LogP(LogLevel.Info, nameof(Chat), p, "flooded chat, shut up for {0} seconds", _cfg.FloodShutup);
+                    SendMessage(p, $"You have been shut up for {_cfg.FloodShutup} seconds for flooding.");
+                    _logManager.LogP(LogLevel.Info, nameof(Chat), p, $"Flooded chat, shut up for {_cfg.FloodShutup} seconds.");
                 }
             }
         }
 
-        private void SendMessage(Player p, string format, params object[] args)
+        private void SendMessage(Player p, ReadOnlySpan<char> message)
+        {
+            SendMessage(p, ChatMessageType.Arena, ChatSound.None, null, message);
+        }
+
+        private void SendMessage(Player p, StringBuilder message)
+        {
+            Span<char> messageSpan = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+            message.CopyTo(0, messageSpan, messageSpan.Length);
+            SendMessage(p, ChatMessageType.Arena, ChatSound.None, null, messageSpan);
+        }
+
+        private void SendMessage(Player p, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
         {
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
             try
             {
                 set.Add(p);
-                SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, format, args);
+                SendMessage(set, type, sound, from, message);
             }
             finally
             {
@@ -657,12 +784,8 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args)
+        private void SendMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
         {
-            string text = (args != null && args.Length > 0)
-                ? string.Format(format, args)
-                : format;
-
             if (type == ChatMessageType.ModChat)
                 type = ChatMessageType.SysopWarning;
 
@@ -673,7 +796,7 @@ namespace SS.Core.Modules
                 cp.ChatType = (byte)type;
                 cp.Sound = (byte)sound;
                 cp.PlayerId = from != null ? (short)from.Id : (short)-1;
-                int length = ChatPacket.HeaderLength + cp.SetMessage(text);
+                int length = ChatPacket.LengthWithoutMessage + cp.SetMessage(message);
 
                 _network.SendToSet(
                     set,
@@ -701,8 +824,21 @@ namespace SS.Core.Modules
             {
                 // msg should look like "text" or "#;text"
                 FireChatMessageCallback(null, p, ChatMessageType.Chat, sound, null, -1, text);
+
 #if CFG_LOG_PRIVATE
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, "chat msg: {0}", text);
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    //sb.Append($"chat msg: {text}"); // TODO: .NET 6
+                    sb.Append("chat msg: ");
+                    sb.Append(text);
+
+                    _logManager.LogP(LogLevel.Drivel, "Chat", p, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
 #endif
             }
         }
@@ -741,7 +877,7 @@ namespace SS.Core.Modules
             {
                 if (Ok(p, ChatMessageType.Command))
                 {
-                    Player d = _playerData.FindPlayer(dest.ToString()); // TODO: figure out if there's a way to prevent allocating a string here
+                    Player d = _playerData.FindPlayer(dest);
                     if (d != null && d.Status == PlayerState.Playing)
                     {
                         RunCommands(message, p, d, sound);
@@ -750,7 +886,7 @@ namespace SS.Core.Modules
             }
             else if (Ok(p, ChatMessageType.RemotePrivate))
             {
-                Player d = _playerData.FindPlayer(dest.ToString()); // TODO: figure out if there's a way to prevent allocating a string here
+                Player d = _playerData.FindPlayer(dest);
                 if (d != null)
                 {
                     if (d.Status != PlayerState.Playing)
@@ -778,7 +914,21 @@ namespace SS.Core.Modules
                 FireChatMessageCallback(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
 
 #if CFG_LOG_PRIVATE
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, "to [{0}] remote priv: {1}", dest, message);
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    //sb.Append($"to [{dest}] remote priv: {message}"); // TODO: .NET 6
+                    sb.Append("to [");
+                    sb.Append(dest);
+                    sb.Append("] remote priv:");
+                    sb.Append(message);
+
+                    _logManager.LogP(LogLevel.Drivel, "Chat", p, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
 #endif
             }
         }
@@ -815,8 +965,23 @@ namespace SS.Core.Modules
                 }
 
                 FireChatMessageCallback(arena, p, ChatMessageType.Private, sound, null, -1, text);
+
 #if CFG_LOG_PRIVATE
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, "to [{0}] priv msg: {1}", dst.Name, text);
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    //sb.Append($"to [{dst.Name}] priv msg: {text}"); // TODO: .NET 6
+                    sb.Append("to [");
+                    sb.Append(dst.Name);
+                    sb.Append("] priv msg:");
+                    sb.Append(text);
+
+                    _logManager.LogP(LogLevel.Drivel, "Chat", p, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
 #endif
             }
         }
@@ -872,10 +1037,10 @@ namespace SS.Core.Modules
                             }
                         }
 
-                        if (set.Count <= 0)
-                            return;
-
-                        SendReply(set, type, sound, p, p.Id, text, 0);
+                        if (set.Count > 0)
+                        {
+                            SendReply(set, type, sound, p, p.Id, text, 0);
+                        }
                     }
                     finally
                     {
@@ -883,7 +1048,23 @@ namespace SS.Core.Modules
                     }
 
                     FireChatMessageCallback(arena, p, type, sound, null, freq, text);
-                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat($"freq msg ({freq}): ", text)); // TODO: .NET 6 to allow interpolated strings with Span<char>
+
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        //sb.Append($"freq msg ({freq}): {text}"); // TODO: .NET 6
+                        sb.Append("freq msg (");
+                        sb.Append(freq);
+                        sb.Append("): ");
+                        sb.Append(text);
+
+                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
                 }
                 finally
                 {
@@ -915,25 +1096,53 @@ namespace SS.Core.Modules
 
                     if (set.Count > 0)
                     {
-                        Span<char> messageToSend = stackalloc char[p.Name.Length + 1 + message.Length];
+                        Span<char> messageToSend = stackalloc char[p.Name.Length + 2 + message.Length];
+                        //messageToSend.TryWrite($"{p.Name}> {message}"); // TODO: .NET 6
                         p.Name.AsSpan().CopyTo(messageToSend);
-                        messageToSend[p.Name.Length] = '>';
-                        message.CopyTo(messageToSend[(p.Name.Length + 1)..]);
+                        "> ".AsSpan().CopyTo(messageToSend[p.Name.Length..]);
+                        message.CopyTo(messageToSend[(p.Name.Length + 2)..]);
 
-                        SendReply(set, ChatMessageType.ModChat, sound, p, p.Id, message, p.Name.Length + 2);
-                        FireChatMessageCallback(null, p, ChatMessageType.ModChat, sound, null, -1, message);
-                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("mod chat: ", message)); // TODO: .NET 6 interpolated string to support span
+                        SendReply(set, ChatMessageType.ModChat, sound, p, p.Id, messageToSend, p.Name.Length + 2);
                     }
                 }
                 finally
                 {
                     _objectPoolManager.PlayerSetPool.Return(set);
                 }
+
+                FireChatMessageCallback(null, p, ChatMessageType.ModChat, sound, null, -1, message);
+
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    //sb.Append($"mod chat: {message}"); // TODO: .NET 6
+                    sb.Append("mod chat: ");
+                    sb.Append(message);
+
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
             }
             else
             {
                 SendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
-                _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("attempted mod chat (missing cap or shutup): ", message)); // TODO: .NET 6 interpolated string to support span
+
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    //sb.Append($"attempted mod chat (missing cap or shutup): {message}"); // TODO: .NET 6
+                    sb.Append("attempted mod chat (missing cap or shutup): ");
+                    sb.Append(message);
+
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
             }
         }
 
@@ -968,14 +1177,29 @@ namespace SS.Core.Modules
                         GetArenaSet(set, arena, p);
 
                         if (set.Count > 0)
+                        {
                             SendReply(set, type, sound, p, p.Id, msg, 0);
-
-                        FireChatMessageCallback(arena, p, type, sound, null, -1, msg);
-                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, string.Concat("pub msg: ", msg)); // TODO: change to interpolated string with .NET 6
+                        }
                     }
                     finally
                     {
                         _objectPoolManager.PlayerSetPool.Return(set);
+                    }
+
+                    FireChatMessageCallback(arena, p, type, sound, null, -1, msg);
+
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        //sb.Append($"pub msg: {msg}"); // TODO: NET 6
+                        sb.Append("pub msg: ");
+                        sb.Append(msg);
+
+                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
                     }
                 }
             }
@@ -1021,8 +1245,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                // give modules a chance to rewrite the command
-                // TODO:
+                // TODO: give modules a chance to rewrite the command
 
                 // run the command
                 _commandManager.Command(msg.ToString(), p, target, sound); // TODO: change CommandManager and all command delegates to accept ReadOnlySpan<char>
@@ -1048,7 +1271,7 @@ namespace SS.Core.Modules
             to.ChatType = (byte)type;
             to.Sound = (byte)sound;
             to.PlayerId = (short)fromPid;
-            int length = ChatPacket.HeaderLength + to.SetMessage(msg); // This will truncate the msg if it's too long.
+            int length = ChatPacket.LengthWithoutMessage + to.SetMessage(msg); // This will truncate the msg if it's too long.
 
             // TODO: add obscenity filtering
             // Keep in mind using LINQ would incur allocations which need to be garbage collected.

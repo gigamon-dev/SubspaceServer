@@ -82,7 +82,7 @@ namespace SS.Core.Modules
                     Path.GetFileName(fullPath),
                     false))
                 {
-                    chat.SendMessage(p, "Error sending '{0}'.", relativePath);
+                    chat.SendMessage(p, $"Error sending '{relativePath}'.");
                 }
             }
         }
@@ -181,7 +181,7 @@ namespace SS.Core.Modules
                 "A working directory of \".\" indicates the server's root directory.")]
         private void Command_pwd(string command, string parameters, Player p, ITarget target)
         {
-            chat.SendMessage(p, "Current working directory: {0}", fileTransfer.GetWorkingDirectory(p));
+            chat.SendMessage(p, $"Current working directory: {fileTransfer.GetWorkingDirectory(p)}");
         }
 
         private void FileUploaded(string filename, UploadContext context)
@@ -201,9 +201,9 @@ namespace SS.Core.Modules
                 catch (Exception ex)
                 {
                     logManager.LogP(LogLevel.Warn, nameof(AdminCommand), context.Player,
-                        "Couldn't move file '{0}' to '{1}'. {2}", filename, context.ServerPath, ex.Message);
+                        $"Couldn't move file '{filename}' to '{context.ServerPath}'. {ex.Message}");
 
-                    chat.SendMessage(context.Player, "Couldn't upload file to '{0}'", context.ServerPath);
+                    chat.SendMessage(context.Player, $"Couldn't upload file to '{context.ServerPath}'.");
 
                     try
                     {
@@ -216,7 +216,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                chat.SendMessage(context.Player, "File received: {0}", context.ServerPath);
+                chat.SendMessage(context.Player, $"File received: {context.ServerPath}");
             }   
         }
 

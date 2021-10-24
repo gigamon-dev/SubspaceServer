@@ -9,9 +9,10 @@ namespace SS.Core.Modules
 {
     public class EncryptionVIE : IModule, IEncrypt, IClientEncrypt
     {
+        public const string InterfaceIdentifier = "enc-vie";
+
         private INetworkEncryption _networkEncryption;
         private IPlayerData _playerData;
-        private const string InterfaceIdentifier = "enc-vie";
         private InterfaceRegistrationToken _iEncryptToken;
         private InterfaceRegistrationToken _iClientEncryptToken;
 

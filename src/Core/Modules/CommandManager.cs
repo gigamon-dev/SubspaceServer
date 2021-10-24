@@ -619,9 +619,9 @@ namespace SS.Core.Modules
             }
 
             if (!string.IsNullOrEmpty(parameters))
-                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, "command {0}: {1} {2}", sb.ToString(), cmd, parameters);
+                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, $"Command {sb}: {cmd} {parameters}");
             else
-                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, "command {0}: {1}", sb.ToString(), cmd);
+                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, $"Command {sb}: {cmd}");
 
         }
 

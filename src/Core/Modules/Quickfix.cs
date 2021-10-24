@@ -112,7 +112,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        log.LogP(LogLevel.Info, nameof(Quickfix), p, $"setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
+                        log.LogP(LogLevel.Info, nameof(Quickfix), p, $"Setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
                         configManager.SetStr(arenaConfigHandle, tokens[0], tokens[1], tokens[2], comment, permanent);
                     }
                 }

@@ -1,6 +1,8 @@
 ﻿using SS.Utilities;
+using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -120,97 +122,142 @@ namespace SS.Core.ComponentInterfaces
     public interface IChat : IComponentInterface
     {
         /// <summary>
-        /// Send a green message to a player
+        /// Sends a green message to a player.
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendMessage(Player p, string format, params object[] args);
+        /// <param name="p">The player to send the message to.</param>
+        /// <param name="message">The message to send.</param>
+        void SendMessage(Player p, ReadOnlySpan<char> message);
 
         /// <summary>
-        /// Sends a command response to a player.
-        /// For Continuum clients, this is the same as an arena message, but
-        /// other clients might interpret them differently.
+        /// Sends a green message to a player.
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendCmdMessage(Player p, string format, params object[] args);
-
-        /// <summary>
-        /// Sends a green arena message to a set of players.
-        /// </summary>
-        /// <param name="set"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendSetMessage(IEnumerable<Player> set, string format, params object[] args);
+        /// <param name="p">The player to send the message to.</param>
+        /// <param name="message">The message to send.</param>
+        void SendMessage(Player p, StringBuilder message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="sound"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendSoundMessage(Player p, ChatSound sound, string format, params object[] args);
+        /// <param name="p">The player to send the message to.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="message">The message to send.</param>
+        void SendMessage(Player p, ChatSound sound, ReadOnlySpan<char> message);
+
+        /// <summary>
+        /// Sends a green arena message plus sound code to a player.
+        /// </summary>
+        /// <param name="p">The player to send the message to.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="message">The message to send.</param>
+        void SendMessage(Player p, ChatSound sound, StringBuilder message);
+
+        /// <summary>
+        /// Sends a green arena message to a set of players.
+        /// </summary>
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="message">The message to send.</param>
+        void SendSetMessage(IEnumerable<Player> set, ReadOnlySpan<char> message);
+
+        /// <summary>
+        /// Sends a green arena message to a set of players.
+        /// </summary>
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="message">The message to send.</param>
+        void SendSetMessage(IEnumerable<Player> set, StringBuilder message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a set of players.
         /// </summary>
-        /// <param name="set"></param>
-        /// <param name="sound"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendSetSoundMessage(IEnumerable<Player> set, ChatSound sound, string format, params object[] args);
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="message">The message to send.</param>
+        void SendSetMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> message);
 
         /// <summary>
-        /// Sends an arbitrary chat message to a set of players.
+        /// Sends a green arena message plus sound code to a set of players.
         /// </summary>
-        /// <param name="set"></param>
-        /// <param name="type"></param>
-        /// <param name="sound"></param>
-        /// <param name="from"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, string format, params object[] args);
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="message">The message to send.</param>
+        void SendSetMessage(IEnumerable<Player> set, ChatSound sound, StringBuilder message);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
         /// </summary>
-        /// <param name="arena"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendArenaMessage(Arena arena, string format, params object[] args);
+        /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
+        /// <param name="message">The message to send.</param>
+        void SendArenaMessage(Arena arena, ReadOnlySpan<char> message);
+
+        /// <summary>
+        /// Sends a green arena message to all players in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
+        /// <param name="message">The message to send.</param>
+        void SendArenaMessage(Arena arena, StringBuilder message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
         /// </summary>
-        /// <param name="arena"></param>
-        /// <param name="sound"></param>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendArenaSoundMessage(Arena arena, ChatSound sound, string format, params object[] args);
+        /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="message">The message to send.</param>
+        void SendArenaMessage(Arena arena, ChatSound sound, ReadOnlySpan<char> message);
+
+        /// <summary>
+        /// Sends a green arena message plus sound code to all players in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="message">The message to send.</param>
+        void SendArenaMessage(Arena arena, ChatSound sound, StringBuilder message);
+
+        /// <summary>
+        /// Sends an arbitrary chat message to a set of players.
+        /// </summary>
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="type">The type of message.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="from">The player the message if from.</param>
+        /// <param name="message">The message to send.</param>
+        void SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message);
+
+        /// <summary>
+        /// Sends an arbitrary chat message to a set of players.
+        /// </summary>
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="type">The type of message.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="from">The player the message if from.</param>
+        /// <param name="message">The message to send.</param>
+        void SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message);
 
         /// <summary>
         /// Sends a moderator chat message to all connected staff.
         /// </summary>
-        /// <param name="format"></param>
-        /// <param name="args"></param>
-        void SendModMessage(string format, params object[] args);
+        /// <param name="message">The message to send.</param>
+        void SendModMessage(ReadOnlySpan<char> message);
 
         /// <summary>
-        /// Sends a remove private message to a set of players.
-        /// This should only be used from billing server modules.
+        /// Sends a moderator chat message to all connected staff.
         /// </summary>
-        /// <param name="set"></param>
-        /// <param name="sound"></param>
-        /// <param name="squad"></param>
-        /// <param name="sender"></param>
-        /// <param name="message"></param>
-        void SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, string squad, string sender, string message);
+        /// <param name="message">The message to send.</param>
+        void SendModMessage(StringBuilder message);
 
         /// <summary>
-        /// Retrives the chat mask for an arena.
+        /// Sends a remote private message to a set of players.
+        /// </summary>
+        /// <remarks>
+        /// This should only be used from billing server modules.
+        /// </remarks>
+        /// <param name="set">The players to send the message to.</param>
+        /// <param name="sound">The sound to send.</param>
+        /// <param name="squad">The squad the message is for, or <see cref="ReadOnlySpan{byte}.Empty"/> for no squad.</param>
+        /// <param name="sender">The name of the sender.</param>
+        /// <param name="message">The message to send.</param>
+        void SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message);
+
+        /// <summary>
+        /// Gets the chat mask for an arena.
         /// </summary>
         /// <param name="arena"></param>
         /// <returns></returns>
@@ -224,7 +271,7 @@ namespace SS.Core.ComponentInterfaces
         void SetArenaChatMask(Arena arena, ChatMask mask);
 
         /// <summary>
-        /// Retrives the chat mask for a player.
+        /// Gets the chat mask for a player.
         /// </summary>
         /// <param name="p"></param>
         ChatMask GetPlayerChatMask(Player p);

@@ -133,6 +133,34 @@ namespace SS.Utilities
 
         #endregion
 
+        #region SliceNullTerminated
+
+        /// <summary>
+        /// Forms a slice out of a span representing a C-style string to only include the bytes before the null-terminator.
+        /// If there is no null-terminator, then the original span is returned.
+        /// </summary>
+        /// <param name="source">The bytes to slice.</param>
+        /// <returns>A slice of the <paramref name="source"/> span.</returns>
+        public static Span<byte> SliceNullTerminated(this Span<byte> source)
+        {
+            int index = source.IndexOf((byte)0);
+            return index == -1 ? source : source.Slice(0, index);
+        }
+
+        /// <summary>
+        /// Forms a slice out of a span representing a C-style string to only include the bytes before the null-terminator.
+        /// If there is no null-terminator, then the original span is returned.
+        /// </summary>
+        /// <param name="source">The bytes to slice.</param>
+        /// <returns>A slice of the <paramref name="source"/> span.</returns>
+        public static ReadOnlySpan<byte> SliceNullTerminated(this ReadOnlySpan<byte> source)
+        {
+            int index = source.IndexOf((byte)0);
+            return index == -1 ? source : source.Slice(0, index);
+        }
+
+        #endregion
+
         #region Write Null Terminated
 
         /// <summary>
@@ -453,6 +481,8 @@ namespace SS.Utilities
 
         #endregion
 
+        #region GetToken
+
         /// <summary>
         /// Splits off a token from the beginning of a string stopping at a specified <paramref name="delimiter"/>.
         /// Any leading occurances of the <paramref name="delimiter"/> are skipped and not included in the return value.
@@ -502,6 +532,8 @@ namespace SS.Utilities
                 return str.Slice(0, index);
             }
         }
+
+        #endregion
     }
 
     /// <summary>

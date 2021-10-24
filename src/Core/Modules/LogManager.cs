@@ -1,7 +1,8 @@
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 using System;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Threading;
 
@@ -13,7 +14,8 @@ namespace SS.Core.Modules
         private ComponentBroker _broker;
         private InterfaceRegistrationToken iLogManagerToken;
 
-        private readonly MessagePassingQueue<string> _logQueue = new();
+        private ObjectPool<StringBuilder> _stringBuilderPool;
+        private readonly BlockingCollection<LogEntry> _logQueue = new(512);
         private Thread _loggingThread;
 
         private readonly ReaderWriterLockSlim _rwLock = new();
@@ -21,16 +23,27 @@ namespace SS.Core.Modules
 
         private void LoggingThread()
         {
-            string message;
+            LogEntry logEntry;
 
-            while (true)
+            while (!_logQueue.IsCompleted)
             {
-                message = _logQueue.Dequeue();
+                try
+                {
+                    logEntry = _logQueue.Take();
+                }
+                catch (InvalidOperationException)
+                {
+                    break;
+                }
 
-                if (message == null)
-                    return;
-
-                LogCallback.Fire(_broker, message);
+                try
+                {
+                    LogCallback.Fire(_broker, logEntry);
+                }
+                finally
+                {
+                    _stringBuilderPool.Return(logEntry.LogText);
+                }
             }
         }
 
@@ -39,6 +52,11 @@ namespace SS.Core.Modules
         public bool Load(ComponentBroker broker)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+
+            DefaultObjectPoolProvider provider = new();
+            provider.MaximumRetained = 512; // by default, the maximum is based on Environment.ProcessorCount, but we're queueing LogItems up, not immediately returning objects back to the pool
+            _stringBuilderPool = provider.CreateStringBuilderPool(1024, 4096);
+
             iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
         }
@@ -48,7 +66,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface<ILogManager>(ref iLogManagerToken) != 0)
                 return false;
 
-            _logQueue.Enqueue(null);
+            _logQueue.CompleteAdding();
             _loggingThread?.Join();
             return true;
         }
@@ -70,8 +88,10 @@ namespace SS.Core.Modules
                 _rwLock.ExitWriteLock();
             }
 
-            _loggingThread = new Thread(new ThreadStart(LoggingThread));
-            _loggingThread.Name = nameof(LogManager);
+            _loggingThread = new Thread(new ThreadStart(LoggingThread))
+            {
+                Name = nameof(LogManager)
+            };
             _loggingThread.Start();
 
             return true;
@@ -98,70 +118,225 @@ namespace SS.Core.Modules
 
         #region ILogManager Members
 
-        void ILogManager.Log(LogLevel level, string format, params object[] args)
+        void ILogManager.Log(LogLevel level, ReadOnlySpan<char> message)
         {
-            StringBuilder sb = new();
-            sb.Append(((LogCode)level).ToString());
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
             sb.Append(' ');
+            sb.Append(message);
 
-            if (args != null && args.Length > 0)
-                sb.AppendFormat(format, args);
-            else
-                sb.Append(format);
-
-            _logQueue.Enqueue(sb.ToString());
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
         }
 
-        void ILogManager.LogM(LogLevel level, string module, string format, params object[] args)
+        void ILogManager.Log(LogLevel level, StringBuilder message)
         {
-            StringBuilder sb = new();
-            sb.Append(((LogCode)level).ToString());
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
+            sb.Append(' ');
+            sb.Append(message);
+
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
+        }
+
+        void ILogManager.LogM(LogLevel level, string module, ReadOnlySpan<char> message)
+        {
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
             sb.Append(" <");
             sb.Append(module);
             sb.Append("> ");
-            sb.AppendFormat(format, args);
+            sb.Append(message);
 
-            _logQueue.Enqueue(sb.ToString());
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        Module = module,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
         }
 
-        void ILogManager.LogA(LogLevel level, string module, Arena arena, string format, params object[] args)
+        void ILogManager.LogM(LogLevel level, string module, StringBuilder message)
         {
-            StringBuilder sb = new();
-            sb.Append(((LogCode)level).ToString());
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
+            sb.Append(" <");
+            sb.Append(module);
+            sb.Append("> ");
+            sb.Append(message);
+
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        Module = module,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
+        }
+
+        void ILogManager.LogA(LogLevel level, string module, Arena arena, ReadOnlySpan<char> message)
+        {
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
             sb.Append(" <");
             sb.Append(module);
             sb.Append("> {");
-            sb.Append(arena?.Name ?? "(bad arena)");
+            sb.Append(arena?.Name ?? "(no arena)");
             sb.Append("} ");
-            sb.AppendFormat(format, args);
+            sb.Append(message);
 
-            _logQueue.Enqueue(sb.ToString());
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        Module = module,
+                        Arena = arena,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
         }
 
-        void ILogManager.LogP(LogLevel level, string module, Player player, string format, params object[] args)
+        void ILogManager.LogA(LogLevel level, string module, Arena arena, StringBuilder message)
+        {
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
+            sb.Append(" <");
+            sb.Append(module);
+            sb.Append("> {");
+            sb.Append(arena?.Name ?? "(no arena)");
+            sb.Append("} ");
+            sb.Append(message);
+
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        Module = module,
+                        Arena = arena,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
+        }
+
+        void ILogManager.LogP(LogLevel level, string module, Player player, ReadOnlySpan<char> message)
         {
             Arena arena = player?.Arena;
 
-            StringBuilder sb = new();
-            sb.Append(((LogCode)level).ToString());
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
             sb.Append(" <");
             sb.Append(module);
             sb.Append("> {");
-            sb.Append(arena?.Name ?? "(bad arena)");
+            sb.Append(arena?.Name ?? "(no arena)");
             sb.Append("} [");
             sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
             sb.Append("] ");
-            sb.AppendFormat(format, args);
+            sb.Append(message);
 
-            _logQueue.Enqueue(sb.ToString());
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        Module = module,
+                        Arena = arena,
+                        Player = player,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
         }
 
-        bool ILogManager.FilterLog(string line, string logModuleName)
+        void ILogManager.LogP(LogLevel level, string module, Player player, StringBuilder message)
         {
-            if (string.IsNullOrEmpty(line))
-                return true;
+            Arena arena = player?.Arena;
 
-            if (string.IsNullOrEmpty(logModuleName))
+            StringBuilder sb = _stringBuilderPool.Get();
+            sb.Append(level.ToChar());
+            sb.Append(" <");
+            sb.Append(module);
+            sb.Append("> {");
+            sb.Append(arena?.Name ?? "(no arena)");
+            sb.Append("} [");
+            sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
+            sb.Append("] ");
+            sb.Append(message);
+
+            try
+            {
+                _logQueue.Add(
+                    new LogEntry()
+                    {
+                        Level = level,
+                        Module = module,
+                        Arena = arena,
+                        Player = player,
+                        LogText = sb,
+                    });
+            }
+            catch (InvalidOperationException)
+            {
+                _stringBuilderPool.Return(sb);
+            }
+        }
+
+        bool ILogManager.FilterLog(in LogEntry logEntry, string logModuleName)
+        {
+            if (string.IsNullOrWhiteSpace(logModuleName))
                 return true;
 
             _rwLock.EnterReadLock();
@@ -171,21 +346,8 @@ namespace SS.Core.Modules
                 if (_configManager == null)
                     return true; // filtering disabled
 
-                string origin = null;
-
-                int startIndex = line.IndexOf('<');
-                if (startIndex != -1)
-                {
-                    int endIndex = line.IndexOf('>', startIndex + 1);
-                    if (endIndex != -1)
-                    {
-                        int originLength = endIndex - startIndex - 1;
-                        if (originLength > 0)
-                            origin = line.Substring(startIndex + 1, originLength);
-                    }
-                }
-
-                if (string.IsNullOrEmpty(origin))
+                string origin = logEntry.Module;
+                if (string.IsNullOrWhiteSpace(origin))
                     origin = "unknown";
 
                 string settingValue = _configManager.GetStr(_configManager.Global, logModuleName, origin);
@@ -196,7 +358,7 @@ namespace SS.Core.Modules
                         return true; // filtering disabled
                 }
 
-                if (!settingValue.Contains(line[0]))
+                if (!settingValue.Contains(logEntry.Level.ToChar()))
                     return false;
 
                 return true;

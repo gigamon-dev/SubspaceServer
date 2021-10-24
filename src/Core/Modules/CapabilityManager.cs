@@ -338,7 +338,7 @@ namespace SS.Core.Modules
                 pd.Source = GroupSource.Arena;
 
                 if (log)
-                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, "assigned to group '{0}' (arena)", pd.Group);
+                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, $"Assigned to group '{pd.Group}' (arena).");
             }
 #if CFG_USE_ARENA_STAFF_LIST
             else if (arena != null && arena.Cfg != null && !string.IsNullOrEmpty(g = _configManager.GetStr(arena.Cfg, "Staff", p.Name)))
@@ -355,7 +355,7 @@ namespace SS.Core.Modules
                 pd.Group = g;
                 pd.Source = GroupSource.Global;
                 if (log)
-                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, "assigned to group '{0}' (global)", pd.Group);
+                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, $"Assigned to group '{pd.Group}' (global).");
             }
             else
             {

@@ -80,7 +80,7 @@ namespace SS.Core.Modules
                 FileInfo fileInfo = new(path);
                 if (!fileInfo.Exists)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "File '{0}' does not exist.", path);
+                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"File '{path}' does not exist.");
                     return false;
                 }
 
@@ -91,7 +91,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), "Error opening file '{0}'. {1}", path, ex.Message);
+                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Error opening file '{path}'. {ex.Message}");
                 return false;
             }
         }
@@ -118,7 +118,7 @@ namespace SS.Core.Modules
             RequestFilePacket packet = new(path, "unused-field");
             _network.SendToOne(p, ref packet, NetSendFlags.Reliable);
 
-            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Requesting file '{0}'.", path);
+            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, $"Requesting file '{path}'.");
 
             if (path.Contains(".."))
                 _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, "Sent file request with '..' in the path.");

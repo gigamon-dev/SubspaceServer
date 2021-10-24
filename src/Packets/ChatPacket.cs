@@ -33,19 +33,36 @@ namespace SS.Core.Packets
     public unsafe struct ChatPacket
     {
         /// <summary>
-        /// Number of bytes in the header (non-message portion) of a <see cref="ChatPacket"/>
-        /// </summary>
-        public const int HeaderLength = 5;
-
-        /// <summary>
         /// The minimum # of bytes for a chat packet. Header + 1 byte (null-terminator) for the message.
         /// </summary>
-        public const int MinLength = HeaderLength + 1;
+        public static readonly int MinLength;
 
         /// <summary>
         /// The maximum # of bytes for a chat packet. Header + maximum message byte length.
         /// </summary>
-        public const int MaxLength = HeaderLength + MessageBytesLength;
+        public static readonly int MaxLength;
+
+        /// <summary>
+        /// Number of bytes in the header (non-message portion) of a <see cref="ChatPacket"/>
+        /// </summary>
+        public static readonly int LengthWithoutMessage;
+
+        /// <summary>
+        /// The maximum # of characters that can be produced by decoding the message portion of a <see cref="ChatPacket"/>;
+        /// </summary>
+        public static int MaxMessageChars => StringUtils.DefaultEncoding.GetMaxCharCount(MessageBytesLength);
+
+        /// <summary>
+        /// The maximum # of bytes for the message portion of a <see cref="ChatPacket"/>.
+        /// </summary>
+        public static readonly int MaxMessageBytes = MessageBytesLength;
+
+        static ChatPacket()
+        {
+            MaxLength = Marshal.SizeOf<ChatPacket>();
+            LengthWithoutMessage = MaxLength - MessageBytesLength;
+            MinLength = LengthWithoutMessage + 1;
+        }
 
         public byte Type;
         public byte ChatType;
@@ -61,6 +78,8 @@ namespace SS.Core.Packets
         private const int MessageBytesLength = 250;
         private fixed byte messageBytes[MessageBytesLength];
         public Span<byte> MessageBytes => MemoryMarshal.CreateSpan(ref messageBytes[0], MessageBytesLength);
+
+        public Span<byte> GetMessageBytes(int packetLength) => MessageBytes.Slice(0, Math.Min(packetLength - LengthWithoutMessage, MessageBytesLength));
 
         /// <summary>
         /// Writes encoded bytes of a string into a the message bytes.

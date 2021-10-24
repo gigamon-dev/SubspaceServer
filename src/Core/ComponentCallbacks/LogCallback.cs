@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using SS.Core.ComponentInterfaces;
 using System.Text;
 
 namespace SS.Core.ComponentCallbacks
@@ -14,7 +12,7 @@ namespace SS.Core.ComponentCallbacks
         /// Delegate for a callback that is invoked when a log is to be written.
         /// </summary>
         /// <param name="message">The log message to write.</param>
-        public delegate void LogDelegate(string message);
+        public delegate void LogDelegate(in LogEntry logEntry);
 
         public static void Register(ComponentBroker broker, LogDelegate handler)
         {
@@ -26,12 +24,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, string message)
+        public static void Fire(ComponentBroker broker, in LogEntry logEntry)
         {
-            broker?.GetCallback<LogDelegate>()?.Invoke(message);
+            broker?.GetCallback<LogDelegate>()?.Invoke(in logEntry);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, message);
+                Fire(broker.Parent, in logEntry);
         }
     }
 }

@@ -82,7 +82,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting checksum to '{0}'. {1}", path, ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Core), $"Error getting checksum to '{path}'. {ex.Message}");
                 return uint.MaxValue;
             }
         }
@@ -101,7 +101,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), "Error getting UInt32 from '{0}' at offset {1}. {2}", path, offset, ex.Message);
+                _logManager.LogM(LogLevel.Error, nameof(Core), $"Error getting UInt32 from '{path}' at offset {offset}. {ex.Message}");
                 return uint.MaxValue;
             }
         }
@@ -262,7 +262,7 @@ namespace SS.Core.Modules
                         case PlayerState.LeavingZone: ns = PlayerState.WaitGlobalSync2; break;
 
                         default: // catch any other state
-                            _logManager.LogM(LogLevel.Error, nameof(Core), "[pid={0}] Internal error: unknown player status {1}", player.Id, oldstatus);
+                            _logManager.LogM(LogLevel.Error, nameof(Core), $"[pid={player.Id}] Internal error: Unknown player status {oldstatus}.");
                             continue;
                     }
 
@@ -300,7 +300,7 @@ namespace SS.Core.Modules
                             {
                                 if (auth != null && pdata.LoginPacketBuffer != null && pdata.LoginPacketBuffer.NumBytes > 0)
                                 {
-                                    _logManager.LogM(LogLevel.Drivel, nameof(Core), "Authenticating with '{0}'", auth.GetType().ToString());
+                                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"Authenticating with '{auth.GetType()}'.");
                                     auth.Authenticate(player, MemoryMarshal.AsRef<LoginPacket>(pdata.LoginPacketBuffer.Bytes), pdata.LoginPacketBuffer.NumBytes, AuthDone);
                                 }
                                 else
@@ -335,7 +335,7 @@ namespace SS.Core.Modules
 
                     case PlayerState.SendLoginResponse:
                         SendLoginResponse(player);
-                        _logManager.LogM(LogLevel.Info, nameof(Core), "[{0}] [pid={1}] Player logged in from ip={2} macid={3:X}", player.Name, player.Id, player.IpAddress, player.MacId);
+                        _logManager.LogM(LogLevel.Info, nameof(Core), $"[{player.Name}] [pid={player.Id}] Player logged in from ip={player.IpAddress} macid={player.MacId:X}.");
                         break;
 
                     case PlayerState.DoFreqAndArenaSync:
@@ -482,7 +482,7 @@ namespace SS.Core.Modules
 
             AuthDone(p, auth);
 
-            _logManager.LogM(LogLevel.Drivel, nameof(Core), "[pid={0}] Login request denied: {1}", p.Id, logmsg);
+            _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={p.Id}] Login request denied: {logmsg}.");
         }
 
         private void Packet_Login(Player p, byte[] data, int len)
@@ -495,7 +495,7 @@ namespace SS.Core.Modules
 
             if (!p.IsStandard)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Login packet from wrong client type ({1})", p.Id, p.Type);
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={p.Id}] Login packet from wrong client type ({p.Type}).");
             }
 #if CFG_RELAX_LENGTH_CHECKS
             else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) 
@@ -505,11 +505,11 @@ namespace SS.Core.Modules
                 || (p.Type == ClientType.Continuum && len != LoginPacket.ContinuumLength))
 #endif
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Bad login packet length ({1})", p.Id, len);
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={p.Id}] Bad login packet length ({len}).");
             }
             else if (p.Status != PlayerState.Connected)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), "[pid={0}] Login request from wrong stage: {1}", p.Id, p.Status);
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={p.Id}] Login request from wrong stage: {p.Status}.");
             }
             else
             {
@@ -576,7 +576,7 @@ namespace SS.Core.Modules
                     _playerData.WriteUnlock();
                 }
 
-                _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={p.Id}] login request: '{name}'");
+                _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={p.Id}] Login request: '{name}'.");
             }
 
             static void CleanupName(Span<byte> nameSpan)
@@ -647,7 +647,7 @@ namespace SS.Core.Modules
                     if (p[_pdkey] is not CorePlayerData oldd)
                         return;
 
-                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] player already on, kicking him off (pid {p.Id} replacing {oldp.Id})");
+                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] Player already on, kicking him off (pid {p.Id} replacing {oldp.Id}).");
                     oldd.ReplacedBy = p;
                     _playerData.KickPlayer(oldp);
                 }
@@ -711,7 +711,7 @@ namespace SS.Core.Modules
                     {
                         if (replacedBy.Status != PlayerState.WaitAuth)
                         {
-                            _logManager.LogM(LogLevel.Warn, nameof(Core), $"[oldpid={player.Id}] [newpid={replacedBy.Id}] unexpected status when replacing players: {replacedBy.Status}");
+                            _logManager.LogM(LogLevel.Warn, nameof(Core), $"[oldpid={player.Id}] [newpid={replacedBy.Id}] Unexpected status when replacing players: {replacedBy.Status}.");
                         }
                         else
                         {
@@ -724,7 +724,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={player.Id}] player_sync_done called from wrong status: {player.Status}");
+                    _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={player.Id}] Player_sync_done called from wrong status: {player.Status}.");
                 }
             }
             finally

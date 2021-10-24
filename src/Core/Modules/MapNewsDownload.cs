@@ -277,7 +277,7 @@ namespace SS.Core.Modules
 
             if (dls.Count == 0)
             {
-                _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "missing map data");
+                _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Missing map data.");
                 return;
             }
 
@@ -359,7 +359,7 @@ namespace SS.Core.Modules
 
                 if (data == null)
                 {
-                    _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "can't load level file, falling back to tinymap.lvl");
+                    _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
                     data = new MapDownloadData();
                     data.checksum = 0x5643ef8a;
                     data.uncmplen = 4;
@@ -449,7 +449,7 @@ namespace SS.Core.Modules
                 mdd.cmplen = (uint)mdd.cmpmap.Length;
 
                 if (mdd.cmpmap.Length > 256 * 1024)
-                    _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "compressed map/lvz is bigger than 256k: {0}", filename);
+                    _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Compressed map/lvz is bigger than 256k: {filename}.");
 
                 return mdd;
             }
@@ -469,11 +469,9 @@ namespace SS.Core.Modules
 
             if (len != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, "bad update req packet len={0}", len);
+                _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, $"Bad update req packet len={len}.");
                 return;
             }
-
-            _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, "UpdateRequest");
 
             IFileTransfer fileTransfer = _broker.GetInterface<IFileTransfer>();
             if (fileTransfer != null)
@@ -482,7 +480,7 @@ namespace SS.Core.Modules
                 {
                     if (!fileTransfer.SendFile(p, "clients/update.exe", string.Empty, false))
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "update request, but error setting up to be sent");
+                        _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "Update request, but error setting up to be sent.");
                     }
                 }
                 finally
@@ -504,14 +502,14 @@ namespace SS.Core.Modules
             {
                 if (len != 1 && len != 3)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, "bad map/LVZ req packet len={0}", len);
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, $"Bad map/LVZ req packet len={len}.");
                     return;
                 }
 
                 Arena arena = p.Arena;
                 if (arena == null)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, "map request before entering arena");
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, "Map request before entering arena.");
                     return;
                 }
 
@@ -522,13 +520,13 @@ namespace SS.Core.Modules
 
                 if (mdd == null)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(MapNewsDownload), p, "can't find lvl/lvz {0}", lvznum);
+                    _logManager.LogP(LogLevel.Warn, nameof(MapNewsDownload), p, $"Can't find lvl/lvz {lvznum}.");
                     return;
                 }
 
                 _net.SendSized(p, (int)mdd.cmplen, GetData, new MapDownloadContext(p, mdd));
 
-                _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, "sending map/lvz {0} ({1} bytes) (transfer '{2}')", lvznum, mdd.cmplen, mdd.filename);
+                _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, $"Sending map/lvz {lvznum} ({mdd.cmplen} bytes) (transfer '{mdd.filename}').");
 
                 // if we're getting these requests, it's too late to set their ship
                 // and team directly, we need to go through the in-game procedures
@@ -552,18 +550,18 @@ namespace SS.Core.Modules
             {
                 if (len != 1)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, "bad news req packet len={0}", len);
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, $"Bad news req packet len={len}.");
                     return;
                 }
 
                 if (_newsManager.TryGetNews(out byte[] compressedNewsData, out _))
                 {
                     _net.SendSized(p, compressedNewsData.Length, GetData, new NewsDownloadContext(p, compressedNewsData));
-                    _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, "sending news.txt ({0} bytes)", compressedNewsData.Length);
+                    _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, $"Sending news.txt ({compressedNewsData.Length} bytes).");
                 }
                 else
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "news request, but compressed news doesn't exist");
+                    _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "News request, but compressed news doesn't exist.");
                 }
             }
         }
@@ -630,7 +628,7 @@ namespace SS.Core.Modules
 
             if (dataSpan.IsEmpty)
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), context.Player, "Finished map/lvz download (transfer '{0}')", mdd.filename);
+                _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), context.Player, $"Finished map/lvz download (transfer '{mdd.filename}').");
                 return;
             }
 

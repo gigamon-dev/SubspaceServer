@@ -252,7 +252,7 @@ namespace SS.Core.Modules
             }
         }
 
-        Player IPlayerData.FindPlayer(string name)
+        Player IPlayerData.FindPlayer(ReadOnlySpan<char> name)
         {
             _globalPlayerDataRwLock.EnterReadLock();
 
@@ -260,7 +260,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    if (string.Equals(player.Name, name, StringComparison.OrdinalIgnoreCase)
+                    if (name.Equals(player.Name, StringComparison.OrdinalIgnoreCase)
                         // this is a sort of hackish way of not returning players who are on their way out.
                         && player.Status < PlayerState.LeavingZone 
                         && player.WhenLoggedIn < PlayerState.LeavingZone)
