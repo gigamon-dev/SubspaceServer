@@ -28,7 +28,7 @@ namespace SS.Core.Packets.Billing
 
         private ushort port;
 
-        private const int passwordBytesLength = 126;
+        private const int passwordBytesLength = 32;
         private fixed byte passwordBytes[passwordBytesLength];
         public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], passwordBytesLength);
 
@@ -44,4 +44,3 @@ namespace SS.Core.Packets.Billing
         }
     }
 }
-
