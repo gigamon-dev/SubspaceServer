@@ -14,94 +14,89 @@ namespace SS.Core
         /// <summary>Refers to a whole arena, <see cref="IArenaTarget"/>.</summary>
         Arena,
 
-        /// <summary>Refers to one freq, <see cref="ITeamTarget"/>.</summary>
+        /// <summary>Refers to one freq in an arena, <see cref="ITeamTarget"/>.</summary>
         Freq,
 
         ///<summary>Refers to the whole zone.</summary>
         Zone,
 
-        /// <summary>Refers to an arbitrary set of players, <see cref="IListTarget"/>.</summary>
-        List
+        /// <summary>Refers to an arbitrary set of players, <see cref="ISetTarget"/>.</summary>
+        Set,
     }
 
     public interface ITarget
     {
-        TargetType Type
-        {
-            get;
-        }
+        TargetType Type { get; }
     }
 
     public interface IPlayerTarget : ITarget
     {
-        Player Player
-        {
-            get;
-        }
+        Player Player { get; }
     }
 
     public interface IArenaTarget : ITarget
     {
-        Arena Arena
-        {
-            get;
-        }
+        Arena Arena { get; }
     }
 
     public interface ITeamTarget : IArenaTarget
     {
-        int Freq
-        {
-            get;
-        }
+        int Freq { get; }
     }
 
-    public interface IListTarget : ITarget
+    public interface ISetTarget : ITarget
     {
-        IEnumerable<Player> List
-        {
-            get;
-        }
+        HashSet<Player> Players { get; }
     }
 
     public class TeamTarget : ITeamTarget
     {
-        private Arena _arena;
-        private int _freq;
+        private readonly Arena _arena;
+        private readonly int _freq;
 
         public TeamTarget(Arena arena, int freq)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            _arena = arena;
+            _arena = arena ?? throw new ArgumentNullException(nameof(arena));
             _freq = freq;
         }
 
         #region ITeamTarget Members
 
-        public int Freq
-        {
-            get { return _freq; }
-        }
+        public int Freq => _freq;
 
         #endregion
 
         #region IArenaTarget Members
 
-        public Arena Arena
-        {
-            get { return _arena; }
-        }
+        public Arena Arena => _arena;
 
         #endregion
 
         #region ITarget Members
 
-        public TargetType Type
+        public TargetType Type => TargetType.Freq;
+
+        #endregion
+    }
+
+    public class SetTarget : ISetTarget
+    {
+        private readonly HashSet<Player> _players;
+
+        public SetTarget(HashSet<Player> players)
         {
-            get { return TargetType.Freq; }
+            _players = players ?? throw new ArgumentNullException(nameof(players));
         }
+
+        #region ISetTarget Members
+
+        public HashSet<Player> Players => _players;
+
+        #endregion
+
+        #region ITarget Members
+
+        public TargetType Type => TargetType.Set;
 
         #endregion
     }
@@ -119,77 +114,38 @@ namespace SS.Core
 
             #region ITarget Members
 
-            public TargetType Type
-            {
-                get { return _type; }
-            }
+            public TargetType Type => _type;
 
             #endregion
         }
 
-        private static readonly ITarget _noTarget = new BasicTarget(TargetType.None);
-        private static readonly ITarget _zoneTarget = new BasicTarget(TargetType.Zone);
-
-        // ASSS puts this in a union, maybe i should do that too?
-        // or maybe inheritance?  but then there'd be lots of casting...
-        //public readonly Player Player;
-        //public readonly Arena Arena;
-        //public readonly int Freq;
-        //public readonly IEnumerable<Player> List;
-
         /// <summary>
         /// No players
         /// </summary>
-        public static ITarget NoTarget
-        {
-            get { return _noTarget; }
-        }
+        public static ITarget NoTarget { get; } = new BasicTarget(TargetType.None);
 
         /// <summary>
         /// Target the entire zone.
         /// </summary>
-        public static ITarget ZoneTarget
-        {
-            get { return _zoneTarget; }
-        }
+        public static ITarget ZoneTarget { get; } = new BasicTarget(TargetType.Zone);
 
         /// <summary>
-        /// Target a single player
-        /// </summary>
-        /// <param name="p"></param>
-        public static IPlayerTarget PlayerTarget(Player p)
-        {
-            return p;
-        }
-
-        /// <summary>
-        /// Target an entire arena
-        /// </summary>
-        /// <param name="arena"></param>
-        public static IArenaTarget ArenaTarget(Arena arena)
-        {
-            return arena;
-        }
-
-        /// <summary>
-        /// Target a specific team in an arena
+        /// Gets an <see cref="ITarget"/> that targets a specific team in an arena.
         /// </summary>
         /// <param name="arena"></param>
         /// <param name="freq"></param>
         public static ITeamTarget TeamTarget(Arena arena, int freq)
         {
-            return new TeamTarget(arena, freq);
+            return arena.GetTeamTarget(freq);
         }
 
         /// <summary>
-        /// Target a list of players
+        /// Gets an <see cref="ITarget"/> that targets an arbitrary set of players
         /// </summary>
         /// <param name="players"></param>
-        public static IListTarget ListTarget(IEnumerable<Player> players)
+        public static ISetTarget ListTarget(HashSet<Player> players)
         {
-            return null;
-            //Type = TargetType.List;
-            //List = players;
+            return new SetTarget(players); // TODO: pooling of objects?
         }
     }
 }

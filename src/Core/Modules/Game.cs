@@ -348,7 +348,7 @@ namespace SS.Core.Modules
 
             if (!onlyArenaState)
             {
-                LockWork(Target.ArenaTarget(arena), true, notify, spec, 0);
+                LockWork(arena, true, notify, spec, 0);
             }
         }
 
@@ -362,7 +362,7 @@ namespace SS.Core.Modules
 
             if (!onlyArenaState)
             {
-                LockWork(Target.ArenaTarget(arena), false, notify, false, 0);
+                LockWork(arena, false, notify, false, 0);
             }
         }
 

@@ -257,7 +257,18 @@ namespace SS.Core.Modules
                         {
                             // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
                             //listing.Socket.SendTo(data, SocketFlags.None, endPoint);
-                            listing.Socket.SendTo(buffer, 0, length, SocketFlags.None, endPoint);
+                            try
+                            {
+                                listing.Socket.SendTo(buffer, 0, length, SocketFlags.None, endPoint);
+                            }
+                            catch (SocketException ex)
+                            {
+                                _logManager.LogM(LogLevel.Error, nameof(DirectoryPublisher), $"SocketException with error code {ex.ErrorCode} when sending to {endPoint} with socket {listing.Socket.LocalEndPoint}. {ex}");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logManager.LogM(LogLevel.Error, nameof(DirectoryPublisher), $"Exception when sending to {endPoint} with socket {listing.Socket.LocalEndPoint}. {ex}");
+                            }
                         }
                     }
                     finally

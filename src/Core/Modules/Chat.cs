@@ -223,24 +223,24 @@ namespace SS.Core.Modules
             SendMessage(p, ChatMessageType.Arena, sound, null, text);
         }
 
-        void IChat.SendSetMessage(IEnumerable<Player> set, ReadOnlySpan<char> message)
+        void IChat.SendSetMessage(HashSet<Player> set, ReadOnlySpan<char> message)
         {
             SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, message);
         }
 
-        void IChat.SendSetMessage(IEnumerable<Player> set, StringBuilder message)
+        void IChat.SendSetMessage(HashSet<Player> set, StringBuilder message)
         {
             Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
             message.CopyTo(0, text, text.Length);
             SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, text);
         }
 
-        void IChat.SendSetMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> message)
+        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, ReadOnlySpan<char> message)
         {
             SendMessage(set, ChatMessageType.Arena, sound, null, message);
         }
 
-        void IChat.SendSetMessage(IEnumerable<Player> set, ChatSound sound, StringBuilder message)
+        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, StringBuilder message)
         {
             Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
             message.CopyTo(0, text, text.Length);
@@ -323,12 +323,12 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
+        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
         {
             SendMessage(set, type, sound, from, message);
         }
 
-        void IChat.SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message)
+        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message)
         {
             Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
             message.CopyTo(0, text, text.Length);
@@ -373,7 +373,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message)
+        void IChat.SendRemotePrivMessage(HashSet<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message)
         {
             if (_network != null)
             {
@@ -784,7 +784,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
+        private void SendMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
         {
             if (type == ChatMessageType.ModChat)
                 type = ChatMessageType.SysopWarning;
@@ -1252,7 +1252,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendReply(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player p, int fromPid, Span<char> msg, int chatNetOffset)
+        private void SendReply(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player p, int fromPid, Span<char> msg, int chatNetOffset)
         {
             //string ctype = GetChatType(type);
 

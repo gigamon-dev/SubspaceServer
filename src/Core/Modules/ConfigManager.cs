@@ -115,6 +115,19 @@ namespace SS.Core.Modules
 
         private bool ServerTimer_ReloadModified()
         {
+            bool IsReloadNeeded()
+            {
+                foreach(DocumentInfo documentInfo in documents.Values)
+                    if (documentInfo.Document.IsReloadNeeded)
+                        return true;
+
+                foreach(ConfFile file in files.Values)
+                    if (file.IsReloadNeeded)
+                        return true;
+
+                return false;
+            }
+
             LinkedList<DocumentInfo> notifyList = null;
 
             rwLock.EnterUpgradeableReadLock();
@@ -124,8 +137,7 @@ namespace SS.Core.Modules
                 // check if any document needs to be reloaded
                 // or any file has been modified on disk and needs to be reloaded
                 // note: checking files second since it requires I/O
-                if (documents.Values.Any(documentInfo => documentInfo.Document.IsReloadNeeded)
-                    || files.Values.Any(file => file.IsReloadNeeded))
+                if (IsReloadNeeded())
                 {
                     rwLock.EnterWriteLock();
 
@@ -201,11 +213,20 @@ namespace SS.Core.Modules
 
         private bool ServerTimer_SaveChanges()
         {
+            bool IsAnyFileDirty()
+            {
+                foreach (ConfFile file in files.Values)
+                    if (file.IsDirty)
+                        return true;
+
+                return false;
+            }
+
             rwLock.EnterUpgradeableReadLock();
 
             try
             {
-                if (files.Values.Any(file => file.IsDirty))
+                if (IsAnyFileDirty())
                 {
                     rwLock.EnterWriteLock();
 

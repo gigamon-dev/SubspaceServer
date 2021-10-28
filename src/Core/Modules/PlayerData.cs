@@ -112,15 +112,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private IEnumerable<Player> PlayerList
-        {
-            get { return _playerDictionary.Values; }
-        }
-
-        IEnumerable<Player> IPlayerData.PlayerList
-        {
-            get { return PlayerList; }
-        }
+        Dictionary<int, Player>.ValueCollection IPlayerData.PlayerList => _playerDictionary.Values;
 
         Player IPlayerData.NewPlayer(ClientType clientType)
         {
@@ -309,8 +301,8 @@ namespace SS.Core.Modules
                     }
                     return;
 
-                case TargetType.List:
-                    set.UnionWith(((IListTarget)target).List);
+                case TargetType.Set:
+                    set.UnionWith(((ISetTarget)target).Players);
                     return;
 
                 case TargetType.None:
@@ -359,7 +351,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player player in PlayerList)
+                foreach (Player player in _playerDictionary.Values)
                 {
                     player[key] = new T();
                 }
@@ -378,7 +370,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player player in PlayerList)
+                foreach (Player player in _playerDictionary.Values)
                 {
                     player.RemoveExtraData(key);
                 }

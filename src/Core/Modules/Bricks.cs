@@ -17,6 +17,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IMapData _mapData;
         private INetwork _network;
+        private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPrng _prng;
         private InterfaceRegistrationToken _iBrickHandlerToken;
@@ -32,6 +33,7 @@ namespace SS.Core.Modules
             ILogManager logManager,
             IMapData mapData,
             INetwork network,
+            IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IPrng prng)
         {
@@ -41,6 +43,7 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _network = network ?? throw new ArgumentNullException(nameof(network));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
@@ -280,11 +283,12 @@ namespace SS.Core.Modules
                 {
                     ExpireBricks(arena);
 
-                    ICollection<Brick> brickList = new List<Brick>(); // TODO: use a pool
+                    List<Brick> brickList = _objectPoolManager.BrickListPool.Get();
+                    ICollection<Brick> brickCollection = brickList;
 
                     try
                     {
-                        brickHandler.HandleBrick(p, c2sBrick.X, c2sBrick.Y, in brickList);
+                        brickHandler.HandleBrick(p, c2sBrick.X, c2sBrick.Y, in brickCollection);
 
                         // TODO: AntiBrickWarpDistance logic
 
@@ -295,7 +299,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        // TODO: return brickList back to the pool
+                        _objectPoolManager.BrickListPool.Return(brickList);
                     }
                 }
             }

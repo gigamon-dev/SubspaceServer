@@ -472,21 +472,21 @@ namespace SS.Core.Modules
             _chat.SendMessage(p, $"netstats: buffers used={stats.BuffersUsed}/{stats.BuffersTotal} ({(double)stats.BuffersUsed / stats.BuffersTotal:p})");
 
             _chat.SendMessage(p, $"netstats: grouped=" +
-                $"{stats.GroupedStats[0]}/" +
-                $"{stats.GroupedStats[1]}/" +
-                $"{stats.GroupedStats[2]}/" +
-                $"{stats.GroupedStats[3]}/" +
-                $"{stats.GroupedStats[4]}/" +
-                $"{stats.GroupedStats[5]}/" +
-                $"{stats.GroupedStats[6]}/" +
-                $"{stats.GroupedStats[7]}");
+                $"{stats.GroupedStats0}/" +
+                $"{stats.GroupedStats1}/" +
+                $"{stats.GroupedStats2}/" +
+                $"{stats.GroupedStats3}/" +
+                $"{stats.GroupedStats4}/" +
+                $"{stats.GroupedStats5}/" +
+                $"{stats.GroupedStats6}/" +
+                $"{stats.GroupedStats7}");
 
             _chat.SendMessage(p, $"netstats: pri=" +
-                $"{stats.PriorityStats[0]}/" +
-                $"{stats.PriorityStats[1]}/" +
-                $"{stats.PriorityStats[2]}/" +
-                $"{stats.PriorityStats[3]}/" +
-                $"{stats.PriorityStats[4]}");
+                $"{stats.PriorityStats0}/" +
+                $"{stats.PriorityStats1}/" +
+                $"{stats.PriorityStats2}/" +
+                $"{stats.PriorityStats3}/" +
+                $"{stats.PriorityStats4}");
         }
 
         [CommandHelp(

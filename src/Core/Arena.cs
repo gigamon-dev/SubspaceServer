@@ -1,5 +1,7 @@
+using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -244,6 +246,69 @@ namespace SS.Core
         TargetType ITarget.Type
         {
             get { return TargetType.Arena; }
+        }
+
+        #endregion
+
+        #region Team Target
+
+        /// <summary>
+        /// Dictionary of immutable TeamTarget objects that can be reused.
+        /// This is to reduce allocations (e.g. rather than allocate a new one each time a team target is needed).
+        /// </summary>
+        private readonly ConcurrentDictionary<int, TeamTarget> _teamTargets = new();
+
+        public TeamTarget GetTeamTarget(int freq) => _teamTargets.GetOrAdd(freq, (f) => new TeamTarget(this, f));
+
+        public void CleanupTeamTargets()
+        {
+            if (_teamTargets.Count == 0)
+                return;
+
+            IPlayerData playerData = GetInterface<IPlayerData>();
+
+            if (playerData != null)
+            {
+                try
+                {
+                    playerData.Lock();
+
+                    try
+                    {
+                        // TODO: The ConcurrentDictionary enumerator is not a struct, it allocates an object.
+                        // Maybe change this to a regular Dictionary + locking, but then can't remove while iterating,
+                        // would need another collection of type int to store the IDs to remove in.
+                        // So the collection of ints would then need to come from a pool, otherwise there would be an allocation.
+                        // Or maybe stackalloc an array + keep track of a count, as there shouldn't be that many teams in the first place.
+                        foreach (var team in _teamTargets)
+                        {
+                            int freq = team.Key;
+
+                            if (!HasPlayerOnFreq(playerData, this, freq))
+                                _teamTargets.TryRemove(freq, out _);
+                        }
+                    }
+                    finally
+                    {
+                        playerData.Unlock();
+                    }
+                }
+                finally
+                {
+                    ReleaseInterface(ref playerData);
+                }
+            }
+
+            static bool HasPlayerOnFreq(IPlayerData playerData, Arena arena, int freq)
+            {
+                foreach (Player p in playerData.PlayerList)
+                {
+                    if (p.Arena == arena && p.Freq == freq)
+                        return true;
+                }
+
+                return false;
+            }
         }
 
         #endregion

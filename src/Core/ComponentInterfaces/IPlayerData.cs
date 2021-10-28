@@ -1,18 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="p">the player being allocated/deallocated</param>
-    /// <param name="isNew">true if being allocated, false if being deallocated</param>
-    /// <returns></returns>
-    public delegate void NewPlayerDelegate(Player p, bool isNew);
-
     public interface IPlayerData : IComponentInterface
     {
         void Lock();
@@ -22,12 +12,11 @@ namespace SS.Core.ComponentInterfaces
 
         /// <summary>
         /// Use to enumerate over all of the players.
-        /// Rember to Lock() and Unlock().
         /// </summary>
-        IEnumerable<Player> PlayerList
-        {
-            get;
-        }
+        /// <remarks>
+        /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/> or <see cref="WriteLock"/> and <see cref="WriteUnlock"/>.
+        /// </remarks>
+        Dictionary<int, Player>.ValueCollection PlayerList { get; } // ideally this would be IEnumerable<Player>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
 
         /// <summary>
         /// Creates a new player.

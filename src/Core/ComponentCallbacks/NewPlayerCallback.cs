@@ -15,6 +15,8 @@ namespace SS.Core.ComponentCallbacks
         /// In general you probably want to use the <see cref="PlayerActionCallback.PlayerActionDelegate"/> 
         /// callback instead of this for general initialization tasks.
         /// </summary>
+        /// <param name="p">The player being allocated or deallocated.</param>
+        /// <param name="isNew">True if being allocated, false if being deallocated.</param>
         public delegate void NewPlayerDelegate(Player p, bool isNew);
 
         public static void Register(ComponentBroker broker, NewPlayerDelegate handler)

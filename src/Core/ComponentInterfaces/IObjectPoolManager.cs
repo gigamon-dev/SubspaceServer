@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Utilities;
 using System.Collections.Generic;
+using System.Net;
 using System.Text;
 
 namespace SS.Core.ComponentInterfaces
@@ -46,5 +47,15 @@ namespace SS.Core.ComponentInterfaces
         /// Pool of <see cref="StringBuilder"/> objects.
         /// </summary>
         ObjectPool<StringBuilder> StringBuilderPool { get; }
+
+        /// <summary>
+        /// Pool of <see cref="IPEndPoint"/> objects.
+        /// </summary>
+        ObjectPool<IPEndPoint> IPEndPointPool { get; }
+
+        /// <summary>
+        /// Pool of <see cref="Brick"/> structs.
+        /// </summary>
+        ObjectPool<List<Brick>> BrickListPool { get; }
     }
 }

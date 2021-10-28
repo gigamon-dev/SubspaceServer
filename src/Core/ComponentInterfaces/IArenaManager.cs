@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -22,6 +19,14 @@ namespace SS.Core.ComponentInterfaces
         void Unlock();
 
         /// <summary>
+        /// All the arenas the server knows about.
+        /// </summary>
+        /// <remarks>
+        /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.
+        /// </remarks>
+        Dictionary<string, Arena>.ValueCollection ArenaList { get; } // ideally this would be IEnumerable<Arena>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
+
+        /// <summary>
         /// Tells the player that he's entering an arena.
         /// This should only be called at the appropriate time from the core module.
         /// 
@@ -29,7 +34,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player"></param>
         void SendArenaResponse(Player player);
-        
+
         /// <summary>
         /// Tells the player that he's leaving an arena.
         /// This should only be called at the appropriate time from the core module.
@@ -119,11 +124,5 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena"></param>
         void UnholdArena(Arena arena);
-
-        /// <summary>
-        /// All the arenas the server knows about.
-        /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.
-        /// </summary>
-        IEnumerable<Arena> ArenaList { get; }
     }
 }

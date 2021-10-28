@@ -4,6 +4,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Net;
 using System.Text;
 
 namespace SS.Core.Modules
@@ -20,6 +21,8 @@ namespace SS.Core.Modules
         private DefaultObjectPoolProvider _provider;
         private ObjectPool<HashSet<Player>> _playerHashSetPool;
         private ObjectPool<StringBuilder> _stringBuilderPool;
+        private ObjectPool<IPEndPoint> _ipEndPointPool;
+        private ObjectPool<List<Brick>> _brickListPool;
 
         public bool Load(ComponentBroker broker)
         {
@@ -28,6 +31,8 @@ namespace SS.Core.Modules
             _provider = new DefaultObjectPoolProvider();
             _playerHashSetPool = _provider.Create(new PlayerHashSetPooledObjectPolicy());
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
+            _ipEndPointPool = _provider.Create(new IPEndPointPooledObjectPolicy());
+            _brickListPool = _provider.Create(new BrickListPooledObjectPolicy());
 
             return true;
         }
@@ -60,7 +65,13 @@ namespace SS.Core.Modules
 
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
 
+        ObjectPool<IPEndPoint> IObjectPoolManager.IPEndPointPool => _ipEndPointPool;
+
+        ObjectPool<List<Brick>> IObjectPoolManager.BrickListPool => _brickListPool;
+
         #endregion
+
+        #region PooledObjectPolicy classes
 
         private class PlayerHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<Player>>
         {
@@ -80,5 +91,44 @@ namespace SS.Core.Modules
                 return true;
             }
         }
+
+        private class IPEndPointPooledObjectPolicy : PooledObjectPolicy<IPEndPoint>
+        {
+            public override IPEndPoint Create()
+            {
+                return new IPEndPoint(IPAddress.Any, 0);
+            }
+
+            public override bool Return(IPEndPoint obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Address = IPAddress.Any;
+                obj.Port = 0;
+                return true;
+            }
+        }
+
+        private class BrickListPooledObjectPolicy : PooledObjectPolicy<List<Brick>>
+        {
+            public int InitialCapacity { get; set; } = 8;
+
+            public override List<Brick> Create()
+            {
+                return new List<Brick>(InitialCapacity);
+            }
+
+            public override bool Return(List<Brick> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        #endregion
     }
 }

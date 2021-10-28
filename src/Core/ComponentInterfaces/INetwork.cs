@@ -86,16 +86,28 @@ namespace SS.Core.ComponentInterfaces
 
     public interface IReadOnlyNetStats
     {
-        public ulong PingsReceived { get; }
-        public ulong PacketsSent { get; }
-        public ulong PacketsReceived { get; }
-        public ulong BytesSent { get; }
-        public ulong BytesReceived { get; }
-        public ulong BuffersTotal { get; }
-        public ulong BuffersUsed { get; }
+        ulong PingsReceived { get; }
+        ulong PacketsSent { get; }
+        ulong PacketsReceived { get; }
+        ulong BytesSent { get; }
+        ulong BytesReceived { get; }
+        ulong BuffersTotal { get; }
+        ulong BuffersUsed { get; }
 
-        ReadOnlySpan<ulong> GroupedStats { get; }
-        ReadOnlySpan<ulong> PriorityStats { get; }
+        ulong GroupedStats0 { get; }
+        ulong GroupedStats1 { get; }
+        ulong GroupedStats2 { get; }
+        ulong GroupedStats3 { get; }
+        ulong GroupedStats4 { get; }
+        ulong GroupedStats5 { get; }
+        ulong GroupedStats6 { get; }
+        ulong GroupedStats7 { get; }
+
+        ulong PriorityStats0 { get; }
+        ulong PriorityStats1 { get; }
+        ulong PriorityStats2 { get; }
+        ulong PriorityStats3 { get; }
+        ulong PriorityStats4 { get; }
     }
 
     public class NetClientStats
@@ -173,7 +185,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flag(s) specifying options for the send.</param>
-        void SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags);
+        void SendToSet(HashSet<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// To send data to a set of players.
@@ -182,7 +194,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flag(s) specifying options for the send.</param>
-        void SendToSet<TData>(IEnumerable<Player> set, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToSet<TData>(HashSet<Player> set, ref TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// Sends data to a target of players

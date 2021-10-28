@@ -396,7 +396,7 @@ namespace SS.Core.Modules
 
             public ConnData()
             {
-                outlist = new LinkedList<SubspaceBuffer>[(int)((BandwidthPriorities[])Enum.GetValues(typeof(BandwidthPriorities))).Max() + 1];
+                outlist = new LinkedList<SubspaceBuffer>[(int)Enum.GetValues<BandwidthPriorities>().Max() + 1];
             }
 
             public void Initalize(IEncrypt enc, string iEncryptName, IBWLimit bw)
@@ -566,7 +566,8 @@ namespace SS.Core.Modules
 
         private readonly ConcurrentDictionary<EndPoint, Player> _clienthash = new();
 
-        private readonly ConcurrentDictionary<EndPoint, NetClientConnection> _clientConnections = new();
+        private readonly Dictionary<EndPoint, NetClientConnection> _clientConnections = new();
+        private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.NoRecursion);
 
         /*
         /// <summary>
@@ -674,7 +675,7 @@ namespace SS.Core.Modules
             }
         }
         */
-        
+
         /// <summary>
         /// A helper to group up packets to be send out together as 1 combined packet.
         /// </summary>
@@ -720,7 +721,7 @@ namespace SS.Core.Modules
 
                 // record stats about grouped packets
                 if (_count > 0)
-                    _network._globalStats.grouped_stats[Math.Min((_count - 1), _network._globalStats.grouped_stats.Length - 1)]++;
+                    Interlocked.Increment(ref _network._globalStats.grouped_stats[Math.Min((_count - 1), _network._globalStats.grouped_stats.Length - 1)]);
 
                 Initialize();
             }
@@ -795,32 +796,42 @@ namespace SS.Core.Modules
 
         private Socket _clientSocket;
 
-        // TODO: figure out if multiple threads are reading/writing
         private class NetStats : IReadOnlyNetStats
         {
             public ulong pcountpings, pktsent, pktrecvd;
             public ulong bytesent, byterecvd;
             public ulong buffercount, buffersused;
-            public ulong[] grouped_stats = new ulong[8];
-            public ulong[] pri_stats = new ulong[5];
+            public readonly ulong[] grouped_stats = new ulong[8];
+            public readonly ulong[] pri_stats = new ulong[(int)Enum.GetValues<BandwidthPriorities>().Max() + 1];
 
-            public ulong PingsReceived => pcountpings;
+            public ulong PingsReceived => Interlocked.Read(ref pcountpings);
 
-            public ulong PacketsSent => pktsent;
+            public ulong PacketsSent => Interlocked.Read(ref pktsent);
 
-            public ulong PacketsReceived => pktrecvd;
+            public ulong PacketsReceived => Interlocked.Read(ref pktrecvd);
 
-            public ulong BytesSent => bytesent;
+            public ulong BytesSent => Interlocked.Read(ref bytesent);
 
-            public ulong BytesReceived => byterecvd;
+            public ulong BytesReceived => Interlocked.Read(ref byterecvd);
 
-            public ulong BuffersTotal => buffercount;
+            public ulong BuffersTotal => Interlocked.Read(ref buffercount);
 
-            public ulong BuffersUsed => buffersused;
+            public ulong BuffersUsed => Interlocked.Read(ref buffersused);
 
-            public ReadOnlySpan<ulong> GroupedStats => grouped_stats;
+            public ulong GroupedStats0 => Interlocked.Read(ref grouped_stats[0]);
+            public ulong GroupedStats1 => Interlocked.Read(ref grouped_stats[1]);
+            public ulong GroupedStats2 => Interlocked.Read(ref grouped_stats[2]);
+            public ulong GroupedStats3 => Interlocked.Read(ref grouped_stats[3]);
+            public ulong GroupedStats4 => Interlocked.Read(ref grouped_stats[4]);
+            public ulong GroupedStats5 => Interlocked.Read(ref grouped_stats[5]);
+            public ulong GroupedStats6 => Interlocked.Read(ref grouped_stats[6]);
+            public ulong GroupedStats7 => Interlocked.Read(ref grouped_stats[7]);
 
-            public ReadOnlySpan<ulong> PriorityStats => pri_stats;
+            public ulong PriorityStats0 => Interlocked.Read(ref pri_stats[0]);
+            public ulong PriorityStats1 => Interlocked.Read(ref pri_stats[1]);
+            public ulong PriorityStats2 => Interlocked.Read(ref pri_stats[2]);
+            public ulong PriorityStats3 => Interlocked.Read(ref pri_stats[3]);
+            public ulong PriorityStats4 => Interlocked.Read(ref pri_stats[4]);
         }
 
         private readonly NetStats _globalStats = new();
@@ -1173,31 +1184,41 @@ namespace SS.Core.Modules
 
                 // outgoing packets and lagouts for client connections
                 now = DateTime.UtcNow;
-                foreach (NetClientConnection cc in _clientConnections.Values)
+
+                _clientConnectionsLock.EnterUpgradeableReadLock();
+
+                try
                 {
-                    ConnData conn = cc.ConnData;
-                    lock (conn.olmtx)
+                    foreach (NetClientConnection cc in _clientConnections.Values)
                     {
-                        SendOutgoing(conn, groupedPacketManager);
-                    }
+                        ConnData conn = cc.ConnData;
+                        lock (conn.olmtx)
+                        {
+                            SendOutgoing(conn, groupedPacketManager);
+                        }
 
-                    if (conn.HitMaxRetries)
-                    {
-                        _logManager.LogM(LogLevel.Warn, nameof(Network), "Client connection hit max retries.");
-                    }
+                        if (conn.HitMaxRetries)
+                        {
+                            _logManager.LogM(LogLevel.Warn, nameof(Network), "Client connection hit max retries.");
+                        }
 
-                    if (now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
-                    {
-                        _logManager.LogM(LogLevel.Warn, nameof(Network), $"Client connection {now-conn.lastPkt} > {(conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10))}.");
-                    }
+                        if (now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
+                        {
+                            _logManager.LogM(LogLevel.Warn, nameof(Network), $"Client connection {now - conn.lastPkt} > {(conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10))}.");
+                        }
 
-                    // Special limit of 65 seconds, unless we haven't gotten any packets, then use 10.
-                    if (conn.HitMaxRetries 
-                        || now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
-                    {
-                        cc.Handler.Disconnected();
-                        DropConnection(cc);
+                        // Special limit of 65 seconds, unless we haven't gotten any packets, then use 10.
+                        if (conn.HitMaxRetries
+                            || now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
+                        {
+                            cc.Handler.Disconnected();
+                            DropConnection(cc);
+                        }
                     }
+                }
+                finally
+                {
+                    _clientConnectionsLock.ExitUpgradeableReadLock();
                 }
 
                 if (_stopToken.IsCancellationRequested)
@@ -1563,13 +1584,26 @@ namespace SS.Core.Modules
             {
                 encryptedBuffer.CopyTo(new Span<byte>(buffer.Bytes, 0, len));
 
-                conn.whichSock.SendTo(buffer.Bytes, 0, len, SocketFlags.None, conn.RemoteEndpoint);
+                try
+                {
+                    conn.whichSock.SendTo(buffer.Bytes, 0, len, SocketFlags.None, conn.RemoteEndpoint);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {conn.RemoteEndpoint} with game socket {conn.whichSock.LocalEndPoint}. {ex}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {conn.RemoteEndpoint} with game socket {conn.whichSock.LocalEndPoint}. {ex}");
+                    return;
+                }
             }
 
             conn.bytesSent += (ulong)len;
             conn.pktSent++;
-            _globalStats.bytesent += (ulong)len;
-            _globalStats.pktsent++;
+            Interlocked.Add(ref _globalStats.bytesent, (ulong)len);
+            Interlocked.Increment(ref _globalStats.pktsent);
         }
 
         //private void SendOutgoing(ConnData conn, in GroupedPacketManager groupedPacketManager)
@@ -1708,83 +1742,113 @@ namespace SS.Core.Modules
         private void HandleGamePacketReceived(ListenData ld)
         {
             SubspaceBuffer buffer = _bufferPool.Get();
-            EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
+            IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
+            Player p;
+            ConnData conn;
 
             try
             {
-                buffer.NumBytes = ld.GameSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref receivedFrom);
-            }
-            catch (SocketException ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(Network),
-                    $"Caught a SocketException when calling ReceiveFrom. Error code: {ex.ErrorCode}. {ex}");
-                buffer.Dispose();
-                return;
-            }
+                EndPoint remoteEP = remoteIPEP;
 
-            if (buffer.NumBytes <= 0)
-            {
-                buffer.Dispose();
-                return;
-            }
+                try
+                {
+                    buffer.NumBytes = ld.GameSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref remoteEP);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                    buffer.Dispose();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                    buffer.Dispose();
+                    return;
+                }
+
+                if (buffer.NumBytes <= 0)
+                {
+                    buffer.Dispose();
+                    return;
+                }
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk($"RECV: {buffer.NumBytes} bytes", buffer.Bytes.AsSpan(0, buffer.NumBytes));
+                DumpPk($"RECV: {buffer.NumBytes} bytes", buffer.Bytes.AsSpan(0, buffer.NumBytes));
 #endif
 
-            if (receivedFrom is not IPEndPoint remoteEndPoint)
-            {
-                buffer.Dispose();
-                return;
-            }
+                if (!ReferenceEquals(remoteIPEP, remoteEP))
+                {
+                    // Note: This seems to be the normal behavior.
+                    // No idea why it makes you pass in a reference to an EndPoint if it's just going to replace it, but perhaps it isn't always the case.
+                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+                    remoteIPEP = null;
+                }
 
-            if (_clienthash.TryGetValue(remoteEndPoint, out Player p) == false)
-            {
-                // this might be a new connection. make sure it's really a connection init packet
+                if (remoteEP is not IPEndPoint remoteEndPoint)
+                {
+                    buffer.Dispose();
+                    return;
+                }
+
+                if (_clienthash.TryGetValue(remoteEndPoint, out p) == false)
+                {
+                    // this might be a new connection. make sure it's really a connection init packet
+                    if (IsConnectionInitPacket(buffer.Bytes))
+                    {
+                        ProcessConnectionInit(remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    }
+#if CFG_LOG_STUPID_STUFF
+                    else if (buffer.NumBytes > 1)
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({buffer.Bytes[0]:X2} {buffer.Bytes[1]:X2} ; {buffer.NumBytes} bytes) before connection established.");
+                    }
+                    else
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({buffer.Bytes[0]:X2} ; {buffer.NumBytes} bytes) before connection established.");
+                    }
+#endif
+                    buffer.Dispose();
+                    return;
+                }
+
+                conn = p[_connKey] as ConnData;
+                if (conn == null)
+                {
+                    buffer.Dispose();
+                    return;
+                }
+
                 if (IsConnectionInitPacket(buffer.Bytes))
                 {
-                    ProcessConnectionInit(remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    // here, we have a connection init, but it's from a
+                    // player we've seen before. there are a few scenarios:
+                    if (p.Status == PlayerState.Connected)
+                    {
+                        // if the player is in PlayerState.Connected, it means that
+                        // the connection init response got dropped on the
+                        // way to the client. we have to resend it.
+                        ProcessConnectionInit(remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
+                    }
+                    else
+                    {
+                        /* otherwise, he probably just lagged off or his
+                         * client crashed. ideally, we'd postpone this
+                         * packet, initiate a logout procedure, and then
+                         * process it. we can't do that right now, so drop
+                         * the packet, initiate the logout, and hope that
+                         * the client re-sends it soon. */
+                        _playerData.KickPlayer(p);
+                    }
+
+                    buffer.Dispose();
+                    return;
                 }
-#if CFG_LOG_STUPID_STUFF
-                else if (buffer.NumBytes > 1)
-                {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({buffer.Bytes[0]:X2} {buffer.Bytes[1]:X2} ; {buffer.NumBytes} bytes) before connection established.");
-                }
-                else
-                {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({buffer.Bytes[0]:X2} ; {buffer.NumBytes} bytes) before connection established.");
-                }
-#endif
-                buffer.Dispose();
-                return;
             }
-
-            ConnData conn = p[_connKey] as ConnData;
-
-            if (IsConnectionInitPacket(buffer.Bytes))
+            finally
             {
-                // here, we have a connection init, but it's from a
-		        // player we've seen before. there are a few scenarios:
-                if (p.Status == PlayerState.Connected)
-                {
-                    // if the player is in PlayerState.Connected, it means that
-                    // the connection init response got dropped on the
-                    // way to the client. we have to resend it.
-                    ProcessConnectionInit(remoteEndPoint, buffer.Bytes, buffer.NumBytes, ld);
-                }
-                else
-                {
-                    /* otherwise, he probably just lagged off or his
-                     * client crashed. ideally, we'd postpone this
-                     * packet, initiate a logout procedure, and then
-                     * process it. we can't do that right now, so drop
-                     * the packet, initiate the logout, and hope that
-                     * the client re-sends it soon. */
-                    _playerData.KickPlayer(p);
-                }
-
-                buffer.Dispose();
-                return;
+                if (remoteIPEP != null)
+                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
             }
 
             if (buffer.NumBytes > Constants.MaxPacket)
@@ -1813,8 +1877,8 @@ namespace SS.Core.Modules
             conn.lastPkt = DateTime.UtcNow;
             conn.bytesReceived += (ulong)buffer.NumBytes;
             conn.pktReceived++;
-            _globalStats.byterecvd += (ulong)buffer.NumBytes;
-            _globalStats.pktrecvd++;
+            Interlocked.Add(ref _globalStats.byterecvd, (ulong)buffer.NumBytes);
+            Interlocked.Increment(ref _globalStats.pktrecvd);
 
             IEncrypt enc = conn.enc;
             if (enc != null)
@@ -1976,11 +2040,29 @@ namespace SS.Core.Modules
             if (ld == null)
                 return;
 
-            using (SubspaceBuffer buffer = _bufferPool.Get())
+            using SubspaceBuffer buffer = _bufferPool.Get();
+            IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
+
+            try
             {
-                Socket s = ld.PingSocket;
                 EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
-                buffer.NumBytes = s.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref receivedFrom);
+
+                try
+                {
+                    buffer.NumBytes = ld.PingSocket.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref receivedFrom);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                    buffer.Dispose();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                    buffer.Dispose();
+                    return;
+                }
 
                 if (receivedFrom is not IPEndPoint remoteEndPoint)
                     return;
@@ -1992,7 +2074,7 @@ namespace SS.Core.Modules
                 // Refresh data (if needed)
                 //
 
-                if (_pingData.LastRefresh == null 
+                if (_pingData.LastRefresh == null
                     || (DateTime.UtcNow - _pingData.LastRefresh) > _config.PingRefreshThreshold)
                 {
                     foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
@@ -2072,69 +2154,125 @@ namespace SS.Core.Modules
                         BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.ConnectAsPopulationStats[ld.ConnectAs].Total);
                     }
 
-                    int bytesSent = s.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
+                    try
+                    {
+                        int bytesSent = ld.PingSocket.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
+                    }
+                    catch (SocketException ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                        return;
+                    }
                 }
                 else if (buffer.NumBytes == 8)
                 {
                     // TODO: add the ability handle ASSS' extended ping packets
                 }
             }
+            finally
+            {
+                if (remoteIPEP != null)
+                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+            }
 
-            _globalStats.pcountpings++;
+            Interlocked.Increment(ref _globalStats.pcountpings);
         }
 
         private void HandleClientPacketReceived()
         {
             SubspaceBuffer buffer = _bufferPool.Get();
+            IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
 
-            EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
-            buffer.NumBytes = _clientSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref receivedFrom);
-
-            if (buffer.NumBytes < 1)
+            try
             {
-                buffer.Dispose();
-                return;
-            }
+                EndPoint receivedFrom = remoteIPEP;
 
-#if CFG_DUMP_RAW_PACKETS
-            DumpPk($"RAW CLIENT DATA: {buffer.NumBytes} bytes", buffer.Bytes.AsSpan(0, buffer.NumBytes));
-#endif
-
-            if (_clientConnections.TryGetValue(receivedFrom, out NetClientConnection cc))
-            {
-                ConnData conn = cc.ConnData;
-
-                if (cc.Encryptor != null)
+                try
                 {
-                    buffer.NumBytes = cc.Encryptor.Decrypt(cc, buffer.Bytes, buffer.NumBytes);
-
-#if CFG_DUMP_RAW_PACKETS
-                    DumpPk($"DECRYPTED CLIENT DATA: {buffer.NumBytes} bytes", new ReadOnlySpan<byte>(buffer.Bytes, 0, buffer.NumBytes));
-#endif
+                    buffer.NumBytes = _clientSocket.ReceiveFrom(buffer.Bytes, buffer.Bytes.Length, SocketFlags.None, ref receivedFrom);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from client socket {_clientSocket.LocalEndPoint}. {ex}");
+                    buffer.Dispose();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from client socket {_clientSocket.LocalEndPoint}. {ex}");
+                    buffer.Dispose();
+                    return;
                 }
 
-                if (buffer.NumBytes > 0)
-                {
-                    buffer.Conn = conn;
-                    conn.lastPkt = DateTime.UtcNow;
-                    conn.bytesReceived += (ulong)buffer.NumBytes;
-                    conn.pktReceived++;
-                    _globalStats.byterecvd += (ulong)buffer.NumBytes;
-                    _globalStats.pktrecvd++;
-
-                    ProcessBuffer(buffer);
-                }
-                else
+                if (buffer.NumBytes < 1)
                 {
                     buffer.Dispose();
-                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Failed to decrypt packet.");
+                    return;
                 }
 
-                return;
-            }
+#if CFG_DUMP_RAW_PACKETS
+                DumpPk($"RAW CLIENT DATA: {buffer.NumBytes} bytes", buffer.Bytes.AsSpan(0, buffer.NumBytes));
+#endif
 
-            buffer.Dispose();
-            _logManager.LogM(LogLevel.Warn, nameof(Network), $"Got data on the client port that was not from any known connection ({receivedFrom}).");
+                bool found;
+                NetClientConnection cc;
+
+                _clientConnectionsLock.EnterReadLock();
+
+                try
+                {
+                    found = _clientConnections.TryGetValue(receivedFrom, out cc);
+                }
+                finally
+                {
+                    _clientConnectionsLock.ExitReadLock();
+                }
+
+                if (found)
+                {
+                    ConnData conn = cc.ConnData;
+
+                    if (cc.Encryptor != null)
+                    {
+                        buffer.NumBytes = cc.Encryptor.Decrypt(cc, buffer.Bytes, buffer.NumBytes);
+
+#if CFG_DUMP_RAW_PACKETS
+                        DumpPk($"DECRYPTED CLIENT DATA: {buffer.NumBytes} bytes", new ReadOnlySpan<byte>(buffer.Bytes, 0, buffer.NumBytes));
+#endif
+                    }
+
+                    if (buffer.NumBytes > 0)
+                    {
+                        buffer.Conn = conn;
+                        conn.lastPkt = DateTime.UtcNow;
+                        conn.bytesReceived += (ulong)buffer.NumBytes;
+                        conn.pktReceived++;
+                        Interlocked.Add(ref _globalStats.byterecvd, (ulong)buffer.NumBytes);
+                        Interlocked.Increment(ref _globalStats.pktrecvd);
+
+                        ProcessBuffer(buffer);
+                    }
+                    else
+                    {
+                        buffer.Dispose();
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Failed to decrypt packet.");
+                    }
+
+                    return;
+                }
+
+                buffer.Dispose();
+                _logManager.LogM(LogLevel.Warn, nameof(Network), $"Got data on the client port that was not from any known connection ({receivedFrom}).");
+            }
+            finally
+            {
+                _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+            }
         }
 
         private SubspaceBuffer BufferPacket(ConnData conn, ReadOnlySpan<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
@@ -2172,7 +2310,7 @@ namespace SS.Core.Modules
             }
 
             // update global stats based on requested priority
-            _globalStats.pri_stats[(int)pri] += (ulong)len;
+            Interlocked.Add(ref _globalStats.pri_stats[(int)pri], (ulong)len);
 
             // try the fast path
             if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
@@ -3021,19 +3159,28 @@ namespace SS.Core.Modules
             // And disconnect our client connections
             //
 
-            foreach (NetClientConnection cc in _clientConnections.Values)
+            _clientConnectionsLock.EnterWriteLock();
+
+            try
             {
-                SendRaw(cc.ConnData, disconnectSpan);
-                cc.Handler.Disconnected();
-
-                if (cc.Encryptor != null)
+                foreach (NetClientConnection cc in _clientConnections.Values)
                 {
-                    cc.Encryptor.Void(cc);
-                    broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
-                }
-            }
+                    SendRaw(cc.ConnData, disconnectSpan);
+                    cc.Handler.Disconnected();
 
-            _clientConnections.Clear();
+                    if (cc.Encryptor != null)
+                    {
+                        cc.Encryptor.Void(cc);
+                        broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
+                    }
+                }
+
+                _clientConnections.Clear();
+            }
+            finally
+            {
+                _clientConnectionsLock.ExitWriteLock();
+            }
 
             return true;
         }
@@ -3100,10 +3247,10 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndpoint, ReadOnlySpan<byte> data, ListenData ld)
+        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndPoint, ReadOnlySpan<byte> data, ListenData ld)
         {
-            if (remoteEndpoint == null)
-                throw new ArgumentNullException(nameof(remoteEndpoint));
+            if (remoteEndPoint == null)
+                throw new ArgumentNullException(nameof(remoteEndPoint));
 
             if (data.Length < 1)
                 throw new ArgumentOutOfRangeException(nameof(data), "There needs to be at least 1 byte to send.");
@@ -3119,11 +3266,25 @@ namespace SS.Core.Modules
             using (SubspaceBuffer buffer = _bufferPool.Get())
             {
                 data.CopyTo(new Span<byte>(buffer.Bytes, 0, data.Length));
-                ld.GameSocket.SendTo(buffer.Bytes, 0, data.Length, SocketFlags.None, remoteEndpoint);
+
+                try
+                {
+                    ld.GameSocket.SendTo(buffer.Bytes, 0, data.Length, SocketFlags.None, remoteEndPoint);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
             }
 
-            _globalStats.bytesent += (ulong)data.Length;
-            _globalStats.pktsent++;
+            Interlocked.Add(ref _globalStats.bytesent, (ulong)data.Length);
+            Interlocked.Increment(ref _globalStats.pktsent);
         }
 
         Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld)
@@ -3305,17 +3466,17 @@ namespace SS.Core.Modules
             ((INetwork)this).SendToArena(arena, except, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
-        void INetwork.SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
+        void INetwork.SendToSet(HashSet<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             SendToSet(set, data, flags);
         }
 
-        void INetwork.SendToSet<TData>(IEnumerable<Player> set, ref TData data, NetSendFlags flags) where TData : struct
+        void INetwork.SendToSet<TData>(HashSet<Player> set, ref TData data, NetSendFlags flags) where TData : struct
         {
             ((INetwork)this).SendToSet(set, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
-        private void SendToSet(IEnumerable<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
+        private void SendToSet(HashSet<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             if (set == null)
                 return;
@@ -3569,8 +3730,9 @@ namespace SS.Core.Modules
 
         IReadOnlyNetStats INetwork.GetStats()
         {
-            _globalStats.buffercount = Convert.ToUInt64(_bufferPool.ObjectsCreated);
-            _globalStats.buffersused = _globalStats.buffercount - Convert.ToUInt64(_bufferPool.ObjectsAvailable);
+            ulong objectsCreated = Convert.ToUInt64(_bufferPool.ObjectsCreated);
+            Interlocked.Exchange(ref _globalStats.buffercount, objectsCreated);
+            Interlocked.Exchange(ref _globalStats.buffersused, objectsCreated - Convert.ToUInt64(_bufferPool.ObjectsAvailable));
 
             return _globalStats;
         }
@@ -3675,7 +3837,20 @@ namespace SS.Core.Modules
 
             encryptor?.Initialze(cc);
 
-            if (!_clientConnections.TryAdd(remoteEndpoint, cc))
+            bool added;
+
+            _clientConnectionsLock.EnterWriteLock();
+
+            try
+            {
+                added = _clientConnections.TryAdd(remoteEndpoint, cc);
+            }
+            finally
+            {
+                _clientConnectionsLock.ExitWriteLock();
+            }
+
+            if (!added)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Network), $"Attempt to make a client connection to {remoteEndpoint} when one already exists.");
                 return null;
@@ -3764,7 +3939,16 @@ namespace SS.Core.Modules
                 _broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
             }
 
-            _clientConnections.TryRemove(cc.ConnData.RemoteEndpoint, out _);
+            _clientConnectionsLock.EnterWriteLock();
+
+            try
+            {
+                _clientConnections.Remove(cc.ConnData.RemoteEndpoint);
+            }
+            finally
+            {
+                _clientConnectionsLock.ExitWriteLock();
+            }
         }
 
         #endregion
@@ -3808,6 +3992,7 @@ namespace SS.Core.Modules
         public void Dispose()
         {
             _stopCancellationTokenSource.Dispose();
+            _clientConnectionsLock.Dispose();
         }
     }
 }

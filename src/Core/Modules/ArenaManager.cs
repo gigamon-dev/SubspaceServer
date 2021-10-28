@@ -96,33 +96,11 @@ namespace SS.Core.Modules
         /// </summary>
         private int _adkey;
 
-        /// <summary>
-        /// all arenas
-        /// </summary>
-        /// <remarks>remember to use Lock/Unlock</remarks>
-        public IEnumerable<Arena> ArenaList
-        {
-            get
-            {
-                return _arenaDictionary.Values;
-            }
-        }
-
         #region Locks
-
-        void IArenaManager.Lock()
-        {
-            ReadLock();
-        }
 
         private void ReadLock()
         {
             _arenaLock.AcquireReaderLock(Timeout.Infinite);
-        }
-
-        void IArenaManager.Unlock()
-        {
-            ReadUnlock();
         }
 
         private void ReadUnlock()
@@ -142,7 +120,19 @@ namespace SS.Core.Modules
 
         #endregion
 
-        #region IArenaManagerCore Members
+        #region IArenaManager Members
+
+        void IArenaManager.Lock()
+        {
+            ReadLock();
+        }
+
+        void IArenaManager.Unlock()
+        {
+            ReadUnlock();
+        }
+
+        Dictionary<string, Arena>.ValueCollection IArenaManager.ArenaList => _arenaDictionary.Values;
 
         void IArenaManager.SendArenaResponse(Player player)
         {
@@ -666,7 +656,7 @@ namespace SS.Core.Modules
                         {
                             _playersTotal = _playersPlaying = 0;
 
-                            foreach (Arena arena in ArenaList)
+                            foreach (Arena arena in _arenaDictionary.Values)
                             {
                                 arena.Total = arena.Playing = 0;
                             }
@@ -755,7 +745,7 @@ namespace SS.Core.Modules
             ReadLock();
             try
             {
-                foreach (Arena arena in ArenaList)
+                foreach (Arena arena in _arenaDictionary.Values)
                 {
                     arena[key] = new T();
                 }
@@ -773,7 +763,7 @@ namespace SS.Core.Modules
             ReadLock();
             try
             {
-                foreach (Arena arena in ArenaList)
+                foreach (Arena arena in _arenaDictionary.Values)
                 {
                     arena.RemovePerArenaData(key);
                 }
@@ -943,7 +933,7 @@ namespace SS.Core.Modules
             WriteLock();
             try
             {
-                foreach (Arena arena in ArenaList)
+                foreach (Arena arena in _arenaDictionary.Values)
                 {
                     ArenaData arenaData = arena[_adkey] as ArenaData;
                     ArenaState status = arena.Status;
@@ -1144,7 +1134,7 @@ namespace SS.Core.Modules
                 _playerData.Lock();
                 try
                 {
-                    foreach (Arena arena in ArenaList)
+                    foreach (Arena arena in _arenaDictionary.Values)
                     {
                         ArenaData arenaData = arena[_adkey] as ArenaData;
                         arenaData.Reap = arena.Status == ArenaState.Running || arena.Status == ArenaState.Closing;
@@ -1172,7 +1162,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    foreach (Arena arena in ArenaList)
+                    foreach (Arena arena in _arenaDictionary.Values)
                     {
                         ArenaData arenaData = arena[_adkey] as ArenaData;
 
@@ -1238,9 +1228,29 @@ namespace SS.Core.Modules
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
             _mainloopTimer.SetTimer(ReapArenas, 1700, 1700, null);
+            _mainloopTimer.SetTimer(MainloopTimer_DoArenaMaintenance, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, null);
             _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
 
             _iArenaManagerCoreToken = Broker.RegisterInterface<IArenaManager>(this);
+
+            return true;
+        }
+
+        private bool MainloopTimer_DoArenaMaintenance()
+        {
+            _arenaLock.AcquireWriterLock(Timeout.Infinite);
+
+            try
+            {
+                foreach (Arena arena in _arenaDictionary.Values)
+                {
+                    arena.CleanupTeamTargets();
+                }
+            }
+            finally
+            {
+                _arenaLock.ReleaseWriterLock();
+            }
 
             return true;
         }
@@ -1261,6 +1271,7 @@ namespace SS.Core.Modules
             _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessArenaStates, null);
             _mainloopTimer.ClearTimer(ReapArenas, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_DoArenaMaintenance, null);
 
             _playerData.FreePlayerData(_spawnkey);
 

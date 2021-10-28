@@ -156,14 +156,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="set">The players to send the message to.</param>
         /// <param name="message">The message to send.</param>
-        void SendSetMessage(IEnumerable<Player> set, ReadOnlySpan<char> message);
+        void SendSetMessage(HashSet<Player> set, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a green arena message to a set of players.
         /// </summary>
         /// <param name="set">The players to send the message to.</param>
         /// <param name="message">The message to send.</param>
-        void SendSetMessage(IEnumerable<Player> set, StringBuilder message);
+        void SendSetMessage(HashSet<Player> set, StringBuilder message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a set of players.
@@ -171,7 +171,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendSetMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> message);
+        void SendSetMessage(HashSet<Player> set, ChatSound sound, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a set of players.
@@ -179,7 +179,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendSetMessage(IEnumerable<Player> set, ChatSound sound, StringBuilder message);
+        void SendSetMessage(HashSet<Player> set, ChatSound sound, StringBuilder message);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
@@ -219,7 +219,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="message">The message to send.</param>
-        void SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -229,7 +229,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="message">The message to send.</param>
-        void SendAnyMessage(IEnumerable<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message);
 
         /// <summary>
         /// Sends a moderator chat message to all connected staff.
@@ -254,7 +254,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="squad">The squad the message is for, or <see cref="ReadOnlySpan{byte}.Empty"/> for no squad.</param>
         /// <param name="sender">The name of the sender.</param>
         /// <param name="message">The message to send.</param>
-        void SendRemotePrivMessage(IEnumerable<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message);
+        void SendRemotePrivMessage(HashSet<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Gets the chat mask for an arena.

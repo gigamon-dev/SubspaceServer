@@ -369,11 +369,11 @@ namespace SS.Core.Modules
 
         private bool MainloopTimer_Send(SendTimerData sendTimerData)
         {
-            List<Player> sendPlayerList = sendTimerData.SendPlayerList;
+            HashSet<Player> sendPlayerSet = sendTimerData.SendPlayerSet;
 
             SwitchChecksums();
 
-            sendPlayerList.Clear();
+            sendPlayerSet.Clear();
 
             lock (lockObj)
             {
@@ -394,7 +394,7 @@ namespace SS.Core.Modules
                             && p.IsStandard
                             && p.Flags.SentPositionPacket) // having sent a position packet means the player has the map and settings
                         {
-                            sendPlayerList.Add(p);
+                            sendPlayerSet.Add(p);
                             pd.SettingsChecksum = clientSettings.GetChecksum(p, packet.Key);
                             pd.Sent = true;
                             pd.Cancelled = false;
@@ -414,13 +414,13 @@ namespace SS.Core.Modules
                 // Send the requests
                 //
 
-                network.SendToSet(sendPlayerList, ref packet, NetSendFlags.Reliable);
+                network.SendToSet(sendPlayerSet, ref packet, NetSendFlags.Reliable);
             }
 
             logManager.LogM(LogLevel.Drivel, nameof(Security),
-                $"Sent security packet to {sendPlayerList.Count} players: green={packet.GreenSeed:X}, door={packet.DoorSeed:X}, timestamp={packet.Timestamp:X}.");
+                $"Sent security packet to {sendPlayerSet.Count} players: green={packet.GreenSeed:X}, door={packet.DoorSeed:X}, timestamp={packet.Timestamp:X}.");
 
-            sendPlayerList.Clear();
+            sendPlayerSet.Clear();
 
             // Set a timer to check in 15 seconds.
             mainloopTimer.SetTimer(MainloopTimer_Check, 15000, Timeout.Infinite, null);
@@ -661,7 +661,7 @@ namespace SS.Core.Modules
         /// </summary>
         private class SendTimerData
         {
-            public readonly List<Player> SendPlayerList = new(256);
+            public readonly HashSet<Player> SendPlayerSet = new(256);
         }
     }
 }
