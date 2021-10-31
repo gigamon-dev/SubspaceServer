@@ -401,7 +401,7 @@ namespace SS.Core.Modules
                     sb.CopyTo(0, text, text.Length);
 
                     ChatPacket cp = new();
-                    cp.Type = (byte)C2SPacketType.Chat;
+                    cp.Type = (byte)S2CPacketType.Chat;
                     cp.ChatType = (byte)ChatMessageType.RemotePrivate;
                     cp.Sound = (byte)sound;
                     cp.PlayerId = -1;

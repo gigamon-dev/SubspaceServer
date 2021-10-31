@@ -615,7 +615,7 @@ namespace SS.Core.Modules
 
                 ReadOnlySpan<char> text = message;
                 ReadOnlySpan<char> toName = text.GetToken(':', out ReadOnlySpan<char> remaining);
-                if (!toName.IsEmpty || remaining.Length < 1)
+                if (toName.IsEmpty || remaining.Length < 1)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), p, "Malformed remote private message");
                 }
@@ -1186,6 +1186,9 @@ namespace SS.Core.Modules
                         _playerData.Unlock();
                     }
 
+                    if (set.Count == 0)
+                        return;
+
                     _chat.SendRemotePrivMessage(set, (ChatSound)packet.Sound, recipient, sender, remaining);
                 }
                 finally
@@ -1203,6 +1206,7 @@ namespace SS.Core.Modules
 
                 try
                 {
+                    set.Add(p);
                     _chat.SendRemotePrivMessage(set, (ChatSound)packet.Sound, null, sender, remaining);
                 }
                 finally
