@@ -22,5 +22,12 @@ namespace SS.Core.Packets
             get => LittleEndianConverter.Convert(seqNum);
             set => seqNum = LittleEndianConverter.Convert(value);
         }
+
+        public void Initialize(int seqNum)
+        {
+            T1 = 0x00;
+            T2 = 0x03;
+            this.seqNum = LittleEndianConverter.Convert(seqNum);
+        }
     }
 }

@@ -56,7 +56,22 @@ namespace SS.Core.Modules
         
         private interface IReliableCallbackInvoker : IDisposable
         {
+            /// <summary>
+            /// Invokes the reliable callback.
+            /// </summary>
+            /// <param name="p">The player.</param>
+            /// <param name="success">True if the reliable packet was sucessfully sent and acknowledged. False if it was cancelled.</param>
             void Invoke(Player p, bool success);
+
+            /// <summary>
+            /// The next reliable callback to invoke in a chain forming linked list.
+            /// This is used for reliable packets that have been grouped.
+            /// </summary>
+            IReliableCallbackInvoker Next
+            {
+                get; 
+                set;
+            }
         }
 
         private class ReliableCallbackInvoker : PooledObject, IReliableCallbackInvoker
@@ -75,6 +90,12 @@ namespace SS.Core.Modules
                 _callback?.Invoke(p, success);
             }
 
+            public IReliableCallbackInvoker Next
+            {
+                get;
+                set;
+            }
+
             #endregion
 
             protected override void Dispose(bool isDisposing)
@@ -82,6 +103,7 @@ namespace SS.Core.Modules
                 if (isDisposing)
                 {
                     _callback = null;
+                    Next = null;
                 }
 
                 base.Dispose(isDisposing);
@@ -106,6 +128,12 @@ namespace SS.Core.Modules
                 _callback?.Invoke(p, success, _clos);
             }
 
+            public IReliableCallbackInvoker Next
+            {
+                get;
+                set;
+            }
+
             #endregion
 
             protected override void Dispose(bool isDisposing)
@@ -114,6 +142,7 @@ namespace SS.Core.Modules
                 {
                     _callback = null;
                     _clos = default;
+                    Next = null;
                 }
 
                 base.Dispose(isDisposing);
@@ -375,6 +404,15 @@ namespace SS.Core.Modules
             public LinkedList<SubspaceBuffer>[] outlist;
 
             /// <summary>
+            /// Unsent outgoing reliable packet queue.
+            /// Packets in this queue do not have a sequence number assigned yet.
+            /// </summary>
+            /// <remarks>
+            /// Note: Reliable packets that are in the process of being sent are in <see cref="outlist"/>[<see cref="BandwidthPriorities.Reliable"/>].
+            /// </remarks>
+            public LinkedList<SubspaceBuffer> UnsentRelOutList = new();
+
+            /// <summary>
             /// Incoming reliable packets
             /// </summary>
             public SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
@@ -569,13 +607,9 @@ namespace SS.Core.Modules
         private readonly Dictionary<EndPoint, NetClientConnection> _clientConnections = new();
         private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.NoRecursion);
 
-        /*
+        
         /// <summary>
         /// A helper to group up packets to be send out together as 1 combined packet.
-        /// This implementation uses Span<byte>, so the buffer can be stackallocated.
-        /// Unfortunately, since Socket does not provide a Span version of SentTo(), an extra copy to a byte[] is required.
-        /// This means, the byte[] implementation should perform better.
-        /// Leaving this here in hope that Socket's Span support will be enhanced.
         /// </summary>
         private ref struct GroupedPacketManager
         {
@@ -583,7 +617,9 @@ namespace SS.Core.Modules
             private readonly Span<byte> bufferSpan;
             private Span<byte> remainingSpan;
             private int count;
+            public int Count => count;
             private int numBytes;
+            public int NumBytes => numBytes;
 
             public GroupedPacketManager(Network network, Span<byte> bufferSpan)
             {
@@ -626,10 +662,32 @@ namespace SS.Core.Modules
                 // record stats about grouped packets
                 if (count > 0)
                 {
-                    network._globalStats.grouped_stats[Math.Min((count - 1), network._globalStats.grouped_stats.Length - 1)]++;
+                    Interlocked.Increment(ref network._globalStats.grouped_stats[Math.Min((count - 1), network._globalStats.grouped_stats.Length - 1)]);
                 }
 
                 Initialize();
+            }
+
+            public bool TryAppend(ReadOnlySpan<byte> data)
+            {
+                if (data.Length == 0)
+                    throw new ArgumentOutOfRangeException(nameof(data), "Length must be > 0.");
+
+                if (data.Length > 255)
+                    return false;
+
+                int lengthWithHeader = data.Length + 1; // +1 is for the byte that specifies the length
+                if (remainingSpan.Length < lengthWithHeader)
+                    return false;
+
+                remainingSpan[0] = (byte)data.Length;
+                data.CopyTo(remainingSpan[1..]);
+
+                remainingSpan = remainingSpan[lengthWithHeader..];
+                numBytes += lengthWithHeader;
+                count++;
+
+                return true;
             }
 
             public void Send(SubspaceBuffer bufferToSend, ConnData conn)
@@ -643,10 +701,10 @@ namespace SS.Core.Modules
                 if (bufferToSend.NumBytes <= 0)
                     throw new ArgumentException("At least one byte of data is required.", nameof(bufferToSend));
 
-                Send(new Span<byte>(bufferToSend.Bytes, 0, bufferToSend.NumBytes), conn);
+                Send(new ReadOnlySpan<byte>(bufferToSend.Bytes, 0, bufferToSend.NumBytes), conn);
             }
 
-            public void Send(Span<byte> dataToSend, ConnData conn)
+            public void Send(ReadOnlySpan<byte> dataToSend, ConnData conn)
             {
                 if (dataToSend.Length <= 0)
                     throw new ArgumentException("At least one byte of data is required.", nameof(dataToSend));
@@ -654,8 +712,10 @@ namespace SS.Core.Modules
                 if (conn == null)
                     throw new ArgumentNullException(nameof(conn));
 
+#if !DISABLE_GROUPED_SEND
                 if (dataToSend.Length <= 255) // 255 is the size limit a grouped packet can store (max 1 byte can represent for the length)
                 {
+                    // TODO: Find out why ASSS subtracts 10 (MAXPACKET - 10 - buf->len).  For now, ignoring that and just ensuring the data fits.
                     int lengthWithHeader = dataToSend.Length + 1; // +1 is for the byte that specifies the length
                     if (remainingSpan.Length < lengthWithHeader)
                         Flush(conn); // not enough room in the grouped packet, send it out first, to start with a fresh grouped packet
@@ -666,98 +726,15 @@ namespace SS.Core.Modules
                     remainingSpan = remainingSpan.Slice(lengthWithHeader);
                     numBytes += lengthWithHeader;
                     count++;
+                    return;
                 }
-                else
-                {
-                    // can't fit into a grouped packet, send immediately
-                    network.SendRaw(conn, dataToSend);
-                }
+#endif                
+                // can't fit into a grouped packet, send immediately
+                network.SendRaw(conn, dataToSend);
+
             }
         }
-        */
-
-        /// <summary>
-        /// A helper to group up packets to be send out together as 1 combined packet.
-        /// </summary>
-        private class GroupedPacketManager
-        {
-            private readonly Network _network;
-            private readonly byte[] _buffer = new byte[Constants.MaxPacket];
-            private ArraySegment<byte> _remainingSegment;
-            private int _count;
-
-            public GroupedPacketManager(Network network)
-            {
-                _network = network ?? throw new ArgumentNullException(nameof(network));
-
-                // grouped packet header
-                _buffer[0] = 0x00;
-                _buffer[1] = 0x0E;
-
-                Initialize();
-            }
-
-            public void Initialize()
-            {
-                _remainingSegment = new ArraySegment<byte>(_buffer, 2, _buffer.Length - 2);
-                _count = 0;
-            }
-
-            public void Flush(ConnData conn)
-            {
-                if (conn == null)
-                    throw new ArgumentNullException(nameof(conn));
-
-                if (_count == 1)
-                {
-                    // there's only one in the group, so don't send it in a group. 
-                    // +3 to skip past the 00 0E and size of first packet
-                    _network.SendRaw(conn, _buffer.AsSpan(3, _remainingSegment.Offset - 3));
-                }
-                else if (_count > 1)
-                {
-                    _network.SendRaw(conn, _buffer.AsSpan(0, _remainingSegment.Offset));
-                }
-
-                // record stats about grouped packets
-                if (_count > 0)
-                    Interlocked.Increment(ref _network._globalStats.grouped_stats[Math.Min((_count - 1), _network._globalStats.grouped_stats.Length - 1)]);
-
-                Initialize();
-            }
-
-            public void Send(SubspaceBuffer buffer, ConnData conn)
-            {
-                if (buffer == null)
-                    throw new ArgumentNullException(nameof(buffer));
-
-                if (conn == null)
-                    throw new ArgumentNullException(nameof(conn));
-
-#if DISABLE_GROUPED_SEND
-                _network.sendRaw(conn, buffer.Bytes, buffer.NumBytes);
-#else
-                if (buffer.NumBytes <= 255) // 255 is the size limit a grouped packet can store (max 1 byte can represent for the length)
-                {
-                    // TODO: Find out why ASSS subtracts 10 (MAXPACKET - 10 - buf->len).  For now, ignoring that and just ensuring the data fits.
-                    if (_remainingSegment.Count < (buffer.NumBytes + 1)) // +1 is for the byte that specifies the length
-                        Flush(conn); // not enough room in the grouped packet, send it out first to start with a fresh grouped packet
-
-                    _remainingSegment.Array[_remainingSegment.Offset] = (byte)buffer.NumBytes;
-                    Array.Copy(buffer.Bytes, 0, _remainingSegment.Array, _remainingSegment.Offset + 1, buffer.NumBytes);
-
-                    _remainingSegment = new ArraySegment<byte>(_remainingSegment.Array, _remainingSegment.Offset + (buffer.NumBytes + 1), _remainingSegment.Count - (buffer.NumBytes + 1));
-                    _count++;
-                }
-                else
-                {
-                    // can't fit into a grouped packet, send immediately
-                    _network.SendRaw(conn, buffer.Bytes.AsSpan(0, buffer.NumBytes));
-                }
-#endif
-            }
-        }
-
+        
         private delegate void oohandler(SubspaceBuffer buffer);
 
         /// <summary>
@@ -1097,8 +1074,8 @@ namespace SS.Core.Modules
 
         private void SendThread()
         {
-            GroupedPacketManager groupedPacketManager = new(this);
-            //GroupedPacketManager groupedPacketManager = new GroupedPacketManager(this, new byte[Constants.MaxPacket]);
+            Span<byte> groupedPacketBuffer = stackalloc byte[Constants.MaxPacket];
+            GroupedPacketManager groupedPacketManager = new(this, groupedPacketBuffer);
 
             List<Player> toKick = new();
             List<Player> toFree = new();
@@ -1123,8 +1100,7 @@ namespace SS.Core.Modules
                             {
                                 try
                                 {
-                                    //SendOutgoing(conn, in groupedPacketManager);
-                                    SendOutgoing(conn, groupedPacketManager);
+                                    SendOutgoing(conn, ref groupedPacketManager);
                                     SubmitRelStats(p);
                                 }
                                 finally
@@ -1194,7 +1170,7 @@ namespace SS.Core.Modules
                         ConnData conn = cc.ConnData;
                         lock (conn.olmtx)
                         {
-                            SendOutgoing(conn, groupedPacketManager);
+                            SendOutgoing(conn, ref groupedPacketManager);
                         }
 
                         if (conn.HitMaxRetries)
@@ -1320,7 +1296,7 @@ namespace SS.Core.Modules
                         continue;
 
                     if (conn.sizedsends.First != null
-                        && conn.outlist[(int)BandwidthPriorities.Reliable].Count < _config.PresizedQueueThreshold)
+                        && conn.outlist[(int)BandwidthPriorities.Reliable].Count + conn.UnsentRelOutList.Count < _config.PresizedQueueThreshold)
                     {
                         ISizedSendData sd = conn.sizedsends.First.Value;
 
@@ -1384,26 +1360,13 @@ namespace SS.Core.Modules
 
             lock (conn.olmtx)
             {
-                // handle the regular outgoing queues
+                // unsent reliable outgoing queue
+                ClearOutgoingQueue(conn.UnsentRelOutList);
+
+                // regular outgoing queues
                 for (int i = 0; i < conn.outlist.Length; i++)
                 {
-                    LinkedList<SubspaceBuffer> outlist = conn.outlist[i];
-
-                    LinkedListNode<SubspaceBuffer> nextNode;
-                    for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
-                    {
-                        nextNode = node.Next;
-
-                        SubspaceBuffer b = node.Value;
-                        if (b.CallbackInvoker != null)
-                        {
-                            QueueMainloopWorkItem(b.CallbackInvoker, p, false);
-                            b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
-                        }
-
-                        outlist.Remove(node);
-                        b.Dispose();
-                    }
+                    ClearOutgoingQueue(conn.outlist[i]);
                 }
 
                 // and presized outgoing
@@ -1430,6 +1393,25 @@ namespace SS.Core.Modules
 
             // and remove from relible signaling queue
             _relqueue.ClearOne(conn);
+
+            void ClearOutgoingQueue(LinkedList<SubspaceBuffer> outlist)
+            {
+                LinkedListNode<SubspaceBuffer> nextNode;
+                for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
+                {
+                    nextNode = node.Next;
+
+                    SubspaceBuffer b = node.Value;
+                    if (b.CallbackInvoker != null)
+                    {
+                        QueueMainloopWorkItem(b.CallbackInvoker, p, false);
+                        b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
+                    }
+
+                    outlist.Remove(node);
+                    b.Dispose();
+                }
+            }
         }
 
         // call with player status locked
@@ -1606,8 +1588,7 @@ namespace SS.Core.Modules
             Interlocked.Increment(ref _globalStats.pktsent);
         }
 
-        //private void SendOutgoing(ConnData conn, in GroupedPacketManager groupedPacketManager)
-        private void SendOutgoing(ConnData conn, GroupedPacketManager groupedPacketManager)
+        private void SendOutgoing(ConnData conn, ref GroupedPacketManager groupedPacketManager)
         {
             DateTime now = DateTime.UtcNow;
 
@@ -1618,19 +1599,7 @@ namespace SS.Core.Modules
             // update the bandwidth limiter's counters
             conn.bw.Iter(now);
 
-            // find smallest seqnum remaining in outlist
-            int minSeqNum = int.MaxValue;
-            LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriorities.Reliable];
-            foreach (SubspaceBuffer buffer in outlist)
-            {
-                ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buffer.Bytes);
-
-                if (rp.SeqNum < minSeqNum)
-                    minSeqNum = rp.SeqNum;
-            }
-
             int canSend = conn.bw.GetCanBufferPackets();
-            int maxSeqNumToSend = minSeqNum + (canSend > 0 ? canSend : 0);
             int retries = 0;
             int outlistlen = 0;
 
@@ -1639,7 +1608,127 @@ namespace SS.Core.Modules
             // process the highest priority first
             for (int pri = conn.outlist.Length - 1; pri >= 0; pri--)
             {
-                outlist = conn.outlist[pri];
+                LinkedList<SubspaceBuffer> outlist = conn.outlist[pri];
+
+                if (pri == (int)BandwidthPriorities.Reliable)
+                {
+                    // move packets from RelOutList to outlist, grouped if possible
+                    while (conn.UnsentRelOutList.Count > 0)
+                    {
+                        if (outlist.Count > 0)
+                        {
+                            // The reliable sending/pending queue has at least one packet,
+                            // Get the first one (lowest sequence number) and use that number to determine if there's room to add more.
+                            ref ReliableHeader min = ref MemoryMarshal.AsRef<ReliableHeader>(outlist.First.Value.Bytes);
+                            if ((conn.s2cn - min.SeqNum) > canSend)
+                            {
+                                break;
+                            }
+                        }
+
+                        LinkedListNode<SubspaceBuffer> n1 = conn.UnsentRelOutList.First;
+                        SubspaceBuffer b1 = conn.UnsentRelOutList.First.Value;
+#if !DISABLE_GROUPED_SEND
+                        if (b1.NumBytes <= 255 && conn.UnsentRelOutList.Count > 1)
+                        {
+                            // the 1st buffer can fit into a grouped packet and there's at least one more packet available, check if it's possible to group them together
+                            SubspaceBuffer b2 = conn.UnsentRelOutList.First.Next.Value;
+
+                            if (b2.NumBytes <= 255 // the 2nd packet can fit into a group packet too
+                                && (ReliableHeader.Length + 2 + 1 + b1.NumBytes + 1 + b2.NumBytes) <= Constants.MaxPacket) // can fit together in a reliable packet containing a grouped packet containing both packets
+                            {
+                                // we know we can group at least 2
+                                // group up as many as possible
+                                SubspaceBuffer groupedBuffer = _bufferPool.Get();
+                                groupedBuffer.Conn = conn;
+                                groupedBuffer.Flags = b1.Flags; // taking the flags from the first packet, though doesn't really matter since we already know it's reliable
+                                groupedBuffer.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
+                                groupedBuffer.Tries = 0;
+
+                                ref ReliableHeader groupedRelHeader = ref MemoryMarshal.AsRef<ReliableHeader>(groupedBuffer.Bytes);
+                                groupedRelHeader.Initialize(conn.s2cn++);
+
+                                // TODO: Maybe add logic to limit reliable packet grouping up to 255 bytes (including the reliable header) so that it can still fit into another grouped packet later on with other packets?
+                                // At the moment I think it is still more beneficial to group as many as possible even if it goes over 255 bytes. More thought is needed on this...
+                                GroupedPacketManager relGrouper = new(this, groupedBuffer.Bytes.AsSpan(ReliableHeader.Length, Constants.MaxPacket - ReliableHeader.Length));
+
+                                LinkedListNode<SubspaceBuffer> node = conn.UnsentRelOutList.First;
+                                while (node != null)
+                                {
+                                    LinkedListNode<SubspaceBuffer> next = node.Next;
+                                    SubspaceBuffer toAppend = node.Value;
+
+                                    if (!relGrouper.TryAppend(new ReadOnlySpan<byte>(toAppend.Bytes, 0, toAppend.NumBytes)))
+                                    {
+                                        break;
+                                    }
+
+                                    if (toAppend.CallbackInvoker != null)
+                                    {
+                                        if (groupedBuffer.CallbackInvoker == null)
+                                        {
+                                            groupedBuffer.CallbackInvoker = toAppend.CallbackInvoker;
+                                        }
+                                        else
+                                        {
+                                            IReliableCallbackInvoker invoker = groupedBuffer.CallbackInvoker;
+                                            while (invoker.Next != null)
+                                                invoker = invoker.Next;
+
+                                            invoker.Next = toAppend.CallbackInvoker;
+                                        }
+
+                                        toAppend.CallbackInvoker = null;
+                                    }
+
+                                    conn.UnsentRelOutList.Remove(node);
+                                    // TODO: return node to a pool
+                                    toAppend.Dispose();
+
+                                    node = next;
+                                }
+
+                                Debug.Assert(relGrouper.Count >= 2, $"A minimum of 2 packets should have been grouped, but the count was {relGrouper.Count}.");
+
+                                groupedBuffer.NumBytes = ReliableHeader.Length + relGrouper.NumBytes;
+
+                                // TODO: reliable grouping stats similar to regular grouping stats
+
+                                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Grouped {relGrouper.Count} reliable packets into single reliable packet of {groupedBuffer.NumBytes} bytes.");
+
+                                outlist.AddLast(groupedBuffer);
+                                continue;
+                            }
+                        }
+#endif
+                        // couldn't group the packet, just add it
+                        // TODO: maybe better to just modify the existing buffer (move the data back by 6 bytes and prepend the reliable header)
+                        SubspaceBuffer bufferToAdd = _bufferPool.Get();
+                        bufferToAdd.Conn = b1.Conn;
+                        bufferToAdd.Flags = b1.Flags;
+                        bufferToAdd.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
+                        bufferToAdd.Tries = 0;
+
+                        if (b1.CallbackInvoker != null)
+                        {
+                            bufferToAdd.CallbackInvoker = b1.CallbackInvoker;
+                            b1.CallbackInvoker = null;
+                        }
+
+                        ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(bufferToAdd.Bytes);
+                        header.Initialize(conn.s2cn++);
+                        b1.Bytes.AsSpan(0, b1.NumBytes).CopyTo(bufferToAdd.Bytes.AsSpan(ReliableHeader.Length, b1.NumBytes));
+                        bufferToAdd.NumBytes = ReliableHeader.Length + b1.NumBytes;
+
+                        // TODO: reliable grouping stats similar to regular grouping stats
+
+                        outlist.AddLast(bufferToAdd);
+
+                        conn.UnsentRelOutList.Remove(n1);
+                        // TODO: Return n1 to a pool
+                        b1.Dispose();
+                    }
+                }
 
                 LinkedListNode<SubspaceBuffer> nextNode;
                 for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
@@ -1663,10 +1752,6 @@ namespace SS.Core.Modules
                     if ((buf.Tries != 0) && ((now - buf.LastRetry).TotalMilliseconds <= (timeout * buf.Tries)))
                         continue;
 
-                    // only send a maximum range of rel packets
-                    if ((pri == (int)BandwidthPriorities.Reliable) && rp.SeqNum > maxSeqNumToSend)
-                        continue;
-
                     // if we've retried too many times, kick the player
                     if (buf.Tries > _config.MaxRetries)
                     {
@@ -1676,7 +1761,7 @@ namespace SS.Core.Modules
 
                     // at this point, there's only one more check to determine if we're sending this packet now: bandwidth limiting.
                     if (!conn.bw.Check(
-                        buf.NumBytes + ((buf.NumBytes <= 255) ? 1 : _config.PerPacketOverhead),
+                        buf.NumBytes + ((buf.NumBytes <= 255) ? 1 : _config.PerPacketOverhead), // TODO: bandwidth limiting: investigate why 1, isn't there always the IP+UDP header overhead?
                         pri))
                     {
                         // try dropping it, if we can
@@ -2277,6 +2362,9 @@ namespace SS.Core.Modules
 
         private SubspaceBuffer BufferPacket(ConnData conn, ReadOnlySpan<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
         {
+            if (data.Length < 1)
+                throw new ArgumentOutOfRangeException(nameof(data), "Length must be at least 1.");
+
             int len = data.Length;
 
             // data has to be able to fit into a reliable packet
@@ -2336,30 +2424,23 @@ namespace SS.Core.Modules
             buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
             buf.Tries = 0;
             buf.CallbackInvoker = callbackInvoker;
-            buf.Flags = flags;
+            buf.Flags = flags;           
+            buf.NumBytes = len;
+            data.CopyTo(buf.Bytes);
 
-            // get data into packet
             if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
             {
-                buf.NumBytes = len + Constants.ReliableHeaderLen;
-                ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buf.Bytes);
-                rp.T1 = 0x00;
-                rp.T2 = 0x03;
-                rp.SeqNum = conn.s2cn++;
-                data.CopyTo(buf.Bytes.AsSpan(ReliableHeader.Length, len));
+                conn.UnsentRelOutList.AddLast(buf);
             }
             else
             {
-                buf.NumBytes = len;
-                data.CopyTo(buf.Bytes);
+                conn.outlist[(int)pri].AddLast(buf);
             }
-
-            conn.outlist[(int)pri].AddLast(buf);
 
             return buf;
         }
 
-        #region oohandlers (network layer header handling)
+#region oohandlers (network layer header handling)
 
         private void ProcessKeyResponse(SubspaceBuffer buffer)
         {
@@ -2559,15 +2640,19 @@ namespace SS.Core.Modules
 
         private void MainloopWork_InvokeReliableCallback(InvokeReliableCallbackDTO dto)
         {
-            if (dto.CallbackInvoker == null)
-                return;
-
-            using (dto.CallbackInvoker)
+            while (dto.CallbackInvoker != null)
             {
-                if (dto.Player == null)
-                    return;
+                IReliableCallbackInvoker next = dto.CallbackInvoker.Next;
 
-                dto.CallbackInvoker.Invoke(dto.Player, dto.Success);
+                using (dto.CallbackInvoker)
+                {
+                    if (dto.Player != null)
+                    {
+                        dto.CallbackInvoker.Invoke(dto.Player, dto.Success);
+                    }
+                }
+
+                dto.CallbackInvoker = next;
             }
         }
 
@@ -2975,9 +3060,9 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+#endregion
 
-        #region IModule Members
+#region IModule Members
 
         public bool Load(
             ComponentBroker broker,
@@ -3017,6 +3102,13 @@ namespace SS.Core.Modules
             _config.simplepingpopulationmode = (PingPopulationMode)_configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
 
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
+
+            // TODO: add pooling of LinkedListNode<SubspaceBuffer>
+            // Like in LogManager (which pools StringBuilder objects), the objects are queued up in producer/consumer collections, not rented and quickly returned the pool by the same thread.
+            // So the Microsoft.Extensions.DefaultObjectPool isn't a great match.
+            // Perhaps now is a good time to make another class derived from Microsoft.Extensions.ObjectPool to better suit our use case?
+            //ConcurentBagObjectPoolProvider objectPoolProvider = new();
+            //objectPoolProvider.Create(new SubspaceBufferPooledObjectPolicy());
 
             if (InitializeSockets() == false)
                 return false;
@@ -3111,9 +3203,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #endregion
+#endregion
 
-        #region IModuleLoaderAware Members
+#region IModuleLoaderAware Members
 
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
@@ -3185,9 +3277,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #endregion
+#endregion
 
-        #region INetworkEncryption Members
+#region INetworkEncryption Members
 
         private readonly List<ConnectionInitHandler> _connectionInitHandlers = new();
         private readonly ReaderWriterLockSlim _connectionInitLock = new(LockRecursionPolicy.NoRecursion);
@@ -3377,9 +3469,9 @@ namespace SS.Core.Modules
             return p;
         }
 
-        #endregion
+#endregion
 
-        #region INetwork Members
+#region INetwork Members
 
         void INetwork.SendToOne(Player p, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
@@ -3801,9 +3893,9 @@ namespace SS.Core.Modules
 
         IReadOnlyList<ListenData> INetwork.Listening => _readOnlyListenData;
 
-        #endregion
+#endregion
 
-        #region INetworkClient Members
+#region INetworkClient Members
 
         
         ClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConnectionHandler handler, string iClientEncryptName)
@@ -3951,7 +4043,7 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+#endregion
 
 #if CFG_DUMP_RAW_PACKETS
         private static void DumpPk(string description, ReadOnlySpan<byte> d)
