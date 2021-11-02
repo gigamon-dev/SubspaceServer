@@ -42,9 +42,20 @@ namespace SS.Core.Configuration
             this.logger = logger;
         }
 
-        public string Path { get; private set; }
+        private string _path;
+        public string Path
+        {
+            get => _path;
+            private set
+            {
+                _path = value;
+                _fileInfo = string.IsNullOrWhiteSpace(value) ? null : new FileInfo(Path);
+            }
+        }
+
+        private FileInfo _fileInfo;
         public DateTime? LastModified { get; private set; }
-        public bool IsReloadNeeded => !string.IsNullOrWhiteSpace(Path) && LastModified != File.GetLastWriteTimeUtc(Path);
+        public bool IsReloadNeeded => _fileInfo != null && LastModified != _fileInfo.LastWriteTimeUtc;
         public List<RawLine> Lines { get; } = new List<RawLine>();
 
         /// <summary>
@@ -116,7 +127,7 @@ namespace SS.Core.Configuration
 
         private void RefreshLastModified()
         {
-            LastModified = string.IsNullOrWhiteSpace(Path) ? null : File.GetLastWriteTimeUtc(Path);
+            LastModified = _fileInfo?.LastWriteTimeUtc;
         }
 
         private RawLine ParseLine(string raw, ReadOnlySpan<char> line)
