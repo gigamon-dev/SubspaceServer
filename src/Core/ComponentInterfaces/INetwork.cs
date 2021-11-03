@@ -103,6 +103,15 @@ namespace SS.Core.ComponentInterfaces
         ulong GroupedStats6 { get; }
         ulong GroupedStats7 { get; }
 
+        ulong RelGroupedStats0 { get; }
+        ulong RelGroupedStats1 { get; }
+        ulong RelGroupedStats2 { get; }
+        ulong RelGroupedStats3 { get; }
+        ulong RelGroupedStats4 { get; }
+        ulong RelGroupedStats5 { get; }
+        ulong RelGroupedStats6 { get; }
+        ulong RelGroupedStats7 { get; }
+
         ulong PriorityStats0 { get; }
         ulong PriorityStats1 { get; }
         ulong PriorityStats2 { get; }

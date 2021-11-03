@@ -481,6 +481,16 @@ namespace SS.Core.Modules
                 $"{stats.GroupedStats6}/" +
                 $"{stats.GroupedStats7}");
 
+            _chat.SendMessage(p, $"netstats: rel grouped=" +
+                $"{stats.RelGroupedStats0}/" +
+                $"{stats.RelGroupedStats1}/" +
+                $"{stats.RelGroupedStats2}/" +
+                $"{stats.RelGroupedStats3}/" +
+                $"{stats.RelGroupedStats4}/" +
+                $"{stats.RelGroupedStats5}/" +
+                $"{stats.RelGroupedStats6}/" +
+                $"{stats.RelGroupedStats7}");
+
             _chat.SendMessage(p, $"netstats: pri=" +
                 $"{stats.PriorityStats0}/" +
                 $"{stats.PriorityStats1}/" +

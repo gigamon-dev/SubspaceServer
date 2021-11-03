@@ -30,6 +30,21 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         IEnumerable<IPool> Pools { get; }
 
+        /// <summary>
+        /// Adds a pool to be tracked.
+        /// This is useful for monitoring private pools.
+        /// </summary>
+        /// <param name="pool">The pool to track.</param>
+        /// <returns><see langword="true"/> if the pool was added. <see langword="false"/> if it is already being tracked.</returns>
+        bool TryAddTracked(IPool pool);
+
+        /// <summary>
+        /// Removes a pool from being tracked.
+        /// </summary>
+        /// <param name="pool">The pool to remove from tracking.</param>
+        /// <returns><see langword="true"/> if the pool was removed. Otherwise, <see langword="false"/>.</returns>
+        bool TryRemoveTracked(IPool pool);
+
         // TODO: add methods to free up memory by clearing pools or reducing their size
 
         //

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Text;
@@ -12,9 +13,10 @@ namespace SS.Core.Modules
     public class LogManager : IModule, IModuleLoaderAware, ILogManager
     {
         private ComponentBroker _broker;
+        private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken iLogManagerToken;
 
-        private ObjectPool<StringBuilder> _stringBuilderPool;
+        private NonTransientObjectPool<StringBuilder> _stringBuilderPool;
         private readonly BlockingCollection<LogEntry> _logQueue = new(512);
         private Thread _loggingThread;
 
@@ -49,13 +51,19 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker)
+        public bool Load(ComponentBroker broker, IObjectPoolManager objectPoolManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-            DefaultObjectPoolProvider provider = new();
-            provider.MaximumRetained = 512; // by default, the maximum is based on Environment.ProcessorCount, but we're queueing LogItems up, not immediately returning objects back to the pool
-            _stringBuilderPool = provider.CreateStringBuilderPool(1024, 4096);
+            _stringBuilderPool = new NonTransientObjectPool<StringBuilder>(
+                new StringBuilderPooledObjectPolicy()
+                {
+                    InitialCapacity = 1024,
+                    MaximumRetainedCapacity = 4096,
+                }
+            );
+            _objectPoolManager.TryAddTracked(_stringBuilderPool);
 
             iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
@@ -68,6 +76,9 @@ namespace SS.Core.Modules
 
             _logQueue.CompleteAdding();
             _loggingThread?.Join();
+
+            _objectPoolManager.TryRemoveTracked(_stringBuilderPool);
+
             return true;
         }
 

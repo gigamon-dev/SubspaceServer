@@ -63,9 +63,19 @@ namespace SS.Core
         public const int CFG_INCOMING_BUFFER = 32;
 
         /// <summary>
-        /// Maximum size a game packet can be.
+        /// Maximum # of bytes a game packet can be.
         /// </summary>
-        public const int MaxPacket = 512;
+        public const int MaxPacket = 512; // TODO: maybe this can be increased to 520?
+
+        /// <summary>
+        /// Maximum # of bytes a grouped packet (00 0E) can be.
+        /// </summary>
+        public const int MaxGroupedPacketLength = 512;
+
+        /// <summary>
+        /// Maximum # of bytes an item within a grouped packet (00 0E) can be.
+        /// </summary>
+        public const int MaxGroupedPacketItemLength = byte.MaxValue; // Grouped packets use a single byte for the item length.
 
         /// <summary>
         /// Maximum size for receiving packets (due to the size of a "Connection Init" packets).

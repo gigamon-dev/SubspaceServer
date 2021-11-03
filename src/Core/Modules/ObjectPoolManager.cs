@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
@@ -16,7 +15,7 @@ namespace SS.Core.Modules
     {
         private InterfaceRegistrationToken _iObjectPoolManagerToken;
 
-        private readonly ConcurrentDictionary<Type, IPool> _poolDictionary = new();
+        private readonly ConcurrentDictionary<IPool, IPool> _poolDictionary = new();
 
         private DefaultObjectPoolProvider _provider;
         private ObjectPool<HashSet<Player>> _playerHashSetPool;
@@ -48,20 +47,26 @@ namespace SS.Core.Modules
         IPool<T> IObjectPoolManager.GetPool<T>()
         {
             var pool = Pool<T>.Default;
-            _poolDictionary.TryAdd(typeof(T), pool);
+            TryAddTrackedPool(pool);
             return pool;
         }
 
         T IObjectPoolManager.Get<T>()
         {
             var pool = Pool<T>.Default;
-            _poolDictionary.TryAdd(typeof(T), pool);
+            TryAddTrackedPool(pool);
             return pool.Get();
         }
 
         IEnumerable<IPool> IObjectPoolManager.Pools => _poolDictionary.Values;
 
-        ObjectPool<HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
+        bool IObjectPoolManager.TryAddTracked(IPool pool) => TryAddTrackedPool(pool);
+
+        private bool TryAddTrackedPool(IPool pool) => _poolDictionary.TryAdd(pool, pool);
+
+        bool IObjectPoolManager.TryRemoveTracked(IPool pool) => _poolDictionary.TryRemove(pool, out _);
+
+        ObjectPool <HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
 
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
 
