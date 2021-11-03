@@ -656,7 +656,7 @@ namespace SS.Core
         /// <param name="key">The key of the per-player data to remove.</param>
         internal void RemoveExtraData(int key)
         {
-            if (_extraData.Remove(key, out object data)
+            if (_extraData.TryRemove(key, out object data)
                 && data is IDisposable disposable)
             {
                 disposable.Dispose();
