@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text;
 
 namespace SS.Core
 {
@@ -100,8 +98,18 @@ namespace SS.Core
 
         public const int RandMax = 0x7fff;
 
-        public const string AG_PUBLIC = "(public)";
-        public const string AG_GLOBAL = "(global)";
+        /// <summary>
+        /// Represents all public arenas.
+        /// </summary>
+        /// <remarks>
+        /// Public arenas use this as their <see cref="Arena.BaseName"/>.
+        /// </remarks>
+        public const string ArenaGroup_Public = "(public)";
+
+        /// <summary>
+        /// Represents all arenas.
+        /// </summary>
+        public const string ArenaGroup_Global = "(global)";
 
         /// <summary>
         /// some standard capability names

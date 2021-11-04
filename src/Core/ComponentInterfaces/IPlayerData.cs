@@ -66,17 +66,17 @@ namespace SS.Core.ComponentInterfaces
         void TargetToSet(ITarget target, HashSet<Player> set);
 
         /// <summary>
-        /// Allocates a slot for Per Player Data.
+        /// Allocates a slot for per-player data.
         /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Player"/> object.
         /// </summary>
         /// <typeparam name="T">The type to store in the slot.</typeparam>
-        /// <returns>The slot allocated for use with <see cref="Player.this(System.Int32)"/>.</returns>
-        int AllocatePlayerData<T>() where T : new();
+        /// <returns>A key that can be used to access the data using <see cref="Player.this(int)"/>.</returns>
+        int AllocatePlayerData<T>() where T : class, new();
 
         /// <summary>
-        /// Frees up a previously allocated Per Player Data slot.
+        /// Frees a per-player data slot.
         /// </summary>
-        /// <param name="key">The slot to free.</param>
+        /// <param name="key">The key from <see cref="AllocatePlayerData{T}"/>.</param>
         void FreePlayerData(int key);
     }
 }

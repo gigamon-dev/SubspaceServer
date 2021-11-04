@@ -150,7 +150,7 @@ namespace SS.Core.Modules
 
         bool ICapabilityManager.HasCapability(string name, string capability)
         {
-            string group = _configManager.GetStr(_staffConfHandle, Constants.AG_GLOBAL, name);
+            string group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, name);
             if (string.IsNullOrEmpty(group))
                 group = Group_Default;
 
@@ -208,7 +208,7 @@ namespace SS.Core.Modules
             // now set it permanently
             if (global)
             {
-                _configManager.SetStr(_staffConfHandle, Constants.AG_GLOBAL, p.Name, group, info, true);
+                _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, p.Name, group, info, true);
                 pd.Source = GroupSource.Global;
             }
             else if (p.Arena != null)
@@ -250,7 +250,7 @@ namespace SS.Core.Modules
                     break; // player is in the default group already, nothing to do
 
                 case GroupSource.Global:
-                    _configManager.SetStr(_staffConfHandle, Constants.AG_GLOBAL, p.Name, Group_Default, info, true);
+                    _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, p.Name, Group_Default, info, true);
                     break;
 
                 case GroupSource.Arena:
@@ -349,7 +349,7 @@ namespace SS.Core.Modules
                     _logManager.LogP(LogLevel.Drivel, "CapabilityManager", p, "assigned to group '{0}' (arenaconf)", pd.Group);
             }
 #endif
-            else if (!string.IsNullOrEmpty(g = _configManager.GetStr(_staffConfHandle, Constants.AG_GLOBAL, p.Name)))
+            else if (!string.IsNullOrEmpty(g = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, p.Name)))
             {
                 // only global groups available for now
                 pd.Group = g;

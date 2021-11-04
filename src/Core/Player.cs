@@ -1,10 +1,10 @@
+using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
 using SS.Core.Packets;
 using SS.Core.Packets.S2C;
 using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Net;
@@ -601,17 +601,10 @@ namespace SS.Core
         public readonly PlayerFlags Flags = new();
 
         /// <summary>
-        /// Used to store Per Player Data (PPD). 
-        /// </summary>
-        /// <remarks>
-        /// Using ConcurrentDictionary to allow multiple readers and 1 writer (the PlayerData module).
-        /// </remarks>
-        private readonly ConcurrentDictionary<int, object> _extraData = new();
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="Player"/> class with a specified PlayerID.
         /// </summary>
         /// <param name="id">The PlayerID.</param>
+        /// <param name="manager">The creator.</param>
         internal Player(int id, PlayerData manager)
         {
             Id = id;
@@ -619,19 +612,6 @@ namespace SS.Core
 
             // TODO: maybe change pid to short?  asss uses int all over, wonder why...
             _packet = new() { Type = (byte)S2CPacketType.PlayerEntering, PlayerId = (short)id };
-        }
-
-        /// <summary>
-        /// Per Player Data
-        /// </summary>
-        /// <param name="key">Key from <see cref="ComponentInterfaces.IPlayerData.AllocatePlayerData{T}"/>.</param>
-        /// <returns>The data or <see langword="null"/> if not found.</returns>
-        public object this[int key]
-        {
-            get => _extraData.TryGetValue(key, out object obj) ? obj : null;
-
-            // Only to be used by the PlayerData module.
-            internal set => _extraData[key] = value;
         }
 
         /// <summary>
@@ -649,11 +629,34 @@ namespace SS.Core
         /// </summary>
         public bool IsHuman => IsStandard || IsChat;
 
+        #region Extra Data (Per-Player Data)
+
+        /// <summary>
+        /// Used to store Per Player Data (PPD). 
+        /// </summary>
+        /// <remarks>
+        /// Using ConcurrentDictionary to allow multiple readers and 1 writer (the PlayerData module).
+        /// </remarks>
+        private readonly ConcurrentDictionary<int, object> _extraData = new();
+
+        /// <summary>
+        /// Per Player Data
+        /// </summary>
+        /// <param name="key">Key from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
+        /// <returns>The data or <see langword="null"/> if not found.</returns>
+        public object this[int key]
+        {
+            get => _extraData.TryGetValue(key, out object obj) ? obj : null;
+
+            // Only to be used by the PlayerData module.
+            internal set => _extraData[key] = value;
+        }
+
         /// <summary>
         /// Removes per-player data for a single key.
         /// </summary>
-        /// <remarks>Only to be used by the PlayerData module.</remarks>
-        /// <param name="key">The key of the per-player data to remove.</param>
+        /// <remarks>Only to be used by the <see cref="PlayerData"/> module.</remarks>
+        /// <param name="key">The key, from <see cref="IPlayerData.AllocatePlayerData{T}"/>, of the per-player data to remove.</param>
         internal void RemoveExtraData(int key)
         {
             if (_extraData.TryRemove(key, out object data)
@@ -667,7 +670,7 @@ namespace SS.Core
         /// Removes all of the player's per-player data.
         /// </summary>
         /// <remarks>
-        /// Only to be used by the PlayerData module.
+        /// Only to be used by the <see cref="PlayerData"/> module.
         /// </remarks>
         internal void RemoveAllExtraData()
         {
@@ -682,6 +685,8 @@ namespace SS.Core
             _extraData.Clear();
         }
 
+        #endregion
+
         // TODO: Maybe a way to synchronize?
         //public void Lock()
         //{
@@ -691,19 +696,13 @@ namespace SS.Core
 
         #region IPlayerTarget Members
 
-        Player IPlayerTarget.Player
-        {
-            get { return this; }
-        }
+        Player IPlayerTarget.Player => this;
 
         #endregion
 
         #region ITarget Members
 
-        TargetType ITarget.Type
-        {
-            get { return TargetType.Player; }
-        }
+        TargetType ITarget.Type => TargetType.Player;
 
         #endregion
     }

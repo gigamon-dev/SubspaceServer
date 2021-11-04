@@ -94,16 +94,17 @@ namespace SS.Core.ComponentInterfaces
         void GetPopulationSummary(out int total, out int playing);
 
         /// <summary>
-        /// Allocates space in the arena struct for per-arena data.
+        /// Allocates a slot for per-arena data.
+        /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Arena"/> object.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <returns>a key to be used in an Arena's indexer</returns>
-        int AllocateArenaData<T>() where T : new();
+        /// <typeparam name="T">The type to store in the slot.</typeparam>
+        /// <returns>A key that can be used to access the data using <see cref="Arena.this(int)"/>.</returns>
+        int AllocateArenaData<T>() where T : class, new();
 
         /// <summary>
-        /// Frees per-arena space.
+        /// Frees a per-arena data slot.
         /// </summary>
-        /// <param name="key"></param>
+        /// <param name="key">The key from <see cref="AllocateArenaData{T}"/>.</param>
         void FreeArenaData(int key);
 
         /// <summary>

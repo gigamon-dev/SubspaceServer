@@ -765,7 +765,7 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    arena.RemovePerArenaData(key);
+                    arena.RemoveExtraData(key);
                 }
             }
             finally
@@ -960,7 +960,7 @@ namespace SS.Core.Modules
                     {
                         case ArenaState.DoInit0:
                             arena.Cfg = _configManager.OpenConfigFile(arena.BaseName, null, ArenaConfChanged, arena);
-                            arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DEFAULT_SPEC_FREQ);
+                            arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq);
                             arena.Status = ArenaState.WaitHolds0;
                             Debug.Assert(arenaData.Holds == 0);
                             OnArenaAction(arena, ArenaAction.PreCreate);
@@ -1043,7 +1043,7 @@ namespace SS.Core.Modules
                                     {
                                         foreach (KeyValuePair<int, Type> kvp in _perArenaDataKeys)
                                         {
-                                            arena.RemovePerArenaData(kvp.Key);
+                                            arena.RemoveExtraData(kvp.Key);
                                             arena[kvp.Key] = Activator.CreateInstance(kvp.Value);
                                         }
                                     }
