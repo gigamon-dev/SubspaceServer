@@ -1255,8 +1255,8 @@ namespace SS.Core.Modules
                         Monitor.Exit(conn.relmtx);
 
                         // process it
-                        buf.NumBytes -= Constants.ReliableHeaderLen;
-                        Array.Copy(buf.Bytes, Constants.ReliableHeaderLen, buf.Bytes, 0, buf.NumBytes);
+                        buf.NumBytes -= ReliableHeader.Length;
+                        Array.Copy(buf.Bytes, ReliableHeader.Length, buf.Bytes, 0, buf.NumBytes);
                         ProcessBuffer(buf);
 
                         Monitor.Enter(conn.relmtx);
@@ -2394,7 +2394,7 @@ namespace SS.Core.Modules
             int len = data.Length;
 
             // data has to be able to fit into a reliable packet
-            Debug.Assert(len <= Constants.MaxPacket - Constants.ReliableHeaderLen);
+            Debug.Assert(len <= Constants.MaxPacket - ReliableHeader.Length);
 
             // you can't buffer already-reliable packets
             Debug.Assert(!(data.Length >= 2 && data[0] == 0x00 && data[1] == 0x03));
@@ -3517,7 +3517,7 @@ namespace SS.Core.Modules
                 return;
 
             // see if we can do it the quick way
-            if (data.Length <= (Constants.MaxPacket - Constants.ReliableHeaderLen))
+            if (data.Length <= (Constants.MaxPacket - ReliableHeader.Length))
             {
                 lock (conn.olmtx)
                 {
@@ -3607,7 +3607,7 @@ namespace SS.Core.Modules
             if (len < 1)
                 return;
 
-            if (len > Constants.MaxPacket - Constants.ReliableHeaderLen)
+            if (len > Constants.MaxPacket - ReliableHeader.Length)
             {
                 // use 00 08/9 packets (big data packets)
                 // send these reliably (to maintain ordering with sequence #)
@@ -3692,7 +3692,7 @@ namespace SS.Core.Modules
                 return;
 
             // we can't handle big packets here
-            Debug.Assert(data.Length <= (Constants.MaxPacket - Constants.ReliableHeaderLen));
+            Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
 
             if (!IsOurs(p))
                 return;
@@ -3996,7 +3996,7 @@ namespace SS.Core.Modules
 
             lock (ncc.ConnData.olmtx)
             {
-                if (data.Length > Constants.MaxPacket - Constants.ReliableHeaderLen)
+                if (data.Length > Constants.MaxPacket - ReliableHeader.Length)
                 {
                     int len = data.Length;
 

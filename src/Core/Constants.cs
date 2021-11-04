@@ -94,8 +94,6 @@ namespace SS.Core
         /// </summary>
         public const int ChunkSize = 480;
 
-        public const int ReliableHeaderLen = 6;
-
         public const int RandMax = 0x7fff;
 
         /// <summary>

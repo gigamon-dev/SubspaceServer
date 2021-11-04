@@ -263,7 +263,7 @@ namespace SS.Core.Modules
                     int nameLength = StringUtils.DefaultEncoding.GetByteCount(arena.Name) + 1; // +1 because the name in the packet is null terminated
                     int additionalLength = nameLength + 2;
 
-                    if (length + additionalLength > (Constants.MaxPacket - Constants.ReliableHeaderLen))
+                    if (length + additionalLength > (Constants.MaxPacket - ReliableHeader.Length))
                     {
                         break;
                     }
