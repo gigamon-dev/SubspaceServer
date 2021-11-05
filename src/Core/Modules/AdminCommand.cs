@@ -14,6 +14,7 @@ namespace SS.Core.Modules
         private IChat chat;
         private ICommandManager commandManager;
         private IFileTransfer fileTransfer;
+        private ILogFile logFile;
         private ILogManager logManager;
 
         public bool Load(
@@ -22,14 +23,17 @@ namespace SS.Core.Modules
             IChat chat,
             ICommandManager commandManager,
             IFileTransfer fileTransfer,
+            ILogFile logFile,
             ILogManager logManager)
         {
             this.capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
             this.commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             this.fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
+            this.logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
             this.logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
+            commandManager.AddCommand("admlogfile", Command_admlogfile);
             commandManager.AddCommand("getfile", Command_getfile);
             commandManager.AddCommand("putfile", Command_putfile);
             commandManager.AddCommand("cd", Command_cd);
@@ -40,12 +44,35 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
+            commandManager.RemoveCommand("admlogfile", Command_admlogfile);
             commandManager.RemoveCommand("getfile", Command_getfile);
             commandManager.RemoveCommand("putfile", Command_putfile);
             commandManager.RemoveCommand("cd", Command_cd);
             commandManager.RemoveCommand("pwd", Command_pwd);
 
             return true;
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "{flush | reopen}",
+            Description =
+            "Administers the log file that the server keeps. There are two possible\n" +
+            "subcommands: {flush} flushes the log file to disk (in preparation for\n" +
+            "copying it, for example), and {reopen} tells the server to close and\n" +
+            "re-open the log file (to rotate the log while the server is running).")]
+        private void Command_admlogfile(string commandName, string parameters, Player p, ITarget target)
+        {
+            if (string.Equals(parameters, "flush", StringComparison.OrdinalIgnoreCase))
+            {
+                logFile.Flush();
+                chat.SendMessage(p, "Log file flushed.");
+            }
+            else if (string.Equals(parameters, "reopen", StringComparison.OrdinalIgnoreCase))
+            {
+                logFile.Reopen();
+                chat.SendMessage(p, "Log file reopened.");
+            }
         }
 
         [CommandHelp(
