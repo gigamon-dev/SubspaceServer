@@ -1,0 +1,2 @@
+# This folder is used to store logs.  This is to prevent them from getting into source control.
+*.log
