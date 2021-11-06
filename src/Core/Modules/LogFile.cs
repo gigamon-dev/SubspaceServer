@@ -56,14 +56,7 @@ namespace SS.Core.Modules
 
             LogCallback.Unregister(broker, Callback_Log);
 
-            lock (_lockObj)
-            {
-                if (_streamWriter != null)
-                {
-                    _streamWriter.Close();
-                    _streamWriter = null;
-                }
-            }
+            CloseLog();
 
             return true;
         }
@@ -104,15 +97,22 @@ namespace SS.Core.Modules
                         return;
                 }
 
-                Span<char> dateTimeStr = stackalloc char[20];
-                if (now.TryFormat(dateTimeStr, out int charsWritten, "u"))
+                try
                 {
-                    _streamWriter.Write(dateTimeStr.Slice(0, charsWritten));
-                    _streamWriter.Write(' ');
-                }
+                    Span<char> dateTimeStr = stackalloc char[20];
+                    if (now.TryFormat(dateTimeStr, out int charsWritten, "u"))
+                    {
+                        _streamWriter.Write(dateTimeStr.Slice(0, charsWritten));
+                        _streamWriter.Write(' ');
+                    }
 
-                _streamWriter.Write(logEntry.LogText);
-                _streamWriter.WriteLine();
+                    _streamWriter.Write(logEntry.LogText);
+                    _streamWriter.WriteLine();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error writing to log file. {ex}");
+                }
             }
         }
 
@@ -126,7 +126,34 @@ namespace SS.Core.Modules
         {
             lock (_lockObj)
             {
-                _streamWriter?.Flush();
+                try
+                {
+                    _streamWriter?.Flush();
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error flushing log file writer. {ex}");
+                }
+            }
+        }
+
+        private void CloseLog()
+        {
+            lock (_lockObj)
+            {
+                if (_streamWriter != null)
+                {
+                    try
+                    {
+                        _streamWriter.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error closing log file. {ex}");
+                    }
+
+                    _streamWriter = null;
+                }
             }
         }
 
@@ -134,11 +161,7 @@ namespace SS.Core.Modules
         {
             lock (_lockObj)
             {
-                if (_streamWriter != null)
-                {
-                    _streamWriter.Close();
-                    _streamWriter = null;
-                }
+                CloseLog();
 
                 // TODO: add logic to clean up old log files based on a config setting
 
@@ -163,7 +186,7 @@ namespace SS.Core.Modules
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                 try
                 {
-                    sb.Append("I <LogFile> Opening log file ==================================");
+                    sb.Append($"I <{nameof(LogFile)}> Opening log file ==================================");
 
                     Callback_Log(
                         new LogEntry()
