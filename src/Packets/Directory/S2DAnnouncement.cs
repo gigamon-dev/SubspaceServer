@@ -7,6 +7,13 @@ namespace SS.Core.Packets.Directory
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2DAnnouncement
     {
+        private static readonly int LengthWithoutDescription;
+
+        static S2DAnnouncement()
+        {
+            LengthWithoutDescription = Marshal.SizeOf<S2DAnnouncement>() - DescriptionBytesLength;
+        }
+
         private uint ip;
         public uint IP
         {
@@ -72,6 +79,6 @@ namespace SS.Core.Packets.Directory
         /// <summary>
         /// This packet is of variable length based on the <see cref="Description"/>. Use this property to tell how many bytes to send.
         /// </summary>
-        public int Length => Marshal.OffsetOf<S2DAnnouncement>("descriptionBytes").ToInt32() + Description.Length + 1;
+        public int Length => LengthWithoutDescription + DescriptionBytes.SliceNullTerminated().Length + 1;
     }
 }
