@@ -1580,25 +1580,19 @@ namespace SS.Core.Modules
                 DumpPk($"SEND: {len} bytes to client connection {conn.cc.ServerEndpoint} (after encryption)", encryptedBuffer);
 #endif
 
-            // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
-            using (SubspaceBuffer buffer = _bufferPool.Get())
+            try
             {
-                encryptedBuffer.CopyTo(new Span<byte>(buffer.Bytes, 0, len));
-
-                try
-                {
-                    conn.whichSock.SendTo(buffer.Bytes, 0, len, SocketFlags.None, conn.RemoteEndpoint);
-                }
-                catch (SocketException ex)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {conn.RemoteEndpoint} with game socket {conn.whichSock.LocalEndPoint}. {ex}");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {conn.RemoteEndpoint} with game socket {conn.whichSock.LocalEndPoint}. {ex}");
-                    return;
-                }
+                conn.whichSock.SendTo(encryptedBuffer, SocketFlags.None, conn.RemoteEndpoint);
+            }
+            catch (SocketException ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {conn.RemoteEndpoint} with game socket {conn.whichSock.LocalEndPoint}. {ex}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {conn.RemoteEndpoint} with game socket {conn.whichSock.LocalEndPoint}. {ex}");
+                return;
             }
 
             conn.bytesSent += (ulong)len;
@@ -3383,25 +3377,19 @@ namespace SS.Core.Modules
             DumpPk($"SENDRAW: {data.Length} bytes", data);
 #endif
 
-            // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
-            using (SubspaceBuffer buffer = _bufferPool.Get())
+            try
             {
-                data.CopyTo(new Span<byte>(buffer.Bytes, 0, data.Length));
-
-                try
-                {
-                    ld.GameSocket.SendTo(buffer.Bytes, 0, data.Length, SocketFlags.None, remoteEndPoint);
-                }
-                catch (SocketException ex)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
-                    return;
-                }
+                ld.GameSocket.SendTo(data, SocketFlags.None, remoteEndPoint);
+            }
+            catch (SocketException ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                return;
             }
 
             Interlocked.Add(ref _globalStats.bytesent, (ulong)data.Length);

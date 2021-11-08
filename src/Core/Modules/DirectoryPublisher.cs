@@ -244,36 +244,23 @@ namespace SS.Core.Modules
                     }
 
                     int length = listing.Packet.Length;
-                    Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref listing.Packet, 1)).Slice(0, length);
+                    Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref listing.Packet, 1))[..length];
 
                     // send
-                    byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-
-                    try
+                    foreach (IPEndPoint endPoint in _servers)
                     {
-                        data.CopyTo(buffer);
-
-                        foreach (IPEndPoint endPoint in _servers)
+                        try
                         {
-                            // FUTURE: Change this when/if Microsoft adds a Socket.SendTo(ReadOnlySpan<byte>,...) overload. For now, need to copy to a byte[].
-                            //listing.Socket.SendTo(data, SocketFlags.None, endPoint);
-                            try
-                            {
-                                listing.Socket.SendTo(buffer, 0, length, SocketFlags.None, endPoint);
-                            }
-                            catch (SocketException ex)
-                            {
-                                _logManager.LogM(LogLevel.Error, nameof(DirectoryPublisher), $"SocketException with error code {ex.ErrorCode} when sending to {endPoint} with socket {listing.Socket.LocalEndPoint}. {ex}");
-                            }
-                            catch (Exception ex)
-                            {
-                                _logManager.LogM(LogLevel.Error, nameof(DirectoryPublisher), $"Exception when sending to {endPoint} with socket {listing.Socket.LocalEndPoint}. {ex}");
-                            }
+                            listing.Socket.SendTo(data, SocketFlags.None, endPoint);
                         }
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
+                        catch (SocketException ex)
+                        {
+                            _logManager.LogM(LogLevel.Error, nameof(DirectoryPublisher), $"SocketException with error code {ex.ErrorCode} when sending to {endPoint} with socket {listing.Socket.LocalEndPoint}. {ex}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logManager.LogM(LogLevel.Error, nameof(DirectoryPublisher), $"Exception when sending to {endPoint} with socket {listing.Socket.LocalEndPoint}. {ex}");
+                        }
                     }
                 }
             }
