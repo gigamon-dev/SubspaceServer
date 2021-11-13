@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -13,6 +14,13 @@ namespace SS.Core.Configuration
     /// </summary>
     public class ConfFile
     {
+        private static readonly ObjectPool<StringBuilder> stringBuilderPool;
+
+        static ConfFile()
+        {
+            stringBuilderPool = new DefaultObjectPoolProvider().CreateStringBuilderPool(1024, 1024 * 8);
+        }
+
         /// <summary>
         /// Constructor for a brand new conf file, not on disk.
         /// </summary>
@@ -82,44 +90,52 @@ namespace SS.Core.Configuration
             lineNumber = 0;
 
             using FileStream fileStream = File.OpenRead(Path);
-            using StreamReader reader = new StreamReader(fileStream, StringUtils.DefaultEncoding, true);
+            using StreamReader reader = new(fileStream, StringUtils.DefaultEncoding, true);
 
             RefreshLastModified();
 
             string line;
-            StringBuilder lineBuilder = new StringBuilder();
-            StringBuilder rawBuilder = new StringBuilder(); // the original
+            StringBuilder lineBuilder = stringBuilderPool.Get();
+            StringBuilder rawBuilder = stringBuilderPool.Get(); // the original
 
-            while ((line = reader.ReadLine()) != null)
+            try
             {
-                lineNumber++;
-
-                lineBuilder.Append(line);
-
-                if (line.EndsWith(RawLine.ContinueChar))
+                while ((line = reader.ReadLine()) != null)
                 {
-                    lineBuilder.Length--;
-                    rawBuilder.AppendLine(line);
-                    continue;
+                    lineNumber++;
+
+                    lineBuilder.Append(line);
+
+                    if (line.EndsWith(RawLine.ContinueChar))
+                    {
+                        lineBuilder.Length--;
+                        rawBuilder.AppendLine(line);
+                        continue;
+                    }
+
+                    string raw;
+
+                    if (rawBuilder.Length > 0)
+                    {
+                        rawBuilder.AppendLine(line);
+                        raw = rawBuilder.ToString();
+                        rawBuilder.Clear();
+                    }
+                    else
+                    {
+                        raw = line;
+                    }
+
+                    line = lineBuilder.ToTrimmedString();
+                    lineBuilder.Clear();
+
+                    Lines.Add(ParseLine(raw, line));
                 }
-
-                string raw;
-
-                if (rawBuilder.Length > 0)
-                {
-                    rawBuilder.AppendLine(line);
-                    raw = rawBuilder.ToString();
-                    rawBuilder.Clear();
-                }
-                else
-                {
-                    raw = line;
-                }
-
-                line = lineBuilder.ToTrimmedString();
-                lineBuilder.Clear();
-
-                Lines.Add(ParseLine(raw, line));
+            }
+            finally
+            {
+                stringBuilderPool.Return(lineBuilder);
+                stringBuilderPool.Return(rawBuilder);
             }
 
             OnChanged();
@@ -201,7 +217,7 @@ namespace SS.Core.Configuration
                             int i = 0;
                             while (i < line.Length && !char.IsWhiteSpace(line[i])) i++;
 
-                            ReadOnlySpan<char> nameSpan = line.Slice(0, i);
+                            ReadOnlySpan<char> nameSpan = line[..i];
                             line = line[i..].TrimStart();
 
                             return new RawPreprocessorDefine(
@@ -325,27 +341,34 @@ namespace SS.Core.Configuration
             out ReadOnlySpan<char> value,
             out bool hasValueDelimiter)
         {
-            StringBuilder sb = new StringBuilder(line.Length);
-
+            StringBuilder sb = stringBuilderPool.Get();
             int i;
-            for (i = 0; i < line.Length; i++)
-            {
-                if (line[i] == RawProperty.KeyValueDelimiter)
-                    break;
 
-                if (line[i] == '\\')
+            try
+            {                
+                for (i = 0; i < line.Length; i++)
                 {
-                    i++;
-                    if (i < line.Length)
+                    if (line[i] == RawProperty.KeyValueDelimiter)
+                        break;
+
+                    if (line[i] == '\\')
+                    {
+                        i++;
+                        if (i < line.Length)
+                            sb.Append(line[i]);
+                    }
+                    else
+                    {
                         sb.Append(line[i]);
+                    }
                 }
-                else
-                {
-                    sb.Append(line[i]);
-                }
-            }
 
-            ParseKey(sb, out sectionOverride, out key);
+                ParseKey(sb, out sectionOverride, out key);
+            }
+            finally
+            {
+                stringBuilderPool.Return(sb);
+            }
 
             line = line[i..];
             hasValueDelimiter = line.Length > 0 && line[0] == RawProperty.KeyValueDelimiter;
@@ -438,7 +461,7 @@ namespace SS.Core.Configuration
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("A path is required.", nameof(path));
 
-            using (StreamWriter writer = new StreamWriter(path, false, StringUtils.DefaultEncoding))
+            using (StreamWriter writer = new(path, false, StringUtils.DefaultEncoding))
             {
                 foreach (var line in Lines)
                 {
