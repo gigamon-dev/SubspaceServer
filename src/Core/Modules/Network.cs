@@ -2365,7 +2365,7 @@ namespace SS.Core.Modules
                     else
                     {
                         buffer.Dispose();
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Failed to decrypt packet.");
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) Failed to decrypt packet.");
                     }
 
                     return;
@@ -4062,7 +4062,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-#if CFG_DUMP_RAW_PACKETS
+        [Conditional("CFG_DUMP_RAW_PACKETS")]
         private static void DumpPk(string description, ReadOnlySpan<byte> d)
         {
             StringBuilder sb = new(description.Length + 2 + (int)Math.Ceiling(d.Length / 16d) * 67);
@@ -4096,7 +4096,6 @@ namespace SS.Core.Modules
 
             Debug.Write(sb.ToString());
         }
-#endif
 
         public void Dispose()
         {
