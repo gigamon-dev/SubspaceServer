@@ -2,18 +2,18 @@
 {
     public enum S2BPacketType : byte
     {
-        Ping = 1,
-        ServerConnect = 2,
-        ServerDisconnect = 3,
-        UserLogin = 4,
-        UserLogoff = 5,
-        UserPrivateChat = 7,
-        UserDemographics = 13,
-        UserBanner = 16,
-        UserScore = 17,
-        UserCommand = 19,
-        UserChannelChat = 20,
-        ServerCapabilities = 21,
+        Ping = 0x01,
+        ServerConnect = 0x02,
+        ServerDisconnect = 0x03,
+        UserLogin = 0x04,
+        UserLogoff = 0x05,
+        UserPrivateChat = 0x07,
+        UserDemographics = 0x0D,
+        UserBanner = 0x10,
+        UserScore = 0x11,
+        UserCommand = 0x13,
+        UserChannelChat = 0x14,
+        ServerCapabilities = 0x15,
     }
 
     public enum B2SPacketType : byte
@@ -26,6 +26,6 @@
         ScoreReset = 0x31,
         UserPacket = 0x32,
         BillingIdentity = 0x33,
-        UserMchannelChat = 0x34,
+        UserMulticastChannelChat = 0x34,
     }
 }

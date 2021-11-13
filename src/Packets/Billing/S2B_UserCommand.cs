@@ -7,6 +7,11 @@ namespace SS.Core.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2B_UserCommand
     {
+        /// <summary>
+        /// The maximum # of characters that can be encoded or decoded from the text portion.
+        /// </summary>
+        public static int MaxTextChars => StringUtils.DefaultEncoding.GetMaxCharCount(textBytesLength);
+
         public const int HeaderLength = 5;
 
         public readonly byte Type;

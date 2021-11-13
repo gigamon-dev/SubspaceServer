@@ -224,7 +224,7 @@ namespace SS.Core.ComponentInterfaces
     }
 
     [InterpolatedStringHandler]
-    public ref struct LogManagerInterpolatedStringHandler
+    public struct LogManagerInterpolatedStringHandler
     {
         private readonly ILogManager _logManager;
         private StringBuilder _stringBuilder;

@@ -73,7 +73,7 @@ namespace SS.Core.Packets.Billing
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct FirstLogin // TODO: .NET 6 ISpanFormattable
+    public struct FirstLogin
     {
         private ushort year;
         private ushort month;

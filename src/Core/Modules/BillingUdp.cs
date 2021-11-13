@@ -360,8 +360,8 @@ namespace SS.Core.Modules
                         ProcessBillingIdentity(pkt, len);
                         break;
 
-                    case B2SPacketType.UserMchannelChat:
-                        ProcessUserMChannelChat(pkt, len);
+                    case B2SPacketType.UserMulticastChannelChat:
+                        ProcessUserMulticastChannelChat(pkt, len);
                         break;
 
                     default:
@@ -428,7 +428,7 @@ namespace SS.Core.Modules
 
                     if (string.IsNullOrWhiteSpace(ipAddressStr))
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "No Billing:IP set. User database disabled.");
+                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "No Billing:IP set. User database connectivity disabled.");
                         DropConnection(BillingState.Disabled);
                     }
                     else
@@ -583,6 +583,9 @@ namespace SS.Core.Modules
                 ReadOnlySpan<char> text = message;
                 ReadOnlySpan<char> channel = text.GetToken(';', out ReadOnlySpan<char> remaining);
 
+                // Note that this supports a channel name in place of the usual channel number.
+                // e.g., ;foo;this is a message to the foo channel
+                // Most billers probably don't support this feature yet.
                 if (!channel.IsEmpty 
                     && StringUtils.DefaultEncoding.GetByteCount(channel) < packet.ChannelBytes.Length // < to allow for the null-terminator
                     && remaining.Length > 0) // found ;
@@ -605,7 +608,7 @@ namespace SS.Core.Modules
                         NetSendFlags.Reliable);
                 }
             }
-            else if (type == ChatMessageType.RemotePrivate && playerTo == null)
+            else if (type == ChatMessageType.RemotePrivate && playerTo == null) // remote private message to a player not on the server
             {
                 S2B_UserPrivateChat packet = new(
                     -1, // for some odd reason ConnectionID >= 0 indicates global broadcast message
@@ -626,14 +629,9 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        sb.Append(':');
-                        sb.Append(toName);
-                        sb.Append(":(");
-                        sb.Append(p.Name);
-                        sb.Append(")>");
-                        sb.Append(remaining[1..]);
+                        sb.Append($":{toName}:({p.Name})>{remaining[1..]}");
 
-                        Span<char> textBuffer = stackalloc char[Math.Min(packet.TextBytes.Length, sb.Length)];
+                        Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserPrivateChat.MaxTextChars, sb.Length)];
                         sb.CopyTo(0, textBuffer, textBuffer.Length);
 
                         bytesWritten = packet.SetText(textBuffer);
@@ -780,7 +778,7 @@ namespace SS.Core.Modules
                                 sb.Append($"{b:X2}");
                             }
 
-                            _chat.SendMessage(p, sb.ToString()); // TODO: add StringBuilder overload
+                            _chat.SendMessage(p, sb);
                         }
                         finally
                         {
@@ -872,22 +870,29 @@ namespace SS.Core.Modules
                     if (chatName.Length <= 0 || chatName.Length > 31)
                         continue;
 
-                    if (sb.Length > 6)
-                        sb.Append(',');
+                    bool addComma = sb.Length > 6;
 
                     if (!localChats.IsWhiteSpace()
-                        && localPrefix.Length + 4 + chatName.Length <= 31
+                        && (localPrefix.Length + 4 + chatName.Length) <= 31
+                        && (localPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) <= (S2B_UserCommand.MaxTextChars - 1)
                         && FindChat(chatName, localChats))
                     {
+                        if (addComma)
+                            sb.Append(',');
+
                         sb.Append("$l$");
                         sb.Append(localPrefix);
                         sb.Append('|');
                     }
                     else if (!staffChats.IsWhiteSpace()
-                        && staffPrefix.Length + 4 + chatName.Length <= 31
+                        && (staffPrefix.Length + 4 + chatName.Length) <= 31
+                        && (staffPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) <= (S2B_UserCommand.MaxTextChars - 1)
                         && _capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat)
                         && FindChat(chatName, staffChats))
                     {
+                        if (addComma)
+                            sb.Append(',');
+
                         sb.Append("$s$");
                         sb.Append(staffPrefix);
                         sb.Append('|');
@@ -896,7 +901,7 @@ namespace SS.Core.Modules
                     sb.Append(chatName);
                 }
 
-                Span<char> textBuffer = stackalloc char[Math.Min(249, sb.Length)];
+                Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserCommand.MaxTextChars - 1, sb.Length)];
                 sb.CopyTo(0, textBuffer, textBuffer.Length);
                 return packet.SetText(textBuffer, false);
             }
@@ -1033,7 +1038,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            AuthData authData = new AuthData();
+            AuthData authData = new();
 
             if (packet.Result == B2SUserLoginResult.Ok
                 || packet.Result == B2SUserLoginResult.DemoVersion
@@ -1264,13 +1269,13 @@ namespace SS.Core.Modules
             StringUtils.DefaultEncoding.GetChars(textBytes, text);
 
             index = text.IndexOf('|'); // local and staff chats have a pipe appended
-            if (index != -1 && text.Length > 3 && MemoryExtensions.Equals(text.Slice(0, 3), "$l$", StringComparison.Ordinal))
+            if (index != -1 && text.Length > 3 && MemoryExtensions.Equals(text[..3], "$l$", StringComparison.Ordinal))
             {
-                _chat.SendMessage(p, string.Concat("(local) ", text[(index + 1)..]));
+                _chat.SendMessage(p, $"(local) {text[(index + 1)..]}");
             }
-            else if (index != -1 && text.Length > 3 && MemoryExtensions.Equals(text.Slice(0, 3), "$s$", StringComparison.Ordinal))
+            else if (index != -1 && text.Length > 3 && MemoryExtensions.Equals(text[..3], "$s$", StringComparison.Ordinal))
             {
-                _chat.SendMessage(p, string.Concat("(staff) ", text[(index + 1)..]));
+                _chat.SendMessage(p, $"(staff) {text[(index + 1)..]}");
             }
             else
             {
@@ -1422,32 +1427,32 @@ namespace SS.Core.Modules
             _identity = identityBytes.ToArray();
         }
 
-        private void ProcessUserMChannelChat(byte[] pkt, int len)
+        private void ProcessUserMulticastChannelChat(byte[] pkt, int len)
         {
-            if (len < B2S_UserMchannelChat.MinLength || len > B2S_UserMchannelChat.MaxLength)
+            if (len < B2S_UserMulticastChannelChat.MinLength || len > B2S_UserMulticastChannelChat.MaxLength)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMchannelChat)} - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMulticastChannelChat)} - length ({len}).");
                 return;
             }
 
-            ref B2S_UserMchannelChat packet = ref MemoryMarshal.AsRef<B2S_UserMchannelChat>(pkt);
+            ref B2S_UserMulticastChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserMulticastChannelChat>(pkt);
             if (packet.Count < 1)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMchannelChat)} - {packet.Count} recipients.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMulticastChannelChat)} - {packet.Count} recipients.");
                 return;
             }
 
             ReadOnlySpan<byte> textBytes = packet.GetTextBytes(len);
             if (textBytes.IsEmpty)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMchannelChat)} - length ({len}) for {packet.Count} recipients.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMulticastChannelChat)} - length ({len}) for {packet.Count} recipients.");
                 return;
             }
 
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMchannelChat)} - Text not null-terminated.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserMulticastChannelChat)} - Text not null-terminated.");
                 return;
             }
 

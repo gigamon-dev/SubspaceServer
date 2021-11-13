@@ -462,7 +462,7 @@ namespace SS.Core.ComponentInterfaces
 
     // TODO: change Append methods to return bool and return false if the length is >= ChatPacket.MaxMessageChars
     [InterpolatedStringHandler]
-    public ref struct ChatSendMessageInterpolatedStringHandler
+    public struct ChatSendMessageInterpolatedStringHandler
     {
         private readonly IChat _chat;
         private StringBuilder _stringBuilder;

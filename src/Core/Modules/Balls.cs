@@ -596,7 +596,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        [ConfigHelp("Soccer", "BallCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-8", // TODO: C# 10 will allow constant interpolated strings, use $"0-{MaxBalls}"
+        [ConfigHelp("Soccer", "BallCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-8",
             Description = "The number of balls in this arena.")]
         // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
         [ConfigHelp("Soccer", "SpawnX[N]", ConfigScope.Arena, typeof(int), 

@@ -5,15 +5,15 @@ using System.Runtime.InteropServices;
 namespace SS.Core.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct B2S_UserMchannelChat
+    public unsafe struct B2S_UserMulticastChannelChat
     {
         public static readonly int MinLength;
         public static readonly int MaxLength;
         public static readonly int LengthWithoutRecipientsOrText;
 
-        static B2S_UserMchannelChat()
+        static B2S_UserMulticastChannelChat()
         {
-            MaxLength = Marshal.SizeOf<B2S_UserMchannelChat>();
+            MaxLength = Marshal.SizeOf<B2S_UserMulticastChannelChat>();
             LengthWithoutRecipientsOrText = MaxLength - dataBytesLength;
             MinLength = LengthWithoutRecipientsOrText + MChannelChatRecipient.Length + 1; // 1 recipient, with 1 null-terminator for the text
         }

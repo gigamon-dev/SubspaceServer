@@ -5,6 +5,7 @@ using SS.Core.Packets;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -520,19 +521,10 @@ namespace SS.Core.Modules
                 {
                     if (!squad.IsEmpty)
                     {
-                        //sb.Append($"(#{squad})"); // TODO: .NET 6
-                        sb.Append('(');
-                        sb.Append('#');
-                        sb.Append(squad);
-                        sb.Append(')');
+                        sb.Append($"(#{squad})");
                     }
 
-                    //sb.Append($"({sender})>{message}"); // TODO: .NET 6
-                    sb.Append('(');
-                    sb.Append(sender);
-                    sb.Append(')');
-                    sb.Append('>');
-                    sb.Append(message);
+                    sb.Append($"({sender})>{message}");
 
                     Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, sb.Length)];
                     sb.CopyTo(0, text, text.Length);
@@ -956,8 +948,10 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (MemoryExtensions.IsWhiteSpace(text))
-                return;
+            // Fix for broken clients that include an extra ; as the first character.
+            // E.g., ;2;hello instead of 2;hello
+            if (text.Length >= 1 && text[0] == ';')
+                text = text[1..];
 
             if (Ok(p, ChatMessageType.Chat))
             {
@@ -965,19 +959,7 @@ namespace SS.Core.Modules
                 FireChatMessageCallback(null, p, ChatMessageType.Chat, sound, null, -1, text);
 
 #if CFG_LOG_PRIVATE
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                try
-                {
-                    //sb.Append($"chat msg: {text}"); // TODO: .NET 6
-                    sb.Append("chat msg: ");
-                    sb.Append(text);
-
-                    _logManager.LogP(LogLevel.Drivel, "Chat", p, sb);
-                }
-                finally
-                {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
-                }
+                _logManager.LogP(LogLevel.Drivel, "Chat", p, $"chat msg: {text}");
 #endif
             }
         }
@@ -1031,12 +1013,12 @@ namespace SS.Core.Modules
                     if (d.Status != PlayerState.Playing)
                         return;
 
-                    Span<char> messageToSend = stackalloc char[1 + p.Name.Length + 2 + message.Length];
-                    messageToSend[0] = '(';
-                    p.Name.AsSpan().CopyTo(messageToSend[1..]);
-                    messageToSend[1 + p.Name.Length] = ')';
-                    messageToSend[1 + p.Name.Length + 1] = '>';
-                    message.CopyTo(messageToSend[(p.Name.Length + 3)..]);
+                    Span<char> messageToSend = stackalloc char[1 + p.Name.Length + 3 + message.Length];
+                    if (!messageToSend.TryWrite(CultureInfo.InvariantCulture, $"({p.Name})> {message}", out int _))
+                    {
+                        _logManager.LogP(LogLevel.Error, nameof(Chat), p, $"Failed to write remote private message.");
+                        return;
+                    }
 
                     HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
                     try
@@ -1053,21 +1035,7 @@ namespace SS.Core.Modules
                 FireChatMessageCallback(null, p, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
 
 #if CFG_LOG_PRIVATE
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                try
-                {
-                    //sb.Append($"to [{dest}] remote priv: {message}"); // TODO: .NET 6
-                    sb.Append("to [");
-                    sb.Append(dest);
-                    sb.Append("] remote priv:");
-                    sb.Append(message);
-
-                    _logManager.LogP(LogLevel.Drivel, "Chat", p, sb);
-                }
-                finally
-                {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
-                }
+                _logManager.LogP(LogLevel.Drivel, "Chat", p, $"to [{dest}] remote priv: {message}");
 #endif
             }
         }
@@ -1106,21 +1074,7 @@ namespace SS.Core.Modules
                 FireChatMessageCallback(arena, p, ChatMessageType.Private, sound, null, -1, text);
 
 #if CFG_LOG_PRIVATE
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                try
-                {
-                    //sb.Append($"to [{dst.Name}] priv msg: {text}"); // TODO: .NET 6
-                    sb.Append("to [");
-                    sb.Append(dst.Name);
-                    sb.Append("] priv msg:");
-                    sb.Append(text);
-
-                    _logManager.LogP(LogLevel.Drivel, "Chat", p, sb);
-                }
-                finally
-                {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
-                }
+                _logManager.LogP(LogLevel.Drivel, "Chat", p, $"to [{dst.Name}] priv msg: {text}");
 #endif
             }
         }
@@ -1188,22 +1142,7 @@ namespace SS.Core.Modules
 
                     FireChatMessageCallback(arena, p, type, sound, null, freq, text);
 
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                    try
-                    {
-                        //sb.Append($"freq msg ({freq}): {text}"); // TODO: .NET 6
-                        sb.Append("freq msg (");
-                        sb.Append(freq);
-                        sb.Append("): ");
-                        sb.Append(text);
-
-                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
-                    }
-                    finally
-                    {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
-                    }
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, $"freq msg ({freq}): {text}");
                 }
                 finally
                 {
@@ -1236,10 +1175,11 @@ namespace SS.Core.Modules
                     if (set.Count > 0)
                     {
                         Span<char> messageToSend = stackalloc char[p.Name.Length + 2 + message.Length];
-                        //messageToSend.TryWrite($"{p.Name}> {message}"); // TODO: .NET 6
-                        p.Name.AsSpan().CopyTo(messageToSend);
-                        "> ".AsSpan().CopyTo(messageToSend[p.Name.Length..]);
-                        message.CopyTo(messageToSend[(p.Name.Length + 2)..]);
+                        if (!messageToSend.TryWrite(CultureInfo.InvariantCulture, $"{p.Name}> {message}", out int _))
+                        {
+                            _logManager.LogP(LogLevel.Error, nameof(Chat), p, $"Failed to write mod chat message.");
+                            return;
+                        }
 
                         SendReply(set, ChatMessageType.ModChat, sound, p, p.Id, messageToSend, p.Name.Length + 2);
                     }
@@ -1251,37 +1191,13 @@ namespace SS.Core.Modules
 
                 FireChatMessageCallback(null, p, ChatMessageType.ModChat, sound, null, -1, message);
 
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                try
-                {
-                    //sb.Append($"mod chat: {message}"); // TODO: .NET 6
-                    sb.Append("mod chat: ");
-                    sb.Append(message);
-
-                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
-                }
-                finally
-                {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
-                }
+                _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, $"mod chat: {message}");
             }
             else
             {
                 SendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
 
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                try
-                {
-                    //sb.Append($"attempted mod chat (missing cap or shutup): {message}"); // TODO: .NET 6
-                    sb.Append("attempted mod chat (missing cap or shutup): ");
-                    sb.Append(message);
-
-                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
-                }
-                finally
-                {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
-                }
+                _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, $"Attempted mod chat (missing cap or shutup): {message}");
             }
         }
 
@@ -1327,19 +1243,7 @@ namespace SS.Core.Modules
 
                     FireChatMessageCallback(arena, p, type, sound, null, -1, msg);
 
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                    try
-                    {
-                        //sb.Append($"pub msg: {msg}"); // TODO: NET 6
-                        sb.Append("pub msg: ");
-                        sb.Append(msg);
-
-                        _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, sb);
-                    }
-                    finally
-                    {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
-                    }
+                    _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, $"pub msg: {msg}");
                 }
             }
         }
