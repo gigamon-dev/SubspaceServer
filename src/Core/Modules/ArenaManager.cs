@@ -21,38 +21,39 @@ namespace SS.Core.Modules
         /// <summary>
         /// the read-write lock for the global arena list
         /// </summary>
-        private readonly ReaderWriterLock _arenaLock = new ReaderWriterLock();
+        private readonly ReaderWriterLock _arenaLock = new();
 
-        private readonly Dictionary<string, Arena> _arenaDictionary = new Dictionary<string, Arena>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Arena> _arenaDictionary = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Key = module Type
         /// Value = list of arenas that have the module attached
         /// </summary>
-        private readonly Dictionary<Type, List<Arena>> _attachedModules = new Dictionary<Type, List<Arena>>();
+        private readonly Dictionary<Type, List<Arena>> _attachedModules = new();
 
         internal ComponentBroker Broker;
-        private IModuleManager _mm;
-        private ILogManager _logManager;
-        private IPlayerData _playerData;
-        private INetwork _net;
         private IConfigManager _configManager;
+        private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
+        private IModuleManager _moduleManager;
+        private INetwork _network;
+        private IObjectPoolManager _objectPoolManager;
+        private IPlayerData _playerData;
         private IServerTimer _serverTimer;
         //private IPersist _persist;
         private InterfaceRegistrationToken _iArenaManagerCoreToken;
 
         // for managing per arena data
-        private readonly ReaderWriterLock _perArenaDataLock = new ReaderWriterLock();
-        private readonly SortedList<int, Type> _perArenaDataKeys = new SortedList<int, Type>();
+        private readonly ReaderWriterLock _perArenaDataLock = new();
+        private readonly SortedList<int, Type> _perArenaDataKeys = new();
 
         // population
         private int _playersTotal;
         private int _playersPlaying;
         private DateTime? _populationLastRefreshed;
         private readonly TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
-        private readonly object _populationRefreshLock = new object();
+        private readonly object _populationRefreshLock = new();
 
 
         private class SpawnLoc
@@ -153,7 +154,7 @@ namespace SS.Core.Modules
             {
                 // send whoami packet
                 WhoAmIPacket whoAmI = new((short)player.Id);
-                _net.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+                _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                 
                 // send settings
                 IClientSettings clientset = Broker.GetInterface<IClientSettings>();
@@ -198,7 +199,7 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send to self
-                _net.SendToOne(player, ref player.Packet, NetSendFlags.Reliable);
+                _network.SendToOne(player, ref player.Packet, NetSendFlags.Reliable);
 
                 IMapNewsDownload mapNewDownload = Broker.GetInterface<IMapNewsDownload>();
                 if (mapNewDownload != null)
@@ -217,17 +218,17 @@ namespace SS.Core.Modules
                 Span<byte> span = stackalloc byte[1];
 
                 span[0] = (byte)S2CPacketType.Brick;
-                _net.SendToOne(player, span, NetSendFlags.Reliable);
+                _network.SendToOne(player, span, NetSendFlags.Reliable);
 
                 span[0] = (byte)S2CPacketType.EnteringArena;
-                _net.SendToOne(player, span, NetSendFlags.Reliable);
+                _network.SendToOne(player, span, NetSendFlags.Reliable);
 
                 if (player[_spawnkey] is SpawnLoc sp)
                 {
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
                         WarpToPacket warpTo = new(sp.X, sp.Y);
-                        _net.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
+                        _network.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
                     }
                 }
             }
@@ -327,7 +328,7 @@ namespace SS.Core.Modules
                             if (player.IsStandard)
                             {
                                 whoAmI.PlayerId = (short)player.Id;
-                                _net.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+                                _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                             }
                             else if (player.IsChat)
                             {
@@ -492,46 +493,56 @@ namespace SS.Core.Modules
                 return;
             }
 
-            // remove all illegal characters and make lowercase
-            StringBuilder sb = new StringBuilder(reqName);
-            for (int x = 0; x < sb.Length; x++)
-            {
-                if (x == 0 && sb[x] == '#')
-                    continue;
-                else if(!char.IsLetterOrDigit(sb[x]))
-                    sb[x] = 'x';
-                else if(char.IsUpper(sb[x]))
-                    sb[x] = char.ToLower(sb[x]);
-            }
 
+            // remove all illegal characters and make lowercase
             string name;
-            if (sb.Length == 0)
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
             {
-                // this might occur when a player is redirected to us from another zone
-                IArenaPlace ap = Broker.GetInterface<IArenaPlace>();
-                if (ap != null)
+                sb.Append(reqName);
+                for (int x = 0; x < sb.Length; x++)
                 {
-                    try
+                    if (x == 0 && sb[x] == '#')
+                        continue;
+                    else if (!char.IsLetterOrDigit(sb[x]))
+                        sb[x] = 'x';
+                    else if (char.IsUpper(sb[x]))
+                        sb[x] = char.ToLower(sb[x]);
+                }
+
+                if (sb.Length == 0)
+                {
+                    // this might occur when a player is redirected to us from another zone
+                    IArenaPlace ap = Broker.GetInterface<IArenaPlace>();
+                    if (ap != null)
                     {
-                        int spx = 0, spy = 0;
-                        if (!ap.Place(out name, ref spx, ref spy, player))
+                        try
                         {
-                            name = "0";
+                            int spx = 0, spy = 0;
+                            if (!ap.Place(out name, ref spx, ref spy, player))
+                            {
+                                name = "0";
+                            }
+                        }
+                        finally
+                        {
+                            Broker.ReleaseInterface(ref ap);
                         }
                     }
-                    finally
+                    else
                     {
-                        Broker.ReleaseInterface(ref ap);
+                        name = "0";
                     }
                 }
                 else
                 {
-                    name = "0";
+                    name = sb.ToString();
                 }
             }
-            else
+            finally
             {
-                name = sb.ToString();
+                _objectPoolManager.StringBuilderPool.Return(sb);
             }
 
             if (player.Arena != null)
@@ -565,7 +576,7 @@ namespace SS.Core.Modules
                     {
                         // arena is on it's way out
                         // this isn't a problem, just make sure that it will come back
-                        if (!(arena[_adkey] is ArenaData arenaData))
+                        if (arena[_adkey] is not ArenaData arenaData)
                             return;
 
                         arenaData.Resurrect = true;
@@ -626,7 +637,7 @@ namespace SS.Core.Modules
             if (notify)
             {
                 PlayerLeavingPacket packet = new((short)player.Id);
-                _net.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
+                _network.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
                 //chatnet.SendToArena(
 
                 _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "Leaving arena.");
@@ -731,7 +742,7 @@ namespace SS.Core.Modules
                 // find next available key
                 for (key = 0; key < _perArenaDataKeys.Keys.Count; key++)
                 {
-                    if (_perArenaDataKeys.Keys.Contains(key) == false)
+                    if (_perArenaDataKeys.ContainsKey(key) == false)
                         break;
                 }
 
@@ -794,7 +805,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (!(arena[_adkey] is ArenaData arenaData))
+                        if (arena[_adkey] is not ArenaData arenaData)
                             return;
 
                         arenaData.Holds++;
@@ -821,7 +832,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (!(arena[_adkey] is ArenaData arenaData))
+                        if (arena[_adkey] is not ArenaData arenaData)
                             return;
 
                         if (arenaData.Holds > 0)
@@ -854,13 +865,13 @@ namespace SS.Core.Modules
 
             foreach (string moduleToAttach in attachModsArray)
             {
-                _mm.AttachModule(moduleToAttach, a);
+                _moduleManager.AttachModule(moduleToAttach, a);
             }
         }
 
-        private void ArenaConfChanged(object clos)
+        private void ArenaConfChanged(Arena arena)
         {
-            if (!(clos is Arena arena))
+            if (arena == null)
                 return;
 
             ReadLock();
@@ -882,7 +893,7 @@ namespace SS.Core.Modules
         {
             if (playerTo.IsStandard)
             {
-                _net.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
+                _network.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
             }
             else if (playerTo.IsChat)
             {
@@ -1029,7 +1040,7 @@ namespace SS.Core.Modules
                             break;
 
                         case ArenaState.DoDestroy2:
-                            if (_mm.DetachAllFromArena(arena))
+                            if (_moduleManager.DetachAllFromArena(arena))
                             {
                                 _configManager.CloseConfigFile(arena.Cfg);
                                 arena.Cfg = null;
@@ -1193,24 +1204,25 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IModuleManager mm,
-            ILogManager log,
-            IPlayerData playerData,
-            INetwork net,
             IConfigManager configManager,
+            ILogManager logManager,
             IMainloop mainloop,
-            IMainloopTimer mainloopTimer, 
+            IMainloopTimer mainloopTimer,
+            IModuleManager moduleManager,
+            INetwork network,
+            IObjectPoolManager objectPoolManager,
+            IPlayerData playerData,
             IServerTimer serverTimer)
         {
             Broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
-            _logManager = log ?? throw new ArgumentNullException(nameof(log));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
-            //_chatnet = 
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+            _moduleManager = moduleManager ?? throw new ArgumentNullException(nameof(moduleManager));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
             _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
@@ -1218,10 +1230,11 @@ namespace SS.Core.Modules
             IArenaManager amc = this;
             _adkey = amc.AllocateArenaData<ArenaData>();
 
-            _net.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _net.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+            _network.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
+            _network.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
 
             // TODO: 
+            //_chatnet = Broker.GetInterface<IChatNet>();
             //if(_chatnet)
             //{
             //}
@@ -1260,8 +1273,8 @@ namespace SS.Core.Modules
             if (Broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerCoreToken) != 0)
                 return false;
 
-            _net.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _net.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+            _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
+            _network.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
 
             // TODO: 
             //if(_chatnet)

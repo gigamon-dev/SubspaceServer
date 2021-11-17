@@ -26,7 +26,7 @@ namespace SS.Core.Modules
         private class ArenaData
         {
             public ExtendedLvl Lvl = null;
-            public readonly ReaderWriterLockSlim Lock = new ReaderWriterLockSlim();
+            public readonly ReaderWriterLockSlim Lock = new();
         }
 
         private int adKey;
@@ -471,7 +471,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;
@@ -482,8 +482,30 @@ namespace SS.Core.Modules
             if (action == ArenaAction.PreCreate)
             {
                 _arenaManager.HoldArena(arena);
-                _mainloop.QueueMainWorkItem(MainloopWork_ActionActionWork, arena);
-                
+
+                try
+                {
+                    // load the level asynchronously
+                    ExtendedLvl lvl = await LoadMapAsync(arena).ConfigureAwait(false);
+
+                    // Note: The await is purposely not within the lock
+                    // since the lock/unlock has to be performed on the same thread.
+
+                    ad.Lock.EnterWriteLock();
+
+                    try
+                    {
+                        ad.Lvl = lvl;
+                    }
+                    finally
+                    {
+                        ad.Lock.ExitWriteLock();
+                    }
+                }
+                finally
+                {
+                    _arenaManager.UnholdArena(arena);
+                }
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -500,33 +522,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void MainloopWork_ActionActionWork(Arena arena)
-        {
-            if (arena == null)
-                return;
-
-            if (arena[adKey] is not ArenaData ad)
-                return;
-
-            try
-            {
-                lock (ad.Lock)
-                {
-                    ad.Lvl = null;
-
-                    if (arena.Status < ArenaState.Running)
-                    {
-                        ad.Lvl = LoadMap(arena);
-                    }
-                }
-            }
-            finally
-            {
-                _arenaManager.UnholdArena(arena);
-            }
-        }
-
-        private ExtendedLvl LoadMap(Arena arena)
+        private async Task<ExtendedLvl> LoadMapAsync(Arena arena)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
@@ -538,7 +534,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    lvl = new ExtendedLvl(path);
+                    lvl = await Task.Run(() => new ExtendedLvl(path)).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
