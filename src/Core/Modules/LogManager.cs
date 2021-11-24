@@ -10,7 +10,7 @@ using System.Threading;
 namespace SS.Core.Modules
 {
     [CoreModuleInfo]
-    public class LogManager : IModule, IModuleLoaderAware, ILogManager
+    public sealed class LogManager : IModule, IModuleLoaderAware, ILogManager, IDisposable
     {
         private ComponentBroker _broker;
         private IObjectPoolManager _objectPoolManager;
@@ -25,22 +25,30 @@ namespace SS.Core.Modules
 
         private void LoggingThread()
         {
-            LogEntry logEntry;
-
             while (!_logQueue.IsCompleted)
             {
-                try
-                {
-                    logEntry = _logQueue.Take();
-                }
-                catch (InvalidOperationException)
-                {
-                    break;
-                }
+                if (!_logQueue.TryTake(out LogEntry logEntry, Timeout.Infinite))
+                    continue;
 
                 try
                 {
                     LogCallback.Fire(_broker, logEntry);
+                }
+                catch (Exception ex)
+                {
+                    StringBuilder sb = _stringBuilderPool.Get();
+
+                    try
+                    {
+                        sb.Append($"E <{nameof(LogManager)}> An exception was thrown when firing the Log callback. " +
+                            $"This indicates a problem in one of the logging modules that needs to be investigated. {ex}");
+
+                        Console.Error.WriteLine(sb);
+                    }
+                    finally
+                    {
+                        _stringBuilderPool.Return(sb);
+                    }
                 }
                 finally
                 {
@@ -599,5 +607,10 @@ namespace SS.Core.Modules
         ObjectPool<StringBuilder> ILogManager.StringBuilderPool => _objectPoolManager.StringBuilderPool;
 
         #endregion
+
+        public void Dispose()
+        {
+            _logQueue.Dispose();
+        }
     }
 }
