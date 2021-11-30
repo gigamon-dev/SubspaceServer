@@ -1,22 +1,23 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct TurretKickoffPacket
+    public struct S2C_WhoAmI
     {
-        public readonly byte Type;
-        private readonly short playerId;
+        public byte Type;
+        private short playerId;
 
         public short PlayerId
         {
             get { return LittleEndianConverter.Convert(playerId); }
+            set { playerId = LittleEndianConverter.Convert(playerId); }
         }
 
-        public TurretKickoffPacket(short playerId)
+        public S2C_WhoAmI(short playerId)
         {
-            Type = (byte)S2CPacketType.TurretKickoff;
+            Type = (byte)S2CPacketType.WhoAmI;
             this.playerId = LittleEndianConverter.Convert(playerId);
         }
     }

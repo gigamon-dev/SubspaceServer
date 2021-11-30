@@ -1,7 +1,7 @@
 ﻿using Ionic.Zlib;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -281,7 +281,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            MapFilenamePacket mf = new MapFilenamePacket();
+            S2C_MapFilename mf = new S2C_MapFilename();
             mf.Initialize();
 
             int len = 0;

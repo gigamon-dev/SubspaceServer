@@ -1,7 +1,7 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ReliableHeader

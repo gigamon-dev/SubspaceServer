@@ -2,7 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.Billing
+namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2B_ServerConnect

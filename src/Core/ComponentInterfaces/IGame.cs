@@ -1,8 +1,5 @@
-﻿using System;
+﻿using SS.Packets.Game;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Core.Packets;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -128,7 +125,7 @@ namespace SS.Core.ComponentInterfaces
         bool HasLock(Arena arena);
 
         // TODO: more
-        void FakePosition(Player p, ref C2SPositionPacket pos, int len);
+        void FakePosition(Player p, ref C2S_PositionPacket pos, int len);
         void FakeKill(Player killer, Player killed, short pts, short flags);
 
         /// <summary>

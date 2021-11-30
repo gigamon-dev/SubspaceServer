@@ -1,16 +1,16 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.C2S
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct SetFreqPacket
+    public readonly struct C2S_SetFreq
     {
         public static readonly int Length;
 
-        static SetFreqPacket()
+        static C2S_SetFreq()
         {
-            Length = Marshal.SizeOf<SetFreqPacket>();
+            Length = Marshal.SizeOf<C2S_SetFreq>();
         }
 
         public readonly byte Type;
@@ -21,7 +21,7 @@ namespace SS.Core.Packets.C2S
             get { return LittleEndianConverter.Convert(freq); }
         }
 
-        public SetFreqPacket(short freq)
+        public C2S_SetFreq(short freq)
         {
             Type = (byte)C2SPacketType.SetFreq;
             this.freq = LittleEndianConverter.Convert(freq);

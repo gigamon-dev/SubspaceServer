@@ -1,10 +1,10 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ContinuumVersionPacket
+    public struct S2C_ContinuumVersion
     {
         public byte Type;
         private ushort contVersion;

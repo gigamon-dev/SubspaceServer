@@ -1,10 +1,10 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct WarpToPacket
+    public readonly struct S2C_WarpTo
     {
         public readonly byte Type;
         private readonly short x;
@@ -20,7 +20,7 @@ namespace SS.Core.Packets.S2C
             get { return LittleEndianConverter.Convert(y); }
         }
 
-        public WarpToPacket(short x, short y)
+        public S2C_WarpTo(short x, short y)
         {
             Type = (byte)S2CPacketType.WarpTo;
             this.x = LittleEndianConverter.Convert(x);

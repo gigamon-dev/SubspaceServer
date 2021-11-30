@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets;
+using SS.Packets.Game;
 using System;
 using System.Runtime.InteropServices;
 
@@ -73,7 +74,7 @@ namespace SS.Core.Modules
                             {
                                 if (opd.Status == BannerStatus.Good)
                                 {
-                                    S2CBanner packet = new((short)other.Id, in opd.Banner);
+                                    S2C_Banner packet = new((short)other.Id, in opd.Banner);
                                     _network.SendToOne(p, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityP1);
                                 }
                             }
@@ -89,7 +90,7 @@ namespace SS.Core.Modules
 
         private void Packet_Banner(Player p, byte[] data, int length)
         {
-            if (length != C2SBanner.Length)
+            if (length != C2S_Banner.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Banners), p, $"Bad C2S banner packet (length={length}).");
                 return;
@@ -109,7 +110,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref C2SBanner pkt = ref MemoryMarshal.AsRef<C2SBanner>(data);
+            ref C2S_Banner pkt = ref MemoryMarshal.AsRef<C2S_Banner>(data);
             SetBanner(p, in pkt.Banner, true);
             _logManager.LogP(LogLevel.Drivel, nameof(Banners), p, "Set banner.");
         }
@@ -169,7 +170,7 @@ namespace SS.Core.Modules
                         return;
 
                     // send to everyone
-                    S2CBanner packet = new((short)p.Id, pd.Banner);
+                    S2C_Banner packet = new((short)p.Id, pd.Banner);
                     _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
 
                     if (notify)

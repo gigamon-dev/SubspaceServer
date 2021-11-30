@@ -3,10 +3,10 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct ClientSettingsPacket
+    public unsafe struct S2C_ClientSettings
     {
         public byte Type;
 

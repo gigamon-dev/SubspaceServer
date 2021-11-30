@@ -1,16 +1,16 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct C2SBrick
+    public struct C2S_Brick
     {
         public static readonly int Length;
 
-        static C2SBrick()
+        static C2S_Brick()
         {
-            Length = Marshal.SizeOf<C2SBrick>();
+            Length = Marshal.SizeOf<C2S_Brick>();
         }
 
         public readonly byte Type;
@@ -29,7 +29,7 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2CBrick
+    public struct S2C_Brick
     {
         public readonly byte Type;
         private readonly short x1;
@@ -76,7 +76,7 @@ namespace SS.Core.Packets
             set => startTime = LittleEndianConverter.Convert(value);
         }
 
-        public S2CBrick(short x1, short y1, short x2, short y2, short freq, short brickId, uint startTime)
+        public S2C_Brick(short x1, short y1, short x2, short y2, short freq, short brickId, uint startTime)
         {
             Type = (byte)S2CPacketType.Brick;
             this.x1 = LittleEndianConverter.Convert(x1);

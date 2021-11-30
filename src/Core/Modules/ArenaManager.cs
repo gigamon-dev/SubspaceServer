@@ -1,7 +1,6 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
-using SS.Core.Packets.S2C;
+using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -153,7 +152,7 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send whoami packet
-                WhoAmIPacket whoAmI = new((short)player.Id);
+                S2C_WhoAmI whoAmI = new((short)player.Id);
                 _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                 
                 // send settings
@@ -227,7 +226,7 @@ namespace SS.Core.Modules
                 {
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
-                        WarpToPacket warpTo = new(sp.X, sp.Y);
+                        S2C_WarpTo warpTo = new(sp.X, sp.Y);
                         _network.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
                     }
                 }
@@ -317,7 +316,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    WhoAmIPacket whoAmI = new(0);
+                    S2C_WhoAmI whoAmI = new(0);
 
                     // first move playing players elsewhere
                     foreach (Player player in _playerData.PlayerList)
@@ -636,7 +635,7 @@ namespace SS.Core.Modules
 
             if (notify)
             {
-                PlayerLeavingPacket packet = new((short)player.Id);
+                S2C_PlayerLeaving packet = new((short)player.Id);
                 _network.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
                 //chatnet.SendToArena(
 
@@ -1343,13 +1342,13 @@ namespace SS.Core.Modules
             if (data == null)
                 return;
 
-            if (len != GoArenaPacket.LengthVIE && len != GoArenaPacket.LengthContinuum)
+            if (len != C2S_GoArena.LengthVIE && len != C2S_GoArena.LengthContinuum)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, $"Bad arena packet len={len}.");
                 return;
             }
 
-            ref GoArenaPacket go = ref MemoryMarshal.AsRef<GoArenaPacket>(data);
+            ref C2S_GoArena go = ref MemoryMarshal.AsRef<C2S_GoArena>(data);
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
@@ -1417,7 +1416,7 @@ namespace SS.Core.Modules
                 (ShipType)go.ShipType,
                 go.XRes,
                 go.YRes,
-                (len >= GoArenaPacket.LengthContinuum) && go.OptionalGraphics != 0,
+                (len >= C2S_GoArena.LengthContinuum) && go.OptionalGraphics != 0,
                 go.WavMsg != 0,
                 (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
                 spx,

@@ -1,10 +1,10 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct LoginResponsePacket
+    public struct S2C_LoginResponse
     {
         public byte Type;
         public byte Code;

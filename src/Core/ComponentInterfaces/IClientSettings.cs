@@ -1,4 +1,4 @@
-﻿using SS.Core.Packets;
+﻿using SS.Packets.Game;
 
 namespace SS.Core.ComponentInterfaces
 {

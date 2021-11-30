@@ -1,7 +1,8 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
-using SS.Core.Packets.Billing;
+using SS.Packets;
+using SS.Packets.Game;
+using SS.Packets.Billing;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;

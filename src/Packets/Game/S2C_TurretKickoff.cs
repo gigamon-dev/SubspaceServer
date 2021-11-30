@@ -1,18 +1,11 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.C2S
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct AttachToPacket
+    public readonly struct S2C_TurretKickoff
     {
-        public static readonly int Length;
-
-        static AttachToPacket()
-        {
-            Length = Marshal.SizeOf<AttachToPacket>();
-        }
-
         public readonly byte Type;
         private readonly short playerId;
 
@@ -21,9 +14,9 @@ namespace SS.Core.Packets.C2S
             get { return LittleEndianConverter.Convert(playerId); }
         }
 
-        public AttachToPacket(short playerId)
+        public S2C_TurretKickoff(short playerId)
         {
-            Type = (byte)C2SPacketType.AttachTo;
+            Type = (byte)S2CPacketType.TurretKickoff;
             this.playerId = LittleEndianConverter.Convert(playerId);
         }
     }

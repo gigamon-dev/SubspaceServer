@@ -1,7 +1,7 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -253,7 +253,7 @@ namespace SS.Core.Modules
         {
             Arena arena = p.Arena;
 
-            if (length != C2SBrick.Length)
+            if (length != C2S_Brick.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Bricks), p, $"Bad packet (length={length}).");
                 return;
@@ -268,7 +268,7 @@ namespace SS.Core.Modules
             if (arena[_adKey] is not ArenaBrickData abd)
                 return;
 
-            ref C2SBrick c2sBrick = ref MemoryMarshal.AsRef<C2SBrick>(data);
+            ref C2S_Brick c2sBrick = ref MemoryMarshal.AsRef<C2S_Brick>(data);
 
             IBrickHandler brickHandler = _broker.GetInterface<IBrickHandler>();
             if (brickHandler == null)
@@ -325,7 +325,7 @@ namespace SS.Core.Modules
 
             lock (abd.Lock)
             {
-                S2CBrick packet = new(x1, y1, x2, y2, freq, abd.CurrentBrickId++, ServerTick.Now);
+                S2C_Brick packet = new(x1, y1, x2, y2, freq, abd.CurrentBrickId++, ServerTick.Now);
 
                 // workaround for Continnum bug?
                 if (packet.StartTime <= abd.LastTime)
@@ -364,7 +364,7 @@ namespace SS.Core.Modules
 
             lock (abd.Lock)
             {
-                while (abd.Bricks.TryPeek(out S2CBrick packet) && now > packet.StartTime + abd.BrickTime)
+                while (abd.Bricks.TryPeek(out S2C_Brick packet) && now > packet.StartTime + abd.BrickTime)
                 {
                     //if (abd.CountBricksAsWalls)
                     //_mapData.DoBrick()
@@ -386,9 +386,9 @@ namespace SS.Core.Modules
             {
                 ExpireBricks(p.Arena);
 
-                foreach (S2CBrick packet in abd.Bricks)
+                foreach (S2C_Brick packet in abd.Bricks)
                 {
-                    S2CBrick copy = packet; // TODO: is there a way to avoid the copy?
+                    S2C_Brick copy = packet; // TODO: is there a way to avoid the copy?
                     _network.SendToOne(p, ref copy, NetSendFlags.Reliable);
                 }
             }
@@ -456,7 +456,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Queue of bricks that have been placed.
             /// </summary>
-            public readonly Queue<S2CBrick> Bricks = new();
+            public readonly Queue<S2C_Brick> Bricks = new();
 
             public readonly object Lock = new();
         }

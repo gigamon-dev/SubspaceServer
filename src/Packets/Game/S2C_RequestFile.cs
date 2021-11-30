@@ -2,13 +2,13 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     /// <summary>
     /// Packet that requests the client to send a file.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct RequestFilePacket
+    public unsafe struct S2C_RequestFile
     {
         public readonly byte Type;
 
@@ -32,7 +32,7 @@ namespace SS.Core.Packets.S2C
             set { FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameBytesLength - 1)); }
         }
 
-        public RequestFilePacket(string path, string filename)
+        public S2C_RequestFile(string path, string filename)
         {
             Type = (byte)S2CPacketType.RequestForFile;
             Path = path;

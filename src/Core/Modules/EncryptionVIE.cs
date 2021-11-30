@@ -1,5 +1,5 @@
 ﻿using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets;
 using System;
 using System.Net;
 using System.Runtime.InteropServices;

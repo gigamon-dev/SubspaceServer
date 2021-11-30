@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using SS.Core.Packets;
+﻿using SS.Packets.Game;
 
 namespace SS.Core.ComponentInterfaces
 {

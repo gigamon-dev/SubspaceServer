@@ -1,4 +1,4 @@
-﻿using SS.Core.Packets;
+﻿using SS.Packets;
 
 namespace SS.Core.ComponentInterfaces
 {

@@ -2,10 +2,10 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct MapFilenamePacket
+    public unsafe struct S2C_MapFilename
     {
         public const int MaxLvzFiles = 16;
         private const int MaxFiles = MaxLvzFiles + 1; // +1 for map file

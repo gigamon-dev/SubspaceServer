@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;

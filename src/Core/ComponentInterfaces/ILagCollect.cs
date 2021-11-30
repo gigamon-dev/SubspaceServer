@@ -77,7 +77,7 @@
         /// For collecting information when a client responds to a security check.
         /// </summary>
         /// <param name="player">The player the data is for.</param>
-        /// <param name="data">The data reported by the client in the <see cref="Packets.C2SSecurity"/> packet.</param>
+        /// <param name="data">The data reported by the client in the <see cref="Packets.C2S_Security"/> packet.</param>
         void ClientLatency(Player player, in ClientLatencyData data);
 
         /// <summary>

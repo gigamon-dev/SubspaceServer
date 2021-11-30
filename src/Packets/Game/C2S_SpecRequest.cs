@@ -1,16 +1,16 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.C2S
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct SpecRequestPacket
+    public readonly struct C2S_SpecRequest
     {
         public static readonly int Length;
 
-        static SpecRequestPacket()
+        static C2S_SpecRequest()
         {
-            Length = Marshal.SizeOf<SpecRequestPacket>();
+            Length = Marshal.SizeOf<C2S_SpecRequest>();
         }
 
         public readonly byte Type;
@@ -21,7 +21,7 @@ namespace SS.Core.Packets.C2S
             get {  return LittleEndianConverter.Convert(playerId); }
         }
 
-        public SpecRequestPacket(short playerId)
+        public C2S_SpecRequest(short playerId)
         {
             Type = (byte)C2SPacketType.SpecRequest;
             this.playerId = LittleEndianConverter.Convert(playerId);

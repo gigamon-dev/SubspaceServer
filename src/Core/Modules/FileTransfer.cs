@@ -1,10 +1,8 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
-using SS.Core.Packets.S2C;
+using SS.Packets.Game;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace SS.Core.Modules
@@ -115,7 +113,7 @@ namespace SS.Core.Modules
 
             ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
 
-            RequestFilePacket packet = new(path, "unused-field");
+            S2C_RequestFile packet = new(path, "unused-field");
             _network.SendToOne(p, ref packet, NetSendFlags.Reliable);
 
             _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, $"Requesting file '{path}'.");

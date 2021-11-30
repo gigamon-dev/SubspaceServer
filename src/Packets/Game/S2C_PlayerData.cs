@@ -2,10 +2,10 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct PlayerDataPacket
+    public unsafe struct S2C_PlayerData
     {
         private byte _type;
         public sbyte Ship;

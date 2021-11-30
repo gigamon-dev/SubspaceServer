@@ -1,16 +1,16 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct TimeSyncC2SPacket
+    public struct TimeSyncRequest
     {
         public static readonly int Length;
 
-        static TimeSyncC2SPacket()
+        static TimeSyncRequest()
         {
-            Length = Marshal.SizeOf<TimeSyncC2SPacket>();
+            Length = Marshal.SizeOf<TimeSyncRequest>();
         }
 
         public byte T1;

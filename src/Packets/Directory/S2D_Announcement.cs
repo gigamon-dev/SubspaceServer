@@ -2,16 +2,16 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.Directory
+namespace SS.Packets.Directory
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2DAnnouncement
+    public unsafe struct S2D_Announcement
     {
         private static readonly int LengthWithoutDescription;
 
-        static S2DAnnouncement()
+        static S2D_Announcement()
         {
-            LengthWithoutDescription = Marshal.SizeOf<S2DAnnouncement>() - DescriptionBytesLength;
+            LengthWithoutDescription = Marshal.SizeOf<S2D_Announcement>() - DescriptionBytesLength;
         }
 
         private uint ip;

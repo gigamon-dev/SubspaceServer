@@ -1,7 +1,7 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct BallPacket
@@ -49,10 +49,10 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct C2SPickupBall
+    public struct C2S_PickupBall
     {
         public static readonly int Length;
-        static C2SPickupBall() => Length = Marshal.SizeOf<C2SPickupBall>();
+        static C2S_PickupBall() => Length = Marshal.SizeOf<C2S_PickupBall>();
 
         public readonly byte Type;
 
@@ -61,7 +61,7 @@ namespace SS.Core.Packets
         private readonly uint time;
         public uint Time => LittleEndianConverter.Convert(time);
 
-        public C2SPickupBall(byte ballId, uint time)
+        public C2S_PickupBall(byte ballId, uint time)
         {
             Type = (byte)C2SPacketType.PickupBall;
             BallId = ballId;
@@ -70,10 +70,10 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct C2SGoal
+    public struct C2S_Goal
     {
         public static readonly int Length;
-        static C2SGoal() => Length = Marshal.SizeOf<C2SGoal>();
+        static C2S_Goal() => Length = Marshal.SizeOf<C2S_Goal>();
 
         public readonly byte Type;
 
@@ -85,7 +85,7 @@ namespace SS.Core.Packets
         private readonly short y;
         public short Y => LittleEndianConverter.Convert(y);
 
-        public C2SGoal(byte ballId, short x, short y)
+        public C2S_Goal(byte ballId, short x, short y)
         {
             Type = (byte)C2SPacketType.Goal;
             BallId = ballId;
@@ -95,10 +95,10 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2CGoal
+    public struct S2C_Goal
     {
         public static readonly int Length;
-        static S2CGoal() => Length = Marshal.SizeOf<S2CGoal>();
+        static S2C_Goal() => Length = Marshal.SizeOf<S2C_Goal>();
 
         public readonly byte Type;
 
@@ -108,7 +108,7 @@ namespace SS.Core.Packets
         private readonly int points;
         public int Points => LittleEndianConverter.Convert(points);
 
-        public S2CGoal(short freq, int points)
+        public S2C_Goal(short freq, int points)
         {
             Type = (byte)S2CPacketType.SoccerGoal;
             this.freq = LittleEndianConverter.Convert(freq);

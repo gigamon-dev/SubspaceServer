@@ -1,7 +1,6 @@
 ﻿using SS.Core.ComponentInterfaces;
-using SS.Core.Packets.Directory;
+using SS.Packets.Directory;
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -120,7 +119,7 @@ namespace SS.Core.Modules
                         {
                             Socket = socket,
                             ConnectAs = connectAs,
-                            Packet = new S2DAnnouncement()
+                            Packet = new S2D_Announcement()
                             {
                                 IP = 0, // always zero, the directory server must look at the IP that sent the datagram (perhaps a way to prevent spoofing entries)
                                 Port = (ushort)endPoint.Port,
@@ -272,7 +271,7 @@ namespace SS.Core.Modules
         {
             public Socket Socket { get; init; }
             public string ConnectAs { get; init; }
-            public S2DAnnouncement Packet;
+            public S2D_Announcement Packet;
         }
     }
 }

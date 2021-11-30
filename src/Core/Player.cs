@@ -1,7 +1,6 @@
 using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
-using SS.Core.Packets;
-using SS.Core.Packets.S2C;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
@@ -211,12 +210,12 @@ namespace SS.Core
     // TODO: Investigate thread safety. Possibly the attempt is at locking all player data in the PlayerData module? Though there are places that dont?
     public class Player : IPlayerTarget
     {
-        private PlayerDataPacket _packet;
+        private S2C_PlayerData _packet;
 
         /// <summary>
         /// The <see cref="S2CPacketType.PlayerEntering"/> packet that gets sent to clients.
         /// </summary>
-        public ref PlayerDataPacket Packet { get { return ref _packet; } } // TODO: maybe make this ref readonly and provide additional mutation methods/properties on the Player class?
+        public ref S2C_PlayerData Packet { get { return ref _packet; } } // TODO: maybe make this ref readonly and provide additional mutation methods/properties on the Player class?
 
         public ShipType Ship
         {

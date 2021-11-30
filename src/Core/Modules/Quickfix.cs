@@ -1,11 +1,9 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -48,7 +46,7 @@ namespace SS.Core.Modules
             this.log = log ?? throw new ArgumentNullException(nameof(log));
             this.net = net ?? throw new ArgumentNullException(nameof(net));
 
-            net.AddPacket(Packets.C2SPacketType.SettingChange, Packet_SettingChange);
+            net.AddPacket(C2SPacketType.SettingChange, Packet_SettingChange);
             commandManager.AddCommand("quickfix", Command_quickfix);
             commandManager.AddCommand("getsettings", Command_quickfix);
 
@@ -57,7 +55,7 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            net.RemovePacket(Packets.C2SPacketType.SettingChange, Packet_SettingChange);
+            net.RemovePacket(C2SPacketType.SettingChange, Packet_SettingChange);
             commandManager.RemoveCommand("quickfix", Command_quickfix);
             commandManager.RemoveCommand("getsettings", Command_quickfix);
             return true;

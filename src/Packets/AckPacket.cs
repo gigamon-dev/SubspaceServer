@@ -1,7 +1,7 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct AckPacket
@@ -24,8 +24,8 @@ namespace SS.Core.Packets
 
         public AckPacket(int seqNum)
         {
-            T1 = 0;
-            T2 = 4;
+            T1 = 0x00;
+            T2 = 0x04;
             this.seqNum = LittleEndianConverter.Convert(seqNum);
         }
     }

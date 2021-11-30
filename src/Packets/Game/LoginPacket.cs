@@ -2,7 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct LoginPacket

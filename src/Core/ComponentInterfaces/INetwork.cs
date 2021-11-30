@@ -1,4 +1,4 @@
-﻿using SS.Core.Packets;
+﻿using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
 using System.Net;

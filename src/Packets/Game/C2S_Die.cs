@@ -1,16 +1,16 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.C2S
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct DiePacket
+    public readonly struct C2S_Die
     {
         public static readonly int Length;
 
-        static DiePacket()
+        static C2S_Die()
         {
-            Length = Marshal.SizeOf<DiePacket>();
+            Length = Marshal.SizeOf<C2S_Die>();
         }
 
         public readonly byte Type;
@@ -27,7 +27,7 @@ namespace SS.Core.Packets.C2S
             get { return LittleEndianConverter.Convert(bounty); }
         }
 
-        public DiePacket(short killer, short bounty)
+        public C2S_Die(short killer, short bounty)
         {
             Type = (byte)C2SPacketType.Die;
             this.killer = LittleEndianConverter.Convert(killer);

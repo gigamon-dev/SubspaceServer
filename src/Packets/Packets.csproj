@@ -1,9 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-    <AssemblyName>SS.Core.Packets</AssemblyName>
-    <RootNamespace>SS.Core.Packets</RootNamespace>
+    <AssemblyName>SS.Packets</AssemblyName>
+    <RootNamespace>SS.Packets</RootNamespace>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

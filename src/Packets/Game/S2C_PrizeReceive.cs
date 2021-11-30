@@ -1,10 +1,10 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct PrizeReceivePacket
+    public readonly struct S2C_PrizeReceive
     {
         public readonly byte Type;
         private readonly short count;
@@ -20,7 +20,7 @@ namespace SS.Core.Packets.S2C
             get { return (Prize)LittleEndianConverter.Convert(prize); }
         }
 
-        public PrizeReceivePacket(short count, Prize prize)
+        public S2C_PrizeReceive(short count, Prize prize)
         {
             Type = (byte)S2CPacketType.PrizeRecv;
             this.count = LittleEndianConverter.Convert(count);

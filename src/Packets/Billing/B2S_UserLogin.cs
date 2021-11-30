@@ -2,7 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.Billing
+namespace SS.Packets.Billing
 {
     public enum B2SUserLoginResult : byte
     {

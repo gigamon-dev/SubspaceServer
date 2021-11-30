@@ -2,17 +2,17 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct GoArenaPacket
+    public unsafe struct C2S_GoArena
     {
         public static readonly int LengthVIE;
         public static readonly int LengthContinuum;
 
-        static GoArenaPacket()
+        static C2S_GoArena()
         {
-            LengthContinuum = Marshal.SizeOf<GoArenaPacket>();
+            LengthContinuum = Marshal.SizeOf<C2S_GoArena>();
             LengthVIE = LengthContinuum - 1;
         }
 
@@ -54,7 +54,7 @@ namespace SS.Core.Packets
             init => ArenaNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ArenaNameBytesLength - 1));
         }
 
-        public GoArenaPacket(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()
+        public C2S_GoArena(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()
         {
             Type = (byte)C2SPacketType.GotoArena;
             ShipType = shipType;

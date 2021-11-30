@@ -1,6 +1,6 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -774,7 +774,7 @@ namespace SS.Core.Modules
             }
             else if (player.IsStandard)
             {
-                LoginResponsePacket lr = new();
+                S2C_LoginResponse lr = new();
                 lr.Initialize();
                 lr.Code = (byte)auth.Code;
                 lr.DemoData = auth.DemoData ? (byte)1 : (byte)0;
@@ -782,7 +782,7 @@ namespace SS.Core.Modules
 
                 if (player.Type == ClientType.Continuum)
                 {
-                    ContinuumVersionPacket pkt = new();
+                    S2C_ContinuumVersion pkt = new();
                     pkt.Type = (byte)S2CPacketType.ContVersion;
                     pkt.ContVersion = ClientVersion_Cont;
                     pkt.Checksum = _continuumChecksum;

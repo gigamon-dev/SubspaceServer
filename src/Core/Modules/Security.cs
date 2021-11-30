@@ -1,6 +1,6 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -81,7 +81,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// The packet to send to players.
         /// </summary>
-        private S2CSecurity packet;
+        private S2C_Security packet;
 
         /// <summary>
         /// The continuum exe checksum from <see cref="scrty"/>.
@@ -485,7 +485,7 @@ namespace SS.Core.Modules
             if (data == null)
                 return;
 
-            if (length < 0 || length < C2SSecurity.Length)
+            if (length < 0 || length < C2S_Security.Length)
             {
                 if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                 {
@@ -515,7 +515,7 @@ namespace SS.Core.Modules
             if (arena[adKey] is not ArenaData ad)
                 return;
 
-            ref C2SSecurity pkt = ref MemoryMarshal.AsRef<C2SSecurity>(new Span<byte>(data, 0, length));
+            ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(new Span<byte>(data, 0, length));
 
             lock (lockObj)
             {

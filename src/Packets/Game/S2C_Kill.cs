@@ -1,10 +1,10 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct KillPacket
+    public readonly struct S2C_Kill
     {
         public readonly byte Type;
         public readonly byte Green;
@@ -33,7 +33,7 @@ namespace SS.Core.Packets.S2C
             get { return LittleEndianConverter.Convert(flags); }
         }
 
-        public KillPacket(Prize green, short killer, short killed, short bounty, short flags)
+        public S2C_Kill(Prize green, short killer, short killed, short bounty, short flags)
         {
             Type = (byte)S2CPacketType.Kill;
             Green = (byte)green;

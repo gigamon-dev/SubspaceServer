@@ -1,5 +1,4 @@
-﻿using SS.Core.Packets;
-using SS.Core.Packets.S2C;
+﻿using SS.Packets.Game;
 using SS.Utilities;
 using System;
 
@@ -108,8 +107,8 @@ namespace SS.Core.ComponentInterfaces
                 if (string.IsNullOrWhiteSpace(value))
                     throw new ArgumentException("Cannot be null or white-space.", nameof(value));
 
-                if (StringUtils.DefaultEncoding.GetByteCount(value) > PlayerDataPacket.NameBytesLength) // null-terminator not required
-                    throw new ArgumentException($"Does not fit into {PlayerDataPacket.NameBytesLength} bytes when encoded.", nameof(value));
+                if (StringUtils.DefaultEncoding.GetByteCount(value) > S2C_PlayerData.NameBytesLength) // null-terminator not required
+                    throw new ArgumentException($"Does not fit into {S2C_PlayerData.NameBytesLength} bytes when encoded.", nameof(value));
 
                 _sendName = value;
             }

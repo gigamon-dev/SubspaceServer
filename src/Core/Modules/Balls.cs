@@ -1,7 +1,7 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Runtime.InteropServices;
@@ -280,7 +280,7 @@ namespace SS.Core.Modules
 
         private void Packet_PickupBall(Player p, byte[] data, int length)
         {
-            if (length != C2SPickupBall.Length)
+            if (length != C2S_PickupBall.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Balls), p, $"Bad ball pick up packet (length={length}.");
                 return;
@@ -299,7 +299,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref C2SPickupBall c2s = ref MemoryMarshal.AsRef<C2SPickupBall>(data);
+            ref C2S_PickupBall c2s = ref MemoryMarshal.AsRef<C2S_PickupBall>(data);
 
             if (p.Flags.NoFlagsBalls)
             {
@@ -473,7 +473,7 @@ namespace SS.Core.Modules
 
         private void Packet_Goal(Player p, byte[] data, int length)
         {
-            if (length != C2SGoal.Length)
+            if (length != C2S_Goal.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Balls), p, $"Bad ball goal packet (length={length}).");
                 return;
@@ -495,7 +495,7 @@ namespace SS.Core.Modules
             if (arena[_adKey] is not ArenaData ad)
                 return;
 
-            ref C2SGoal c2s = ref MemoryMarshal.AsRef<C2SGoal>(data);
+            ref C2S_Goal c2s = ref MemoryMarshal.AsRef<C2S_Goal>(data);
             int ballId = c2s.BallId;
 
             lock (ad.Lock)

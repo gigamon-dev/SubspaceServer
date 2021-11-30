@@ -2,7 +2,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     [Flags]
     public enum PlayerPositionStatus : byte
@@ -223,7 +223,7 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2CWeaponsPacket
+    public struct S2C_WeaponsPacket
     {
         /// <summary>
         /// 0x05
@@ -324,7 +324,7 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2CPositionPacket
+    public struct S2C_PositionPacket
     {
         /// <summary>
         /// 0x28
@@ -392,7 +392,7 @@ namespace SS.Core.Packets
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct C2SPositionPacket
+    public struct C2S_PositionPacket
     {
         /// <summary>
         /// 0x03

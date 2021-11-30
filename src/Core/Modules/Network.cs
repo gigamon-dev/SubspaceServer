@@ -1,6 +1,7 @@
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Buffers;
@@ -2687,18 +2688,18 @@ namespace SS.Core.Modules
 
             try
             {
-                if (buffer.NumBytes != TimeSyncC2SPacket.Length)
+                if (buffer.NumBytes != TimeSyncRequest.Length)
                     return;
 
                 ConnData conn = buffer.Conn;
                 if (conn == null)
                     return;
 
-                ref readonly TimeSyncC2SPacket cts = ref MemoryMarshal.AsRef<TimeSyncC2SPacket>(new ReadOnlySpan<byte>(buffer.Bytes, 0, buffer.NumBytes));
+                ref readonly TimeSyncRequest cts = ref MemoryMarshal.AsRef<TimeSyncRequest>(new ReadOnlySpan<byte>(buffer.Bytes, 0, buffer.NumBytes));
                 uint clientTime = cts.Time;
                 uint serverTime = ServerTick.Now;
 
-                TimeSyncS2CPacket ts = new();
+                TimeSyncResponse ts = new();
                 ts.Initialize(clientTime, serverTime);
 
                 lock (conn.olmtx)

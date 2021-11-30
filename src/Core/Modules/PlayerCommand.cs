@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
-using SS.Core.Packets;
+using SS.Packets;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Buffers.Binary;

@@ -1,6 +1,6 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Core.Packets;
+using SS.Packets.Game;
 using System;
 using System.Runtime.InteropServices;
 
@@ -8,7 +8,7 @@ namespace SS.Core.Modules
 {
     /// <summary>
     /// Module that manages the client-side settings.
-    /// Client-side settings are the settings sent to the client via a <see cref="ClientSettingsPacket"/> (includes ship settings and more).
+    /// Client-side settings are the settings sent to the client via a <see cref="S2C_ClientSettings"/> (includes ship settings and more).
     /// Settings are loaded from disk when an arena is loaded and when there is a config change.
     /// </summary>
     [CoreModuleInfo]
@@ -30,7 +30,7 @@ namespace SS.Core.Modules
 
         private class ArenaClientSettingsData
         {
-            public ClientSettingsPacket cs = new();
+            public S2C_ClientSettings cs = new();
 
             /// <summary>
             /// prizeweight partial sums. 1-28 are used for now, representing prizes 1 to 28.
@@ -196,7 +196,7 @@ namespace SS.Core.Modules
                 {
                     bool sendUpdated = _configManager.GetInt(arena.Cfg, "Misc", "SendUpdatedSettings", 1) != 0;
 
-                    ClientSettingsPacket old = ad.cs;
+                    S2C_ClientSettings old = ad.cs;
 
                     LoadSettings(ad, arena.Cfg);
 
@@ -278,7 +278,7 @@ namespace SS.Core.Modules
             if (ch == null)
                 return;
 
-            ref ClientSettingsPacket cs = ref ad.cs;
+            ref S2C_ClientSettings cs = ref ad.cs;
 
             cs.Type = (byte)S2CPacketType.Settings;
             cs.BitSet.ExactDamage = _configManager.GetInt(ch, "Bullet", "ExactDamage", 0) != 0;

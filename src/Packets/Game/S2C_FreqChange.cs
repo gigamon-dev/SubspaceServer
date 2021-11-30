@@ -1,15 +1,15 @@
 ﻿using SS.Utilities;
 using System.Runtime.InteropServices;
 
-namespace SS.Core.Packets.S2C
+namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct ShipChangePacket
+    public readonly struct S2C_FreqChange
     {
         public readonly byte Type;
-        public readonly sbyte Ship;
         private readonly short playerId;
         private readonly short freq;
+        private readonly byte dummy; // additional byte which always is set to 0xFF
 
         public readonly short PlayerId
         {
@@ -21,12 +21,12 @@ namespace SS.Core.Packets.S2C
             get { return LittleEndianConverter.Convert(freq); }
         }
 
-        public ShipChangePacket(sbyte ship, short playerId, short freq)
+        public S2C_FreqChange(short playerId, short freq)
         {
-            Type = (byte)S2CPacketType.ShipChange;
-            Ship = ship;
+            Type = (byte)S2CPacketType.FreqChange;
             this.playerId = LittleEndianConverter.Convert(playerId);
             this.freq = LittleEndianConverter.Convert(freq);
+            dummy = 0xFF;
         }
     }
 }

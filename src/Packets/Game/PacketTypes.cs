@@ -1,4 +1,4 @@
-namespace SS.Core.Packets
+namespace SS.Packets.Game
 {
     public enum S2CPacketType : byte
     {

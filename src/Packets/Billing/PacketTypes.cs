@@ -1,4 +1,4 @@
-﻿namespace SS.Core.Packets.Billing
+﻿namespace SS.Packets.Billing
 {
     public enum S2BPacketType : byte
     {
