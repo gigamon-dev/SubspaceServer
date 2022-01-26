@@ -1626,7 +1626,7 @@ namespace SS.Core.Modules
 
                 if (pri == (int)BandwidthPriorities.Reliable)
                 {
-                    // move packets from RelOutList to outlist, grouped if possible
+                    // move packets from UnsentRelOutList to outlist, grouped if possible
                     while (conn.UnsentRelOutList.Count > 0)
                     {
                         if (outlist.Count > 0)
@@ -1747,6 +1747,9 @@ namespace SS.Core.Modules
                         conn.UnsentRelOutList.Remove(n1);
                         outlist.AddLast(n1);
                     }
+
+                    // include the "unsent" packets in the outgoing count too
+                    outlistlen += conn.UnsentRelOutList.Count;
                 }
 
                 LinkedListNode<SubspaceBuffer> nextNode;
