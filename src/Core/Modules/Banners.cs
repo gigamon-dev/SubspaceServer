@@ -7,6 +7,9 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality for banners (the small 12 x 8 bitmap image a player can choose to display next to their name).
+    /// </summary>
     public class Banners : IModule, IBanners
     {
         private ICapabilityManager _capabilityManager;
@@ -53,7 +56,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
-            if (action == PlayerAction.PreEnterArena)
+            if (action == PlayerAction.EnterArena)
             {
                 // A biller module could have set the player's banner prior to this.
                 CheckAndSendBanner(p, false, false);
@@ -70,7 +73,7 @@ namespace SS.Core.Modules
                             && other != p
                             && other[_pdKey] is PlayerData opd)
                         {
-                            lock (opd)
+                            lock (opd.Lock)
                             {
                                 if (opd.Status == BannerStatus.Good)
                                 {
@@ -96,7 +99,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            // This implicitly catches setting from pre-playering states.
+            // This implicitly catches setting from pre-playing states.
             if (p.Arena == null)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Banners), p, $"Tried to set a banner from outside an arena.");
@@ -166,7 +169,7 @@ namespace SS.Core.Modules
                 if (pd.Status == BannerStatus.Good)
                 {
                     Arena arena = p.Arena;
-                    if (arena == null) // This can be null if the banner is from a biller module, and we'll come back later in the PlayerActionCallabck to send it.
+                    if (arena == null) // This can be null if the banner is from a biller module, and we'll come back later in the PlayerActionCallback to send it.
                         return;
 
                     // send to everyone
