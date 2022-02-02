@@ -9,6 +9,30 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality for bricks.
+    /// </summary>
+    /// <remarks>
+    /// Bricks are the temporary walls that can be placed onto the map which are assigned to a team, 
+    /// such that players on that team can pass through it, but players on other teams are blocked.
+    /// 
+    /// <para>
+    /// Normally, bricks are prizes given to players, which can be used/placed at their current location.
+    /// To do this, the client sends a request (0x1C) to place a brick and the server then decides the 
+    /// location to actually place it.  This is usually determined using the x and y coordinates from 
+    /// the request, but that is not necessary; the server can choose do what it wants, even ingore the 
+    /// request if it so chooses.
+    /// </para>
+    /// 
+    /// <para>
+    /// Since brick placement is server controlled, bricks have found other uses as well, such as: 
+    /// <list type="bullet">
+    /// <item>server controlled walls to resize the play area on a map</item>
+    /// <item>server controlled 'doors' that can trigger on some event</item>
+    /// <item>a way for the server to write text (see the 'brickwriter' module in ASSS)</item>
+    /// </list>
+    /// </para>
+    /// </remarks>
     public class Bricks : IModule, IBrickManager, IBrickHandler
     {
         private ComponentBroker _broker;
@@ -20,6 +44,7 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPrng _prng;
+        private InterfaceRegistrationToken _iBrickManagerToken;
         private InterfaceRegistrationToken _iBrickHandlerToken;
 
         private int _adKey;
@@ -55,12 +80,15 @@ namespace SS.Core.Modules
 
             _network.AddPacket(C2SPacketType.Brick, Packet_Brick);
 
+            _iBrickManagerToken = broker.RegisterInterface<IBrickManager>(this);
             _iBrickHandlerToken = broker.RegisterInterface<IBrickHandler>(this);
+
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
+            broker.UnregisterInterface<IBrickHandler>(ref _iBrickManagerToken);
             broker.UnregisterInterface<IBrickHandler>(ref _iBrickHandlerToken);
 
             _network.RemovePacket(C2SPacketType.Brick, Packet_Brick);
@@ -395,8 +423,11 @@ namespace SS.Core.Modules
         }
 
         // Default implemention of IBrickHandler which fires the DoBrickModeCallback.
-        // The callback allows other modules to add handling for new brick modes server-wide, rather than having to override IBrickHandler for particular arenas.
-        // I did, however, change DoBrickModeCallback to take Player instead of Arena since my desired implementation needed to access more than player rotation.
+        // The callback provides a way for other modules to add new brick modes, without affecting existing ones.
+        // It is a cleaner alternative than than having to override IBrickHandler.
+        // NOTE: compared to ASSS, the callback passes Player instead of Arena.
+        // This means more information about the player can be accessed (including rotation, velocity, etc.).
+        // Of course, the arena can be accessed through the player too.
         void IBrickHandler.HandleBrick(Player p, short x, short y, in ICollection<Brick> bricks)
         {
             if (p == null)

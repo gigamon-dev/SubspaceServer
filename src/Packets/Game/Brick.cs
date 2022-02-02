@@ -28,6 +28,13 @@ namespace SS.Packets.Game
         }
     }
 
+    /// <summary>
+    /// Server to client brick data.
+    /// </summary>
+    /// <remarks>
+    /// This packet can support sending data for multiple bricks at once. Though, ASSS and this server sends bricks one by one in their own packet.
+    /// TODO: Test sending multiple bricks in 1 packet. The format would be: [Type][Brick0][Brick1]...[BrickN]
+    /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_Brick
     {
