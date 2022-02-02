@@ -23,7 +23,7 @@ namespace SS.Core.Modules
     public class Core : IModule, IAuth
     {
         private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
+        private IArenaManagerInternal _arenaManagerInternal;
         private ICapabilityManager _capabiltyManager;
         //private IChatNet _chatnet;
         private IConfigManager _configManager;
@@ -108,9 +108,9 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(
+        internal bool Load(
             ComponentBroker broker,
-            IArenaManager arenaManager,
+            IArenaManagerInternal arenaManagerInternal,
             ICapabilityManager capabilityManager,
             IConfigManager configManager,
             ILogManager logManager,
@@ -120,7 +120,7 @@ namespace SS.Core.Modules
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _arenaManagerInternal = arenaManagerInternal ?? throw new ArgumentNullException(nameof(arenaManagerInternal));
             _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -394,7 +394,7 @@ namespace SS.Core.Modules
                             stats.SendUpdates(player);
                         }*/
 
-                        _arenaManager.SendArenaResponse(player);
+                        _arenaManagerInternal.SendArenaResponse(player);
                         player.Flags.SentPositionPacket = false;
                         player.Flags.SentWeaponPacket = false;
 
@@ -839,7 +839,7 @@ namespace SS.Core.Modules
             pdata.AuthData = null;
         }
 
-#region IAuth Members
+        #region IAuth Members
 
         void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
@@ -857,7 +857,7 @@ namespace SS.Core.Modules
             done(p, auth);
         }
 
-#endregion
+        #endregion
 
         private bool MainloopTimer_SendKeepAlive()
         {

@@ -835,12 +835,11 @@ namespace SS.Core
                 // Find the Load method
                 //
 
-                MethodInfo[] methods = ModuleType.GetMethods();
+                MethodInfo[] methods = ModuleType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
                 var filteredMethods = (
                     from method in methods
-                    where method.IsPublic
-                        && !method.IsStatic
+                    where !method.IsStatic
                         && !method.IsGenericMethod
                         && method.ReturnType == returnType
                         && string.Equals(method.Name, "Load", StringComparison.Ordinal)

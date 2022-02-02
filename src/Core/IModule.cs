@@ -6,7 +6,9 @@ namespace SS.Core
 {
     /// <summary>
     /// Interface for modules to implement.
+    /// </summary>
     /// 
+    /// <remarks>
     /// <para>
     /// A module needs to include the following:
     /// <list type="number">
@@ -18,7 +20,11 @@ namespace SS.Core
     /// <see cref="ModuleManager"/> (the normal case).
     /// </item>
     /// <item>
-    /// It needs to have a method named "Load".
+    /// It needs to have an method named "Load".
+    /// <para>
+    /// The method must be an instance method, and it need not be public.
+    /// </para>
+    /// 
     /// <para>
     /// The Load method must have a return type of <see cref="bool"/>. Returning true means success, false 
     /// indiciates failure.
@@ -48,7 +54,9 @@ namespace SS.Core
     /// </para>
     /// </item>
     /// </list>
+    /// </para>
     /// 
+    /// <para>
     /// Module life cycle:
     /// <list type="number">
     /// <item>Load(<see cref="ComponentBroker"/>, [&lt;component interface&gt;, ...]) method</item>
@@ -59,7 +67,7 @@ namespace SS.Core
     /// <item><see cref="IModule.Unload(ComponentBroker)"/></item>
     /// </list>
     /// </para>
-    /// </summary>
+    /// </remarks>
     public interface IModule
     {
         /// <summary>

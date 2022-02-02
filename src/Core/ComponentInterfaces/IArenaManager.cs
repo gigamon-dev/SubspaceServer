@@ -27,15 +27,6 @@ namespace SS.Core.ComponentInterfaces
         Dictionary<string, Arena>.ValueCollection ArenaList { get; } // ideally this would be IEnumerable<Arena>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
 
         /// <summary>
-        /// Tells the player that he's entering an arena.
-        /// This should only be called at the appropriate time from the core module.
-        /// 
-        /// TODO: move this into a separate interface
-        /// </summary>
-        /// <param name="player"></param>
-        void SendArenaResponse(Player player);
-
-        /// <summary>
         /// Tells the player that he's leaving an arena.
         /// This should only be called at the appropriate time from the core module.
         /// 
@@ -125,5 +116,20 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena"></param>
         void UnholdArena(Arena arena);
+    }
+
+    /// <summary>
+    /// Interface to be used internally by the <see cref="Modules.Core"/> module.
+    /// </summary>
+    internal interface IArenaManagerInternal : IArenaManager
+    {
+        /// <summary>
+        /// Tells the player that they're entering an arena.
+        /// </summary>
+        /// <remarks>
+        /// This should only be called at the appropriate time from the <see cref="Modules.Core"/> module.
+        /// </remarks>
+        /// <param name="player">The player to send data to.</param>
+        void SendArenaResponse(Player player);
     }
 }

@@ -15,7 +15,7 @@ namespace SS.Core.Modules
     /// the states they are in, transitions between states, movement of players between arenas, etc.
     /// </summary>
     [CoreModuleInfo]
-    public class ArenaManager : IModule, IArenaManager, IModuleLoaderAware
+    public class ArenaManager : IModule, IArenaManager, IArenaManagerInternal, IModuleLoaderAware
     {
         /// <summary>
         /// the read-write lock for the global arena list
@@ -41,7 +41,8 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private IServerTimer _serverTimer;
         //private IPersist _persist;
-        private InterfaceRegistrationToken _iArenaManagerCoreToken;
+        private InterfaceRegistrationToken _iArenaManagerToken;
+        private InterfaceRegistrationToken _iArenaManagerInternalToken;
 
         // for managing per arena data
         private readonly ReaderWriterLock _perArenaDataLock = new();
@@ -120,7 +121,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        #region IArenaManager Members
+        #region IArenaManager and IArenaManagerInternal Members
 
         void IArenaManager.Lock()
         {
@@ -134,7 +135,7 @@ namespace SS.Core.Modules
 
         Dictionary<string, Arena>.ValueCollection IArenaManager.ArenaList => _arenaDictionary.Values;
 
-        void IArenaManager.SendArenaResponse(Player player)
+        void IArenaManagerInternal.SendArenaResponse(Player player)
         {
             if (player == null)
                 return;
@@ -213,12 +214,16 @@ namespace SS.Core.Modules
                     }
                 }
 
-                // send brick clear and finisher
                 Span<byte> span = stackalloc byte[1];
 
-                span[0] = (byte)S2CPacketType.Brick;
-                _network.SendToOne(player, span, NetSendFlags.Reliable);
+                // ASSS sends what it calls a "brick clear" packet here. Which is an empty, 1 byte brick packet (0x21).
+                // However, there actually is no such mechanism to clear bricks on the client side. (would be nice to have though)
+                // ASSS probably included it to emulate what subgame sends when there are no active bricks.
+                // The Bricks module sends brick data on PlayerAction.EnterArena, which happens immediately after this method is called.
+                //span[0] = (byte)S2CPacketType.Brick;
+                //_network.SendToOne(player, span, NetSendFlags.Reliable);
 
+                // send entering arena finisher
                 span[0] = (byte)S2CPacketType.EnteringArena;
                 _network.SendToOne(player, span, NetSendFlags.Reliable);
 
@@ -1243,7 +1248,8 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(MainloopTimer_DoArenaMaintenance, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, null);
             _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
 
-            _iArenaManagerCoreToken = Broker.RegisterInterface<IArenaManager>(this);
+            _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
+            _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
 
             return true;
         }
@@ -1269,7 +1275,10 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (Broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerCoreToken) != 0)
+            if (Broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerToken) != 0)
+                return false;
+
+            if (Broker.UnregisterInterface<IArenaManagerInternal>(ref _iArenaManagerInternalToken) != 0)
                 return false;
 
             _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
