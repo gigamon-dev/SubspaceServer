@@ -360,38 +360,36 @@ namespace SS.Utilities
                 encoding = DefaultEncoding;
 
             if (encoding.IsSingleByte)
-                return (str.Length <= byteLimit) ? str : str.Slice(0, byteLimit);
+                return (str.Length <= byteLimit) ? str : str[..byteLimit];
 
-            // TODO: Verify that this works for multi-byte encodings.
-            // Subspace uses a single-byte encoding, so this is just here for completeness. However, I have not tried it and it surely is not an optimal solution.
+            // Subspace uses a single-byte encoding, so this is just here for completeness.
 
             // multi-byte encoding
-            while (str.Length > 0)
+            if (encoding.GetByteCount(str) <= byteLimit)
+                return str; // the simple case, it already fits
+
+            // it doesn't fit, find up to which displayable character (grapheme cluster / text element) will fit
+            ReadOnlySpan<char> remaining = str;
+            int okLength = 0;
+            int byteCount = 0;
+
+            while (byteCount < byteLimit)
             {
-                if (DefaultEncoding.GetByteCount(str) <= byteLimit)
-                    return str;
+                int nextLength = StringInfo.GetNextTextElementLength(remaining);
+                if (nextLength == 0)
+                    break;
 
-                // chop off the last displayable character (grapheme)
+                int nextByteCount = encoding.GetByteCount(remaining[..nextLength]);
+                if (byteCount + nextByteCount > byteLimit)
+                    break;
 
-                /*
-                // implementation using ParseCombiningCharacters
-                int[] indexes = StringInfo.ParseCombiningCharacters(str.ToString()); // ew, no span overload (string allocation), also array allocation
-                if (indexes.Length == 0)
-                    return ReadOnlySpan<char>.Empty; // getting to here means the string is probably not well-formed
-
-                str = str.Slice(0, indexes[^1]);
-                */
-
-                var enumerator = StringInfo.GetTextElementEnumerator(str.ToString()); // ew, no span overload (string allocation), also object allocation (enumerator is a class)
-                int index = 0;
-
-                while (enumerator.MoveNext())
-                    index = enumerator.ElementIndex;
-
-                str = str.Slice(0, index);
+                // the next text element fits
+                okLength += nextLength;
+                byteCount += nextByteCount;
+                remaining = remaining[nextLength..];
             }
 
-            return str;
+            return str[..okLength];
         }
 
         #endregion
