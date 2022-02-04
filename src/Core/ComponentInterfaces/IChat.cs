@@ -81,44 +81,32 @@ namespace SS.Core.ComponentInterfaces
     {
         private BitVector32 _maskVector;
 
-        public bool IsClear
+        public ChatMask(int data)
         {
-            get { return _maskVector.Data == 0; }
+            _maskVector = new(data);
         }
 
-        public bool IsRestricted(ChatMessageType messageType)
+        public static ChatMask operator |(ChatMask a, ChatMask b) => new ChatMask(a._maskVector.Data | b._maskVector.Data);
+
+        public bool IsClear => _maskVector.Data == 0;
+
+        public bool IsRestricted(ChatMessageType messageType) => _maskVector[BitVector32Masks.GetMask((int)messageType)];
+
+        public bool IsAllowed(ChatMessageType messageType) => !IsRestricted(messageType);
+
+        public void SetRestricted(ChatMessageType messageType) => _maskVector[BitVector32Masks.GetMask((int)messageType)] = true;
+
+        public void SetAllowed(ChatMessageType messageType) => _maskVector[BitVector32Masks.GetMask((int)messageType)] = false;
+
+        public void Set(ChatMessageType messageType, bool isRestricted)
         {
-            return _maskVector[BitVector32Masks.GetMask((int)messageType)];
+            if (isRestricted)
+                SetRestricted(messageType);
+            else
+                SetAllowed(messageType);
         }
 
-        public bool IsAllowed(ChatMessageType messageType)
-        {
-            return !IsRestricted(messageType);
-        }
-
-        public void SetRestricted(ChatMessageType messageType)
-        {
-            _maskVector[BitVector32Masks.GetMask((int)messageType)] = true;
-        }
-
-        public void SetAllowed(ChatMessageType messageType)
-        {
-            _maskVector[BitVector32Masks.GetMask((int)messageType)] = false;
-        }
-
-        public void Combine(ChatMask chatMask)
-        {
-            for (int x = 0; x < 32; x++)
-            {
-                int mask = BitVector32Masks.GetMask(x);
-                _maskVector[mask] = _maskVector[mask] || chatMask._maskVector[mask];
-            }
-        }
-
-        public void Clear()
-        {
-            _maskVector = new BitVector32(0);
-        }
+        public void Clear() => _maskVector = new BitVector32(0);
     }
 
     public interface IChat : IComponentInterface
@@ -417,29 +405,38 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Gets the chat mask for an arena.
         /// </summary>
-        /// <param name="arena"></param>
-        /// <returns></returns>
+        /// <param name="arena">The arena to get the chat mask for.</param>
+        /// <returns>The chat mask.</returns>
         ChatMask GetArenaChatMask(Arena arena);
 
         /// <summary>
         /// Sets the chat mask for an arena.
         /// </summary>
-        /// <param name="arena"></param>
-        /// <param name="mask"></param>
+        /// <param name="arena">The arena to set the chat mask for.</param>
+        /// <param name="mask">The chat mask to set.</param>
         void SetArenaChatMask(Arena arena, ChatMask mask);
 
         /// <summary>
         /// Gets the chat mask for a player.
         /// </summary>
-        /// <param name="p"></param>
+        /// <param name="p">The player to get the chat mask for.</param>
+        /// <returns>The chat mask.</returns>
         ChatMask GetPlayerChatMask(Player p);
+
+        /// <summary>
+        /// Gets the chat mask for a player, including the remaining time for the mask.
+        /// </summary>
+        /// <param name="p">The player to get the chat mask for.</param>
+        /// <param name="mask">The chat mask.</param>
+        /// <param name="remaining">The remaining time on the mask. <see langword="null"/> means there is no expiration (valid until the next arena change).</param>
+        void GetPlayerChatMask(Player p, out ChatMask mask, out TimeSpan? remaining);
 
         /// <summary>
         /// Sets the chat mask for a player.
         /// </summary>
-        /// <param name="p">the player whose mask to modify</param>
-        /// <param name="mask">the new chat mask</param>
-        /// <param name="timeout">zero to set a session mask (valid until the next arena change), or a number of seconds for the mask to be valid</param>
+        /// <param name="p">The player to set the mask for.</param>
+        /// <param name="mask">The chat mask to set.</param>
+        /// <param name="timeout">Zero to set a session mask (valid until the next arena change), or a number of seconds for the mask to be valid.</param>
         void SetPlayerChatMask(Player p, ChatMask mask, int timeout);
 
         #endregion
@@ -447,8 +444,8 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// A utility function for sending lists of items in a chat message.
         /// </summary>
-        /// <param name="p"></param>
-        /// <param name="text"></param>
+        /// <param name="p">The player to send the message to.</param>
+        /// <param name="text">The message to send.</param>
         void SendWrappedText(Player p, string text);
 
         /// <summary>

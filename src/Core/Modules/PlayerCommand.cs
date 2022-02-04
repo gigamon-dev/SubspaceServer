@@ -119,6 +119,8 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("grplogin", Command_grplogin);
             _commandManager.AddCommand("listmod", Command_listmod);
             _commandManager.AddCommand("where", Command_where);
+            _commandManager.AddCommand("setcm", Command_setcm);
+            _commandManager.AddCommand("getcm", Command_getcm);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
             _commandManager.AddCommand("ballcount", Command_ballcount);
             _commandManager.AddCommand("giveball", Command_giveball);
@@ -168,6 +170,8 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("grplogin", Command_grplogin);
             _commandManager.RemoveCommand("listmod", Command_listmod);
             _commandManager.RemoveCommand("where", Command_where);
+            _commandManager.RemoveCommand("setcm", Command_setcm);
+            _commandManager.RemoveCommand("getcm", Command_getcm);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
             _commandManager.RemoveCommand("ballcount", Command_ballcount);
             _commandManager.RemoveCommand("giveball", Command_giveball);
@@ -1234,6 +1238,154 @@ namespace SS.Core.Modules
             else
             {
                 _chat.SendMessage(p, $"{name} {verb} not using a playable client.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Arena,
+            Args = "see description", 
+            Description = "Modifies the chat mask for the target player, or if no target, for the\n" +
+            "current arena. The arguments must all be of the form\n" +
+            "{(-|+)(pub|pubmacro|freq|nmefreq|priv|chat|modchat|all)} or {-t <seconds>}.\n" +
+            "A minus sign and then a word disables that type of chat, and a plus sign\n" +
+            "enables it. The special type {all} means to apply the plus or minus to\n" +
+            "all of the above types. {-t} lets you specify a timeout in seconds.\n" +
+            "The mask will be effective for that time, even across logouts.\n" +
+            "\n" +
+            "Examples:\n" +
+            " * If someone is spamming public macros: {:player:?setcm -pubmacro -t 600}\n" +
+            " * To disable all blue messages for this arena: {?setcm -pub -pubmacro}\n" +
+            " * An equivalent to *shutup: {:player:?setcm -all}\n" +
+            " * To restore chat to normal: {?setcm +all}\n" +
+            "\n" +
+            "Current limitations: You can't currently restrict a particular\n" +
+            "frequency. Leaving and entering an arena will remove a player's chat\n" +
+            "mask, unless it has a timeout.\n")]
+        private void Command_setcm(string command, string parameters, Player p, ITarget target)
+        {
+            ChatMask mask;
+
+            // get the current mask
+            if (target.Type == TargetType.Arena)
+            {
+                Arena arena = ((IArenaTarget)target).Arena;
+                mask = _chat.GetArenaChatMask(arena);
+            }
+            else if (target.Type == TargetType.Player)
+            {
+                Player targetPlayer = ((IPlayerTarget)target).Player;
+                mask = _chat.GetPlayerChatMask(targetPlayer);
+            }
+            else
+            {
+                _chat.SendMessage(p, "Bad target.");
+                return;
+            }
+
+            int timeout = 0;
+
+            // read the parameters, updating what's needed in the mask
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
+            {
+                bool all = false;
+
+                if (token[0] == '-' || token[0] == '+')
+                {
+                    bool isRestricted = token[0] == '-';
+                    ReadOnlySpan<char> chatType = token[1..];
+                    
+                    if (MemoryExtensions.Equals(chatType, "all", StringComparison.OrdinalIgnoreCase))
+                        all = true;
+
+                    if (all || MemoryExtensions.Equals(chatType, "pubmacro", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.PubMacro, isRestricted);
+
+                    if (all || MemoryExtensions.Equals(chatType, "pub", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.Pub, isRestricted);
+
+                    if (all || MemoryExtensions.Equals(chatType, "freq", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.Freq, isRestricted);
+
+                    if (all || MemoryExtensions.Equals(chatType, "nmefreq", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.EnemyFreq, isRestricted);
+
+                    if (all || MemoryExtensions.Equals(chatType, "priv", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.Private, isRestricted);
+
+                    if (all || MemoryExtensions.Equals(chatType, "chat", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.Chat, isRestricted);
+
+                    if (all || MemoryExtensions.Equals(chatType, "modchat", StringComparison.OrdinalIgnoreCase))
+                        mask.Set(ChatMessageType.ModChat, isRestricted);
+
+                    if (MemoryExtensions.Equals(token, "-time", StringComparison.OrdinalIgnoreCase)
+                        || MemoryExtensions.Equals(token, "-t", StringComparison.OrdinalIgnoreCase))
+                    {
+                        token = remaining.GetToken(' ', out remaining);
+                        if (token.Length > 0)
+                        {
+                            int.TryParse(token, out timeout);
+                        }
+                    }
+                }
+            }
+
+            // install the updated mask
+            if (target.Type == TargetType.Arena)
+            {
+                Arena arena = ((IArenaTarget)target).Arena;
+                _chat.SetArenaChatMask(arena, mask);
+            }
+            else if (target.Type == TargetType.Player)
+            {
+                Player targetPlayer = ((IPlayerTarget)target).Player;
+                _chat.SetPlayerChatMask(targetPlayer, mask, timeout);
+            }
+
+            // output the mask
+            Command_getcm("getcm", "", p, target);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Arena,
+            Args = null,
+            Description = "Prints out the chat mask for the target player, or if no target, for the\n" +
+            "current arena. The chat mask specifies which types of chat messages are\n" +
+            "allowed.")]
+        private void Command_getcm(string command, string parameters, Player p, ITarget target)
+        {
+            ChatMask mask;
+
+            if (target.Type == TargetType.Arena)
+            {
+                Arena arena = ((IArenaTarget)target).Arena;
+                mask = _chat.GetArenaChatMask(arena);
+
+                _chat.SendMessage(p, $"Arena {arena.Name}:" +
+                    $" {(mask.IsRestricted(ChatMessageType.Pub) ? '-' : '+')}pub" +
+                    $" {(mask.IsRestricted(ChatMessageType.PubMacro) ? '-' : '+')}pubmacro" +
+                    $" {(mask.IsRestricted(ChatMessageType.Freq) ? '-' : '+')}freq" +
+                    $" {(mask.IsRestricted(ChatMessageType.EnemyFreq) ? '-' : '+')}nmefreq" +
+                    $" {(mask.IsRestricted(ChatMessageType.Private) ? '-' : '+')}priv" +
+                    $" {(mask.IsRestricted(ChatMessageType.Chat) ? '-' : '+')}chat" +
+                    $" {(mask.IsRestricted(ChatMessageType.ModChat) ? '-' : '+')}modchat");
+            }
+            else if (target.Type == TargetType.Player)
+            {
+                Player targetPlayer = ((IPlayerTarget)target).Player;
+                _chat.GetPlayerChatMask(targetPlayer, out mask, out TimeSpan? remaining);
+
+                _chat.SendMessage(p, $"{targetPlayer.Name}:" +
+                    $" {(mask.IsRestricted(ChatMessageType.Pub) ? '-' : '+')}pub" +
+                    $" {(mask.IsRestricted(ChatMessageType.PubMacro) ? '-' : '+')}pubmacro" +
+                    $" {(mask.IsRestricted(ChatMessageType.Freq) ? '-' : '+')}freq" +
+                    $" {(mask.IsRestricted(ChatMessageType.EnemyFreq) ? '-' : '+')}nmefreq" +
+                    $" {(mask.IsRestricted(ChatMessageType.Private) ? '-' : '+')}priv" +
+                    $" {(mask.IsRestricted(ChatMessageType.Chat) ? '-' : '+')}chat" +
+                    $" {(mask.IsRestricted(ChatMessageType.ModChat) ? '-' : '+')}modchat" +
+                    $" -t {(remaining == null ? "no expiration (valid until arena change)" : $"{remaining.Value}")}");
             }
         }
 

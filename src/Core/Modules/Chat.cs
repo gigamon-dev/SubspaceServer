@@ -8,9 +8,26 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides chat functionality.
+    /// </summary>
+    /// <remarks>
+    /// This includes everything that a player can type including:
+    /// <list type="bullet">
+    /// <item>public messages</item>
+    /// <item>private messages</item>
+    /// <item>remote private messages</item>
+    /// <item>team messages</item>
+    /// <item>enemy team messages</item>
+    /// <item>chat channels</item>
+    /// <item>moderator chat</item>
+    /// <item>commands</item>
+    /// </list>
+    /// </remarks>
     [CoreModuleInfo]
     public class Chat : IModule, IChat
     {
@@ -87,31 +104,43 @@ namespace SS.Core.Modules
 
         private Config _cfg;
 
-        private int _cmkey;
-        private int _pmkey;
+        private int _adKey;
+        private int _pdKey;
 
-        private readonly object _playerMaskLock = new();
-
-        private class ArenaChatMask
+        private class ArenaData
         {
-            public ChatMask mask;
+            /// <summary>
+            /// The arena's chat mask.
+            /// </summary>
+            public ChatMask Mask;
+
+            public readonly ReaderWriterLockSlim Lock = new();
         }
 
-        private class PlayerChatMask
+        private class PlayerData
         {
-            public ChatMask mask;
+            /// <summary>
+            /// The player's chat mask.
+            /// </summary>
+            public ChatMask Mask;
 
             /// <summary>
-            /// null for a session long mask
+            /// When the mask expires.
+            /// <see langword="null"/> for a session long mask.
             /// </summary>
-            public DateTime? expires;
+            public DateTime? Expires;
 
             /// <summary>
-            /// a count of messages. this decays exponentially 50% per second
+            /// A count of messages. This decays exponentially 50% per second.
             /// </summary>
-            public int msgs;
+            public int MessageCount;
 
-            public DateTime lastCheck;
+            /// <summary>
+            /// When the <see cref="MessageCount"/> was last checked. Used to decay the count.
+            /// </summary>
+            public DateTime LastCheck;
+
+            public readonly object Lock = new();
         }
 
         #region IModule Members
@@ -148,8 +177,8 @@ namespace SS.Core.Modules
             _persist = broker.GetInterface<IPersist>();
             _obscene = broker.GetInterface<IObscene>();
 
-            _cmkey = _arenaManager.AllocateArenaData<ArenaChatMask>();
-            _pmkey = _playerData.AllocatePlayerData<PlayerChatMask>();
+            _adKey = _arenaManager.AllocateArenaData<ArenaData>();
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             //if(_persist != null)
                 //_persist.
@@ -181,8 +210,8 @@ namespace SS.Core.Modules
             //if(_persist != null)
                //_persist.
 
-            _arenaManager.FreeArenaData(_cmkey);
-            _playerData.FreePlayerData(_pmkey);
+            _arenaManager.FreeArenaData(_adKey);
+            _playerData.FreePlayerData(_pdKey);
 
             if (_persist != null)
                 _broker.ReleaseInterface(ref _persist);
@@ -561,12 +590,18 @@ namespace SS.Core.Modules
             if(arena == null)
                 return new ChatMask();
 
-            if (arena[_cmkey] is not ArenaChatMask am)
+            if (arena[_adKey] is not ArenaData ad)
                 return new ChatMask();
 
-            lock (_playerMaskLock)
+            ad.Lock.EnterReadLock();
+
+            try
             {
-                return am.mask;
+                return ad.Mask;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
             }
         }
 
@@ -575,12 +610,18 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_cmkey] is not ArenaChatMask am)
+            if (arena[_adKey] is not ArenaData ad)
                 return;
 
-            lock (_playerMaskLock)
+            ad.Lock.EnterWriteLock();
+
+            try
             {
-                am.mask = mask;
+                ad.Mask = mask;
+            }
+            finally
+            {
+                ad.Lock.ExitWriteLock();
             }
         }
 
@@ -589,12 +630,34 @@ namespace SS.Core.Modules
             if (p == null)
                 return new ChatMask();
 
-            if (p[_pmkey] is not PlayerChatMask pm)
+            if (p[_pdKey] is not PlayerData pd)
                 return new ChatMask();
 
-            lock (_playerMaskLock)
+            lock (pd.Lock)
             {
-                return pm.mask;
+                ExpireMask(p);
+                return pd.Mask;
+            }
+        }
+
+        void IChat.GetPlayerChatMask(Player p, out ChatMask mask, out TimeSpan? remaining)
+        {
+            if (p == null
+                || p[_pdKey] is not PlayerData pd)
+            {
+                mask = default;
+                remaining = default;
+                return;
+            }
+
+            lock (pd.Lock)
+            {
+                DateTime now = DateTime.UtcNow;
+
+                ExpireMask(p);
+                mask = pd.Mask;
+
+                remaining = pd.Expires == null ? new TimeSpan?() : now - pd.Expires.Value;
             }
         }
 
@@ -603,17 +666,17 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pmkey] is not PlayerChatMask pm)
+            if (p[_pdKey] is not PlayerData pd)
                 return;
 
-            lock (_playerMaskLock)
+            lock (pd.Lock)
             {
-                pm.mask = mask;
+                pd.Mask = mask;
 
                 if (timeout == 0)
-                    pm.expires = null;
+                    pd.Expires = null;
                 else
-                    pm.expires = DateTime.UtcNow.AddSeconds(timeout);
+                    pd.Expires = DateTime.UtcNow.AddSeconds(timeout);
             }
         }
 
@@ -664,17 +727,17 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pmkey] is not PlayerChatMask pm)
+            if (p[_pdKey] is not PlayerData pd)
                 return;
 
             if (action == PlayerAction.PreEnterArena)
             {
-                lock (_playerMaskLock)
+                lock (pd.Lock)
                 {
-                    pm.mask.Clear();
-                    pm.expires = null;
-                    pm.msgs = 0;
-                    pm.lastCheck = DateTime.UtcNow;
+                    pd.Mask.Clear();
+                    pd.Expires = null;
+                    pd.MessageCount = 0;
+                    pd.LastCheck = DateTime.UtcNow;
                 }
             }
         }
@@ -847,40 +910,39 @@ namespace SS.Core.Modules
 
         private void CheckFlood(Player p)
         {
-            if (p[_pmkey] is not PlayerChatMask pm)
+            if (p[_pdKey] is not PlayerData pd)
                 return;
 
-            lock (_playerMaskLock)
+            lock (pd.Lock)
             {
-                pm.msgs++;
+                pd.MessageCount++;
 
-                // TODO: add capability to spam (for bots)
-                if (pm.msgs >= _cfg.FloodLimit && 
-                    _cfg.FloodLimit > 0 &&
-                    !_capabilityManager.HasCapability(p, Constants.Capabilities.CanSpam))
+                if (pd.MessageCount >= _cfg.FloodLimit 
+                    &&  _cfg.FloodLimit > 0 
+                    && !_capabilityManager.HasCapability(p, Constants.Capabilities.CanSpam))
                 {
-                    pm.msgs >>= 1;
+                    pd.MessageCount >>= 1;
 
-                    if (pm.expires != null)
+                    if (pd.Expires != null)
                     {
                         // already has a mask, add time
-                        pm.expires.Value.AddSeconds(_cfg.FloodShutup);
+                        pd.Expires = pd.Expires.Value.AddSeconds(_cfg.FloodShutup);
                     }
-                    else if (pm.mask.IsClear)
+                    else if (pd.Mask.IsClear)
                     {
                         // only set expiry time if this is a new shutup
-                        pm.expires = DateTime.UtcNow.AddSeconds(_cfg.FloodShutup);
+                        pd.Expires = DateTime.UtcNow.AddSeconds(_cfg.FloodShutup);
                     }
 
-                    pm.mask.SetRestricted(ChatMessageType.PubMacro);
-                    pm.mask.SetRestricted(ChatMessageType.Pub);
-                    pm.mask.SetRestricted(ChatMessageType.Freq);
-                    pm.mask.SetRestricted(ChatMessageType.EnemyFreq);
-                    pm.mask.SetRestricted(ChatMessageType.Private);
-                    pm.mask.SetRestricted(ChatMessageType.RemotePrivate);
-                    pm.mask.SetRestricted(ChatMessageType.Chat);
-                    pm.mask.SetRestricted(ChatMessageType.ModChat);
-                    pm.mask.SetRestricted(ChatMessageType.BillerCommand);
+                    pd.Mask.SetRestricted(ChatMessageType.PubMacro);
+                    pd.Mask.SetRestricted(ChatMessageType.Pub);
+                    pd.Mask.SetRestricted(ChatMessageType.Freq);
+                    pd.Mask.SetRestricted(ChatMessageType.EnemyFreq);
+                    pd.Mask.SetRestricted(ChatMessageType.Private);
+                    pd.Mask.SetRestricted(ChatMessageType.RemotePrivate);
+                    pd.Mask.SetRestricted(ChatMessageType.Chat);
+                    pd.Mask.SetRestricted(ChatMessageType.ModChat);
+                    pd.Mask.SetRestricted(ChatMessageType.BillerCommand);
 
                     SendMessage(p, $"You have been shut up for {_cfg.FloodShutup} seconds for flooding.");
                     _logManager.LogP(LogLevel.Info, nameof(Chat), p, $"Flooded chat, shut up for {_cfg.FloodShutup} seconds.");
@@ -1385,20 +1447,31 @@ namespace SS.Core.Modules
             if (p == null)
                 return false;
 
-            if (p[_pmkey] is not PlayerChatMask pm)
+            if (p[_pdKey] is not PlayerData pd)
                 return false;
 
-            ArenaChatMask am = (p.Arena != null) ? p.Arena[_cmkey] as ArenaChatMask : null;
+            ArenaData ad = (p.Arena != null) ? p.Arena[_adKey] as ArenaData : null;
             ChatMask mask;
 
-            lock (_playerMaskLock)
+            lock (pd.Lock)
             {
                 ExpireMask(p);
 
-                if (am != null)
-                    pm.mask.Combine(am.mask);
+                mask = pd.Mask;
 
-                mask = pm.mask;
+                if (ad != null)
+                {
+                    ad.Lock.EnterReadLock();
+
+                    try
+                    {
+                        mask |= ad.Mask;
+                    }
+                    finally
+                    {
+                        ad.Lock.ExitReadLock();
+                    }
+                }
             }
 
             return mask.IsAllowed(messageType);
@@ -1409,29 +1482,25 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pmkey] is not PlayerChatMask pm)
+            if (p[_pdKey] is not PlayerData pd)
                 return;
 
             DateTime now = DateTime.UtcNow;
 
-            // handle expiring masks
-            if(pm.expires != null)
-                if (now > pm.expires)
+            lock (pd.Lock)
+            {
+                // handle expiring masks
+                if (pd.Expires != null
+                    && now > pd.Expires)
                 {
-                    pm.mask.Clear();
-                    pm.expires = null;
+                    pd.Mask.Clear();
+                    pd.Expires = null;
                 }
 
-            // handle exponential decay of msg count
-            int d = (int)((now - pm.lastCheck).TotalMilliseconds / 1000);
-            if (d > 31)
-                d = 31;
-
-            if (d < 0)
-                d = 0; // really shouldn't happen but just in case...
-
-            pm.msgs >>= d;
-            pm.lastCheck = now;
+                // handle exponential decay of msg count
+                pd.MessageCount >>= Math.Clamp((int)(now - pd.LastCheck).TotalSeconds, 0, 31);
+                pd.LastCheck = now;
+            }
         }
     }
 }
