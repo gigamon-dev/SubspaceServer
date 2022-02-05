@@ -2152,7 +2152,7 @@ namespace SS.Core.Modules
                 if (specCount > 1)
                 {
                     _chat.SendMessage(p, $"{specCount} spectators: ");
-                    _chat.SendWrappedText(p, sb.ToString());
+                    _chat.SendWrappedText(p, sb);
                 }
                 else if (specCount == 1)
                 {

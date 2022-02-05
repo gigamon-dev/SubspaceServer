@@ -441,12 +441,23 @@ namespace SS.Core.ComponentInterfaces
 
         #endregion
 
+        #region SendWrappedText
+
         /// <summary>
         /// A utility function for sending lists of items in a chat message.
         /// </summary>
         /// <param name="p">The player to send the message to.</param>
         /// <param name="text">The message to send.</param>
         void SendWrappedText(Player p, string text);
+
+        /// <summary>
+        /// A utility function for sending lists of items in a chat message.
+        /// </summary>
+        /// <param name="p">The player to send the message to.</param>
+        /// <param name="sb">The message to send.</param>
+        void SendWrappedText(Player p, StringBuilder sb);
+
+        #endregion
 
         /// <summary>
         /// Pool of StringBuilder objects.

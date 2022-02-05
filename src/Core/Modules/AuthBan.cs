@@ -237,7 +237,7 @@ namespace SS.Core.Modules
                 }
 
                 _chat.SendMessage(p, $"Active machine id bans:");
-                _chat.SendWrappedText(p, sb.ToString());
+                _chat.SendWrappedText(p, sb);
             }
             finally
             {

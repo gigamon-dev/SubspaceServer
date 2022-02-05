@@ -707,6 +707,33 @@ namespace SS.Core.Modules
             }
         }
 
+        void IChat.SendWrappedText(Player p, StringBuilder sb)
+        {
+            if (p == null)
+                return;
+
+            if (sb == null || sb.Length == 0)
+                return;
+
+            StringBuilder tempBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                foreach (ReadOnlySpan<char> line in sb.GetWrappedText(78, ' ')) // foreach handles calling Dispose() on the enumerator
+                {
+                    tempBuilder.Clear();
+                    tempBuilder.Append("  ");
+                    tempBuilder.Append(line);
+
+                    SendMessage(p, tempBuilder);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(tempBuilder);
+            }
+        }
+
         ObjectPool<StringBuilder> IChat.StringBuilderPool => _objectPoolManager.StringBuilderPool;
 
         #endregion

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -477,6 +478,18 @@ namespace SS.Utilities
             return new WrapTextEnumerator(text, width, delimiter);
         }
 
+        /// <summary>
+        /// Gets an enumerator which can be used to read text as multiple lines.
+        /// </summary>
+        /// <param name="text">The text to wrap.</param>
+        /// <param name="width">The number of characters to allow on a line.</param>
+        /// <param name="delimiter">The delimiter to split lines by.</param>
+        /// <returns>An enumerator.</returns>
+        public static WrapTextStringBuilderEnumerator GetWrappedText(this StringBuilder text, int width = 80, char delimiter = ' ')
+        {
+            return new WrapTextStringBuilderEnumerator(text, width, delimiter);
+        }
+
         #endregion
 
         #region GetToken
@@ -587,6 +600,83 @@ namespace SS.Utilities
                 _text = _text.TrimStart(_delimiter);
 
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Provides the ability to enumerate on a <see cref="StringBuilder"/> to get wrapped lines.
+    /// </summary>
+    public ref struct WrapTextStringBuilderEnumerator
+    {
+        private readonly StringBuilder _text;
+        private readonly int _width;
+        private readonly char _delimiter;
+        private int _startIndex = 0; // the index to begin reading the next substring from
+        private char[] _buffer = null; // buffer for holding the current substring (rented from a pool)
+
+        public WrapTextStringBuilderEnumerator(StringBuilder text, int width, char delimiter)
+        {
+            _text = text ?? throw new ArgumentNullException(nameof(text));
+            _width = width;
+            _delimiter = delimiter;
+            Current = ReadOnlySpan<char>.Empty;
+        }
+
+        public WrapTextStringBuilderEnumerator GetEnumerator() => this;
+
+        public ReadOnlySpan<char> Current { get; private set; }
+
+        public bool MoveNext()
+        {
+            if (_startIndex >= _text.Length)
+            {
+                Current = ReadOnlySpan<char>.Empty;
+                return false;
+            }
+
+            int endIndex = _startIndex + _width - 1;
+            if (endIndex >= _text.Length)
+                endIndex = _text.Length - 1;
+
+            if (_text[endIndex] != _delimiter
+                && _text.Length > (endIndex + 1)
+                && _text[endIndex + 1] != _delimiter)
+            {
+                // mid-word, look for an earlier occurance of the delimiter
+                int delimiterIndex;
+                for (delimiterIndex = endIndex - 1; delimiterIndex >= _startIndex; delimiterIndex--)
+                {
+                    if (_text[delimiterIndex] == _delimiter)
+                        break;
+                }
+
+                if (delimiterIndex >= _startIndex)
+                {
+                    endIndex = delimiterIndex;
+                }
+            }
+
+            if (_buffer == null)
+                _buffer = ArrayPool<char>.Shared.Rent(_width);
+
+            int length = endIndex - _startIndex + 1;
+            _text.CopyTo(_startIndex, _buffer, 0, length);
+            Current = _buffer.AsSpan(0, length);
+
+            _startIndex += length;
+            while (_startIndex < _text.Length && _text[_startIndex] == _delimiter)
+                _startIndex++; // move past delimiters
+
+            return true;
+        }
+
+        public void Dispose()
+        {
+            if (_buffer != null)
+            {
+                ArrayPool<char>.Shared.Return(_buffer);
+                _buffer = null;
+            }
         }
     }
 }

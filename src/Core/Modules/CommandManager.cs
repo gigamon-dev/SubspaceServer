@@ -745,7 +745,7 @@ namespace SS.Core.Modules
                     {
                         sb.Append("Zone:");
                         AppendCommands(sb, globalCommands);
-                        _chat.SendWrappedText(sendTo, sb.ToString());
+                        _chat.SendWrappedText(sendTo, sb);
                     }
                 }
 
@@ -756,7 +756,7 @@ namespace SS.Core.Modules
                 {
                     sb.Append("Arena:");
                     AppendCommands(sb, arenaCommands);
-                    _chat.SendWrappedText(sendTo, sb.ToString());
+                    _chat.SendWrappedText(sendTo, sb);
                 }
             }
             finally

@@ -829,36 +829,40 @@ namespace SS.Core.Modules
                 }
             }
 
-            LinkedList<string> modulesList = new();
+            List<string> modulesList = new(); // TODO: use a pool
 
             _mm.EnumerateModules(
                 (moduleType, _) =>
                 {
                     string name = moduleType.FullName;
                     if (substr == null || name.Contains(substr))
-                        modulesList.AddLast(name);
+                        modulesList.Add(name);
                 },
                 arena);
 
-            IEnumerable<string> modules = modulesList;
-
             if (sort)
             {
-                modules = from str in modules
-                          orderby str
-                          select str;
+                modulesList.Sort(StringComparer.Ordinal);
             }
 
-            StringBuilder sb = new();
-            foreach (string str in modules)
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
             {
-                if (sb.Length > 0)
-                    sb.Append(", ");
+                foreach (string str in modulesList)
+                {
+                    if (sb.Length > 0)
+                        sb.Append(", ");
 
-                sb.Append(str);
+                    sb.Append(str);
+                }
+
+                _chat.SendWrappedText(p, sb);
             }
-
-            _chat.SendWrappedText(p, sb.ToString());
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
         }
 
         [CommandHelp(
