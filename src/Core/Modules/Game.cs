@@ -2108,67 +2108,68 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.Any,
+            Targets = CommandTarget.None | CommandTarget.Player,
             Args = null,
             Description =
             "Displays players spectating you. When private, displays players\n" +
             "spectating the target.")]
         private void Command_spec(string command, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = null;
-            
-            if(target.Type == TargetType.Player)
-                targetPlayer = (target as IPlayerTarget).Player;
-
-            if (targetPlayer == null)
-                targetPlayer = p;
-
+            Player targetPlayer = (target as IPlayerTarget)?.Player ?? p;
             int specCount = 0;
-            StringBuilder sb = new();
 
-            _playerData.Lock();
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
             try
             {
-                foreach(Player playerToCheck in _playerData.PlayerList)
+                _playerData.Lock();
+
+                try
                 {
-                    PlayerData pd = playerToCheck[_pdkey] as PlayerData;
-                    if (pd != null)
-                        continue;
-
-                    if ((pd.speccing == targetPlayer) &&
-                        (!_capabilityManager.HasCapability(playerToCheck, Constants.Capabilities.InvisibleSpectator) ||
-                        _capabilityManager.HigherThan(p, playerToCheck)))
+                    foreach (Player playerToCheck in _playerData.PlayerList)
                     {
-                        specCount++;
+                        if (playerToCheck[_pdkey] is not PlayerData pd)
+                            continue;
 
-                        if (sb.Length > 0)
-                            sb.Append(", ");
+                        if (pd.speccing == targetPlayer
+                            && (!_capabilityManager.HasCapability(playerToCheck, Constants.Capabilities.InvisibleSpectator)
+                                || _capabilityManager.HigherThan(p, playerToCheck)))
+                        {
+                            specCount++;
 
-                        sb.Append(targetPlayer.Name);
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(playerToCheck.Name);
+                        }
                     }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                if (specCount > 1)
+                {
+                    _chat.SendMessage(p, $"{specCount} spectators: ");
+                    _chat.SendWrappedText(p, sb.ToString());
+                }
+                else if (specCount == 1)
+                {
+                    _chat.SendMessage(p, $"1 spectator: {sb}");
+                }
+                else if (p == targetPlayer)
+                {
+                    _chat.SendMessage(p, "No players are spectating you.");
+                }
+                else
+                {
+                    _chat.SendMessage(p, $"No players are spectating {targetPlayer.Name}.");
                 }
             }
             finally
             {
-                _playerData.Unlock();
-            }
-
-            if (specCount > 1)
-            {
-                _chat.SendMessage(p, $"{specCount} spectators: ");
-                _chat.SendWrappedText(p, sb.ToString());
-            }
-            else if (specCount == 1)
-            {
-                _chat.SendMessage(p, $"1 spectator: {sb}");
-            }
-            else if (p == targetPlayer)
-            {
-                _chat.SendMessage(p, "No players are spectating you.");
-            }
-            else
-            {
-                _chat.SendMessage(p, $"No players are spectating {targetPlayer.Name}.");
+                _objectPoolManager.StringBuilderPool.Return(sb);
             }
         }
 
