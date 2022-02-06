@@ -19,6 +19,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
+        private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken _iCommandManagerToken;
 
         private IChat _chat;
@@ -90,13 +91,15 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             ILogManager logManager,
             ICapabilityManager capabilityManager,
-            IConfigManager configManager)
+            IConfigManager configManager,
+            IObjectPoolManager objectPoolManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
             _rwLock.EnterWriteLock();
 
@@ -246,14 +249,23 @@ namespace SS.Core.Modules
                         continue;
                     }
 
-                    StringBuilder sb = new();
-                    sb.Append($"Targets: {helpAttr.Targets:F}\n");
-                    sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-                    if (!string.IsNullOrWhiteSpace(helpAttr.Description))
-                        sb.Append(helpAttr.Description);
+                    try
+                    {
+                        sb.Append($"Targets: {helpAttr.Targets:F}\n");
+                        sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
 
-                    helpText = sb.ToString();
+                        if (!string.IsNullOrWhiteSpace(helpAttr.Description))
+                            sb.Append(helpAttr.Description);
+
+                        helpText = sb.ToString();
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
+
                     return true;
                 }
             }
@@ -580,7 +592,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(target));
 
             if (string.IsNullOrEmpty(cmd))
-                throw new ArgumentOutOfRangeException(nameof(cmd), cmd, "cannot be null or empty");
+                throw new ArgumentException("cannot be null or empty", nameof(cmd));
 
             if (_logManager == null)
                 return;
@@ -598,36 +610,32 @@ namespace SS.Core.Modules
                 _rwLock.ExitReadLock();
             }
 
-            StringBuilder sb = new(32);
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-            switch (target.Type)
+            try
             {
-                case TargetType.Arena:
+                sb.Append("Command ");
+
+                if (target.TryGetArenaTarget(out _))
                     sb.Append("(arena)");
-                    break;
-
-                case TargetType.Freq:
-                    sb.Append("(freq ");
-                    sb.Append((target as ITeamTarget).Freq);
-                    sb.Append(')');
-                    break;
-
-                case TargetType.Player:
-                    sb.Append("to [");
-                    sb.Append((target as IPlayerTarget).Player.Name);
-                    sb.Append(']');
-                    break;
-                
-                default:
+                else if (target.TryGetTeamTarget(out _, out int freq))
+                    sb.Append($"(freq {freq})");
+                else if (target.TryGetPlayerTarget(out Player targetPlayer))
+                    sb.Append($"to [{targetPlayer.Name}]");
+                else
                     sb.Append("(other)");
-                    break;
+
+                sb.Append($": {cmd}");
+
+                if (!string.IsNullOrWhiteSpace(parameters))
+                    sb.Append($" {parameters}");
+
+                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, sb);
             }
-
-            if (!string.IsNullOrEmpty(parameters))
-                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, $"Command {sb}: {cmd} {parameters}");
-            else
-                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, $"Command {sb}: {cmd}");
-
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
         }
 
         private void InitializeUnloggedCommands()
@@ -740,27 +748,34 @@ namespace SS.Core.Modules
                     orderby command
                     select (command, isArenaSpecific: commandData.Arena != null, canArena, canPriv, canRemotePriv);
 
-                StringBuilder sb = new(); // TODO: get from a pool
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-                if (!excludeGlobal)
+                try
                 {
-                    var globalCommands = commands.Where(c => !c.isArenaSpecific);
-                    if (globalCommands.Any())
+                    if (!excludeGlobal)
                     {
-                        sb.Append("Zone:");
-                        AppendCommands(sb, globalCommands);
+                        var globalCommands = commands.Where(c => !c.isArenaSpecific);
+                        if (globalCommands.Any())
+                        {
+                            sb.Append("Zone:");
+                            AppendCommands(sb, globalCommands);
+                            _chat.SendWrappedText(sendTo, sb);
+                        }
+                    }
+
+                    sb.Clear();
+
+                    var arenaCommands = commands.Where(c => c.isArenaSpecific);
+                    if (arenaCommands.Any())
+                    {
+                        sb.Append("Arena:");
+                        AppendCommands(sb, arenaCommands);
                         _chat.SendWrappedText(sendTo, sb);
                     }
                 }
-
-                sb.Clear();
-
-                var arenaCommands = commands.Where(c => c.isArenaSpecific);
-                if (arenaCommands.Any())
+                finally
                 {
-                    sb.Append("Arena:");
-                    AppendCommands(sb, arenaCommands);
-                    _chat.SendWrappedText(sendTo, sb);
+                    _objectPoolManager.StringBuilderPool.Return(sb);
                 }
             }
             finally

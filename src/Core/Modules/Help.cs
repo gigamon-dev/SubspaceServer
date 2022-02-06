@@ -7,11 +7,16 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides the help commaand, which by default is ?man.
+    /// This allows users to get information about a command or config file setting.
+    /// </summary>
     public class Help : IModule, IModuleLoaderAware, IConfigHelp
     {
         private IChat _chat;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
+        private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken _iConfigHelpToken;
 
         private string _helpCommandName;
@@ -24,11 +29,13 @@ namespace SS.Core.Modules
             ComponentBroker broker, 
             IChat chat,
             ICommandManager commandManager,
-            IConfigManager configManager)
+            IConfigManager configManager,
+            IObjectPoolManager objectPoolManager)
         {
-            _chat = chat;
-            _commandManager = commandManager;
-            _configManager = configManager;
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
             _helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
             if (string.IsNullOrWhiteSpace(_helpCommandName))
@@ -102,31 +109,48 @@ namespace SS.Core.Modules
 
             _settingsLookup = helpAttributes.ToLookup(tuple => tuple.attr.Section, StringComparer.OrdinalIgnoreCase);
 
-            StringBuilder sectionGroupsBuilder = new();
-            foreach (var sectionGroup in _settingsLookup)
+            StringBuilder sectionGroupsBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+            try
             {
-                if (sectionGroupsBuilder.Length > 0)
-                    sectionGroupsBuilder.Append(", ");
-
-                sectionGroupsBuilder.Append(sectionGroup.Key);
-
-                var keys = sectionGroup
-                    .Select(tuple => tuple.Attr.Key)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(key => key, StringComparer.OrdinalIgnoreCase);
-
-                StringBuilder allKeysBuilder = new();
-                foreach (string key in keys)
+                foreach (var sectionGroup in _settingsLookup)
                 {
-                    if (allKeysBuilder.Length > 0)
-                        allKeysBuilder.Append(", ");
+                    if (sectionGroupsBuilder.Length > 0)
+                        sectionGroupsBuilder.Append(", ");
 
-                    allKeysBuilder.Append(key);
+                    sectionGroupsBuilder.Append(sectionGroup.Key);
+
+                    var keys = sectionGroup
+                        .Select(tuple => tuple.Attr.Key)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(key => key, StringComparer.OrdinalIgnoreCase);
+
+                    StringBuilder allKeysBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        foreach (string key in keys)
+                        {
+                            if (allKeysBuilder.Length > 0)
+                                allKeysBuilder.Append(", ");
+
+                            allKeysBuilder.Append(key);
+                        }
+
+                        _sectionAllKeysDictionary[sectionGroup.Key] = allKeysBuilder.ToString();
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(allKeysBuilder);
+                    }
                 }
-                _sectionAllKeysDictionary[sectionGroup.Key] = allKeysBuilder.ToString();
-            }
 
-            _sectionGroupsStr = sectionGroupsBuilder.ToString();
+                _sectionGroupsStr = sectionGroupsBuilder.ToString();
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sectionGroupsBuilder);
+            }
         }
 
         [CommandHelp(

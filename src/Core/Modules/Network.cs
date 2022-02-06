@@ -4084,38 +4084,53 @@ namespace SS.Core.Modules
         #endregion
 
         [Conditional("CFG_DUMP_RAW_PACKETS")]
-        private static void DumpPk(string description, ReadOnlySpan<byte> d)
+        private void DumpPk(string description, ReadOnlySpan<byte> d)
         {
-            StringBuilder sb = new(description.Length + 2 + (int)Math.Ceiling(d.Length / 16d) * 67);
-            sb.AppendLine(description);
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-            int pos = 0;
-            StringBuilder asciiBuilder = new(16);
-
-            while (pos < d.Length)
+            try
             {
-                int c;
+                sb.AppendLine(description);
 
-                for (c = 0; c < 16 && pos < d.Length; c++, pos++)
+                int pos = 0;
+                StringBuilder asciiBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                try
                 {
-                    if (c > 0)
-                        sb.Append(' ');
+                    while (pos < d.Length)
+                    {
+                        int c;
 
-                    asciiBuilder.Append(!char.IsControl((char)d[pos]) ? (char)d[pos] : '.');
-                    sb.Append(d[pos].ToString("X2"));
+                        for (c = 0; c < 16 && pos < d.Length; c++, pos++)
+                        {
+                            if (c > 0)
+                                sb.Append(' ');
+
+                            asciiBuilder.Append(!char.IsControl((char)d[pos]) ? (char)d[pos] : '.');
+                            sb.Append(d[pos].ToString("X2"));
+                        }
+
+                        for (; c < 16; c++)
+                        {
+                            sb.Append("   ");
+                        }
+
+                        sb.Append("  ");
+                        sb.AppendLine(asciiBuilder.ToString());
+                        asciiBuilder.Length = 0;
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(asciiBuilder);
                 }
 
-                for (; c < 16; c++)
-                {
-                    sb.Append("   ");
-                }
-
-                sb.Append("  ");
-                sb.AppendLine(asciiBuilder.ToString());
-                asciiBuilder.Length = 0;
+                Debug.Write(sb.ToString());
             }
-
-            Debug.Write(sb.ToString());
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
         }
 
         public void Dispose()
