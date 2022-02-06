@@ -194,9 +194,8 @@ namespace SS.Core.Modules
             "\"last average (min-max)\".\n")]
         private void Command_lag(string command, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = target.Type == TargetType.Player
-                ? ((IPlayerTarget)target).Player
-                : p;
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = p;
 
             if (!targetPlayer.IsStandard)
             {
@@ -513,17 +512,11 @@ namespace SS.Core.Modules
             "been connected, and bandwidth usage information.")]
         private void Command_info(string command, string parameters, Player p, ITarget target)
         {
-            if (target == null
-                || target.Type != TargetType.Player
-                || target is not IPlayerTarget playerTarget)
+            if (!target.TryGetPlayerTarget(out Player t))
             {
                 _chat.SendMessage(p, "info: must use on a player");
                 return;
             }
-
-            Player t = playerTarget.Player;
-            if (t == null)
-                return;
 
             string prefix = t.Name;
             TimeSpan connectedTimeSpan = DateTime.UtcNow - t.ConnectTime;
@@ -624,7 +617,7 @@ namespace SS.Core.Modules
             Description = "Sends a red warning message to a player.")]
         private void Command_warn(string command, string parameters, Player p, ITarget target)
         {
-            if (target.Type != TargetType.Player || target is not IPlayerTarget playerTarget)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
                 _chat.SendMessage(p, "You must target a player.");
                 return;
@@ -634,7 +627,7 @@ namespace SS.Core.Modules
 
             try
             {
-                set.Add(playerTarget.Player);
+                set.Add(targetPlayer);
 
                 if (_capabilityManager.HasCapability(p, Constants.Capabilities.IsStaff))
                 {
@@ -650,7 +643,7 @@ namespace SS.Core.Modules
                 _objectPoolManager.PlayerSetPool.Return(set);
             }
 
-            _chat.SendMessage(p, $"Player '{playerTarget.Player.Name}' has been warned.");
+            _chat.SendMessage(p, $"Player '{targetPlayer.Name}' has been warned.");
         }
 
         [CommandHelp(
@@ -660,7 +653,7 @@ namespace SS.Core.Modules
             "Useful for logging replies to moderator help requests.")]
         private void Command_reply(string command, string parameters, Player p, ITarget target)
         {
-            if (target.Type != TargetType.Player || target is not IPlayerTarget playerTarget)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
                 _chat.SendMessage(p, "You must target a player.");
                 return;
@@ -670,9 +663,9 @@ namespace SS.Core.Modules
 
             try
             {
-                set.Add(playerTarget.Player);
+                set.Add(targetPlayer);
                 _chat.SendAnyMessage(set, ChatMessageType.Private, ChatSound.None, p, parameters);
-                _chat.SendMessage(p, $"Private message sent to player '{playerTarget.Player.Name}'.");
+                _chat.SendMessage(p, $"Private message sent to player '{targetPlayer.Name}'.");
             }
             finally
             {
@@ -772,10 +765,9 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(parameters))
                 return;
 
-            if (target.Type != TargetType.Player || target is not IPlayerTarget playerTarget)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 return;
 
-            Player targetPlayer = playerTarget.Player;
             switch (targetPlayer.Type)
             {
                 case ClientType.Continuum:
@@ -812,11 +804,7 @@ namespace SS.Core.Modules
                 {
                     if (string.Equals(arg, "-a", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (target.Type == TargetType.Arena
-                            && target is IArenaTarget arenaTarget)
-                        {
-                            arena = arenaTarget.Arena;
-                        }
+                        target.TryGetArenaTarget(out arena);
                     }
                     else if (string.Equals(arg, "-s", StringComparison.OrdinalIgnoreCase))
                     {
@@ -1018,9 +1006,8 @@ namespace SS.Core.Modules
             Description = "Displays the group of the player, or if none specified, you.")]
         private void Command_getgroup(string command, string parameters, Player p, ITarget target)
         {
-            if (target.Type == TargetType.Player && target is IPlayerTarget playerTarget)
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                Player targetPlayer = playerTarget.Player;
                 _chat.SendMessage(p, $"{targetPlayer.Name} is in group {_groupManager.GetGroup(targetPlayer)}.");
             }
             else
@@ -1043,8 +1030,7 @@ namespace SS.Core.Modules
             "arena, rather than being valid in the entire zone.")]
         private void Command_setgroup(string command, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = (target as IPlayerTarget)?.Player;
-            if (targetPlayer == null)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 return;
 
             bool permanent = false;
@@ -1104,8 +1090,7 @@ namespace SS.Core.Modules
             "and if it is an arena group, it will be removed for this arena.")]
         private void Command_rmgroup(string command, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = (target as IPlayerTarget)?.Player;
-            if (targetPlayer == null)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 return;
 
             string currentGroup = _groupManager.GetGroup(targetPlayer);
@@ -1216,16 +1201,7 @@ namespace SS.Core.Modules
             Description = "Displays the current location (on the map) of the target player.")]
         private void Command_where(string command, string parameters, Player p, ITarget target)
         {
-            Player t = null;
-
-            if (target != null
-                && target.Type == TargetType.Player
-                && target is IPlayerTarget playerTarget)
-            {
-                t = playerTarget.Player;
-            }
-
-            if (t == null)
+            if (!target.TryGetPlayerTarget(out Player t))
                 t = p;
 
             // right shift by 4 is divide by 16 (each tile is 16 pixels)
@@ -1268,16 +1244,15 @@ namespace SS.Core.Modules
         private void Command_setcm(string command, string parameters, Player p, ITarget target)
         {
             ChatMask mask;
+            Player targetPlayer = null;
 
             // get the current mask
-            if (target.Type == TargetType.Arena)
+            if (target.TryGetArenaTarget(out Arena arena))
             {
-                Arena arena = ((IArenaTarget)target).Arena;
                 mask = _chat.GetArenaChatMask(arena);
             }
-            else if (target.Type == TargetType.Player)
+            else if (target.TryGetPlayerTarget(out targetPlayer))
             {
-                Player targetPlayer = ((IPlayerTarget)target).Player;
                 mask = _chat.GetPlayerChatMask(targetPlayer);
             }
             else
@@ -1337,14 +1312,12 @@ namespace SS.Core.Modules
             }
 
             // install the updated mask
-            if (target.Type == TargetType.Arena)
+            if (arena != null)
             {
-                Arena arena = ((IArenaTarget)target).Arena;
                 _chat.SetArenaChatMask(arena, mask);
             }
-            else if (target.Type == TargetType.Player)
+            else if (targetPlayer != null)
             {
-                Player targetPlayer = ((IPlayerTarget)target).Player;
                 _chat.SetPlayerChatMask(targetPlayer, mask, timeout);
             }
 
@@ -1362,9 +1335,8 @@ namespace SS.Core.Modules
         {
             ChatMask mask;
 
-            if (target.Type == TargetType.Arena)
+            if (target.TryGetArenaTarget(out Arena arena))
             {
-                Arena arena = ((IArenaTarget)target).Arena;
                 mask = _chat.GetArenaChatMask(arena);
 
                 _chat.SendMessage(p, $"Arena {arena.Name}:" +
@@ -1376,9 +1348,8 @@ namespace SS.Core.Modules
                     $" {(mask.IsRestricted(ChatMessageType.Chat) ? '-' : '+')}chat" +
                     $" {(mask.IsRestricted(ChatMessageType.ModChat) ? '-' : '+')}modchat");
             }
-            else if (target.Type == TargetType.Player)
+            else if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                Player targetPlayer = ((IPlayerTarget)target).Player;
                 _chat.GetPlayerChatMask(targetPlayer, out mask, out TimeSpan? remaining);
 
                 _chat.SendMessage(p, $"{targetPlayer.Name}:" +
@@ -1520,7 +1491,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Player targetPlayer = target.Type == TargetType.Player ? ((IPlayerTarget)target).Player : p;
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = p;
 
             if (targetPlayer.Ship == ShipType.Spec)
             {

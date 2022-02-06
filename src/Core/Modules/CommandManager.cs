@@ -408,20 +408,25 @@ namespace SS.Core.Modules
             Arena remoteArena = null;
 
             if (target.Type == TargetType.Arena || target.Type == TargetType.None)
-                prefix = "cmd";
-            else if (target.Type == TargetType.Player)
             {
-                IPlayerTarget pt = (IPlayerTarget)target;
-                if (pt.Player.Arena == p.Arena)
+                prefix = "cmd";
+            }
+            else if (target.TryGetPlayerTarget(out Player targetPlayer))
+            {
+                if (targetPlayer.Arena == p.Arena)
+                {
                     prefix = "privcmd";
+                }
                 else
                 {
-                    remoteArena = pt.Player.Arena;
+                    remoteArena = targetPlayer.Arena;
                     prefix = "rprivcmd";
                 }
             }
             else
+            {
                 prefix = "privcmd";
+            }
 
             CommandDelegate basicHandlers = null;
             CommandWithSoundDelegate soundHandlers = null;
@@ -669,11 +674,10 @@ namespace SS.Core.Modules
             if (_chat == null)
                 return;
 
-            if (target.Type == TargetType.Player)
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                Player playerTarget = ((IPlayerTarget)target).Player;
-                _chat.SendMessage(p, $"'{playerTarget.Name}' can use the following commands:");
-                ListCommands(p.Arena, playerTarget, p, false, true);
+                _chat.SendMessage(p, $"'{targetPlayer.Name}' can use the following commands:");
+                ListCommands(p.Arena, targetPlayer, p, false, true);
             }
             else
             {

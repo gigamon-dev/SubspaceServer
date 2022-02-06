@@ -2115,7 +2115,9 @@ namespace SS.Core.Modules
             "spectating the target.")]
         private void Command_spec(string command, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = (target as IPlayerTarget)?.Player ?? p;
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = p;
+
             int specCount = 0;
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
@@ -2181,25 +2183,22 @@ namespace SS.Core.Modules
             "If sent as a pub message, turns energy viewing on for the whole arena\n" +
             "(note that this will only affect new players entering the arena).\n" +
             "If {-t} is given, turns energy viewing on for teammates only.\n" +
-            "If {-n} is given, turns energy viewing off.\n" + 
+            "If {-n} is given, turns energy viewing off.\n" +
             "If {-s} is given, turns energy viewing on/off for spectator mode.\n")]
         private void Command_energy(string command, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = null;
-
-            if (target.Type == TargetType.Player)
-                targetPlayer = (target as IPlayerTarget).Player;
+            target.TryGetPlayerTarget(out Player targetPlayer);
 
             SeeEnergy nval = SeeEnergy.All;
             bool spec = false;
 
-            if(!string.IsNullOrEmpty(parameters) && parameters.Contains("-t"))
+            if (!string.IsNullOrEmpty(parameters) && parameters.Contains("-t"))
                 nval = SeeEnergy.Team;
 
-            if(!string.IsNullOrEmpty(parameters) && parameters.Contains("-n"))
+            if (!string.IsNullOrEmpty(parameters) && parameters.Contains("-n"))
                 nval = SeeEnergy.None;
 
-            if(!string.IsNullOrEmpty(parameters) && parameters.Contains("-s"))
+            if (!string.IsNullOrEmpty(parameters) && parameters.Contains("-s"))
                 spec = true;
 
             if (targetPlayer != null)

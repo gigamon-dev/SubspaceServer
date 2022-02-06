@@ -174,16 +174,15 @@ namespace SS.Core.Modules
             "will be displayed.")]
         private void Command_lastlog(string commandName, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = (target.Type == TargetType.Player && target is IPlayerTarget pt) ? pt.Player : null;
+            target.TryGetPlayerTarget(out Player targetPlayer);
+
             Span<char> nameFilter = targetPlayer == null
                 ? Span<char>.Empty
                 : stackalloc char[targetPlayer.Name.Length + 2];
 
             if (!nameFilter.IsEmpty)
             {
-                nameFilter[0] = '[';
-                targetPlayer.Name.AsSpan().CopyTo(nameFilter[1..^1]);
-                nameFilter[^1] = ']';
+                MemoryExtensions.TryWrite(nameFilter, $"[{targetPlayer.Name}]", out _);
             }
 
             ReadOnlySpan<char> args = parameters.AsSpan();

@@ -148,4 +148,79 @@ namespace SS.Core
             return new SetTarget(players); // TODO: pooling of objects?
         }
     }
+
+    public static class TargetExtensions
+    {
+        /// <summary>
+        /// Checks if an <see cref="ITarget"/> targets a <see cref="TargetType.Player"/>, and if it does, gets the <paramref name="player"/>.
+        /// </summary>
+        /// <param name="target">The target to check.</param>
+        /// <param name="player">When the method returns, contains the targeted player, if the target was a player; otherwise <see langword="null"/>.</param>
+        /// <returns><see langword="true"/> if the target was a player; otherwise <see langword="false"/>.</returns>
+        public static bool TryGetPlayerTarget(this ITarget target, out Player player)
+        {
+            if (target != null
+                && target.Type == TargetType.Player 
+                && target is IPlayerTarget playerTarget 
+                && playerTarget.Player != null)
+            {
+                player = playerTarget.Player;
+                return true;
+            }
+            else
+            {
+                player = default;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if an <see cref="ITarget"/> targets an <see cref="TargetType.Arena"/>, and if it does, gets the <paramref name="arena"/>.
+        /// </summary>
+        /// <param name="target">The target to check.</param>
+        /// <param name="arena">When the method returns, contains the targeted arena, if the target was an arena; otherwise <see langword="null"/>.</param>
+        /// <returns><see langword="true"/> if the target was an arena; otherwise <see langword="false"/>.</returns>
+        public static bool TryGetArenaTarget(this ITarget target, out Arena arena)
+        {
+            if (target != null
+                && target.Type == TargetType.Arena
+                && target is IArenaTarget arenaTarget
+                && arenaTarget.Arena != null)
+            {
+                arena = arenaTarget.Arena;
+                return true;
+            }
+            else
+            {
+                arena = default;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if an <see cref="ITarget"/> targets an <see cref="TargetType.Freq"/>, and if it does, gets the team's <paramref name="arena"/> and <paramref name="freq"/>.
+        /// </summary>
+        /// <param name="target">The target to check.</param>
+        /// <param name="arena">When the method returns, contains the targeted team's arena, if the target was a team; otherwise <see langword="null"/>.</param>
+        /// <param name="freq">When the method returns, contains the targeted team's freq, if the target was a team; otherwise 0.</param>
+        /// <returns><see langword="true"/> if the target was an arena; otherwise <see langword="false"/>.</returns>
+        public static bool TryGetTeamTarget(this ITarget target, out Arena arena, out int freq)
+        {
+            if (target != null
+                && target.Type == TargetType.Freq
+                && target is ITeamTarget teamTarget
+                && teamTarget.Arena != null)
+            {
+                arena = teamTarget.Arena;
+                freq = teamTarget.Freq;
+                return true;
+            }
+            else
+            {
+                arena = default;
+                freq = default;
+                return false;
+            }
+        }
+    }
 }

@@ -126,10 +126,9 @@ namespace SS.Core.Modules
             "Messages appear to users on timeout as \"You have been temporarily kicked for <reason>.\"")]
         private void Command_kick(string commandName, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = target?.Type == TargetType.Player && target is IPlayerTarget pt ? pt.Player : null;
-            if (targetPlayer == null)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                _chat.SendMessage(p, "This comand  only operates when targeting a specific player.");
+                _chat.SendMessage(p, "This comand only operates when targeting a specific player.");
                 return;
             }
 

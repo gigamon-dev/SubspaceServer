@@ -335,13 +335,11 @@ namespace SS.Core.Modules
             "local password to the password they used to log in to this session.\n")]
         private void Command_set_local_password(string command, string parameters, Player p, ITarget target)
         {
-            if (target.Type != TargetType.Player)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
                 chat.SendMessage(p, "You must use this on a player.");
                 return;
             }
-
-            Player targetPlayer = ((IPlayerTarget)target).Player;
 
             string hash = config.GetStr(pwdFile, "users", targetPlayer.Name);
 

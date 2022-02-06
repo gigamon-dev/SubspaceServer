@@ -13,6 +13,12 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module for connecting to a billing server via the UDP billing protocol.
+    /// </summary>
+    /// <remarks>
+    /// This module is the equivalent of the 'billing_ssc' module in ASSS.
+    /// </remarks>
     public class BillingUdp : IModule, IBilling, IAuth, IClientConnectionHandler
     {
         private ComponentBroker _broker;
@@ -683,8 +689,10 @@ namespace SS.Core.Modules
             "the target player, or you if no target.")]
         private void Command_usage(string commandName, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = target != null && target.Type == TargetType.Player && target is IPlayerTarget playerTarget ? playerTarget.Player : null ?? p;
-            if (targetPlayer == null || targetPlayer[_pdKey] is not PlayerData pd)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = p;
+            
+            if (targetPlayer?[_pdKey] is not PlayerData pd)
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -706,8 +714,10 @@ namespace SS.Core.Modules
             "Displays the user database id of the target player, or yours if no target.")]
         private void Command_userid(string commandName, string parameters, Player p, ITarget target)
         {
-            Player targetPlayer = target != null && target.Type == TargetType.Player && target is IPlayerTarget playerTarget ? playerTarget.Player : null ?? p;
-            if (targetPlayer == null || targetPlayer[_pdKey] is not PlayerData pd)
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = p;
+
+            if (targetPlayer?[_pdKey] is not PlayerData pd)
                 return;
 
             if (!pd.IsKnownToBiller)
