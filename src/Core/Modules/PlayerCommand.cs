@@ -6,6 +6,7 @@ using SS.Utilities;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -28,6 +29,7 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
         private ICommandManager _commandManager;
+        private IFileTransfer _fileTransfer;
         private IGame _game;
         private IGroupManager _groupManager;
         private ILagQuery _lagQuery;
@@ -51,6 +53,7 @@ namespace SS.Core.Modules
             ICapabilityManager capabilityManager,
             IConfigManager configManager,
             ICommandManager commandManager,
+            IFileTransfer fileTransfer,
             IGame game,
             IGroupManager groupManager,
             ILagQuery lagQuery,
@@ -69,6 +72,7 @@ namespace SS.Core.Modules
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _groupManager = groupManager ?? throw new ArgumentNullException(nameof(groupManager));
             _lagQuery = lagQuery ?? throw new ArgumentNullException(nameof(lagQuery));
@@ -122,6 +126,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("setcm", Command_setcm);
             _commandManager.AddCommand("getcm", Command_getcm);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
+            _commandManager.AddCommand("mapimage", Command_mapimage);
             _commandManager.AddCommand("ballcount", Command_ballcount);
             _commandManager.AddCommand("giveball", Command_giveball);
             _commandManager.AddCommand("moveball", Command_moveball);
@@ -173,6 +178,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("setcm", Command_setcm);
             _commandManager.RemoveCommand("getcm", Command_getcm);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
+            _commandManager.RemoveCommand("mapimage", Command_mapimage);
             _commandManager.RemoveCommand("ballcount", Command_ballcount);
             _commandManager.RemoveCommand("giveball", Command_giveball);
             _commandManager.RemoveCommand("moveball", Command_moveball);
@@ -1407,6 +1413,57 @@ namespace SS.Core.Modules
             }
 
             // TODO: estimated memory stats
+        }
+
+        /// <summary>
+        /// The default image format for downloading an image of the map.
+        /// </summary>
+        private const string DefaultMapImageFormat = "png";
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[<image file extension>]",
+            Description = "Downloads an image of the map.\n" +
+            $"The image format can optionally be specified. The default is '{DefaultMapImageFormat}'.")]
+        private void Command_mapimage(string command, string parameters, Player p, ITarget target)
+        {
+            if (!p.IsStandard)
+            {
+                _chat.SendMessage(p, "Your client does not support file transfers.");
+                return;
+            }
+
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            string mapPath = _mapData.GetMapFilename(arena, null);
+            if (string.IsNullOrWhiteSpace(mapPath))
+                return;
+
+            parameters = parameters?.Trim() ?? string.Empty;
+            if (parameters.Any(c => Path.GetInvalidFileNameChars().Contains(c)))
+            {
+                _chat.SendMessage(p, "Invalid image file extension.");
+                return;
+            }
+
+            string extension = !string.IsNullOrWhiteSpace(parameters) ? parameters : DefaultMapImageFormat;
+            string path = Path.ChangeExtension(Path.Combine("tmp", $"mapimage-{Guid.NewGuid()}"), extension);
+
+            try
+            {
+                _mapData.SaveImage(arena, path);
+            }
+            catch (Exception ex)
+            {
+                _chat.SendMessage(p, $"Error saving image.");
+                _chat.SendWrappedText(p, ex.Message);
+                return;
+            }
+
+            string imageFileName = Path.ChangeExtension(Path.GetFileNameWithoutExtension(mapPath), extension);
+            _fileTransfer.SendFile(p, path, imageFileName, true);
         }
 
         [CommandHelp(

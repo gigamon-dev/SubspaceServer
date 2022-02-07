@@ -26,6 +26,7 @@ cmd_moveball
 cmd_spawnball
 cmd_flagreset
 cmd_listmod
+cmd_mapimage
 cmd_a
 privcmd_a
 cmd_z

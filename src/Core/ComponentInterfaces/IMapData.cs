@@ -143,5 +143,15 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="coord">The coordinates to check.</param>
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
         IImmutableSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
+
+        /// <summary>
+        /// Saves an image of the map to a file.
+        /// </summary>
+        /// <param name="arena">The arena of the map to save.</param>
+        /// <param name="path">The path of the file. The image format is automatically determined based on the filename extension.</param>
+        /// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
+        /// <exception cref="NotSupportedException">No encoder available for the provided <paramref name="path"/>.</exception>
+        void SaveImage(Arena arena, string path);
     }
 }

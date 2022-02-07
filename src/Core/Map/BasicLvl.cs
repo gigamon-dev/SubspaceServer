@@ -1,7 +1,8 @@
-﻿using System;
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Drawing;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 
@@ -181,36 +182,37 @@ namespace SS.Core.Map
         }
 
         /// <summary>
-        /// Gets a bitmap representation of the map tiles.
-        /// Note: Remember to Dispose() the bitmap.
+        /// Creates an image of the map, saving it to a specified <paramref name="path"/>.
+        /// The image format is automatically determined based on the filename extension.
         /// </summary>
-        /// <returns>A bitmap object.</returns>
-        public Bitmap ToBitmap()
+        /// <param name="path"></param>
+        /// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
+        /// <exception cref="NotSupportedException">No encoder available for the provided <paramref name="path"/>.</exception>
+        public void SaveImage(string path)
         {
-            Bitmap bitmap = new Bitmap(1024, 1024);
-            using (Graphics g = Graphics.FromImage(bitmap))
-            {
-                g.Clear(Color.Black);
-            }
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("A path is required.", nameof(path));
+
+            using Image<Rgb24> image = new(1024, 1024, Color.Black);
 
             foreach (KeyValuePair<MapCoordinate, MapTile> kvp in _tileLookup)
             {
                 Color color = kvp.Value switch
                 {
-                    { IsDoor : true} => Color.Blue,
+                    { IsDoor: true } => Color.Blue,
                     { IsSafe: true } => Color.LightGreen,
                     { IsTurfFlag: true } => Color.Yellow,
-                    { IsGoal : true } => Color.Red,
-                    { IsWormhole : true } => Color.Purple,
+                    { IsGoal: true } => Color.Red,
+                    { IsWormhole: true } => Color.Purple,
                     { IsFlyOver: true } => Color.DarkGray,
                     { IsFlyUnder: true } => Color.DarkGray,
                     _ => Color.White
                 };
 
-                bitmap.SetPixel(kvp.Key.X, kvp.Key.Y, color);
+                image[kvp.Key.X, kvp.Key.Y] = color;
             }
 
-            return bitmap;
+            image.Save(path);
         }
     }
 }

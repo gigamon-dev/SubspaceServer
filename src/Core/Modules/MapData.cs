@@ -469,6 +469,29 @@ namespace SS.Core.Modules
             }
         }
 
+        void IMapData.SaveImage(Arena arena, string path)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("A path is required.", nameof(path));
+
+            if (arena[adKey] is not ArenaData ad)
+                throw new Exception("missing lvl data");
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                ad.Lvl.SaveImage(path);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
         #endregion
 
         private async void Callback_ArenaAction(Arena arena, ArenaAction action)
@@ -549,17 +572,6 @@ namespace SS.Core.Modules
             if (lvl != null)
             {
                 _logManager.LogA(LogLevel.Info, nameof(MapData), arena, $"Successfully processed map file '{path}' with {lvl.TileCount} tiles, {lvl.FlagCount} flags, {lvl.RegionCount} regions, {lvl.Errors.Count} errors");
-
-                /*
-                // useful check to visually see that the lvl tiles were loaded correctly
-                using (var bmp = lvl.ToBitmap())
-                {
-                    bmp.Save(
-                        Path.ChangeExtension(
-                            Path.GetFileNameWithoutExtension(path),
-                            ".bmp"));
-                }
-                */
             }
             else
             {
