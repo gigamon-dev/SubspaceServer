@@ -29,16 +29,18 @@ namespace SS.Packets.Game
     }
 
     /// <summary>
-    /// Server to client brick data.
+    /// The brick data for a <see cref="S2CPacketType.Brick"/> packet, which consists of the Type (1 byte) followed 1 or more of these.
     /// </summary>
-    /// <remarks>
-    /// This packet can support sending data for multiple bricks at once. Though, ASSS and this server sends bricks one by one in their own packet.
-    /// TODO: Test sending multiple bricks in 1 packet. The format would be: [Type][Brick0][Brick1]...[BrickN]
-    /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2C_Brick
+    public struct BrickData
     {
-        public readonly byte Type;
+        public static readonly int Length;
+
+        static BrickData()
+        {
+            Length = Marshal.SizeOf<BrickData>();
+        }
+
         private readonly short x1;
         private readonly short y1;
         private readonly short x2;
@@ -83,9 +85,8 @@ namespace SS.Packets.Game
             set => startTime = LittleEndianConverter.Convert(value);
         }
 
-        public S2C_Brick(short x1, short y1, short x2, short y2, short freq, short brickId, uint startTime)
+        public BrickData(short x1, short y1, short x2, short y2, short freq, short brickId, uint startTime)
         {
-            Type = (byte)S2CPacketType.Brick;
             this.x1 = LittleEndianConverter.Convert(x1);
             this.y1 = LittleEndianConverter.Convert(y1);
             this.x2 = LittleEndianConverter.Convert(x2);

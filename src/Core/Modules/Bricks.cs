@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
+using SS.Packets;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
@@ -35,6 +36,17 @@ namespace SS.Core.Modules
     /// </remarks>
     public class Bricks : IModule, IBrickManager, IBrickHandler
     {
+        /// <summary>
+        /// The maximum # of bricks to allow active at the same time.
+        /// Attempts to place bricks beyond this limit will be ignored.
+        /// </summary>
+        private const int MaxActiveBricks = 256; // the Continuum client limit
+
+        /// <summary>
+        /// The maximum # of bricks to include in a packet, assuming it'll be sent reliably.
+        /// </summary>
+        private static readonly int MaxBricksPerPacket = (Constants.MaxPacket - ReliableHeader.Length - 1) / BrickData.Length;
+
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
@@ -135,13 +147,7 @@ namespace SS.Core.Modules
                 abd.BrickSpan = _configManager.GetInt(arena.Cfg, "Brick", "BrickSpan", 10);
                 abd.BrickMode = _configManager.GetEnum(arena.Cfg, "Brick", "BrickMode", BrickMode.Lateral);
                 abd.BrickTime = (uint)_configManager.GetInt(arena.Cfg, "Brick", "BrickTime", 6000);
-                abd.WallResendCount = _configManager.GetInt(arena.Cfg, "Routing", "WallResendCount", 0);
-
-                if (abd.WallResendCount < 0)
-                    abd.WallResendCount = 0;
-
-                if (abd.WallResendCount > 3)
-                    abd.WallResendCount = 3;
+                abd.WallResendCount = Math.Clamp(_configManager.GetInt(arena.Cfg, "Routing", "WallResendCount", 0), 0, 3);
 
                 // TODO: Add AntiBrickWarpDistance logic
             }
@@ -154,7 +160,18 @@ namespace SS.Core.Modules
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
-                SendOldBricks(p);
+            {
+                if (arena[_adKey] is not ArenaBrickData abd)
+                    return;
+
+                lock (abd.Lock)
+                {
+                    ExpireBricks(p.Arena);
+                    
+                    // Send active bricks to the player.
+                    SendToPlayerOrArena(p, null, abd.Bricks, 0);
+                }
+            }
         }
 
         private void Callback_DoBrickMode(Player p, BrickMode brickMode, short x, short y, int length, in ICollection<Brick> bricks)
@@ -309,21 +326,16 @@ namespace SS.Core.Modules
             {
                 lock (abd.Lock)
                 {
-                    ExpireBricks(arena);
-
                     List<Brick> brickList = _objectPoolManager.BrickListPool.Get();
-                    ICollection<Brick> brickCollection = brickList;
 
                     try
                     {
+                        ICollection<Brick> brickCollection = brickList;
                         brickHandler.HandleBrick(p, c2sBrick.X, c2sBrick.Y, in brickCollection);
 
                         // TODO: AntiBrickWarpDistance logic
 
-                        foreach (Brick brick in brickList)
-                        {
-                            DropBrick(arena, p.Freq, brick.X1, brick.Y1, brick.X2, brick.Y2);
-                        }
+                        DropBricks(arena, p.Freq, brickList);
                     }
                     finally
                     {
@@ -339,13 +351,25 @@ namespace SS.Core.Modules
 
         void IBrickManager.DropBrick(Arena arena, short freq, short x1, short y1, short x2, short y2)
         {
-            ExpireBricks(arena);
-            DropBrick(arena, freq, x1, y1, x2, y2);
+            List<Brick> brickList = _objectPoolManager.BrickListPool.Get();
+
+            try
+            {
+                brickList.Add(new Brick(x1, y1, x2, y2));
+                DropBricks(arena, freq, brickList);
+            }
+            finally
+            {
+                _objectPoolManager.BrickListPool.Return(brickList);
+            }
         }
 
-        private void DropBrick(Arena arena, short freq, short x1, short y1, short x2, short y2)
+        private void DropBricks(Arena arena, short freq, List<Brick> bricks)
         {
             if (arena == null)
+                return;
+
+            if (bricks == null || bricks.Count <= 0)
                 return;
 
             if (arena[_adKey] is not ArenaBrickData abd)
@@ -353,33 +377,51 @@ namespace SS.Core.Modules
 
             lock (abd.Lock)
             {
-                S2C_Brick packet = new(x1, y1, x2, y2, freq, abd.CurrentBrickId++, ServerTick.Now);
+                ExpireBricks(arena);
 
-                // workaround for Continnum bug?
-                if (packet.StartTime <= abd.LastTime)
-                    packet.StartTime = ++abd.LastTime;
-                else
-                    abd.LastTime = packet.StartTime;
+                int available = MaxActiveBricks - abd.Bricks.Count;
+                if (available <= 0 || available < bricks.Count)
+                {
+                    // We're already at the maximum # of bricks the client allows.
+                    // Ignore it, otherwise we'll be out of sync with the clients.
+                    _logManager.LogA(LogLevel.Drivel, nameof(Bricks), arena, $"Ignored brick drop. Unable to add {bricks.Count} {(bricks.Count == 1 ? "brick" : "bricks")} to {available}/{MaxActiveBricks} available slots.");
+                    return;
+                }
 
-                abd.Bricks.Enqueue(packet);
+                List<BrickData> brickDataList = _objectPoolManager.BrickDataListPool.Get();
 
-                ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
+                try
+                {
+                    foreach (Brick request in bricks)
+                    {
+                        ServerTick startTime = ServerTick.Now;
 
-                // send it unreliably, urgently, and allow it to be dropped (as many times as is configured)
-                for (int i = 0; i < abd.WallResendCount; i++)
-                    _network.SendToArena(arena, null, data, NetSendFlags.Unreliable | NetSendFlags.Urgent | NetSendFlags.Droppable);
+                        // workaround for Continuum bug?
+                        if (startTime <= abd.LastTime)
+                            startTime = ++abd.LastTime;
+                        else
+                            abd.LastTime = startTime;
 
-                // send it reliably (always)
-                _network.SendToArena(arena, null, data, NetSendFlags.Reliable);
+                        BrickData brickData = new(request.X1, request.Y1, request.X2, request.Y2, freq, abd.CurrentBrickId++, startTime);
+                        brickDataList.Add(brickData);
+                        abd.Bricks.Enqueue(brickData);
 
-                _logManager.LogA(LogLevel.Drivel, nameof(Bricks), arena, $"Brick dropped ({x1},{y1})-({x2},{y2}) (freq={freq}) (id={packet.BrickId})");
+                        _logManager.LogA(LogLevel.Drivel, nameof(Bricks), arena, $"Brick dropped ({brickData.X1},{brickData.Y1})-({brickData.X2},{brickData.Y2}) (freq={brickData.Freq}) (id={brickData.BrickId})");
 
-                //if(abd.CountBricksAsWalls)
-                //_mapData.DoBrick()
+                        // TODO: CountBricksAsWalls
+                        //if(abd.CountBricksAsWalls)
+                        //_mapData.DoBrick()
+                    }
+
+                    SendToPlayerOrArena(null, arena, brickDataList, abd.WallResendCount);
+                }
+                finally
+                {
+                    _objectPoolManager.BrickDataListPool.Return(brickDataList);
+                }
             }
         }
 
-        // call with lock held
         private void ExpireBricks(Arena arena)
         {
             if (arena == null)
@@ -392,8 +434,10 @@ namespace SS.Core.Modules
 
             lock (abd.Lock)
             {
-                while (abd.Bricks.TryPeek(out S2C_Brick packet) && now > packet.StartTime + abd.BrickTime)
+                while (abd.Bricks.TryPeek(out BrickData brick) 
+                    && now >= brick.StartTime + abd.BrickTime)
                 {
+                    // TODO: CountBricksAsWalls
                     //if (abd.CountBricksAsWalls)
                     //_mapData.DoBrick()
 
@@ -402,22 +446,70 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendOldBricks(Player p)
+        private void SendToPlayerOrArena<T>(Player player, Arena arena, T bricks, int wallResendCount) where T : IReadOnlyCollection<BrickData>
         {
-            if (p == null)
+            if (player == null && arena == null)
                 return;
 
-            if (p?.Arena[_adKey] is not ArenaBrickData abd)
+            if (bricks == null || bricks.Count <= 0)
                 return;
 
-            lock (abd.Lock)
+            //
+            // create and send packet(s)
+            //
+
+            Span<byte> packetSpan = stackalloc byte[1 + (Math.Clamp(bricks.Count, 1, MaxBricksPerPacket) * BrickData.Length)];
+            packetSpan[0] = (byte)S2CPacketType.Brick;
+
+            Span<BrickData> brickSpan = MemoryMarshal.Cast<byte, BrickData>(packetSpan[1..]);
+            int index = 0;
+
+            foreach (BrickData brick in bricks)
             {
-                ExpireBricks(p.Arena);
+                brickSpan[index++] = brick;
 
-                foreach (S2C_Brick packet in abd.Bricks)
+                if (index >= brickSpan.Length)
                 {
-                    S2C_Brick copy = packet; // TODO: is there a way to avoid the copy?
-                    _network.SendToOne(p, ref copy, NetSendFlags.Reliable);
+                    // we have the maximum # of bricks that can be sent in a packet, send it
+                    SendToPlayerOrArena(player, arena, packetSpan, wallResendCount);
+                    index = 0;
+                }
+            }
+
+            if (index > 0)
+            {
+                SendToPlayerOrArena(player, arena, packetSpan[..(1 + (index * BrickData.Length))], wallResendCount);
+            }
+
+            void SendToPlayerOrArena(Player player, Arena arena, Span<byte> data, int wallResendCount)
+            {
+                if (player == null && arena == null)
+                    return;
+
+                if (data.Length <= 0)
+                    return;
+
+                // send it unreliably, urgently, and allow it to be dropped (as many times as is configured)
+                for (int i = 0; i < wallResendCount; i++)
+                {
+                    SendToPlayerOrArena(player, arena, data, NetSendFlags.Unreliable | NetSendFlags.Urgent | NetSendFlags.Droppable);
+                }
+
+                // send it reliably (always)
+                SendToPlayerOrArena(player, arena, data, NetSendFlags.Reliable);
+
+                void SendToPlayerOrArena(Player player, Arena arena, Span<byte> data, NetSendFlags flags)
+                {
+                    if (player == null && arena == null)
+                        return;
+
+                    if (data.Length <= 0)
+                        return;
+
+                    if (player != null)
+                        _network.SendToOne(player, data, flags);
+                    else if (arena != null)
+                        _network.SendToArena(arena, null, data, flags);
                 }
             }
         }
@@ -487,7 +579,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Queue of bricks that have been placed.
             /// </summary>
-            public readonly Queue<S2C_Brick> Bricks = new();
+            public readonly Queue<BrickData> Bricks = new(MaxActiveBricks);
 
             public readonly object Lock = new();
         }

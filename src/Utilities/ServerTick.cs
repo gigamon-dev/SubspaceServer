@@ -31,7 +31,11 @@ namespace SS.Utilities
 
         public static bool operator <(ServerTick a, ServerTick b) => (a - b) < 0;
 
-        public static int operator -(ServerTick a, ServerTick b) => ((int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1);
+        public static bool operator >=(ServerTick a, ServerTick b) => (a - b) >= 0;
+
+        public static bool operator <=(ServerTick a, ServerTick b) => (a - b) <= 0;
+
+        public static int operator -(ServerTick a, ServerTick b) => (int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1;
 
         public static ServerTick operator +(ServerTick a, uint b) => new(MakeTick(a.tickcount + b));
 

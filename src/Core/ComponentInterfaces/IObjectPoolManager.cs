@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Packets.Game;
 using SS.Utilities;
 using System.Collections.Generic;
 using System.Net;
@@ -69,8 +70,13 @@ namespace SS.Core.ComponentInterfaces
         ObjectPool<IPEndPoint> IPEndPointPool { get; }
 
         /// <summary>
-        /// Pool of <see cref="Brick"/> structs.
+        /// Pool of <see cref="List{T}"/>s for <see cref="Brick"/>.
         /// </summary>
         ObjectPool<List<Brick>> BrickListPool { get; }
+
+        /// <summary>
+        /// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
+        /// </summary>
+        ObjectPool<List<BrickData>> BrickDataListPool { get; }
     }
 }
