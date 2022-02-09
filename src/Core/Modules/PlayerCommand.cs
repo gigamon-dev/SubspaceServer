@@ -112,6 +112,10 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("warpto", Command_warpto);
             _commandManager.AddCommand("shipreset", Command_shipreset);
             _commandManager.AddCommand("prize", Command_prize);
+            _commandManager.AddCommand("lock", Command_lock);
+            _commandManager.AddCommand("unlock", Command_unlock);
+            _commandManager.AddCommand("lockarena", Command_lockarena);
+            _commandManager.AddCommand("unlockarena", Command_unlockarena);
             _commandManager.AddCommand("specall", Command_specall);
             _commandManager.AddCommand("send", Command_send);
             _commandManager.AddCommand("lsmod", Command_lsmod);
@@ -168,6 +172,10 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("warpto", Command_warpto);
             _commandManager.RemoveCommand("shipreset", Command_shipreset);
             _commandManager.RemoveCommand("prize", Command_prize);
+            _commandManager.RemoveCommand("lock", Command_lock);
+            _commandManager.RemoveCommand("unlock", Command_unlock);
+            _commandManager.RemoveCommand("lockarena", Command_lockarena);
+            _commandManager.RemoveCommand("unlockarena", Command_unlockarena);
             _commandManager.RemoveCommand("specall", Command_specall);
             _commandManager.RemoveCommand("send", Command_send);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
@@ -908,6 +916,79 @@ namespace SS.Core.Modules
                 // If the line ends in a count, give that many random prizes.
                 _game.GivePrize(target, 0, count); // TODO: investigate why this doesn't work
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "[-n] [-s] [-t <timeout>]",
+            Description = "Locks the specified targets so that they can't change ships. Use ?unlock\n" +
+            "to unlock them. By default, ?lock won't change anyone's ship. If {-s} is\n" +
+            "present, it will spec the targets before locking them. If {-n} is present,\n" +
+            "it will notify players of their change in status. If {-t} is present, you\n" +
+            "can specify a timeout in seconds for the lock to be effective.")]
+        private void Command_lock(string command, string parameters, Player p, ITarget target)
+        {
+            int index = parameters.IndexOf("-t");
+
+            int timeout;
+            if (index == -1 || !int.TryParse(parameters.AsSpan(index + 2), out timeout))
+                timeout = 0;
+
+            _game.Lock(
+                target,
+                parameters.Contains("-n"),
+                parameters.Contains("-s"),
+                timeout);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "[-n]",
+            Description = "Unlocks the specified targets so that they can now change ships. An optional\n" +
+            "{-n} notifies players of their change in status.")]
+        private void Command_unlock(string command, string parameters, Player p, ITarget target)
+        {
+            _game.Unlock(target, parameters.Contains("-n"));
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena,
+            Args = "[-n] [-a] [-i] [-s]",
+            Description = "Changes the default locked state for the arena so entering players will be locked\n" +
+            "to spectator mode. Also locks everyone currently in the arena to their ships. The {-n}\n" +
+            "option means to notify players of their change in status. The {-a} options means to\n" +
+            "only change the arena's state, and not lock current players. The {-i} option means to\n" +
+            "only lock entering players to their initial ships, instead of spectator mode. The {-s}\n" +
+            "means to spec all players before locking the arena.")]
+        private void Command_lockarena(string command, string parameters, Player p, ITarget target)
+        {
+            if (!target.TryGetArenaTarget(out Arena arena))
+                return;
+
+            _game.LockArena(
+                arena,
+                parameters.Contains("-n"),
+                parameters.Contains("-a"),
+                parameters.Contains("-i"),
+                parameters.Contains("-s"));
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena,
+            Args = "[-n] [-a]",
+            Description = "Changes the default locked state for the arena so entering players will not be\n" +
+            "locked to spectator mode. Also unlocks everyone currently in the arena to their ships.\n" +
+            "The {-n} options means to notify players of their change in status. The {-a} option\n" +
+            "means to only change the arena's state, and not unlock current players.")]
+        private void Command_unlockarena(string command, string parameters, Player p, ITarget target)
+        {
+            if (!target.TryGetArenaTarget(out Arena arena))
+                return;
+
+            _game.UnlockArena(
+                arena,
+                parameters.Contains("-n"),
+                parameters.Contains("-a"));
         }
 
         [CommandHelp(
