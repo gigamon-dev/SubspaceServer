@@ -133,6 +133,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("where", Command_where);
             _commandManager.AddCommand("setcm", Command_setcm);
             _commandManager.AddCommand("getcm", Command_getcm);
+            _commandManager.AddCommand("listarena", Command_listarena);
             _commandManager.AddCommand("mapinfo", Command_mapinfo);
             _commandManager.AddCommand("mapimage", Command_mapimage);
             _commandManager.AddCommand("ballcount", Command_ballcount);
@@ -193,6 +194,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("where", Command_where);
             _commandManager.RemoveCommand("setcm", Command_setcm);
             _commandManager.RemoveCommand("getcm", Command_getcm);
+            _commandManager.RemoveCommand("listarena", Command_listarena);
             _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
             _commandManager.RemoveCommand("mapimage", Command_mapimage);
             _commandManager.RemoveCommand("ballcount", Command_ballcount);
@@ -1696,6 +1698,64 @@ namespace SS.Core.Modules
                     $" {(mask.IsRestricted(ChatMessageType.Chat) ? '-' : '+')}chat" +
                     $" {(mask.IsRestricted(ChatMessageType.ModChat) ? '-' : '+')}modchat" +
                     $" -t {(remaining == null ? "no expiration (valid until arena change)" : $"{remaining.Value}")}");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<arena name>", 
+            Description = "Lists the players in the given arena.")]
+        private void Command_listarena(string command, string parameters, Player p, ITarget target)
+        {
+            string arenaName = !string.IsNullOrWhiteSpace(parameters) ? parameters : p.Arena?.Name;
+            if (string.IsNullOrWhiteSpace(arenaName))
+                return;
+
+            Arena arena = _arenaManager.FindArena(arenaName);
+            if (arena == null)
+            {
+                _chat.SendMessage(p, $"Arena '{arenaName}' doesn't exist.");
+                return;
+            }
+
+            int total = 0;
+            int playing = 0;
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                _playerData.Lock();
+
+                try
+                {
+                    foreach (Player p2 in _playerData.PlayerList)
+                    {
+                        if (p2.Status == PlayerState.Playing
+                            && p2.Arena == arena)
+                        {
+                            total++;
+
+                            if (p2.Ship != ShipType.Spec)
+                                playing++;
+
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(p2.Name);
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                _chat.SendMessage(p, $"Arena '{arena.Name}': {total} total, {playing} playing");
+                _chat.SendWrappedText(p, sb);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
             }
         }
 
