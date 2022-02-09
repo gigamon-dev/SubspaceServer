@@ -62,6 +62,7 @@ cmd_passwd
 cmd_local_password
 
 cmd_sheep
+cmd_owner
 
 privcmd_sendfile
 cmd_cancelfile

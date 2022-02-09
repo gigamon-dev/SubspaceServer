@@ -92,6 +92,8 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("shutdown", Command_shutdown);
             _commandManager.AddCommand("recyclezone", Command_recyclezone);
             _commandManager.AddCommand("recyclearena", Command_recyclearena);
+            _commandManager.AddCommand("owner", Command_owner);
+            _commandManager.AddCommand("zone", Command_zone);
             _commandManager.AddCommand("uptime", Command_uptime);
             _commandManager.AddCommand("version", Command_version);
             _commandManager.AddCommand("sheep", Command_sheep);
@@ -109,6 +111,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("reply", Command_reply);
             _commandManager.AddCommand("warpto", Command_warpto);
             _commandManager.AddCommand("shipreset", Command_shipreset);
+            _commandManager.AddCommand("prize", Command_prize);
             _commandManager.AddCommand("specall", Command_specall);
             _commandManager.AddCommand("send", Command_send);
             _commandManager.AddCommand("lsmod", Command_lsmod);
@@ -122,6 +125,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("rmgroup", Command_rmgroup);
             _commandManager.AddCommand("grplogin", Command_grplogin);
             _commandManager.AddCommand("listmod", Command_listmod);
+            _commandManager.AddCommand("find", Command_find);
             _commandManager.AddCommand("where", Command_where);
             _commandManager.AddCommand("setcm", Command_setcm);
             _commandManager.AddCommand("getcm", Command_getcm);
@@ -144,6 +148,8 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("shutdown", Command_shutdown);
             _commandManager.RemoveCommand("recyclezone", Command_recyclezone);
             _commandManager.RemoveCommand("recyclearena", Command_recyclearena);
+            _commandManager.RemoveCommand("owner", Command_owner);
+            _commandManager.RemoveCommand("zone", Command_zone);
             _commandManager.RemoveCommand("uptime", Command_uptime);
             _commandManager.RemoveCommand("version", Command_version);
             _commandManager.RemoveCommand("sheep", Command_sheep);
@@ -161,6 +167,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("reply", Command_reply);
             _commandManager.RemoveCommand("warpto", Command_warpto);
             _commandManager.RemoveCommand("shipreset", Command_shipreset);
+            _commandManager.RemoveCommand("prize", Command_prize);
             _commandManager.RemoveCommand("specall", Command_specall);
             _commandManager.RemoveCommand("send", Command_send);
             _commandManager.RemoveCommand("lsmod", Command_lsmod);
@@ -174,6 +181,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("rmgroup", Command_rmgroup);
             _commandManager.RemoveCommand("grplogin", Command_grplogin);
             _commandManager.RemoveCommand("listmod", Command_listmod);
+            _commandManager.RemoveCommand("find", Command_find);
             _commandManager.RemoveCommand("where", Command_where);
             _commandManager.RemoveCommand("setcm", Command_setcm);
             _commandManager.RemoveCommand("getcm", Command_getcm);
@@ -342,6 +350,38 @@ namespace SS.Core.Modules
             {
                 _chat.SendMessage(p, "Arena recycle failed; check the log for details.");
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None, 
+            Args = null, 
+            Description = "Displays the arena owner.")]
+        private void Command_owner(string command, string parameters, Player p, ITarget target)
+        {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            string ownerName = _configManager.GetStr(arena.Cfg, "Owner", "Name");
+
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                _chat.SendMessage(p, $"This arena is owned by {ownerName}.");
+            }
+            else
+            {
+                _chat.SendMessage(p, $"This arena has no listed owner.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Displays the name of the zone.")]
+        private void Command_zone(string command, string parameters, Player p, ITarget target)
+        {
+            string zoneName = _configManager.GetStr(_configManager.Global, "Billing", "ServerName");
+            _chat.SendMessage(p, $"Zone: {(!string.IsNullOrWhiteSpace(zoneName) ? zoneName : "(none)")}");
         }
 
         [CommandHelp(
@@ -739,6 +779,135 @@ namespace SS.Core.Modules
         private void Command_shipreset(string command, string parameters, Player p, ITarget target)
         {
             _game.ShipReset(target);
+        }
+
+        private static readonly (string Name, int Type)[] _prizeLookup = new[]
+        {
+            ( "random",    0 ),
+            ( "charge",   13 ), // must come before "recharge"
+            ( "x",         6 ), // must come before "prox"
+            ( "recharge",  1 ),
+            ( "energy",    2 ),
+            ( "rot",       3 ),
+            ( "stealth",   4 ),
+            ( "cloak",     5 ),
+            ( "warp",      7 ),
+            ( "gun",       8 ),
+            ( "bomb",      9 ),
+            ( "bounce",   10 ),
+            ( "thrust",   11 ),
+            ( "speed",    12 ),
+            ( "shutdown", 14 ),
+            ( "multi",    15 ),
+            ( "prox",     16 ),
+            ( "super",    17 ),
+            ( "shield",   18 ),
+            ( "shrap",    19 ),
+            ( "anti",     20 ),
+            ( "rep",      21 ),
+            ( "burst",    22 ),
+            ( "decoy",    23 ),
+            ( "thor",     24 ),
+            ( "mprize",   25 ),
+            ( "brick",    26 ),
+            ( "rocket",   27 ),
+            ( "port",     28 ),
+        };
+
+        private enum ParsePrizeLast
+        {
+            None,
+            Count,
+            Word,
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "see description",
+            Description = "Gives the specified prizes to the target player(s).\n" +
+            "\n" +
+            "Prizes are specified with an optional count, and then a prize name (e.g.\n" +
+            "{3 reps}, {anti}). Negative prizes can be specified with a '-' before\n" +
+            "the prize name or the count (e.g. {-prox}, {-3 bricks}, {5 -guns}). More\n" +
+            "than one prize can be specified in one command. A count without a prize\n" +
+            "name means {random}. For compatability, numerical prize ids with {#} are\n" +
+            "supported.")]
+        private void Command_prize(string command, string parameters, Player p, ITarget target)
+        {
+            short count = 1;
+            int? type = null;
+            ParsePrizeLast last = ParsePrizeLast.None;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while ((token = remaining.GetToken(", ", out remaining)) != ReadOnlySpan<char>.Empty)
+            {
+                if (short.TryParse(token, out short t))
+                {
+                    // This is a count.
+                    count = t;
+                    last = ParsePrizeLast.Count;
+                }
+                else
+                {
+                    // Try a word.
+
+                    // Negative prizes are marked with negative counts.
+                    if (token[0] == '-' && count > 0)
+                    {
+                        count = (short)-count;
+                        token = token[1..];
+                    }
+
+                    // Now try to find the word.
+                    type = null;
+
+                    if (token[0] == '#'
+                        && short.TryParse(token[1..], out t))
+                    {
+                        type = t;
+                    }
+                    else
+                    {
+                        // Try matching using the lookup (the last match wins).
+                        foreach (var tuple in _prizeLookup)
+                        {
+                            if (token.Contains(tuple.Name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                type = tuple.Type;
+                            }
+                        }
+                    }
+
+                    if (type != null)
+                    {
+                        // To send a prize, the type can be negative, but the count must be positive.
+                        if (count < 0)
+                        {
+                            if (type > 0)
+                                type = -type;
+
+                            count = (short)-count;
+                        }
+
+                        _game.GivePrize(target, (Prize)type, count);
+
+                        // Reset count to 1 once we hit a successful word.
+                        count = 1;
+                    }
+
+                    last = ParsePrizeLast.Word;
+                }
+            }
+
+            if (last == ParsePrizeLast.Count)
+            {
+                if (count < 0)
+                    count = (short)-count;
+
+                // If the line ends in a count, give that many random prizes.
+                _game.GivePrize(target, 0, count); // TODO: investigate why this doesn't work
+            }
         }
 
         [CommandHelp(
@@ -1198,6 +1367,85 @@ namespace SS.Core.Modules
             finally
             {
                 _objectPoolManager.StringBuilderPool.Return(sb);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<all or part of a player name>",
+            Description = "Tells you where the specified player is right now. If you specify\n" +
+            "only part of a player name, it will try to find a matching name\n" +
+            "using a case insensitive substring search.")]
+        private void Command_find(string command, string parameters, Player p, ITarget target)
+        {
+            if (target.Type != TargetType.Arena 
+                || string.IsNullOrWhiteSpace(parameters))
+            {
+                return;
+            }
+
+            int score = int.MaxValue; // lower is better
+            string bestArena = null;
+            string bestPlayer = null;
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player otherPlayer in _playerData.PlayerList)
+                {
+                    if (p.Status != PlayerState.Playing)
+                        continue;
+
+                    if (string.Equals(otherPlayer.Name, parameters, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // exact match
+                        bestPlayer = otherPlayer.Name;
+                        bestArena = otherPlayer.Arena?.Name;
+                        score = -1;
+                        break;
+                    }
+
+                    int index = otherPlayer.Name.IndexOf(parameters, StringComparison.OrdinalIgnoreCase);
+                    if (index != -1)
+                    {
+                        // for substring matches, the score is the distance from the start of the name
+                        if (index < score)
+                        {
+                            bestPlayer = otherPlayer.Name;
+                            bestArena = otherPlayer.Arena?.Name;
+                            score = index;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            // TODO: peer
+
+            if (!string.IsNullOrWhiteSpace(bestPlayer)
+                && !string.IsNullOrWhiteSpace(bestArena))
+            {
+                if (!bestArena.StartsWith('#')
+                    || _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena)
+                    || string.Equals(p.Arena.Name, bestArena, StringComparison.OrdinalIgnoreCase))
+                {
+                    _chat.SendMessage(p, $"{bestPlayer} is in arena {bestArena}.");
+                }
+                else
+                {
+                    _chat.SendMessage(p, $"{bestPlayer} is in a private arena.");
+                }
+            }
+
+            if (score != -1)
+            {
+                // exact match not found
+                // have the command manager send it as the default command (to be handled by the billing server)
+                _commandManager.Command($"\\find {parameters}", p, target, ChatSound.None);
             }
         }
 

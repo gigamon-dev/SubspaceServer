@@ -544,6 +544,56 @@ namespace SS.Utilities
             }
         }
 
+        /// <summary>
+        /// Splits off a token from the beginning of a string stopping at any of the specified <paramref name="delimiters"/>.
+        /// Any leading occurances of the <paramref name="delimiters"/> are skipped and not included in the return value.
+        /// </summary>
+        /// <param name="str">The string to get a token from.</param>
+        /// <param name="delimiters">The set of delimiters to stop at.</param>
+        /// <param name="remaining">The remaining part of the string, including the delimiter if one was found.</param>
+        /// <returns>The token.</returns>
+        public static ReadOnlySpan<char> GetToken(this ReadOnlySpan<char> str, ReadOnlySpan<char> delimiters, out ReadOnlySpan<char> remaining)
+        {
+            str = str.TrimStart(delimiters);
+
+            int index = str.IndexOfAny(delimiters);
+            if (index == -1)
+            {
+                remaining = ReadOnlySpan<char>.Empty;
+                return str;
+            }
+            else
+            {
+                remaining = str[index..];
+                return str.Slice(0, index);
+            }
+        }
+
+        /// <summary>
+        /// Splits off a token from the beginning of a string stopping at any of the specified <paramref name="delimiters"/>.
+        /// Any leading occurances of the <paramref name="delimiters"/> are skipped and not included in the return value.
+        /// </summary>
+        /// <param name="str">The string to get a token from.</param>
+        /// <param name="delimiters">The set of delimiters to stop at.</param>
+        /// <param name="remaining">The remaining part of the string, including the delimiter if one was found.</param>
+        /// <returns>The token.</returns>
+        public static Span<char> GetToken(this Span<char> str, ReadOnlySpan<char> delimiters, out Span<char> remaining)
+        {
+            str = str.TrimStart(delimiters);
+
+            int index = str.IndexOfAny(delimiters);
+            if (index == -1)
+            {
+                remaining = Span<char>.Empty;
+                return str;
+            }
+            else
+            {
+                remaining = str[index..];
+                return str.Slice(0, index);
+            }
+        }
+
         #endregion
     }
 
