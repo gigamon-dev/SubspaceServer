@@ -23,12 +23,18 @@ namespace SS.Core.Modules
     public class PlayerCommand : IModule
     {
         private ComponentBroker _broker;
+
+        // Regular dependencies (do not add any of these to a command group)
+        private IChat _chat;
+        private ICommandManager _commandManager;
+        private IObjectPoolManager _objectPoolManager;
+        private IPlayerData _playerData;
+
+        // Command group dependencies (these are set using reflection)
         private IArenaManager _arenaManager;
         private IBalls _balls;
-        private IChat _chat;
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
-        private ICommandManager _commandManager;
         private IFileTransfer _fileTransfer;
         private IGame _game;
         private IGroupManager _groupManager;
@@ -38,176 +44,358 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private IModuleManager _mm;
         private INetwork _net;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
 
         private DateTime _startedAt;
+
+        private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
+        private readonly Dictionary<string, CommandGroup> _commandGroups = new(StringComparer.OrdinalIgnoreCase);
+
+        public PlayerCommand()
+        {
+            foreach(FieldInfo fieldInfo in typeof(PlayerCommand).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            {
+                if (fieldInfo.FieldType.IsInterface
+                    && fieldInfo.FieldType.IsAssignableTo(typeof(IComponentInterface))
+                    && fieldInfo.Name.StartsWith('_'))
+                {
+                    _interfaceFields.Add(fieldInfo.FieldType, new InterfaceFieldInfo(fieldInfo));
+                }
+            }
+
+            AddCommandGroup(
+                new CommandGroup("core")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(IArenaManager),
+                        typeof(INetwork),
+                        typeof(IMainloop),
+                        typeof(IModuleManager),
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("enablecmdgroup", Command_enablecmdgroup),
+                        new CommandInfo("disablecmdgroup", Command_disablecmdgroup),
+                        new CommandInfo("arena", Command_arena),
+                        new CommandInfo("shutdown", Command_shutdown),
+                        new CommandInfo("recyclezone", Command_recyclezone),
+                        new CommandInfo("recyclearena", Command_recyclearena),
+                        new CommandInfo("owner", Command_owner),
+                        new CommandInfo("zone", Command_zone),
+                        new CommandInfo("uptime", Command_uptime),
+                        new CommandInfo("version", Command_version),
+                        new CommandInfo("lsmod", Command_lsmod),
+                        new CommandInfo("modinfo", Command_modinfo),
+                        new CommandInfo("insmod", Command_insmod),
+                        new CommandInfo("rmmod", Command_rmmod),
+                        new CommandInfo("attmod", Command_attmod),
+                        new CommandInfo("detmod", Command_detmod),
+                        new CommandInfo("info", Command_info),
+                        new CommandInfo("a", Command_a),
+                        new CommandInfo("aa", Command_aa),
+                        new CommandInfo("z", Command_z),
+                        new CommandInfo("az", Command_az),
+                        new CommandInfo("warn", Command_warn),
+                        new CommandInfo("reply", Command_reply),
+                        new CommandInfo("netstats", Command_netstats),
+                        new CommandInfo("serverstats", Command_serverstats),
+                        new CommandInfo("send", Command_send),
+                        new CommandInfo("where", Command_where)
+                    }
+                });
+
+            AddCommandGroup(
+                new CommandGroup("game")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(IArenaManager),
+                        typeof(IConfigManager),
+                        typeof(IGame),
+                        typeof(INetwork),
+                    },
+                    Commands = new[]
+                    {
+                        //new CommandInfo("setfreq", Command_setfreq),
+                        //new CommandInfo("setship", Command_setship),
+                        new CommandInfo("specall", Command_specall),
+                        new CommandInfo("warpto", Command_warpto),
+                        new CommandInfo("shipreset", Command_shipreset),
+                        new CommandInfo("prize", Command_prize),
+                        new CommandInfo("lock", Command_lock),
+                        new CommandInfo("unlock", Command_unlock),
+                        new CommandInfo("lockarena", Command_lockarena),
+                        new CommandInfo("unlockarena", Command_unlockarena),
+                    }
+                });
+
+            AddCommandGroup(
+                new CommandGroup("config")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(IArenaManager),
+                        typeof(IConfigManager),
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("geta", Command_getX),
+                        new CommandInfo("getg", Command_getX),
+                        new CommandInfo("seta", Command_setX),
+                        new CommandInfo("setg", Command_setX),
+                    }
+                });
+
+            AddCommandGroup(
+                new CommandGroup("ball")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(IBalls),
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("ballcount", Command_ballcount),
+                        new CommandInfo("ballinfo", Command_ballinfo),
+                        new CommandInfo("giveball", Command_giveball),
+                        new CommandInfo("moveball", Command_moveball),
+                        new CommandInfo("spawnball", Command_spawnball),
+                    }
+                });
+
+            AddCommandGroup(
+                new CommandGroup("lag")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(ILagQuery),
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("lag", Command_lag),
+                    }
+                });
+
+            AddCommandGroup(
+                new CommandGroup("misc")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(ICapabilityManager),
+                        typeof(IGroupManager),
+                        typeof(IArenaManager),
+                        typeof(ILogManager),
+                        typeof(IConfigManager),
+                        typeof(IFileTransfer),
+                        typeof(IMapData),
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("getgroup", Command_getgroup),
+                        new CommandInfo("setgroup", Command_setgroup),
+                        new CommandInfo("rmgroup", Command_rmgroup),
+                        new CommandInfo("grplogin", Command_grplogin),
+                        new CommandInfo("listmod", Command_listmod),
+                        new CommandInfo("find", Command_find),
+                        new CommandInfo("setcm", Command_setcm),
+                        new CommandInfo("getcm", Command_getcm),
+                        new CommandInfo("listarena", Command_listarena),
+                        new CommandInfo("sheep", Command_sheep),
+                        new CommandInfo("mapinfo", Command_mapinfo),
+                        new CommandInfo("mapimage", Command_mapimage),
+                    }
+                });
+
+            void AddCommandGroup(CommandGroup group)
+            {
+                if (group == null)
+                    throw new ArgumentNullException(nameof(group));
+
+                _commandGroups.Add(group.Name, group);
+            }
+        }
 
         #region IModule Members
 
         public bool Load(
             ComponentBroker broker,
-            IArenaManager arenaManager,
-            IBalls balls,
             IChat chat,
-            ICapabilityManager capabilityManager,
-            IConfigManager configManager,
             ICommandManager commandManager,
-            IFileTransfer fileTransfer,
-            IGame game,
-            IGroupManager groupManager,
-            ILagQuery lagQuery,
-            ILogManager logManager,
-            IMainloop mainloop,
-            IMapData mapData,
-            IModuleManager mm,
-            INetwork net,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _balls = balls ?? throw new ArgumentNullException(nameof(balls));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
-            _game = game ?? throw new ArgumentNullException(nameof(game));
-            _groupManager = groupManager ?? throw new ArgumentNullException(nameof(groupManager));
-            _lagQuery = lagQuery ?? throw new ArgumentNullException(nameof(lagQuery));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _arenaManager = null;
+            _balls = null;
+            _capabilityManager = null;
+            _configManager = null;
+            _fileTransfer = null;
+            _game = null;
+            _groupManager = null;
+            _lagQuery = null;
+            _logManager = null;
+            _mainloop = null;
+            _mapData = null;
+            _mm = null;
+            _net = null;
+
             _startedAt = DateTime.UtcNow;
 
-            // TODO: do some sort of derivative of that command group thing asss does
-            _commandManager.AddCommand("lag", Command_lag);
-            _commandManager.AddCommand("arena", Command_arena);
-            _commandManager.AddCommand("shutdown", Command_shutdown);
-            _commandManager.AddCommand("recyclezone", Command_recyclezone);
-            _commandManager.AddCommand("recyclearena", Command_recyclearena);
-            _commandManager.AddCommand("owner", Command_owner);
-            _commandManager.AddCommand("zone", Command_zone);
-            _commandManager.AddCommand("uptime", Command_uptime);
-            _commandManager.AddCommand("version", Command_version);
-            _commandManager.AddCommand("sheep", Command_sheep);
-            _commandManager.AddCommand("geta", Command_getX);
-            _commandManager.AddCommand("getg", Command_getX);
-            _commandManager.AddCommand("seta", Command_setX);
-            _commandManager.AddCommand("setg", Command_setX);
-            _commandManager.AddCommand("netstats", Command_netstats);
-            _commandManager.AddCommand("info", Command_info);
-            _commandManager.AddCommand("a", Command_a);
-            _commandManager.AddCommand("aa", Command_aa);
-            _commandManager.AddCommand("z", Command_z);
-            _commandManager.AddCommand("az", Command_az);
-            _commandManager.AddCommand("warn", Command_warn);
-            _commandManager.AddCommand("reply", Command_reply);
-            _commandManager.AddCommand("warpto", Command_warpto);
-            _commandManager.AddCommand("shipreset", Command_shipreset);
-            _commandManager.AddCommand("prize", Command_prize);
-            _commandManager.AddCommand("lock", Command_lock);
-            _commandManager.AddCommand("unlock", Command_unlock);
-            _commandManager.AddCommand("lockarena", Command_lockarena);
-            _commandManager.AddCommand("unlockarena", Command_unlockarena);
-            _commandManager.AddCommand("specall", Command_specall);
-            _commandManager.AddCommand("send", Command_send);
-            _commandManager.AddCommand("lsmod", Command_lsmod);
-            _commandManager.AddCommand("modinfo", Command_modinfo);
-            _commandManager.AddCommand("insmod", Command_insmod);
-            _commandManager.AddCommand("rmmod", Command_rmmod);
-            _commandManager.AddCommand("attmod", Command_attmod);
-            _commandManager.AddCommand("detmod", Command_detmod);
-            _commandManager.AddCommand("getgroup", Command_getgroup);
-            _commandManager.AddCommand("setgroup", Command_setgroup);
-            _commandManager.AddCommand("rmgroup", Command_rmgroup);
-            _commandManager.AddCommand("grplogin", Command_grplogin);
-            _commandManager.AddCommand("listmod", Command_listmod);
-            _commandManager.AddCommand("find", Command_find);
-            _commandManager.AddCommand("where", Command_where);
-            _commandManager.AddCommand("setcm", Command_setcm);
-            _commandManager.AddCommand("getcm", Command_getcm);
-            _commandManager.AddCommand("listarena", Command_listarena);
-            _commandManager.AddCommand("mapinfo", Command_mapinfo);
-            _commandManager.AddCommand("mapimage", Command_mapimage);
-            _commandManager.AddCommand("ballcount", Command_ballcount);
-            _commandManager.AddCommand("giveball", Command_giveball);
-            _commandManager.AddCommand("moveball", Command_moveball);
-            _commandManager.AddCommand("spawnball", Command_spawnball);
-            _commandManager.AddCommand("ballinfo", Command_ballinfo);
-            _commandManager.AddCommand("serverstats", Command_serverstats);
+            foreach (CommandGroup group in _commandGroups.Values)
+            {
+                LoadCommandGroup(group);
+            }
 
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            _commandManager.RemoveCommand("lag", Command_lag);
-            _commandManager.RemoveCommand("arena", Command_arena);
-            _commandManager.RemoveCommand("shutdown", Command_shutdown);
-            _commandManager.RemoveCommand("recyclezone", Command_recyclezone);
-            _commandManager.RemoveCommand("recyclearena", Command_recyclearena);
-            _commandManager.RemoveCommand("owner", Command_owner);
-            _commandManager.RemoveCommand("zone", Command_zone);
-            _commandManager.RemoveCommand("uptime", Command_uptime);
-            _commandManager.RemoveCommand("version", Command_version);
-            _commandManager.RemoveCommand("sheep", Command_sheep);
-            _commandManager.RemoveCommand("geta", Command_getX);
-            _commandManager.RemoveCommand("getg", Command_getX);
-            _commandManager.RemoveCommand("seta", Command_setX);
-            _commandManager.RemoveCommand("setg", Command_setX);
-            _commandManager.RemoveCommand("netstats", Command_netstats);
-            _commandManager.RemoveCommand("info", Command_info);
-            _commandManager.RemoveCommand("a", Command_a);
-            _commandManager.RemoveCommand("aa", Command_aa);
-            _commandManager.RemoveCommand("z", Command_a);
-            _commandManager.RemoveCommand("az", Command_az);
-            _commandManager.RemoveCommand("warn", Command_warn);
-            _commandManager.RemoveCommand("reply", Command_reply);
-            _commandManager.RemoveCommand("warpto", Command_warpto);
-            _commandManager.RemoveCommand("shipreset", Command_shipreset);
-            _commandManager.RemoveCommand("prize", Command_prize);
-            _commandManager.RemoveCommand("lock", Command_lock);
-            _commandManager.RemoveCommand("unlock", Command_unlock);
-            _commandManager.RemoveCommand("lockarena", Command_lockarena);
-            _commandManager.RemoveCommand("unlockarena", Command_unlockarena);
-            _commandManager.RemoveCommand("specall", Command_specall);
-            _commandManager.RemoveCommand("send", Command_send);
-            _commandManager.RemoveCommand("lsmod", Command_lsmod);
-            _commandManager.RemoveCommand("modinfo", Command_modinfo);
-            _commandManager.RemoveCommand("insmod", Command_insmod);
-            _commandManager.RemoveCommand("rmmod", Command_rmmod);
-            _commandManager.RemoveCommand("attmod", Command_attmod);
-            _commandManager.RemoveCommand("detmod", Command_detmod);
-            _commandManager.RemoveCommand("getgroup", Command_getgroup);
-            _commandManager.RemoveCommand("setgroup", Command_setgroup);
-            _commandManager.RemoveCommand("rmgroup", Command_rmgroup);
-            _commandManager.RemoveCommand("grplogin", Command_grplogin);
-            _commandManager.RemoveCommand("listmod", Command_listmod);
-            _commandManager.RemoveCommand("find", Command_find);
-            _commandManager.RemoveCommand("where", Command_where);
-            _commandManager.RemoveCommand("setcm", Command_setcm);
-            _commandManager.RemoveCommand("getcm", Command_getcm);
-            _commandManager.RemoveCommand("listarena", Command_listarena);
-            _commandManager.RemoveCommand("mapinfo", Command_mapinfo);
-            _commandManager.RemoveCommand("mapimage", Command_mapimage);
-            _commandManager.RemoveCommand("ballcount", Command_ballcount);
-            _commandManager.RemoveCommand("giveball", Command_giveball);
-            _commandManager.RemoveCommand("moveball", Command_moveball);
-            _commandManager.RemoveCommand("spawnball", Command_spawnball);
-            _commandManager.RemoveCommand("ballinfo", Command_ballinfo);
-            _commandManager.RemoveCommand("serverstats", Command_serverstats);
+            foreach (CommandGroup group in _commandGroups.Values)
+            {
+                UnloadCommandGroup(group);
+            }
 
             return true;
         }
 
         #endregion
+
+        private bool LoadCommandGroup(CommandGroup group)
+        {
+            if (group == null)
+                throw new ArgumentNullException(nameof(group));
+
+            if (group.IsLoaded)
+                return false;
+
+            foreach (Type dependencyType in group.InterfaceDependencies)
+            {
+                if (!_interfaceFields.TryGetValue(dependencyType, out InterfaceFieldInfo interfaceFieldInfo))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Failed to load command group '{group.Name}'. Error getting interface dependency '{dependencyType.Name}' field info.");
+                    return false;
+                }
+
+                if (interfaceFieldInfo.ReferenceCount == 0)
+                {
+                    IComponentInterface componentInterface = _broker.GetInterface(dependencyType);
+                    if (componentInterface == null)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Failed to load command group '{group.Name}'. Error getting interface dependency '{dependencyType.Name}' from broker.");
+                        return false;
+                    }
+
+                    interfaceFieldInfo.FieldInfo.SetValue(this, componentInterface);
+                }
+
+                interfaceFieldInfo.ReferenceCount++;
+            }
+
+            foreach (CommandInfo commandInfo in group.Commands)
+            {
+                if (commandInfo.CommandDelegate != null)
+                    _commandManager.AddCommand(commandInfo.CommandName, commandInfo.CommandDelegate);
+                else if (commandInfo.CommandWithSoundDelegate != null)
+                    _commandManager.AddCommand(commandInfo.CommandName, commandInfo.CommandWithSoundDelegate);
+            }
+
+            group.IsLoaded = true;
+            return true;
+        }
+
+        private bool UnloadCommandGroup(CommandGroup group)
+        {
+            if (group == null)
+                throw new ArgumentNullException(nameof(group));
+
+            if (!group.IsLoaded)
+                return false;
+
+            foreach (CommandInfo commandInfo in group.Commands)
+            {
+                if (commandInfo.CommandDelegate != null)
+                    _commandManager.RemoveCommand(commandInfo.CommandName, commandInfo.CommandDelegate);
+                else if (commandInfo.CommandWithSoundDelegate != null)
+                    _commandManager.RemoveCommand(commandInfo.CommandName, commandInfo.CommandWithSoundDelegate);
+            }
+
+            foreach (Type dependencyType in group.InterfaceDependencies)
+            {
+                if (!_interfaceFields.TryGetValue(dependencyType, out InterfaceFieldInfo interfaceFieldInfo))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Error unloading command group {group.Name}. Error getting interface field info for '{dependencyType.Name}'.");
+                    return false;
+                }
+
+                interfaceFieldInfo.ReferenceCount--;
+
+                if (interfaceFieldInfo.ReferenceCount == 0)
+                {
+                    if (interfaceFieldInfo.FieldInfo.GetValue(this) is not IComponentInterface componentInterface)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Error unloading command group {group.Name}. Error getting interface field value for '{dependencyType.Name}'.");
+                        return false;
+                    }
+
+                    _broker.ReleaseInterface(dependencyType, componentInterface);
+
+                    interfaceFieldInfo.FieldInfo.SetValue(this, null);
+                }
+            }
+
+            group.IsLoaded = false;
+            return true;
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<command group>",
+            Description = "Enables all the commands in the specified command group. This is only\n" +
+            "useful after using ?disablecmdgroup.")]
+        private void Command_enablecmdgroup(string command, string parameters, Player p, ITarget target)
+        {
+            if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+            {
+                _chat.SendMessage(p, $"Command group {parameters} not found.");
+                return;
+            }
+
+            if (group.IsLoaded)
+                _chat.SendMessage(p, $"Command group {group.Name} is already enabled.");
+            else if (LoadCommandGroup(group))
+                _chat.SendMessage(p, $"Command group {group.Name} enabled.");
+            else
+                _chat.SendMessage(p, $"Error enabling command group {group.Name}");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<command group>",
+            Description = "Disables all the commands in the specified command group and released the\n" +
+            "modules that they require. This can be used to release interfaces so that\n" +
+            $"modules can be unloaded or upgraded without unloading the {nameof(PlayerCommand)}\n" + 
+            "module which would be irreversible).")]
+        private void Command_disablecmdgroup(string command, string parameters, Player p, ITarget target)
+        {
+            if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+            {
+                _chat.SendMessage(p, $"Command group {parameters} not found.");
+                return;
+            }
+
+            if (!group.IsLoaded)
+                _chat.SendMessage(p, $"Command group {group.Name} is already disabled.");
+            else if (UnloadCommandGroup(group))
+                _chat.SendMessage(p, $"Command group {group.Name} disabled.");
+            else
+                _chat.SendMessage(p, $"Error disabling command group {group.Name}");
+        }
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
@@ -2160,5 +2348,61 @@ namespace SS.Core.Modules
                 }
             }
         }
+
+        #region Command group helper classes
+
+        private class InterfaceFieldInfo
+        {
+            public readonly FieldInfo FieldInfo;
+            public int ReferenceCount = 0;
+
+            public InterfaceFieldInfo(FieldInfo fieldInfo)
+            {
+                FieldInfo = fieldInfo ?? throw new ArgumentNullException(nameof(fieldInfo));
+            }
+        }
+
+        private class CommandGroup
+        {
+            public string Name;
+            public HashSet<Type> InterfaceDependencies { get; init; }
+            public CommandInfo[] Commands { get; init; }
+            public bool IsLoaded;
+
+            public CommandGroup(string name)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(name));
+
+                Name = name;
+            }
+        }
+
+        private class CommandInfo
+        {
+            public readonly string CommandName;
+            public readonly CommandDelegate CommandDelegate;
+            public readonly CommandWithSoundDelegate CommandWithSoundDelegate;
+
+            public CommandInfo(string commandName, CommandDelegate commandDelegate) : this(commandName)
+            {
+                CommandDelegate = commandDelegate ?? throw new ArgumentNullException(nameof(commandDelegate));
+            }
+
+            public CommandInfo(string commandName, CommandWithSoundDelegate commandSoundDelegate) : this(commandName)
+            {
+                CommandWithSoundDelegate = commandSoundDelegate ?? throw new ArgumentNullException(nameof(commandSoundDelegate));
+            }
+
+            private CommandInfo(string commandName)
+            {
+                if (string.IsNullOrWhiteSpace(commandName))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
+
+                CommandName = commandName;
+            }
+        }
+
+        #endregion
     }
 }
