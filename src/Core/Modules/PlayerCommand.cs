@@ -74,8 +74,6 @@ namespace SS.Core.Modules
                     },
                     Commands = new[]
                     {
-                        new CommandInfo("enablecmdgroup", Command_enablecmdgroup),
-                        new CommandInfo("disablecmdgroup", Command_disablecmdgroup),
                         new CommandInfo("arena", Command_arena),
                         new CommandInfo("shutdown", Command_shutdown),
                         new CommandInfo("recyclezone", Command_recyclezone),
@@ -251,6 +249,11 @@ namespace SS.Core.Modules
                 LoadCommandGroup(group);
             }
 
+            // These commands are purposely not in command groups.
+            // We want these commands available as long as the module is loaded.
+            _commandManager.AddCommand("enablecmdgroup", Command_enablecmdgroup);
+            _commandManager.AddCommand("disablecmdgroup", Command_disablecmdgroup);
+
             return true;
         }
 
@@ -260,6 +263,9 @@ namespace SS.Core.Modules
             {
                 UnloadCommandGroup(group);
             }
+
+            _commandManager.RemoveCommand("enablecmdgroup", Command_enablecmdgroup);
+            _commandManager.RemoveCommand("disablecmdgroup", Command_disablecmdgroup);
 
             return true;
         }
@@ -355,46 +361,101 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<command group>",
+            Args = "[{-all} | <command group>]",
             Description = "Enables all the commands in the specified command group. This is only\n" +
-            "useful after using ?disablecmdgroup.")]
+            "useful after using ?disablecmdgroup. Use {-all} to enable all command groups.")]
         private void Command_enablecmdgroup(string command, string parameters, Player p, ITarget target)
         {
-            if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+            if (string.IsNullOrWhiteSpace(parameters))
             {
-                _chat.SendMessage(p, $"Command group {parameters} not found.");
+                PrintCommandGroups(p);
                 return;
             }
 
-            if (group.IsLoaded)
-                _chat.SendMessage(p, $"Command group {group.Name} is already enabled.");
-            else if (LoadCommandGroup(group))
-                _chat.SendMessage(p, $"Command group {group.Name} enabled.");
+            if (parameters.Contains("-all"))
+            {
+                foreach (CommandGroup group in _commandGroups.Values)
+                {
+                    LoadGroup(group);
+                }
+            }
             else
-                _chat.SendMessage(p, $"Error enabling command group {group.Name}");
+            {
+                if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+                {
+                    _chat.SendMessage(p, $"Command group '{parameters}' not found.");
+                    return;
+                }
+
+                LoadGroup(group);
+            }
+
+            void LoadGroup(CommandGroup group)
+            {
+                if (group.IsLoaded)
+                    _chat.SendMessage(p, $"Command group '{group.Name}' is already enabled.");
+                else if (LoadCommandGroup(group))
+                    _chat.SendMessage(p, $"Command group '{group.Name}' enabled.");
+                else
+                    _chat.SendMessage(p, $"Error enabling command group '{group.Name}'.");
+            }
         }
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<command group>",
+            Args = "[{-all} | <command group>]",
             Description = "Disables all the commands in the specified command group and released the\n" +
             "modules that they require. This can be used to release interfaces so that\n" +
-            $"modules can be unloaded or upgraded without unloading the {nameof(PlayerCommand)}\n" + 
-            "module which would be irreversible).")]
+            $"modules can be unloaded or upgraded without unloading the {nameof(PlayerCommand)}\n" +
+            "module which would be irreversible). Use {-all} to disable all command groups.")]
         private void Command_disablecmdgroup(string command, string parameters, Player p, ITarget target)
         {
-            if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+            if (string.IsNullOrWhiteSpace(parameters))
             {
-                _chat.SendMessage(p, $"Command group {parameters} not found.");
+                PrintCommandGroups(p);
                 return;
             }
 
-            if (!group.IsLoaded)
-                _chat.SendMessage(p, $"Command group {group.Name} is already disabled.");
-            else if (UnloadCommandGroup(group))
-                _chat.SendMessage(p, $"Command group {group.Name} disabled.");
+            if (parameters.Contains("-all"))
+            {
+                foreach (CommandGroup group in _commandGroups.Values)
+                {
+                    UnloadGroup(group);
+                }
+            }
             else
-                _chat.SendMessage(p, $"Error disabling command group {group.Name}");
+            {
+                if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+                {
+                    _chat.SendMessage(p, $"Command group '{parameters}' not found.");
+                    return;
+                }
+
+                UnloadGroup(group);
+            }
+
+            void UnloadGroup(CommandGroup group)
+            {
+                if (!group.IsLoaded)
+                    _chat.SendMessage(p, $"Command group '{group.Name}' is already disabled.");
+                else if (UnloadCommandGroup(group))
+                    _chat.SendMessage(p, $"Command group '{group.Name}' disabled.");
+                else
+                    _chat.SendMessage(p, $"Error disabling command group '{group.Name}'.");
+            }
+        }
+
+        private void PrintCommandGroups(Player p)
+        {
+            if (p == null)
+                return;
+
+            _chat.SendMessage(p, "Available command groups:");
+
+            foreach (CommandGroup group in _commandGroups.Values)
+            {
+                _chat.SendMessage(p, $"{group.Name,10} : {(group.IsLoaded ? "enabled" : "disabled")}");
+            }
         }
 
         [CommandHelp(
