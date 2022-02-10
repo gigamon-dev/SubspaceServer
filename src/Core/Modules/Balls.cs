@@ -8,6 +8,14 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides ball functionality. This includes:
+    /// <list type="bullet">
+    /// <item>Spawning/placing ball(s) on the map</item>
+    /// <item>Sending ball location updates to players</item>
+    /// <item>Player interactions with balls (pick up a ball, shoot a ball, score a goal with a ball)</item>
+    /// </list>
+    /// </summary>
     public class Balls : IModule, IBalls
     {
         /// <summary>
