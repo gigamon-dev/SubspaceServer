@@ -319,6 +319,13 @@ namespace SS.Core.ComponentInterfaces
         NetClientStats GetClientStats(Player p);
 
         /// <summary>
+        /// Gets how long it has been since a packet was received from a specified player.
+        /// </summary>
+        /// <param name="p">The player to check.</param>
+        /// <returns>The <see cref="TimeSpan"/> since the last packet was received.</returns>
+        TimeSpan GetLastPacketTimeSpan(Player p);
+
+        /// <summary>
         /// Gets the endpoint (IP Address and port) and connectAs that the server is listening on for game clients.
         /// </summary>
         /// <param name="index">Index of the data to get.</param>

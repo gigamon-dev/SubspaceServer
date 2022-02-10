@@ -531,7 +531,7 @@ namespace SS.Core.Modules
         private class Config
         {
             /// <summary>
-            /// How long to get no data from a client before disconnecting him (in ticks).
+            /// How long to get no data from a client before disconnecting him.
             /// </summary>
             [ConfigHelp("Net", "DropTimeout", ConfigScope.Global, typeof(int), DefaultValue = "3000",
                 Description = "How long to get no data from a client before disconnecting him (in ticks).")]
@@ -1115,6 +1115,7 @@ namespace SS.Core.Modules
 
             List<Player> toKick = new();
             List<Player> toFree = new();
+            List<NetClientConnection> toDrop = new();
 
             while (_stopToken.IsCancellationRequested == false)
             {
@@ -1173,26 +1174,34 @@ namespace SS.Core.Modules
                 }
 
                 // now kick the ones we needed to above
-                foreach (Player p in toKick)
+                if (toKick.Count > 0)
                 {
-                    _playerData.KickPlayer(p);
+                    foreach (Player p in toKick)
+                    {
+                        _playerData.KickPlayer(p);
+                    }
+
+                    toKick.Clear();
                 }
-                toKick.Clear();
 
                 // and free ...
-                foreach (Player p in toFree)
+                if (toFree.Count > 0)
                 {
-                    if (p[_connKey] is not ConnData conn)
-                        continue;
+                    foreach (Player p in toFree)
+                    {
+                        if (p[_connKey] is not ConnData conn)
+                            continue;
 
-                    // one more time, just to be sure
-                    ClearBuffers(p);
+                        // one more time, just to be sure
+                        ClearBuffers(p);
 
-                    // TODO: _bandwithLimit.Free(conn.bw);
+                        // TODO: _bandwithLimit.Free(conn.bw);
 
-                    _playerData.FreePlayer(p);
+                        _playerData.FreePlayer(p);
+                    }
+
+                    toFree.Clear();
                 }
-                toFree.Clear();
 
                 // outgoing packets and lagouts for client connections
                 now = DateTime.UtcNow;
@@ -1212,20 +1221,33 @@ namespace SS.Core.Modules
                         if (conn.HitMaxRetries)
                         {
                             _logManager.LogM(LogLevel.Warn, nameof(Network), "Client connection hit max retries.");
+                            toDrop.Add(cc);
                         }
-
-                        if (now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
+                        else
                         {
-                            _logManager.LogM(LogLevel.Warn, nameof(Network), $"Client connection {now - conn.lastPkt} > {(conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10))}.");
-                        }
+                            // Check whether it's been too long since we received a packet.
+                            // Use a limit of 10 seconds for new connections; otherwise a limit of 65 seconds.
+                            TimeSpan limit = conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
+                            TimeSpan actual = now - conn.lastPkt;
 
-                        // Special limit of 65 seconds, unless we haven't gotten any packets, then use 10.
-                        if (conn.HitMaxRetries
-                            || now - conn.lastPkt > (conn.pktReceived > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10)))
+                            if (actual > limit) 
+                            {
+                                _logManager.LogM(LogLevel.Warn, nameof(Network), $"Client connection hit no-data time limit {actual} > {limit}.");
+                                toDrop.Add(cc);
+                            }
+                        }
+                    }
+
+                    // drop any connections that need to be dropped
+                    if (toDrop.Count > 0)
+                    {
+                        foreach (NetClientConnection cc in toDrop)
                         {
                             cc.Handler.Disconnected();
                             DropConnection(cc);
                         }
+
+                        toDrop.Clear();
                     }
                 }
                 finally
@@ -2166,34 +2188,33 @@ namespace SS.Core.Modules
             if (ld == null)
                 return;
 
-            using SubspaceBuffer buffer = _bufferPool.Get();
             IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
 
             try
             {
-                EndPoint receivedFrom = new IPEndPoint(IPAddress.Any, 0);
+                Span<byte> data = stackalloc byte[8];
+                int numBytes;
+                EndPoint receivedFrom = remoteIPEP;
 
                 try
                 {
-                    buffer.NumBytes = ld.PingSocket.ReceiveFrom(buffer.Bytes, 4, SocketFlags.None, ref receivedFrom);
+                    numBytes = ld.PingSocket.ReceiveFrom(data, SocketFlags.None, ref receivedFrom);
                 }
                 catch (SocketException ex)
                 {
                     _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
-                    buffer.Dispose();
                     return;
                 }
                 catch (Exception ex)
                 {
                     _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
-                    buffer.Dispose();
                     return;
                 }
 
                 if (receivedFrom is not IPEndPoint remoteEndPoint)
                     return;
 
-                if (buffer.NumBytes <= 0)
+                if (numBytes <= 0)
                     return;
 
                 //
@@ -2257,32 +2278,32 @@ namespace SS.Core.Modules
                 // Respond
                 //
 
-                if (buffer.NumBytes == 4)
+                if (numBytes == 4)
                 {
                     // bytes from receive
-                    buffer.Bytes[4] = buffer.Bytes[0];
-                    buffer.Bytes[5] = buffer.Bytes[1];
-                    buffer.Bytes[6] = buffer.Bytes[2];
-                    buffer.Bytes[7] = buffer.Bytes[3];
+                    data[4] = data[0];
+                    data[5] = data[1];
+                    data[6] = data[2];
+                    data[7] = data[3];
 
                     // # of clients
                     // Note: ASSS documentation says it's a UInt32, but it appears Continuum looks at only the first 2 bytes as an UInt16.
-                    Span<byte> span = new(buffer.Bytes, 0, 4);
+                    Span<byte> countSpan = data[..4];
 
                     if (string.IsNullOrWhiteSpace(ld.ConnectAs))
                     {
                         // global
-                        BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.Global.Total);
+                        BinaryPrimitives.WriteUInt32LittleEndian(countSpan, _pingData.Global.Total);
                     }
                     else
                     {
                         // specific arena/zone
-                        BinaryPrimitives.WriteUInt32LittleEndian(span, _pingData.ConnectAsPopulationStats[ld.ConnectAs].Total);
+                        BinaryPrimitives.WriteUInt32LittleEndian(countSpan, _pingData.ConnectAsPopulationStats[ld.ConnectAs].Total);
                     }
 
                     try
                     {
-                        int bytesSent = ld.PingSocket.SendTo(buffer.Bytes, 8, SocketFlags.None, remoteEndPoint);
+                        int bytesSent = ld.PingSocket.SendTo(data, SocketFlags.None, remoteEndPoint);
                     }
                     catch (SocketException ex)
                     {
@@ -2295,15 +2316,14 @@ namespace SS.Core.Modules
                         return;
                     }
                 }
-                else if (buffer.NumBytes == 8)
+                else if (numBytes == 8)
                 {
                     // TODO: add the ability handle ASSS' extended ping packets
                 }
             }
             finally
             {
-                if (remoteIPEP != null)
-                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+                _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
             }
 
             Interlocked.Increment(ref _globalStats.pcountpings);
@@ -3891,6 +3911,17 @@ namespace SS.Core.Modules
             //TODO: _bandwithLimit.
 
             return stats;
+        }
+
+        TimeSpan INetwork.GetLastPacketTimeSpan(Player p)
+        {
+            if (p[_connKey] is not ConnData conn)
+                return TimeSpan.Zero;
+
+            //lock (conn.) // TODO: need to figure out locking
+            {
+                return DateTime.UtcNow - conn.lastPkt;
+            }
         }
 
         bool INetwork.TryGetListenData(int index, out IPEndPoint endPoint, out string connectAs)
