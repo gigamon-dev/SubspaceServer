@@ -382,7 +382,7 @@ namespace SS.Core.Modules
             NotifyKill(killer, killed, pts, flags, 0);
         }
 
-        float IGame.GetIgnoreWeapons(Player p)
+        double IGame.GetIgnoreWeapons(Player p)
         {
             if (p == null)
                 return 0;
@@ -390,10 +390,10 @@ namespace SS.Core.Modules
             if (p[_pdkey] is not PlayerData pd)
                 return 0;
 
-            return pd.ignoreWeapons / (float)Constants.RandMax;
+            return pd.ignoreWeapons / (double)Constants.RandMax;
         }
 
-        void IGame.SetIgnoreWeapons(Player p, float proportion)
+        void IGame.SetIgnoreWeapons(Player p, double proportion)
         {
             if (p == null)
                 return;
@@ -401,7 +401,7 @@ namespace SS.Core.Modules
             if (p[_pdkey] is not PlayerData pd)
                 return;
 
-            pd.ignoreWeapons = (int)((float)Constants.RandMax * proportion);
+            pd.ignoreWeapons = (int)(Constants.RandMax * proportion);
         }
 
         void IGame.ShipReset(ITarget target)

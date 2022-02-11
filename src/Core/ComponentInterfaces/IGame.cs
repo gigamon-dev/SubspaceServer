@@ -133,14 +133,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="p">player to get info about</param>
         /// <returns></returns>
-        float GetIgnoreWeapons(Player p);
+        double GetIgnoreWeapons(Player p);
 
         /// <summary>
         /// Sets the percentage of weapons to ignore for a given player.
         /// </summary>
         /// <param name="p">player to set</param>
         /// <param name="proportion">percentage of weapons packets to ignore</param>
-        void SetIgnoreWeapons(Player p, float proportion);
+        void SetIgnoreWeapons(Player p, double proportion);
 
         /// <summary>
         /// Resets the target's ship(s).
