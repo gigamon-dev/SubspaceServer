@@ -231,7 +231,7 @@ namespace SS.Core.Modules
                     _mainloop.QueueMainWorkItem(MainloopWorkItem_CheckPlayer, toCheck);
                 }
 
-                cancellationWaitHandle.WaitOne(_checkInterval / (playerCount > 0 ? playerCount : 1));
+                cancellationWaitHandle.WaitOne(playerCount > 0 ? _checkInterval / playerCount : _checkInterval);
             }
         }
 
