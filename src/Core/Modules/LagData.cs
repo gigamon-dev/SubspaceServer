@@ -465,15 +465,15 @@ namespace SS.Core.Modules
 
                     s = Packetloss.ServerPacketsSent;
                     r = Packetloss.ClientPacketsReceived;
-                    summary.s2c = s > PacketlossMinPackets ? (s - r) / s : 0.0;
+                    summary.s2c = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
 
                     s = Packetloss.ClientPacketsSent;
                     r = Packetloss.ServerPacketsReceived;
-                    summary.c2s = s > PacketlossMinPackets ? (s - r) / s : 0.0;
+                    summary.c2s = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
 
                     s = WeaponSentCount;
                     r = WeaponReceiveCount;
-                    summary.s2cwpn = s > PacketlossMinPackets ? (s - r) / s : 0.0;
+                    summary.s2cwpn = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
                 }
             }
 

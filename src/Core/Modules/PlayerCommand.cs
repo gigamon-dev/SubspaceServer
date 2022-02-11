@@ -464,7 +464,7 @@ namespace SS.Core.Modules
             Description =
             "Displays lag information about you or a target player.\n" +
             "Use {-v} for more detail. The format of the ping fields is\n" +
-            "\"last average (min-max)\".\n")]
+            "\"last average (min-max)\".")]
         private void Command_lag(string command, string parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -488,7 +488,7 @@ namespace SS.Core.Modules
 
             if (!parameters.Contains("-v"))
             {
-                _chat.SendMessage(p, $"{prefix}: avg ping: {average} ploss: s2c: {packetloss.s2c * 100:F2} c2s: {packetloss.c2s * 100:F2}");
+                _chat.SendMessage(p, $"{prefix}: avg ping: {average} ploss: s2c: {packetloss.s2c * 100d:F2} c2s: {packetloss.c2s * 100d:F2}");
             }
             else
             {
@@ -499,8 +499,8 @@ namespace SS.Core.Modules
                 _chat.SendMessage(p, $"{prefix}: rel ping: {reliablePing.Current} {reliablePing.Average} ({reliablePing.Min}-{reliablePing.Max}) (reliable ping)");
                 _chat.SendMessage(p, $"{prefix}: effective ping: {average} (average of above)");
 
-                _chat.SendMessage(p, $"{prefix}: ploss: s2c: {packetloss.s2c * 100:F2} c2s: {packetloss.c2s * 100:F2} s2cwpn: {packetloss.s2cwpn * 100:F2}");
-                _chat.SendMessage(p, $"{prefix}: reliable dups: {reliableLag.RelDups * 100 / reliableLag.C2SN:F2}% reliable resends: {reliableLag.Retries * 100 / reliableLag.S2CN:F2}%");
+                _chat.SendMessage(p, $"{prefix}: ploss: s2c: {packetloss.s2c * 100d:F2} c2s: {packetloss.c2s * 100d:F2} s2cwpn: {packetloss.s2cwpn * 100:F2}");
+                _chat.SendMessage(p, $"{prefix}: reliable dups: {reliableLag.RelDups * 100d / reliableLag.C2SN:F2}% reliable resends: {reliableLag.Retries * 100d / reliableLag.S2CN:F2}%");
                 _chat.SendMessage(p, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal} s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 
                 SendCommonBandwidthInfo(p, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
