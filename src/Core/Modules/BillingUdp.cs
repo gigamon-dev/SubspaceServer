@@ -701,9 +701,11 @@ namespace SS.Core.Modules
                 return;
             }
 
+            TimeSpan session = DateTime.UtcNow - targetPlayer.ConnectTime;
+
             _chat.SendMessage(p, $"Usage: {targetPlayer.Name}");
-            _chat.SendMessage(p, $"session: {DateTime.UtcNow - targetPlayer.ConnectTime}");
-            _chat.SendMessage(p, $"  total: {pd.Usage}");
+            _chat.SendMessage(p, $"session: {session}");
+            _chat.SendMessage(p, $"  total: {session + pd.Usage}");
             _chat.SendMessage(p, $"first played: {pd.FirstLogin}");
         }
 
