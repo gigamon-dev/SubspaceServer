@@ -20,7 +20,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Core : IModule, IAuth
+    public class Core : IModule, IModuleLoaderAware, IAuth
     {
         private ComponentBroker _broker;
         private IArenaManagerInternal _arenaManagerInternal;
@@ -33,7 +33,7 @@ namespace SS.Core.Modules
         private INetwork _net;
         //private IPersist _persist;
         private IPlayerData _playerData;
-        //private IStats _stats;
+        private IScoreStats _scoreStats;
         private InterfaceRegistrationToken _iAuthToken;
 
         private IPool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
@@ -106,7 +106,7 @@ namespace SS.Core.Modules
             }
         }
 
-        #region IModule Members
+        #region Module Members
 
         internal bool Load(
             ComponentBroker broker,
@@ -161,6 +161,23 @@ namespace SS.Core.Modules
 
             // set up periodic events
             _mainloopTimer.SetTimer(MainloopTimer_SendKeepAlive, 5000, 5000, null); // every 5 seconds
+
+            return true;
+        }
+
+        public bool PostLoad(ComponentBroker broker)
+        {
+            _scoreStats = broker.GetInterface<IScoreStats>();
+
+            return true;
+        }
+
+        public bool PreUnload(ComponentBroker broker)
+        {
+            if (_scoreStats != null)
+            {
+                broker.ReleaseInterface(ref _scoreStats);
+            }
 
             return true;
         }
@@ -381,18 +398,28 @@ namespace SS.Core.Modules
                         break;
 
                     case PlayerState.ArenaRespAndCBS:
-                        // TODO: stats
-                        /*if (stats != null)
+                        // Refresh scores in the PlayerEntering packets (Player.Packet).
+                        // These packets will be sent later in the SendArenaResponse method call after this.
+                        if (_scoreStats != null)
                         {
-                            // try to get scores in pdata packet
-                            player.pkt.KillPoints = _stats.GetStat(player, Stat.KillPoints, StatInterval.Reset);
-                            player.pkt.FlagPoints = _stats.GetStat(player, Stat.FlagPoints, StatInterval.Reset);
-                            player.pkt.Wins = stats.GetStat(player, Stat.Kills, StatInterval.Reset);
-                            player.pkt.Losses = stats.GetStat(player, Stat.Deaths, StatInterval.Reset);
+                            // At this point, the player's stats should be loaded into the stats module since _persist.GetPlayer(...) was called earlier.
+                            // Try to load scores into the player's PlayerEntering packet.
+                            _scoreStats.TryGetStat(player, (int)StatCode.KillPoints, StatInterval.Reset, out int value);
+                            player.Packet.KillPoints = value;
 
-                            // also get other player's scores into their pdatas
-                            stats.SendUpdates(player);
-                        }*/
+                            _scoreStats.TryGetStat(player, (int)StatCode.FlagPoints, StatInterval.Reset, out value);
+                            player.Packet.FlagPoints = value;
+
+                            _scoreStats.TryGetStat(player, (int)StatCode.Kills, StatInterval.Reset, out value);
+                            player.Packet.Wins = (short)value;
+
+                            _scoreStats.TryGetStat(player, (int)StatCode.Deaths, StatInterval.Reset, out value);
+                            player.Packet.Losses = (short)value;
+
+                            // Refresh scores for other players in the arena.
+                            // This ensures that the latest scores will be in the PlayerEntering packets of all the player's already in the arena.
+                            _scoreStats.SendUpdates(player.Arena, player);
+                        }
 
                         _arenaManagerInternal.SendArenaResponse(player);
                         player.Flags.SentPositionPacket = false;

@@ -44,6 +44,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private IModuleManager _mm;
         private INetwork _net;
+        private IScoreStats _scoreStats;
 
         private DateTime _startedAt;
 
@@ -171,6 +172,23 @@ namespace SS.Core.Modules
                     Commands = new[]
                     {
                         new CommandInfo("lag", Command_lag),
+                    }
+                });
+
+            AddCommandGroup(
+                new CommandGroup("stats")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(IConfigManager),
+                        //typeof(IPersist),
+                        typeof(IScoreStats),
+                    },
+                    Commands = new[]
+                    {
+                        //new CommandInfo("endinterval", Command_endinterval),
+                        new CommandInfo("scorereset", Command_scorereset),
+                        new CommandInfo("points", Command_points)
                     }
                 });
 
@@ -504,6 +522,82 @@ namespace SS.Core.Modules
                 _chat.SendMessage(p, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal} s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 
                 SendCommonBandwidthInfo(p, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = null,
+            Description = "Resets your own score, or the target player's score.")]
+        private void Command_scorereset(string command, string parameters, Player p, ITarget target)
+        {
+            // For now, only reset StatInterval.Reset scores, since those are the only ones the client sees.
+            if (target.TryGetArenaTarget(out Arena arena))
+            {
+                if (_configManager.GetInt(arena.Cfg, "Misc", "SelfScoreReset", 0) != 0)
+                {
+                    _scoreStats.ScoreReset(p, StatInterval.Reset);
+                    _scoreStats.SendUpdates(arena, null);
+                    _chat.SendMessage(p, $"Your score has been reset.");
+                }
+                else
+                {
+                    _chat.SendMessage(p, $"This arena doesn't allow you to reset your own scores.");
+                }
+            }
+            else if (target.TryGetPlayerTarget(out Player otherPlayer))
+            {
+                arena = otherPlayer.Arena;
+
+                if (arena != null)
+                {
+                    _scoreStats.ScoreReset(p, StatInterval.Reset);
+                    _scoreStats.SendUpdates(arena, null);
+                    _chat.SendMessage(p, $"Player {otherPlayer} has had their score reset.");
+                }
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = "<points to add>",
+            Description = "Adds the specified number of points to the targets' flag points.")]
+        private void Command_points(string command, string parameters, Player p, ITarget target)
+        {
+            if (!int.TryParse(parameters, out int pointsToAdd))
+                return;
+
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.TargetToSet(target, set);
+
+                foreach (Player player in set)
+                {
+                    _scoreStats.IncrementStat(player, (int)StatCode.FlagPoints, pointsToAdd);
+                }
+
+                if (!target.TryGetArenaTarget(out Arena arena))
+                {
+                    if (target.TryGetPlayerTarget(out Player targetPlayer))
+                    {
+                        arena = targetPlayer.Arena;
+                    }
+                    else
+                    {
+                        target.TryGetTeamTarget(out arena, out _);
+                    }
+                }
+
+                if (arena != null)
+                {
+                    _scoreStats.SendUpdates(arena, null);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
             }
         }
 

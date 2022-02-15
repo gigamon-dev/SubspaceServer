@@ -1843,6 +1843,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
+                    arena.ReleaseInterface(ref killGreen);
                 }
             }
 
@@ -1854,8 +1855,7 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        // TODO: 
-                        //stats.IncrementStats(killer, 
+                        stats.IncrementStat(killer, (int)StatCode.KillPoints, pts);
                     }
                     finally
                     {
