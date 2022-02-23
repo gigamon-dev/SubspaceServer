@@ -1,9 +1,12 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Google.Protobuf;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -12,8 +15,10 @@ namespace SS.Core.Modules.Scoring
         private ComponentBroker _broker;
         private IChat _chat;
         private ICommandManager _commandManager;
+        private IConfigManager _configManager;
+        private ILogManager _logManager;
         private INetwork _network;
-        //private IPersist _persist;
+        private IPersist _persist;
         private IPlayerData _playerData;
 
         private InterfaceRegistrationToken _iStatsToken;
@@ -21,29 +26,73 @@ namespace SS.Core.Modules.Scoring
 
         private int _pdKey;
 
+        private readonly HashSet<PersistInterval> _intervals = new()
+        {
+            PersistInterval.Forever,
+            PersistInterval.Reset,
+            PersistInterval.Game,
+        };
+
+        private readonly List<DelegatePersistentData<Player, (PersistInterval, PersistScope)>> _persistRegisteredList = new();
+
         #region Module members
 
+        [ConfigHelp("Stats", "AdditionalIntervals", ConfigScope.Global, typeof(string), 
+            Description = 
+            $"By default {nameof(Stats)} module tracks intervals: forever, reset, and game. " +
+            $"This setting allows tracking of additional intervals.")]
         public bool Load(
             ComponentBroker broker,
             IChat chat,
             ICommandManager commandManager,
+            IConfigManager configManager,
+            ILogManager logManager,
             INetwork network,
-            //IPersist persist,
+            IPersist persist,
             IPlayerData playerData)
         {
             _broker = broker;
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _network = network ?? throw new ArgumentNullException(nameof(_network));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _persist = persist ?? throw new ArgumentNullException(nameof(persist));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             _commandManager.AddCommand("stats", Command_stats);
 
-            // TODO: persist
+            // TODO: maybe add an interface method to add intervals instead? would need to redo how the stats dictionary is created/retrieved
+            string additionalIntervals = _configManager.GetStr(_configManager.Global, "Stats", "AdditionalIntervals");
+            if (!string.IsNullOrWhiteSpace(additionalIntervals))
+            {
+                foreach (string intervalStr in additionalIntervals.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (Enum.TryParse(intervalStr, out PersistInterval interval))
+                        _intervals.Add(interval);
+                }
+            }
 
-            // TODO: IntervalEndedCallback.Register(broker, Callback_IntervalEnded)
+            foreach (PersistInterval interval in _intervals)
+            {
+                // arena
+                DelegatePersistentData<Player, (PersistInterval, PersistScope)> registration =
+                    new((int)PersistKey.Stats, interval, PersistScope.PerArena, (interval, PersistScope.PerArena), GetPersistData, SetPersistData, ClearPersistData);
+
+                _persist.RegisterPersistentData(registration);
+                _persistRegisteredList.Add(registration);
+
+                // global
+                registration =
+                    new((int)PersistKey.Stats, interval, PersistScope.Global, (interval, PersistScope.Global), GetPersistData, SetPersistData, ClearPersistData);
+
+                _persist.RegisterPersistentData(registration);
+                _persistRegisteredList.Add(registration);
+            }
+
+            PersistIntervalEndedCallback.Register(broker, Callback_PersistIntervalEnded);
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             GetStatNameCallback.Register(broker, Callback_GetStatName); // TODO: this might be nicer on an advisor interface (change this when IAdvisor is added to the ComponentBroker)
 
@@ -57,10 +106,15 @@ namespace SS.Core.Modules.Scoring
             broker.UnregisterInterface<IStats>(ref _iStatsToken);
             broker.UnregisterInterface<IScoreStats>(ref _iScoreStatsToken);
 
-            // TODO: IntervalEndedCallback.Unregister(broker, Callback_IntervalEnded)
+            PersistIntervalEndedCallback.Unregister(broker, Callback_PersistIntervalEnded);
             NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
+            GetStatNameCallback.Unregister(broker, Callback_GetStatName);
 
-            // TODO: persist
+            foreach (var registration in _persistRegisteredList)
+            {
+                _persist.UnregisterPersistentData(registration);
+            }
+            _persistRegisteredList.Clear();
 
             _commandManager.RemoveCommand("stats", Command_stats);
 
@@ -80,9 +134,18 @@ namespace SS.Core.Modules.Scoring
 
             lock (pd.Lock)
             {
-                Inc(pd.Forever, statId, amount);
-                Inc(pd.Reset, statId, amount);
-                Inc(pd.Game, statId, amount);
+                foreach (PersistInterval interval in _intervals)
+                {
+                    // arena
+                    var stats = GetArenaStatsByInterval(pd, interval);
+                    if (stats != null)
+                        Inc(stats, statId, amount);
+
+                    // global
+                    stats = GetGlobalStatsByInterval(pd, interval);
+                    if (stats != null)
+                        Inc(stats, statId, amount);
+                }
             }
 
             static void Inc(SortedDictionary<int, StatInfo> stats, int statId, int amount)
@@ -107,9 +170,10 @@ namespace SS.Core.Modules.Scoring
 
             lock (pd.Lock)
             {
-                StartTimer(pd.Forever, statId, now);
-                StartTimer(pd.Reset, statId, now);
-                StartTimer(pd.Game, statId, now);
+                foreach (SortedDictionary<int, StatInfo> stats in pd.CurrentArenaStats.Values)
+                {
+                    StartTimer(stats, statId, now);
+                }
             }
 
             static void StartTimer(SortedDictionary<int, StatInfo> stats, int statId, DateTime time)
@@ -140,9 +204,10 @@ namespace SS.Core.Modules.Scoring
 
             lock (pd.Lock)
             {
-                StopTimer(pd.Forever, statId, now);
-                StopTimer(pd.Reset, statId, now);
-                StopTimer(pd.Game, statId, now);
+                foreach (SortedDictionary<int, StatInfo> stats in pd.CurrentArenaStats.Values)
+                {
+                    StopTimer(stats, statId, now);
+                }
             }
 
             static void StopTimer(SortedDictionary<int, StatInfo> stats, int statId, DateTime time)
@@ -158,12 +223,12 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        void IStats.SetStat(Player p, int statId, StatInterval interval, int value)
+        void IStats.SetStat(Player p, int statId, PersistInterval interval, int value)
         {
             if (p == null || p[_pdKey] is not PlayerData pd)
                 return;
 
-            var stats = GetStatsByInterval(pd, interval);
+            var stats = GetArenaStatsByInterval(pd, interval);
             if (stats == null)
                 return;
 
@@ -178,7 +243,7 @@ namespace SS.Core.Modules.Scoring
             statInfo.IsDirty = true;
         }
 
-        bool IStats.TryGetStat(Player p, int statId, StatInterval interval, out int value)
+        bool IStats.TryGetStat(Player p, int statId, PersistInterval interval, out int value)
         {
             if (p == null || p[_pdKey] is not PlayerData pd)
             {
@@ -186,7 +251,7 @@ namespace SS.Core.Modules.Scoring
                 return false;
             }
 
-            var stats = GetStatsByInterval(pd, interval);
+            var stats = GetArenaStatsByInterval(pd, interval);
             if (stats == null)
             {
                 value = default;
@@ -244,10 +309,14 @@ namespace SS.Core.Modules.Scoring
 
                         lock (pd.Lock)
                         {
-                            GetStatValueAndCheckDirtyInt32(pd, (int)StatCode.KillPoints, ref killPoints, ref isDirty);
-                            GetStatValueAndCheckDirtyInt32(pd, (int)StatCode.FlagPoints, ref flagPoints, ref isDirty);
-                            GetStatValueAndCheckDirtyInt16(pd, (int)StatCode.Kills, ref kills, ref isDirty);
-                            GetStatValueAndCheckDirtyInt16(pd, (int)StatCode.Deaths, ref deaths, ref isDirty);
+                            SortedDictionary<int, StatInfo> stats = GetArenaStatsByInterval(pd, PersistInterval.Reset); // Scores are only for the Reset
+                            if (stats == null)
+                                continue;
+
+                            GetStatValueAndCheckDirtyInt32(stats, (int)StatCode.KillPoints, ref killPoints, ref isDirty);
+                            GetStatValueAndCheckDirtyInt32(stats, (int)StatCode.FlagPoints, ref flagPoints, ref isDirty);
+                            GetStatValueAndCheckDirtyInt16(stats, (int)StatCode.Kills, ref kills, ref isDirty);
+                            GetStatValueAndCheckDirtyInt16(stats, (int)StatCode.Deaths, ref deaths, ref isDirty);
                         }
 
                         if (isDirty)
@@ -276,9 +345,9 @@ namespace SS.Core.Modules.Scoring
                 _playerData.Unlock();
             }
 
-            static void GetStatValueAndCheckDirtyInt32(PlayerData pd, int statCode, ref int value, ref bool isDirty)
+            static void GetStatValueAndCheckDirtyInt32(SortedDictionary<int, StatInfo> stats, int statCode, ref int value, ref bool isDirty)
             {
-                if (pd.Reset.TryGetValue(statCode, out StatInfo statInfo))
+                if (stats.TryGetValue(statCode, out StatInfo statInfo))
                 {
                     value = statInfo.Value;
 
@@ -290,9 +359,9 @@ namespace SS.Core.Modules.Scoring
                 }
             }
 
-            static void GetStatValueAndCheckDirtyInt16(PlayerData pd, int statCode, ref short value, ref bool isDirty)
+            static void GetStatValueAndCheckDirtyInt16(SortedDictionary<int, StatInfo> stats, int statCode, ref short value, ref bool isDirty)
             {
-                if (pd.Reset.TryGetValue(statCode, out StatInfo statInfo))
+                if (stats.TryGetValue(statCode, out StatInfo statInfo))
                 {
                     value = (short)statInfo.Value;
 
@@ -305,12 +374,12 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        public void ScoreReset(Player p, StatInterval interval)
+        public void ScoreReset(Player p, PersistInterval interval)
         {
             if (p == null || p[_pdKey] is not PlayerData pd)
                 return;
 
-            var stats = GetStatsByInterval(pd, interval);
+            var stats = GetArenaStatsByInterval(pd, interval);
             if (stats == null)
                 return;
 
@@ -332,6 +401,106 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
+        private void GetPersistData(Player player, Stream outStream, (PersistInterval Interval, PersistScope Scope) state)
+        {
+            if (player == null || player[_pdKey] is not PlayerData pd)
+                return;
+
+            SortedDictionary<int, StatInfo> stats = state.Scope switch
+            {
+                PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
+                PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
+                _ => null
+            };
+
+            if (stats == null)
+                return;
+
+            // serialize stats to outStream
+            SSProto.PlayerStats playerStats = new();
+
+            foreach (KeyValuePair<int, StatInfo> kvp in stats)
+            {
+                // TODO: support other types of stats
+                playerStats.StatMap.Add(
+                    kvp.Key, 
+                    new SSProto.StatInfo() { Int32Value = kvp.Value.Value });
+            }
+
+            try
+            {
+                playerStats.WriteTo(outStream);
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogP(LogLevel.Warn, nameof(Stats), player, $"Error serializing for interval {state.Interval}. {ex.Message}");
+                return;
+            }
+        }
+
+        private void SetPersistData(Player player, Stream inStream, (PersistInterval Interval, PersistScope Scope) state)
+        {
+            if (player == null || player[_pdKey] is not PlayerData pd)
+                return;
+
+            SortedDictionary<int, StatInfo> stats = state.Scope switch
+            {
+                PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
+                PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
+                _ => null
+            };
+
+            if (stats == null)
+                return;
+
+            // deserialize inStream to stats
+            SSProto.PlayerStats playerStats;
+
+            try
+            {
+                playerStats = SSProto.PlayerStats.Parser.ParseFrom(inStream);
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogP(LogLevel.Warn, nameof(Stats), player, $"Error deserializing for interval {state.Interval}. {ex.Message}");
+                return;
+            }
+
+            foreach ((int key, SSProto.StatInfo pStatInfo) in playerStats.StatMap)
+            {
+                // TODO: support other types of stats
+                if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int32Value)
+                {
+                    stats[key] = new StatInfo() { Value = pStatInfo.Int32Value };
+                }
+            }
+        }
+
+        private void ClearPersistData(Player player, (PersistInterval Interval, PersistScope Scope) state)
+        {
+            if (player == null || player[_pdKey] is not PlayerData pd)
+                return;
+
+            SortedDictionary<int, StatInfo> stats = state.Scope switch
+            {
+                PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
+                PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
+                _ => null
+            };
+
+            if (stats == null)
+                return;
+
+            foreach (StatInfo stat in stats.Values)
+            {
+                if (stat.Value != 0)
+                    stat.IsDirty = true;
+
+                stat.Value = 0;
+                stat.Started = null;
+            }
+        }
+
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.None,
             Args = "[{forever} | {game} | {reset}]",
@@ -348,16 +517,18 @@ namespace SS.Core.Modules.Scoring
             if (targetPlayer[_pdKey] is not PlayerData pd)
                 return;
 
-            SortedDictionary<int, StatInfo> stats;
+            PersistInterval interval;
+            if (string.IsNullOrWhiteSpace(parameters)
+                || !Enum.TryParse(parameters, true, out interval))
+            {
+                interval = PersistInterval.Reset;
+            }
 
-            if (parameters.Contains("forever"))
-                stats = pd.Forever;
-            else if (parameters.Contains("game"))
-                stats = pd.Game;
-            else
-                stats = pd.Reset;
+            SortedDictionary<int, StatInfo> stats = GetArenaStatsByInterval(pd, interval);
+            if (stats == null)
+                return;
 
-            _chat.SendMessage(p, $"The server is keeping track of the following stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
+            _chat.SendMessage(p, $"The server is keeping track of the following {interval} stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
 
             lock (pd.Lock)
             {
@@ -375,6 +546,14 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
+        private void Callback_PersistIntervalEnded(PersistInterval interval)
+        {
+            if (interval == PersistInterval.Reset)
+            {
+                SendUpdates(null, null);
+            }
+        }
+
         private void Callback_NewPlayer(Player p, bool isNew)
         {
             if (p[_pdKey] is not PlayerData pd)
@@ -382,9 +561,29 @@ namespace SS.Core.Modules.Scoring
 
             lock (pd.Lock)
             {
-                pd.Forever.Clear();
-                pd.Reset.Clear();
-                pd.Game.Clear();
+                if (isNew)
+                {
+                    foreach (PersistInterval interval in _intervals)
+                    {
+                        if (pd.CurrentArenaStats.TryGetValue(interval, out var stats))
+                        {
+                            stats.Clear();
+                        }
+                        else
+                        {
+                            pd.CurrentArenaStats.Add(interval, new());
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var stats in pd.CurrentArenaStats.Values)
+                    {
+                        stats.Clear();
+                    }
+
+                    pd.CurrentArenaStats.Clear();
+                }
             }
         }
 
@@ -439,25 +638,43 @@ namespace SS.Core.Modules.Scoring
             };
         }
 
-        private static SortedDictionary<int, StatInfo> GetStatsByInterval(PlayerData pd, StatInterval interval)
+        private static SortedDictionary<int, StatInfo> GetArenaStatsByInterval(PlayerData pd, PersistInterval interval)
         {
             if (pd == null)
                 return null;
 
-            return interval switch
-            {
-                StatInterval.Forever => pd.Forever,
-                StatInterval.Reset => pd.Reset,
-                StatInterval.Game => pd.Game,
-                _ => null,
-            };
+            if (pd.CurrentArenaStats.TryGetValue(interval, out SortedDictionary<int, StatInfo> stats))
+                return stats;
+            else
+                return null;
+        }
+
+        private static SortedDictionary<int, StatInfo> GetGlobalStatsByInterval(PlayerData pd, PersistInterval interval)
+        {
+            if (pd == null)
+                return null;
+
+            if (pd.GlobalStats.TryGetValue(interval, out SortedDictionary<int, StatInfo> stats))
+                return stats;
+            else
+                return null;
         }
 
         private class PlayerData
         {
-            public readonly SortedDictionary<int, StatInfo> Forever = new();
-            public readonly SortedDictionary<int, StatInfo> Reset = new();
-            public readonly SortedDictionary<int, StatInfo> Game = new();
+            public readonly Dictionary<PersistInterval, SortedDictionary<int, StatInfo>> CurrentArenaStats = new()
+            {
+                { PersistInterval.Forever, new() },
+                { PersistInterval.Reset, new() },
+                { PersistInterval.Game, new() },
+            };
+
+            public readonly Dictionary<PersistInterval, SortedDictionary<int, StatInfo>> GlobalStats = new()
+            {
+                { PersistInterval.Forever, new() },
+                { PersistInterval.Reset, new() },
+                { PersistInterval.Game, new() },
+            };
 
             public readonly object Lock = new();
         }
@@ -468,5 +685,16 @@ namespace SS.Core.Modules.Scoring
             public DateTime? Started;
             public bool IsDirty;
         }
+
+        //private class StatInfo<T> : StatInfo
+        //{
+        //    public T Value { get; set; }
+        //}
+
+        //private class TimerStatInfo : StatInfo
+        //{
+        //    public TimeSpan Elapsed;
+        //    public DateTime? Started; // TODO: maybe use StopWatch instead? 
+        //}
     }
 }

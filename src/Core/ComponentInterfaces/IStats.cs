@@ -1,46 +1,15 @@
 ﻿namespace SS.Core.ComponentInterfaces
 {
-    public enum StatInterval
-    {
-        /// <summary>
-        /// Stats stored forever.
-        /// </summary>
-        Forever = 0,
+    //public struct StatCode<T>
+    //{
+    //    public int StatId { get; private set; }
 
-        /// <summary>
-        /// For the a single reset.
-        /// </summary>
-        Reset,
-
-        MapRotation,
-
-        /// <summary>
-        /// For a single game within a reset.
-        /// </summary>
-        Game = 5,
-
-        ForeverNotShared,
-
-        /// <summary>
-        /// For a single period within a game.
-        /// e.g., hockey has 2 periods, football has 2 halves, a flag game can be split up too (each reward within in a Turf game)
-        /// </summary>
-        //Period, // TODO: Maybe? need to investigate more into how the Persist module works...
-    }
-
-    public static class StatIntervalExtensions
-    {
-        /// <summary>
-        /// Gets whether a <see cref="StatInterval"/> is shared between arenas.
-        /// </summary>
-        /// <param name="interval"></param>
-        /// <returns></returns>
-        public static bool IsShared(StatInterval interval)
-        {
-            return (int)interval < 5;
-        }
-    }
-
+    //    public StatCode(int statId)
+    //    {
+    //        StatId = statId;
+    //    }
+    //}
+    
     /// <summary>
     /// Interface for managing statistics on players.
     /// </summary>
@@ -65,7 +34,7 @@
         /// <param name="statId">The statistic to set.</param>
         /// <param name="interval">The interval to set the stat for.</param>
         /// <param name="value">The value to set.</param>
-        void SetStat(Player p, int statId, StatInterval interval, int value);
+        void SetStat(Player p, int statId, PersistInterval interval, int value);
 
         /// <summary>
         /// Gets the value of a player's statistic.
@@ -75,7 +44,7 @@
         /// <param name="interval">The interval to get the stat for.</param>
         /// <param name="value">The value, if the stat could be found; otherwise 0.</param>
         /// <returns>Whether the stat could be found.</returns>
-        bool TryGetStat(Player p, int statId, StatInterval interval, out int value);
+        bool TryGetStat(Player p, int statId, PersistInterval interval, out int value);
     }
 
     /// <summary>
@@ -102,6 +71,6 @@
         /// </summary>
         /// <param name="p">The player to reset the stats of.</param>
         /// <param name="interval">The interval to reset stats for.</param>
-        void ScoreReset(Player p, StatInterval interval);
+        void ScoreReset(Player p, PersistInterval interval);
     }
 }

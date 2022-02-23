@@ -31,6 +31,8 @@ namespace SS.Core.Modules
         private readonly Dictionary<Type, List<Arena>> _attachedModules = new();
 
         internal ComponentBroker Broker;
+
+        // required dependencies
         private IConfigManager _configManager;
         private ILogManager _logManager;
         private IMainloop _mainloop;
@@ -40,7 +42,10 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IServerTimer _serverTimer;
-        //private IPersist _persist;
+
+        // optional dependencies
+        private IPersistExecutor _persistExecutor;
+
         private InterfaceRegistrationToken _iArenaManagerToken;
         private InterfaceRegistrationToken _iArenaManagerInternalToken;
 
@@ -289,7 +294,7 @@ namespace SS.Core.Modules
 
                 default:
                     // something's wrong here
-                    Console.WriteLine("player [{0}] has an arena, but in bad state [{1}]", player.Name, player.Status.ToString());
+                    _logManager.LogP(LogLevel.Error, nameof(ArenaManager), player, $"Player has an arena, but is in a bad state ({player.Status}).");
                     notify = true;
                     break;
             }
@@ -905,35 +910,37 @@ namespace SS.Core.Modules
             }
         }
 
-        /*
-        // this is for persist
-        private void arenaSyncDone(Arena arena)
+        
+        /// <summary>
+        /// This is called when the persistent data retrieval or saving has completed.
+        /// </summary>
+        /// <param name="arena"></param>
+        private void ArenaSyncDone(Arena arena)
         {
-            writeLock();
+            WriteLock();
+
             try
             {
-
-                switch(arena.Status)
+                if (arena.Status == ArenaState.WaitSync1)
                 {
-                    case ArenaState.WaitSync1:
-                        arena.Status = ArenaState.Running;
-                        break;
-
-                    case ArenaState.WaitSync2:
-                        arena.Status = ArenaState.DoDestroy1;
-                        break;
-
-                    default:
-                        _logManager.LogA(LogLevel.Warn, "arenaman", arena, "arena_sync_done called from wrong state");
-                        break;
+                    // persistent data has been retrieved from the database
+                    arena.Status = ArenaState.Running;
+                }
+                else if (arena.Status == ArenaState.WaitSync2)
+                {
+                    // persistent data has been saved to the database
+                    arena.Status = ArenaState.DoDestroy1;
+                }
+                else
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(ArenaManager), arena, $"ArenaSyncDone called from the wrong state ({arena.Status}).");
                 }
             }
             finally
             {
-                writeUnlock();
+                WriteUnlock();
             }
         }
-        */
 
         protected virtual void OnArenaAction(Arena arena, ArenaAction action)
         {
@@ -989,12 +996,15 @@ namespace SS.Core.Modules
                             break;
 
                         case ArenaState.DoInit2:
-                            // TODO: create the persist interface
-                            //if (persist != null)
-                            //{
-                            //}
-                            //else
+                            if (_persistExecutor != null)
+                            {
+                                arena.Status = ArenaState.WaitSync1;
+                                _persistExecutor.GetArena(arena, ArenaSyncDone);
+                            }
+                            else
+                            {
                                 arena.Status = ArenaState.Running;
+                            }
                             break;
 
                         case ArenaState.DoWriteData:
@@ -1018,20 +1028,19 @@ namespace SS.Core.Modules
 
                             if (hasPlayers == false)
                             {
-                                /* TODO: create the persist interface
-                                if (persist != null)
+                                if (_persistExecutor != null)
                                 {
-                                    persist.PutArena(arena, arenaSyncDone);
                                     arena.Status = ArenaState.WaitSync2;
+                                    _persistExecutor.PutArena(arena, ArenaSyncDone);
                                 }
                                 else
                                 {
-                                */
                                     arena.Status = ArenaState.DoDestroy1;
-                                //}
+                                }
                             }
                             else
                             {
+                                // oops, there is still at least one player still in the arena
                                 // let's not destroy this after all
                                 arena.Status = ArenaState.Running;
                             }
@@ -1091,7 +1100,7 @@ namespace SS.Core.Modules
 
                                 arenaData.Resurrect = false;
                                 arenaData.Reap = false;
-                                //TODO: arena.KeepAlive = true;
+                                arena.KeepAlive = true;
                                 arena.Status = ArenaState.Running;
 
                             }
@@ -1313,7 +1322,7 @@ namespace SS.Core.Modules
             "A list of the names of arenas to permanently set up when the server is started.")]
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            //_persist = mm.GetInterface<IPersist>();
+            _persistExecutor = broker.GetInterface<IPersistExecutor>();
 
             string permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
             if (!string.IsNullOrWhiteSpace(permanentArenas))
@@ -1335,7 +1344,11 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
-            //mm.ReleaseInterface<IPersist>();
+            if (_persistExecutor != null)
+            {
+                broker.ReleaseInterface(ref _persistExecutor);
+            }
+
             return true;
         }
 

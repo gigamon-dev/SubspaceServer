@@ -31,7 +31,7 @@ namespace SS.Core.Modules
         private IMainloopTimer _mainloopTimer;
         private IMapNewsDownload _map;
         private INetwork _net;
-        //private IPersist _persist;
+        private IPersistExecutor _persistExecutor;
         private IPlayerData _playerData;
         private IScoreStats _scoreStats;
         private InterfaceRegistrationToken _iAuthToken;
@@ -167,6 +167,7 @@ namespace SS.Core.Modules
 
         public bool PostLoad(ComponentBroker broker)
         {
+            _persistExecutor = broker.GetInterface<IPersistExecutor>();
             _scoreStats = broker.GetInterface<IScoreStats>();
 
             return true;
@@ -174,6 +175,11 @@ namespace SS.Core.Modules
 
         public bool PreUnload(ComponentBroker broker)
         {
+            if (_persistExecutor != null)
+            {
+                broker.ReleaseInterface(ref _persistExecutor);
+            }
+
             if (_scoreStats != null)
             {
                 broker.ReleaseInterface(ref _scoreStats);
@@ -338,10 +344,11 @@ namespace SS.Core.Modules
                         break;
 
                     case PlayerState.NeedGlobalSync:
-                        //if (_persist)
-                            //_persist.GetPlayer(player, null, playerSyncDone);
-                        //else
+                        if (_persistExecutor != null)
+                            _persistExecutor.GetPlayer(player, null, PlayerSyncDone);
+                        else
                             PlayerSyncDone(player);
+
                         pdata.HasDoneGlobalSync = true;
                         break;
 
@@ -389,12 +396,12 @@ namespace SS.Core.Modules
                         }
 
                         // sync scores
-                        // TODO: persist
-                        //if (persist)
-                            //persist.GetPlayer(player, player.Arena, playerSyncDone);
-                        //else
+                        if (_persistExecutor != null)
+                            _persistExecutor.GetPlayer(player, player.Arena, PlayerSyncDone);
+                        else
                             PlayerSyncDone(player);
-                        pdata.HasDoneGlobalSync = true;
+
+                        pdata.HasDoneArenaSync = true;
                         break;
 
                     case PlayerState.ArenaRespAndCBS:
@@ -404,16 +411,16 @@ namespace SS.Core.Modules
                         {
                             // At this point, the player's stats should be loaded into the stats module since _persist.GetPlayer(...) was called earlier.
                             // Try to load scores into the player's PlayerEntering packet.
-                            _scoreStats.TryGetStat(player, (int)StatCode.KillPoints, StatInterval.Reset, out int value);
+                            _scoreStats.TryGetStat(player, (int)StatCode.KillPoints, PersistInterval.Reset, out int value);
                             player.Packet.KillPoints = value;
 
-                            _scoreStats.TryGetStat(player, (int)StatCode.FlagPoints, StatInterval.Reset, out value);
+                            _scoreStats.TryGetStat(player, (int)StatCode.FlagPoints, PersistInterval.Reset, out value);
                             player.Packet.FlagPoints = value;
 
-                            _scoreStats.TryGetStat(player, (int)StatCode.Kills, StatInterval.Reset, out value);
+                            _scoreStats.TryGetStat(player, (int)StatCode.Kills, PersistInterval.Reset, out value);
                             player.Packet.Wins = (short)value;
 
-                            _scoreStats.TryGetStat(player, (int)StatCode.Deaths, StatInterval.Reset, out value);
+                            _scoreStats.TryGetStat(player, (int)StatCode.Deaths, PersistInterval.Reset, out value);
                             player.Packet.Losses = (short)value;
 
                             // Refresh scores for other players in the arena.
@@ -433,11 +440,11 @@ namespace SS.Core.Modules
                         break;
 
                     case PlayerState.DoArenaSync2:
-                        // TODO: persist
-                        /*if (persist != null && pdata.hasdonegsync)
-                            persist.PutPlayer(player, player.Arena, playerSyncDone);
-                        else*/
+                        if (_persistExecutor != null && pdata.HasDoneArenaSync)
+                            _persistExecutor.PutPlayer(player, player.Arena, PlayerSyncDone);
+                        else
                             PlayerSyncDone(player);
+
                         pdata.HasDoneArenaSync = false;
                         break;
 
@@ -445,10 +452,9 @@ namespace SS.Core.Modules
                         if (pdata.HasDoneGlobalCallbacks)
                             FirePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
-                        // TODO: persist
-                        /*if (_persist != null && pdata.hasdonegsync)
-                            _persist.PutPlayer(player, null, playerSyncDone);
-                        else*/
+                        if (_persistExecutor != null && pdata.HasDoneGlobalSync)
+                            _persistExecutor.PutPlayer(player, null, PlayerSyncDone);
+                        else
                             PlayerSyncDone(player);
 
                         pdata.HasDoneGlobalSync = false;

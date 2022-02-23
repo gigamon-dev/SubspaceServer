@@ -1,0 +1,15 @@
+﻿// protoc.exe -I=<include folder> -I=. --csharp_out=. Chat.proto
+
+syntax = "proto3";
+
+package ss.core.persist.protobuf;
+option csharp_namespace = "SS.Core.Persist.Protobuf";
+
+import "google/protobuf/timestamp.proto";
+
+message ChatMask {
+	int32 mask = 1;
+	google.protobuf.Timestamp expires = 2;
+	int32 messageCount = 3;
+	google.protobuf.Timestamp lastCheck = 4;
+}

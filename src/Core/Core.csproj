@@ -11,9 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.19.4" />
     <PackageReference Include="Iconic.Zlib.Netstandard" Version="1.0.0" />
     <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="5.0.11" />
     <PackageReference Include="SixLabors.ImageSharp" Version="2.0.0" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.115.5" />
   </ItemGroup>
 
   <ItemGroup>

@@ -44,6 +44,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private IModuleManager _mm;
         private INetwork _net;
+        private IPersistExecutor _persistExecutor;
         private IScoreStats _scoreStats;
 
         private DateTime _startedAt;
@@ -181,12 +182,12 @@ namespace SS.Core.Modules
                     InterfaceDependencies = new()
                     {
                         typeof(IConfigManager),
-                        //typeof(IPersist),
+                        typeof(IPersistExecutor),
                         typeof(IScoreStats),
                     },
                     Commands = new[]
                     {
-                        //new CommandInfo("endinterval", Command_endinterval),
+                        new CommandInfo("endinterval", Command_endinterval),
                         new CommandInfo("scorereset", Command_scorereset),
                         new CommandInfo("points", Command_points)
                     }
@@ -246,6 +247,8 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            // Setting the command group dependencies to null to remove the warnings.
+            // These will actually get set via reflection when the command groups are loaded.
             _arenaManager = null;
             _balls = null;
             _capabilityManager = null;
@@ -259,6 +262,8 @@ namespace SS.Core.Modules
             _mapData = null;
             _mm = null;
             _net = null;
+            _persistExecutor = null;
+            _scoreStats = null;
 
             _startedAt = DateTime.UtcNow;
 
@@ -526,6 +531,103 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[[-g] | [-a <arena group name>]] <interval name>",
+            Description =
+            "Causes the specified interval to be reset. If {-g} is specified, reset the interval\n" +
+            "at the global scope. If {-a} is specified, use the named arena group. Otherwise, use\n" +
+            "the current arena's scope. Interval names can be \"game\", \"reset\", or \"maprotation\".")]
+        private void Command_endinterval(string command, string parameters, Player p, ITarget target)
+        {
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            bool dashA = false;
+            ReadOnlySpan<char> arenaGroup = ReadOnlySpan<char>.Empty;
+            PersistInterval? interval = null;
+
+            while ((token = remaining.GetToken(" \t", out remaining)).Length > 0)
+            {
+                if (dashA)
+                {
+                    if (token.StartsWith("-"))
+                    {
+                        _chat.SendMessage(p, "Invalid arena group name.");
+                        return;
+                    }
+
+                    arenaGroup = token;
+                    dashA = false;
+                }
+                else if (token.Equals("-g", StringComparison.Ordinal))
+                {
+                    if (!arenaGroup.IsWhiteSpace())
+                    {
+                        _chat.SendMessage(p, "The -g option cannot be used with -a, and it can only appear once.");
+                        return;
+                    }
+
+                    arenaGroup = Constants.ArenaGroup_Global;
+                }
+                else if (token.Equals("-a", StringComparison.Ordinal))
+                {
+                    if (!arenaGroup.IsWhiteSpace())
+                    {
+
+                        _chat.SendMessage(p, "The -a option cannot be used with -g, and it can only appear once.");
+                        return;
+                    }
+
+                    dashA = true;
+                }
+                else
+                {
+                    PersistInterval tempInterval;
+
+                    if (token.Equals("game", StringComparison.OrdinalIgnoreCase))
+                        tempInterval = PersistInterval.Game;
+                    else if (token.Equals("reset", StringComparison.OrdinalIgnoreCase))
+                        tempInterval = PersistInterval.Reset;
+                    else if (token.Equals("maprotation", StringComparison.OrdinalIgnoreCase))
+                        tempInterval = PersistInterval.MapRotation;
+                    else
+                    {
+                        _chat.SendMessage(p, $"Bad argument: {token}");
+                        return;
+                    }
+
+                    if (interval != null)
+                    {
+                        _chat.SendMessage(p, "The -a option cannot be used with -g, and it can only appear once.");
+                        return;
+                    }
+
+                    interval = tempInterval;
+                }
+            }
+
+            if (dashA)
+            {
+                _chat.SendMessage(p, $"An arena group must be specified after -a.");
+                return;
+            }
+
+            if (interval == null)
+            {
+                _chat.SendMessage(p, $"An interval must be speciifed.");
+                return;
+            }
+
+            if (!arenaGroup.IsEmpty)
+            {
+                _persistExecutor.EndInterval(interval.Value, arenaGroup.ToString());
+            }
+            else if (p.Arena != null)
+            {
+                _persistExecutor.EndInterval(interval.Value, p.Arena);
+            }
+        }
+
+        [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = null,
             Description = "Resets your own score, or the target player's score.")]
@@ -536,7 +638,7 @@ namespace SS.Core.Modules
             {
                 if (_configManager.GetInt(arena.Cfg, "Misc", "SelfScoreReset", 0) != 0)
                 {
-                    _scoreStats.ScoreReset(p, StatInterval.Reset);
+                    _scoreStats.ScoreReset(p, PersistInterval.Reset);
                     _scoreStats.SendUpdates(arena, null);
                     _chat.SendMessage(p, $"Your score has been reset.");
                 }
@@ -551,7 +653,7 @@ namespace SS.Core.Modules
 
                 if (arena != null)
                 {
-                    _scoreStats.ScoreReset(p, StatInterval.Reset);
+                    _scoreStats.ScoreReset(p, PersistInterval.Reset);
                     _scoreStats.SendUpdates(arena, null);
                     _chat.SendMessage(p, $"Player {otherPlayer} has had their score reset.");
                 }

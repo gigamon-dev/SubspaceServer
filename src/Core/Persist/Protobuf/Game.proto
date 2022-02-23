@@ -1,0 +1,12 @@
+﻿// protoc.exe -I=<include folder> -I=. --csharp_out=. Game.proto
+
+syntax = "proto3";
+
+package ss.core.persist.protobuf;
+option csharp_namespace = "SS.Core.Persist.Protobuf";
+
+import "google/protobuf/timestamp.proto";
+
+message ShipLock {
+	google.protobuf.Timestamp Expires = 1;
+}

@@ -1,0 +1,27 @@
+﻿// protoc.exe -I=<include folder> -I=. --csharp_out=. Stats.proto
+
+syntax = "proto3";
+
+package ss.core.persist.protobuf;
+option csharp_namespace = "SS.Core.Persist.Protobuf";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+message StatInfo {
+	oneof stat_info {
+		int32 int32Value = 2;
+		google.protobuf.Duration elapsed = 3;
+		google.protobuf.Timestamp timestamp = 4;
+		double doubleValue = 5;
+		uint64 uint64Value = 6;
+	};
+}
+
+message PlayerStats {
+	map<int32, StatInfo> statMap = 1;
+}
+
+message EndingTime {
+	google.protobuf.Timestamp endingTimestamp = 1;
+}
