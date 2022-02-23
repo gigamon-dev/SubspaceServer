@@ -4,9 +4,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data.SQLite;
 using System.IO;
-using System.Text;
 using System.Threading;
 
 namespace SS.Core.Modules
@@ -16,9 +14,9 @@ namespace SS.Core.Modules
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
-        private ILogManager _logManager;
         private IMainloop _mainloop;
         private IObjectPoolManager _objectPoolManager;
+        private IPersistDatastore _persistDatastore;
         private IPlayerData _playerData;
 
         private InterfaceRegistrationToken _iPersistToken;
@@ -40,9 +38,6 @@ namespace SS.Core.Modules
 
         private int _adKey;
 
-        private const string DatabasePath = "./data";
-        private const string DatabaseFileName = "SS.Core.Modules.Persist.db";
-        private const string ConnectionString = $"Data Source={DatabasePath}/{DatabaseFileName};Version=3;";
         private int _maxRecordLength;
 
         #region Module memebers
@@ -55,20 +50,20 @@ namespace SS.Core.Modules
             ComponentBroker broker,
             IArenaManager arenaManager,
             IConfigManager configManager,
-            ILogManager logManager,
             IMainloop mainloop,
             IObjectPoolManager objectPoolManager,
+            IPersistDatastore persistDatastore,
             IPlayerData playerData)
         {
             _broker = broker;
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+            _persistDatastore = persistDatastore ?? throw new ArgumentNullException(nameof(persistDatastore));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            if (!InitalizeDatabase())
+            if (!_persistDatastore.Open())
                 return false;
 
             _playerWorkItemPool = _objectPoolManager.GetPool<PlayerWorkItem>();
@@ -103,6 +98,8 @@ namespace SS.Core.Modules
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             _arenaManager.FreeArenaData(_adKey);
+
+            _persistDatastore.Close();
 
             return true;
         }
@@ -489,25 +486,7 @@ namespace SS.Core.Modules
                 // Update the ArenaGroupInterval
                 //
 
-                try
-                {
-                    using SQLiteConnection conn = new(ConnectionString);
-                    conn.Open();
-
-                    using (SQLiteTransaction transaction = conn.BeginTransaction())
-                    {
-                        DbCreateArenaGroupIntervalAndSetCurrent(conn, arenaGroup, interval);
-
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogException(
-                        $"Error calling the database to create a new ArenaGroupInterval and set it as current for ArenaGroup {arenaGroup}, Interval {interval}.",
-                        ex);
-                    return;
-                }
+                _persistDatastore.CreateArenaGroupIntervalAndMakeCurrent(arenaGroup, interval);
             }
 
             void DoPutPlayer(Player player, Arena arena)
@@ -599,110 +578,18 @@ namespace SS.Core.Modules
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using (MemoryStream dataStream = new(_maxRecordLength)) // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+
+            registration.GetData(arena, dataStream);
+
+            if (dataStream.Length > 0)
             {
-                registration.GetData(arena, dataStream);
-
-                if (dataStream.Length > 0)
-                {
-                    dataStream.Position = 0;
-
-                    try
-                    {
-                        using SQLiteConnection conn = new(ConnectionString);
-                        conn.Open();
-
-                        using (SQLiteTransaction transaction = conn.BeginTransaction())
-                        {
-                            DbSetArenaData(conn, arenaGroup, registration.Interval, registration.Key, dataStream);
-
-                            transaction.Commit();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogException(
-                            arena,
-                            $"Error saving arena data to the database for ArenaGroup {arenaGroup}, Interval {registration.Interval}, Key {registration.Key}.",
-                            ex);
-                        return;
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        using SQLiteConnection conn = new(ConnectionString);
-                        conn.Open();
-
-                        using (SQLiteTransaction transaction = conn.BeginTransaction())
-                        {
-                            DbDeleteArenaData(conn, arenaGroup, registration.Interval, registration.Key);
-
-                            transaction.Commit();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogException(
-                            arena,
-                            $"Error deleting arena data from the database for ArenaGroup {arenaGroup}, Interval {registration.Interval}, Key {registration.Key}.",
-                            ex);
-                        return;
-                    }
-                }
+                dataStream.Position = 0;
+                _persistDatastore.SetArenaData(arenaGroup, registration.Interval, registration.Key, dataStream);
             }
-        }
-
-        private void DbDeleteArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey)
-        {
-            int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
-
-            try
+            else
             {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-DELETE FROM ArenaData
-WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
-    AND PersistKeyId = @PersistKeyId";
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-                command.Parameters.AddWithValue("PersistKeyId", persistKey);
-
-                command.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error deleting from the ArenaGroup table for ArenaGroupIntervalId {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
-            }
-        }
-
-        private void DbSetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
-        {
-            int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-INSERT INTO ArenaData(
-     ArenaGroupIntervalId
-    ,PersistKeyId
-    ,Data
-)
-VALUES(
-     @ArenaGroupIntervalId
-    ,@PersistKeyId
-    ,@Data
-)";
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-                command.Parameters.AddWithValue("PersistKeyId", persistKey);
-                command.Parameters.AddWithValue("Data", dataStream.ToArray()); // TODO: seems only byte[] is allowed, maybe switch to Microsoft.Data.Sqlite?
-
-                command.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error inserting into the ArenaData table for ArenaGroupIntervalId {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
+                _persistDatastore.DeleteArenaData(arenaGroup, registration.Interval, registration.Key);
             }
         }
 
@@ -722,60 +609,12 @@ VALUES(
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using (MemoryStream dataStream = new(_maxRecordLength)) // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+
+            if (_persistDatastore.GetArenaData(arenaGroup, registration.Interval, registration.Key, dataStream))
             {
-                try
-                {
-                    using SQLiteConnection conn = new(ConnectionString);
-                    conn.Open();
-
-                    using (SQLiteTransaction transaction = conn.BeginTransaction())
-                    {
-                        DbGetArenaData(conn, arenaGroup, registration.Interval, registration.Key, dataStream);
-
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogException(
-                        arena, 
-                        $"Error getting arena data from the database for ArenaGroup {arenaGroup}, Interval {registration.Interval}, Key {registration.Key}).",
-                        ex);
-                    return;
-                }
-
                 dataStream.Position = 0;
                 registration.SetData(arena, dataStream);
-            }
-        }
-
-        private void DbGetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream outStream)
-        {
-            int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-SELECT Data
-FROM ArenaData
-WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
-    AND PersistKeyId = @PersistKeyId";
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-                command.Parameters.AddWithValue("PersistKeyId", persistKey);
-
-                using SQLiteDataReader reader = command.ExecuteReader();
-
-                if (reader.Read())
-                {
-                    using var blobStream = reader.GetStream(0);
-                    blobStream.CopyTo(outStream);
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error querying the ArenaData table for ArenaGroupInterval {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
             }
         }
 
@@ -818,119 +657,18 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using (MemoryStream dataStream = new(_maxRecordLength)) // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+
+            registration.GetData(player, dataStream);
+
+            if (dataStream.Length > 0)
             {
-                registration.GetData(player, dataStream);
-
-                if (dataStream.Length > 0)
-                {
-                    dataStream.Position = 0;
-
-                    try
-                    {
-                        using SQLiteConnection conn = new(ConnectionString);
-                        conn.Open();
-
-                        using (SQLiteTransaction transaction = conn.BeginTransaction())
-                        {
-                            DbSetPlayerData(conn, player.Name, arenaGroup, registration.Interval, registration.Key, dataStream);
-
-                            transaction.Commit();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogException(
-                            player,
-                            $"Error saving player data to the database for ArenaGroup {arenaGroup}, Interval {registration.Interval}, Key {registration.Key}).",
-                            ex);
-                        return;
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        using SQLiteConnection conn = new(ConnectionString);
-                        conn.Open();
-
-                        using (SQLiteTransaction transaction = conn.BeginTransaction())
-                        {
-                            DbDeletePlayerData(conn, player.Name, arenaGroup, registration.Interval, registration.Key);
-
-                            transaction.Commit();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogException(
-                            player, 
-                            $"Error deleting player data from the database for ArenaGroup {arenaGroup}, Interval {registration.Interval}, Key {registration.Key}).",
-                            ex);
-                        return;
-                    }
-                }
+                dataStream.Position = 0;
+                _persistDatastore.SetPlayerData(player, arenaGroup, registration.Interval, registration.Key, dataStream);
             }
-        }
-
-        private void DbDeletePlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
-        {
-            int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
-
-            int persistPlayerId = DbGetOrCreatePersistPlayerId(conn, playerName);
-
-            try
+            else
             {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-DELETE FROM PlayerData
-WHERE PersistPlayerId = @PersistPlayerId
-    AND ArenaGroupIntervalId = @ArenaGroupIntervalId
-    AND PersistKeyId = @PersistKeyId";
-                command.Parameters.AddWithValue("PersistPlayerId", persistPlayerId);
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-                command.Parameters.AddWithValue("PersistKeyId", persistKey);
-
-                command.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error deleting from PlayerData for PersistPlayerId {persistPlayerId}, ArenaGroupIntervalId {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
-            }
-        }
-
-        private void DbSetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
-        {
-            int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
-
-            int persistPlayerId = DbGetOrCreatePersistPlayerId(conn, playerName);
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-INSERT OR REPLACE INTO PlayerData(
-     PersistPlayerId
-    ,ArenaGroupIntervalId
-    ,PersistKeyId
-    ,Data
-)
-VALUES(
-     @PersistPlayerId
-    ,@ArenaGroupIntervalId
-    ,@PersistKeyId
-    ,@Data
-)";
-                command.Parameters.AddWithValue("PersistPlayerId", persistPlayerId);
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-                command.Parameters.AddWithValue("PersistKeyId", persistKey);
-                command.Parameters.AddWithValue("Data", dataStream.ToArray()); // TODO: seems only byte[] is allowed, maybe switch to Microsoft.Data.Sqlite?
-
-                command.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error inserting into the PlayerData table for PersistPlayerId {persistPlayerId}, ArenaGroupIntervalId {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
+                _persistDatastore.DeletePlayerData(player, arenaGroup, registration.Interval, registration.Key);
             }
         }
 
@@ -953,29 +691,10 @@ VALUES(
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using (MemoryStream dataStream = new(_maxRecordLength)) // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+
+            if (_persistDatastore.GetPlayerData(player, arenaGroup, registration.Interval, registration.Key, dataStream))
             {
-                try
-                {
-                    using SQLiteConnection conn = new(ConnectionString);
-                    conn.Open();
-
-                    using (SQLiteTransaction transaction = conn.BeginTransaction())
-                    {
-                        DbGetPlayerData(conn, player.Name, arenaGroup, registration.Interval, registration.Key, dataStream);
-
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogException(
-                        player,
-                        $"Error getting player data from the database for ArenaGroup {arenaGroup}, Interval {registration.Interval}, Key {registration.Key}).",
-                        ex);
-                    return;
-                }
-
                 dataStream.Position = 0;
                 registration.SetData(player, dataStream);
             }
@@ -995,498 +714,7 @@ VALUES(
             {
                 return arena.Name;
             }
-        }
-
-        private void DbGetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
-        {
-            int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
-
-            int persistPlayerId = DbGetOrCreatePersistPlayerId(conn, playerName);
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-SELECT Data
-FROM PlayerData
-WHERE PersistPlayerId = @PersistPlayerId
-    AND ArenaGroupIntervalId = @ArenaGroupIntervalId
-    AND PersistKeyId = @PersistKeyId";
-                command.Parameters.AddWithValue("PersistPlayerId", persistPlayerId);
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-                command.Parameters.AddWithValue("PersistKeyId", persistKey);
-
-                using (SQLiteDataReader reader = command.ExecuteReader())
-                {
-                    if (reader.Read())
-                    {
-                        using (Stream blobStream = reader.GetStream(0))
-                        {
-                            blobStream.CopyTo(outStream);
-                        }
-
-                        //ReadBlobToStream(reader, outStream);
-
-                        //SQLiteBlob blob = reader.GetBlob(0, true);
-                        //blob.Read()
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error querying the PlayerData table for PersistPlayerId {persistPlayerId}, ArenaGroupIntervalId {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
-            }
-        }
-
-        //private static void ReadBlobToStream(SQLiteDataReader reader, Stream stream)
-        //{
-        //    byte[] buffer = ArrayPool<byte>.Shared.Rent(4096);
-
-        //    try
-        //    {
-        //        long fieldOffset = 0;
-        //        long bytesRead;
-        //        while ((bytesRead = reader.GetBytes(0, fieldOffset, buffer, 0, buffer.Length)) > 0)
-        //        {
-        //            stream.Write(buffer, 0, (int)bytesRead);
-        //            fieldOffset += bytesRead;
-        //        }
-        //    }
-        //    finally
-        //    {
-        //        ArrayPool<byte>.Shared.Return(buffer, true);
-        //    }
-        //}
-
-        private int DbGetOrCreatePersistPlayerId(SQLiteConnection conn, string playerName)
-        {
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-SELECT PersistPlayerId 
-FROM Player 
-WHERE PlayerName = @PlayerName";
-                command.Parameters.AddWithValue("PlayerName", playerName);
-
-                object persistPlayerIdObj = command.ExecuteScalar();
-                if (persistPlayerIdObj != null && persistPlayerIdObj != DBNull.Value)
-                {
-                    return Convert.ToInt32(persistPlayerIdObj);
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error querying the Player table for player name '{playerName}'.", ex);
-            }
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-INSERT INTO Player(PlayerName)
-VALUES(@PlayerName)
-RETURNING PersistPlayerId";
-                command.Parameters.AddWithValue("PlayerName", playerName);
-
-                object persistPlayerIdObj = command.ExecuteScalar();
-                if (persistPlayerIdObj != null && persistPlayerIdObj != DBNull.Value)
-                {
-                    return Convert.ToInt32(persistPlayerIdObj);
-                }
-                else
-                {
-                    throw new Exception("Error inserting into the Player table.");
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error inserting into the Player table for player name '{playerName}'.", ex);
-            }
-        }
-
-        private int DbGetOrCreateCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
-        {
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-SELECT cagi.ArenaGroupIntervalId
-FROM ArenaGroup AS ag
-INNER JOIN CurrentArenaGroupInterval as cagi
-    ON ag.ArenaGroupId = cagi.ArenaGroupId
-WHERE ag.ArenaGroup = @ArenaGroup
-    AND cagi.Interval = @Interval";
-                command.Parameters.AddWithValue("ArenaGroup", arenaGroup);
-                command.Parameters.AddWithValue("Interval", interval);
-
-                object arenaGroupIntervalIdObj = command.ExecuteScalar();
-                if (arenaGroupIntervalIdObj != null && arenaGroupIntervalIdObj != DBNull.Value)
-                {
-                    return Convert.ToInt32(arenaGroupIntervalIdObj);
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error querying the CurrentArenaGroupInterval table for ArenaGroup '{arenaGroup}', Interval '{interval}'.", ex);
-            }
-
-            return DbCreateArenaGroupIntervalAndSetCurrent(conn, arenaGroup, interval);
-        }
-
-        private int DbCreateArenaGroupIntervalAndSetCurrent(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
-        {
-            int arenaGroupId = DbGetOrCreateArenaGroupId(conn, arenaGroup);
-
-            DateTime now = DateTime.UtcNow; // For the EndTimestamp of the previous AccountGroupInterval AND the StartTimestamp of the new AccountGroupInterval to match.
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-UPDATE ArenaGroupInterval AS agi
-SET EndTimestamp = @Now
-FROM(
-	SELECT ArenaGroupIntervalId
-	FROM CurrentArenaGroupInterval as cagi
-	WHERE cagi.ArenaGroupId = @ArenaGroupId
-		and cagi.Interval = @Interval
-) as c
-WHERE agi.ArenaGroupIntervalId = c.ArenaGroupIntervalId";
-                command.Parameters.AddWithValue("ArenaGroupId", arenaGroupId);
-                command.Parameters.AddWithValue("Interval", (int)interval);
-                command.Parameters.AddWithValue("Now", now);
-
-                command.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error setting the EndTimestamp of the previous ArenaGroupInterval for ArenaGroup '{arenaGroup}', Interval '{interval}'.", ex);
-            }
-
-            int arenaGroupIntervalId;
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-INSERT INTO ArenaGroupInterval(
-     ArenaGroupId
-    ,Interval
-    ,StartTimestamp
-)
-VALUES(
-     @ArenaGroupId
-    ,@Interval
-    ,@Now
-)
-RETURNING ArenaGroupIntervalId";
-                command.Parameters.AddWithValue("ArenaGroupId", arenaGroupId);
-                command.Parameters.AddWithValue("Interval", (int)interval);
-                command.Parameters.AddWithValue("Now", now);
-
-                object arenaGroupIntervalIdObj = command.ExecuteScalar();
-                if (arenaGroupIntervalIdObj != null && arenaGroupIntervalIdObj != DBNull.Value)
-                {
-                    arenaGroupIntervalId = Convert.ToInt32(arenaGroupIntervalIdObj);
-                }
-                else
-                {
-                    throw new Exception("Insert did not return an ArenaGroupIntervalId.");
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error inserting into the ArenaGroupInterval table for ArenaGroup '{arenaGroup}', Interval '{interval}'.", ex);
-            }
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-UPDATE CurrentArenaGroupInterval
-SET ArenaGroupIntervalId = @ArenaGroupIntervalId
-WHERE ArenaGroupId = @ArenaGroupId
-    AND Interval = @Interval";
-                command.Parameters.AddWithValue("ArenaGroupId", arenaGroupId);
-                command.Parameters.AddWithValue("Interval", (int)interval);
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-
-                int rowsAffected = command.ExecuteNonQuery();
-                if (rowsAffected == 1)
-                    return arenaGroupIntervalId;
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error updating the CurrentArenaGroupInterval table for ArenaGroup '{arenaGroup}', Interval '{interval}'.", ex);
-            }
-
-            // no record in CurrentArenaGroupInterval yet, insert it
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-INSERT INTO CurrentArenaGroupInterval(
-     ArenaGroupId
-    ,Interval
-    ,ArenaGroupIntervalId
-)
-VALUES(
-     @ArenaGroupId
-    ,@Interval
-    ,@ArenaGroupIntervalId
-)";
-                command.Parameters.AddWithValue("ArenaGroupId", arenaGroupId);
-                command.Parameters.AddWithValue("Interval", (int)interval);
-                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
-
-                command.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error inserting into the CurrentArenaGroupInterval table for ArenaGroup '{arenaGroup}', Interval '{interval}'.", ex);
-            }
-
-            return arenaGroupIntervalId;
-        }
-
-        private static int DbGetOrCreateArenaGroupId(SQLiteConnection conn, string arenaGroup)
-        {
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-SELECT ArenaGroupId
-FROM ArenaGroup
-WHERE ArenaGroup = @ArenaGroup";
-                command.Parameters.AddWithValue("ArenaGroup", arenaGroup);
-
-                object arenaGroupIdObj = command.ExecuteScalar();
-                if (arenaGroupIdObj != null && arenaGroupIdObj != DBNull.Value)
-                {
-                    return Convert.ToInt32(arenaGroupIdObj);
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error querying the ArenaGroup table for '{arenaGroup}'.", ex);
-            }
-
-            try
-            {
-                using SQLiteCommand command = conn.CreateCommand();
-                command.CommandText = @"
-INSERT INTO ArenaGroup(ArenaGroup)
-VALUES(@ArenaGroup)
-RETURNING ArenaGroupId";
-                command.Parameters.AddWithValue("ArenaGroup", arenaGroup);
-
-                object arenaGroupIdObj = command.ExecuteScalar();
-                if (arenaGroupIdObj != null && arenaGroupIdObj != DBNull.Value)
-                {
-                    return Convert.ToInt32(arenaGroupIdObj);
-                }
-                else
-                {
-                    throw new Exception("Insert did not return an ArenaGroupId.");
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error inserting into the ArenaGroup table for '{arenaGroup}'.", ex);
-            }
-        }
-
-        private bool InitalizeDatabase()
-        {
-            if (!Directory.Exists(DatabasePath))
-            {
-                try
-                {
-                    Directory.CreateDirectory(DatabasePath);
-
-                    // TODO: Investigate setting folder permissions (at the moment I only see a Windows specific API)
-                }
-                catch (Exception ex)
-                {
-                    LogException($"Database directory '{DatabasePath}' does not exist and was unable to create it.", ex);
-                    return false;
-                }
-            }
-
-            if (!File.Exists(Path.Combine(DatabasePath, DatabaseFileName)))
-            {
-                // create tables, etc...
-                try
-                {
-                    using SQLiteConnection conn = new(ConnectionString);
-                    conn.Open();
-
-                    using SQLiteTransaction transaction = conn.BeginTransaction();
-
-                    // create tables
-                    using (SQLiteCommand command = conn.CreateCommand())
-                    {
-                        command.CommandText = @"
-CREATE TABLE [ArenaGroup](
-    [ArenaGroupId] INTEGER NOT NULL,
-    [ArenaGroup] TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    PRIMARY KEY([ArenaGroupId] AUTOINCREMENT)
-);
-
-CREATE TABLE [ArenaGroupInterval](
-    [ArenaGroupIntervalId] INTEGER NOT NULL,
-    [ArenaGroupId] INTEGER NOT NULL,
-    [Interval] INTEGER NOT NULL,
-    [StartTimestamp] TEXT NOT NULL DEFAULT(datetime('now', 'utc')),
-    [EndTimestamp] TEXT NULL,
-    FOREIGN KEY([ArenaGroupId]) REFERENCES [ArenaGroup]([ArenaGroupId]),
-    PRIMARY KEY([ArenaGroupIntervalId] AUTOINCREMENT)
-);
-
-CREATE TABLE [CurrentArenaGroupInterval] (
-	[ArenaGroupId]INTEGER NOT NULL,
-	[Interval] INTEGER NOT NULL,
-	[ArenaGroupIntervalId] INTEGER NOT NULL,
-	FOREIGN KEY([ArenaGroupIntervalId]) REFERENCES [ArenaGroupInterval]([ArenaGroupIntervalId]),
-	PRIMARY KEY([ArenaGroupId],[Interval])
-);
-
-CREATE TABLE [ArenaData] (
-	[ArenaGroupIntervalId] INTEGER NOT NULL,
-	[PersistKeyId] INTEGER NOT NULL,
-	[Data] BLOB NOT NULL,
-	FOREIGN KEY([ArenaGroupIntervalId]) REFERENCES [ArenaGroupInterval]([ArenaGroupIntervalId]),
-	PRIMARY KEY([ArenaGroupIntervalId],[PersistKeyId])
-);
-
-CREATE TABLE [Player] (
-	[PersistPlayerId] INTEGER NOT NULL,
-	[PlayerName] TEXT NOT NULL UNIQUE COLLATE NOCASE,
-	PRIMARY KEY([PersistPlayerId] AUTOINCREMENT)
-);
-
-CREATE TABLE [PlayerData](
-    [PersistPlayerId] INTEGER NOT NULL,
-    [ArenaGroupIntervalId] INTEGER NOT NULL,
-    [PersistKeyId] INTEGER NOT NULL,
-    [Data] BLOB NOT NULL,
-    FOREIGN KEY([ArenaGroupIntervalId]) REFERENCES [ArenaGroupInterval]([ArenaGroupIntervalId]),
-    FOREIGN KEY([PersistPlayerId]) REFERENCES [Player]([PersistPlayerId]),
-    PRIMARY KEY([PersistPlayerId], [ArenaGroupIntervalId], [PersistKeyId])
-);
-";
-                        command.ExecuteNonQuery();
-                    }
-
-                    transaction.Commit();
-                }
-                catch (Exception ex)
-                {
-                    LogException($"Error creating database.", ex);
-                    return false;
-                }
-            }
-
-            return true;
-        }
-        
-        // TODO: Add methods to LogManager for logging exceptions.
-        private void LogException(string message, Exception ex)
-        {
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    sb.Append(message);
-                }
-
-                // TODO: Add a setting to log the full exception (stack trace and all)
-
-                while (ex != null)
-                {
-                    sb.Append(' ');
-                    sb.Append(ex.Message);
-
-                    ex = ex.InnerException;
-                }
-
-                if (sb.Length > 0)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Persist), sb);
-                }
-            }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(sb);
-            }
-        }
-
-        private void LogException(Player player, string message, Exception ex)
-        {
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    sb.Append(message);
-                }
-
-                // TODO: Add a setting to log the full exception (stack trace and all)
-
-                while (ex != null)
-                {
-                    sb.Append(' ');
-                    sb.Append(ex.Message);
-
-                    ex = ex.InnerException;
-                }
-
-                if (sb.Length > 0)
-                {
-                    _logManager.LogP(LogLevel.Error, nameof(Persist), player, sb);
-                }
-            }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(sb);
-            }
-        }
-
-        private void LogException(Arena arena, string message, Exception ex)
-        {
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    sb.Append(message);
-                }
-
-                // TODO: Add a setting to log the full exception (stack trace and all)
-
-                while (ex != null)
-                {
-                    sb.Append(' ');
-                    sb.Append(ex.Message);
-
-                    ex = ex.InnerException;
-                }
-
-                if (sb.Length > 0)
-                {
-                    _logManager.LogA(LogLevel.Error, nameof(Persist), arena, sb);
-                }
-            }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(sb);
-            }
-        }
+        }        
 
         public class ArenaData
         {
@@ -1496,6 +724,9 @@ CREATE TABLE [PlayerData](
             public string ArenaGroup { get; set; }
         }
 
+        /// <summary>
+        /// Types of commands that the worker thread can be given.
+        /// </summary>
         private enum PersistCommand
         {
             Null,
@@ -1508,6 +739,8 @@ CREATE TABLE [PlayerData](
             //GetGeneric,
             //PutGeneric,
         }
+
+        #region WorkItem helper classes
 
         private abstract class PersistWorkItem : PooledObject
         {
@@ -1659,5 +892,7 @@ CREATE TABLE [PlayerData](
                 }
             }
         }
+
+        #endregion
     }
 }

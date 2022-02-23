@@ -58,19 +58,7 @@ namespace SS.Core.ComponentInterfaces
         Global,
     }
 
-    //public interface IPersistentData<T>
-    //{
-    //    public int Key { get; }
-    //    public int Interval { get; } // TODO: StatInterval? or rename it
-    //    public PersistScope Scope { get; }
-
-    //    void GetData(T target, Stream outStream);
-    //    void SetData(T target, Stream inStream);
-
-    //    void ClearData(T target);
-    //}
-
-    public abstract class PersistentData<T> //: IPersistentData<T>
+    public abstract class PersistentData<T>
     {
         public int Key { get; private set; }
         public PersistInterval Interval { get; private set; }
@@ -342,43 +330,95 @@ namespace SS.Core.ComponentInterfaces
         void SaveAll(Action completed);
     }
 
-    public struct PersistPlayerRecordKey
-    {
-        public string Name { get; set; }
-        public string ArenaGroup { get; set; }
-        public PersistInterval Interval { get; set; }
-        public uint SerialNumber { get; set; }
-        public int Key { get; set; }
-    }
-
-    public struct PersistArenaRecordKey
-    {
-        public string Name { get; set; }
-        public PersistInterval Interval { get; set; }
-        public uint SerialNumber { get; set; }
-        public int Key { get; set; }
-    }
-
-    public struct PersistCurrentSerialRecordKey
-    {
-        public string ArenaGroup { get; set; }
-        public PersistInterval Interval { get; set; }
-    }
-
-    // TODO: maybe separate out the database logic?
+    /// <summary>
+    /// Interface for a service that provides data storage for the <see cref="Modules.Persist"/> module.
+    /// </summary>
+    /// <remarks>
+    /// The idea behind this is that one could use a database of their choosing by implementing this interface.
+    /// At the moment, it's implemented by <see cref="Modules.PersistSQLite"/> which uses a SQLite database.
+    /// In theory, one could create an implementation to access other database types such as Berkeley DB (which ASSS uses), LMDB, etc.
+    /// </remarks>
     public interface IPersistDatastore : IComponentInterface
     {
-        void Open();
-        void Close();
+        /// <summary>
+        /// This is called when the Persist module is loaded. It provides a time to create/initialize the database.
+        /// </summary>
+        /// <returns></returns>
+        bool Open();
 
-        void CreateNewArenaGroupIntervalAndMakeCurrent(string arenaGroup, PersistInterval interval);
+        /// <summary>
+        /// This is called when the Persist module is unloaded. It provides a time to perform any closing tasks. (e.g. ASSS does a 'sync' for Berkeley DB).
+        /// </summary>
+        /// <returns></returns>
+        bool Close();
 
-        void GetPlayerData(string playerName, string arenaGroup, PersistInterval interval, int key, Stream outStream);
-        void SetPlayerData(string playerName, string arenaGroup, PersistInterval interval, int key, Stream inStream);
-        void DeletePlayerData(string playerName, string arenaGroup, PersistInterval interval, int key);
+        /// <summary>
+        /// Creates a new interval for an arena group and makes it the "current" one.
+        /// </summary>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <returns></returns>
+        bool CreateArenaGroupIntervalAndMakeCurrent(string arenaGroup, PersistInterval interval);
 
-        void GetArenaData(string arenaGroup, PersistInterval interval, int key, Stream outStream);
-        void SetArenaData(string arenaGroup, PersistInterval interval, int key, Stream inStream);
-        void DeleteArenaData(string arenaGroup, PersistInterval interval, int key);
+        /// <summary>
+        /// Gets a player's persistent data.
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <param name="key"></param>
+        /// <param name="outStream"></param>
+        /// <returns></returns>
+        bool GetPlayerData(Player player, string arenaGroup, PersistInterval interval, int key, Stream outStream);
+
+        /// <summary>
+        /// Sets a player's persistent data.
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <param name="key"></param>
+        /// <param name="inStream"></param>
+        /// <returns></returns>
+        bool SetPlayerData(Player player, string arenaGroup, PersistInterval interval, int key, MemoryStream inStream);
+
+        /// <summary>
+        /// Deletes a player's persistent data.
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        bool DeletePlayerData(Player player, string arenaGroup, PersistInterval interval, int key);
+
+        /// <summary>
+        /// Get an arena's persistent data.
+        /// </summary>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <param name="key"></param>
+        /// <param name="outStream"></param>
+        /// <returns></returns>
+        bool GetArenaData(string arenaGroup, PersistInterval interval, int key, Stream outStream);
+
+        /// <summary>
+        /// Sets an arena's persistent data.
+        /// </summary>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <param name="key"></param>
+        /// <param name="inStream"></param>
+        /// <returns></returns>
+        bool SetArenaData(string arenaGroup, PersistInterval interval, int key, MemoryStream inStream);
+        
+        /// <summary>
+        /// Deletes an arena's persistent data.
+        /// </summary>
+        /// <param name="arenaGroup"></param>
+        /// <param name="interval"></param>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        bool DeleteArenaData(string arenaGroup, PersistInterval interval, int key);
     }
 }

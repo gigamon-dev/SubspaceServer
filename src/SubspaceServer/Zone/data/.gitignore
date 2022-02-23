@@ -1,0 +1,2 @@
+# This folder is used to store persistent data.  This is to have the folder exist, but prevent any files from getting into source control.
+*.*
