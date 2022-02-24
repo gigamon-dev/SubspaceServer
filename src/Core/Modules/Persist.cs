@@ -348,8 +348,7 @@ namespace SS.Core.Modules
                         break;
 
                     case PersistCommand.EndInterval:
-                        IntervalWorkItem intervalWorkItem = workItem as IntervalWorkItem;
-                        if (intervalWorkItem != null)
+                        if (workItem is IntervalWorkItem intervalWorkItem)
                         {
                             lock (_lock)
                             {

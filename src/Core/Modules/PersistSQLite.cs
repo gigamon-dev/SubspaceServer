@@ -399,7 +399,7 @@ RETURNING ArenaGroupId";
             }
         }
 
-        private int DbCreateArenaGroupIntervalAndSetCurrent(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        private static int DbCreateArenaGroupIntervalAndSetCurrent(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
         {
             int arenaGroupId = DbGetOrCreateArenaGroupId(conn, arenaGroup);
 
@@ -515,7 +515,7 @@ VALUES(
             return arenaGroupIntervalId;
         }
 
-        private int DbGetOrCreateCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        private static int DbGetOrCreateCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
         {
             try
             {
@@ -544,7 +544,7 @@ WHERE ag.ArenaGroup = @ArenaGroup
             return DbCreateArenaGroupIntervalAndSetCurrent(conn, arenaGroup, interval);
         }
 
-        private int DbGetOrCreatePersistPlayerId(SQLiteConnection conn, string playerName)
+        private static int DbGetOrCreatePersistPlayerId(SQLiteConnection conn, string playerName)
         {
             try
             {
@@ -591,7 +591,7 @@ RETURNING PersistPlayerId";
             }
         }
 
-        private void DbGetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private static void DbGetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -610,20 +610,12 @@ WHERE PersistPlayerId = @PersistPlayerId
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
 
-                using (SQLiteDataReader reader = command.ExecuteReader())
+                using SQLiteDataReader reader = command.ExecuteReader();
+
+                if (reader.Read())
                 {
-                    if (reader.Read())
-                    {
-                        using (Stream blobStream = reader.GetStream(0))
-                        {
-                            blobStream.CopyTo(outStream);
-                        }
-
-                        //ReadBlobToStream(reader, outStream);
-
-                        //SQLiteBlob blob = reader.GetBlob(0, true);
-                        //blob.Read()
-                    }
+                    using Stream blobStream = reader.GetStream(0);
+                    blobStream.CopyTo(outStream);
                 }
             }
             catch (Exception ex)
@@ -632,7 +624,7 @@ WHERE PersistPlayerId = @PersistPlayerId
             }
         }
 
-        private void DbSetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
+        private static void DbSetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -667,7 +659,7 @@ VALUES(
             }
         }
 
-        private void DbDeletePlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
+        private static void DbDeletePlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -693,7 +685,7 @@ WHERE PersistPlayerId = @PersistPlayerId
             }
         }
 
-        private void DbGetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private static void DbGetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -722,7 +714,7 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
             }
         }
 
-        private void DbSetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
+        private static void DbSetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -752,7 +744,7 @@ VALUES(
             }
         }
 
-        private void DbDeleteArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey)
+        private static void DbDeleteArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
