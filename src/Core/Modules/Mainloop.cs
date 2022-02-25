@@ -198,6 +198,14 @@ namespace SS.Core.Modules
                 }
             }
 
+            // We've been told to stop.
+            // At this point, nothing else can be added to the workitem queue.
+            // Process any that remain before exiting.
+            while (_runInMainQueue.Count > 0)
+            {
+                DrainRunInMain();
+            }
+
             return _quitCode;
         }
 
@@ -294,6 +302,7 @@ namespace SS.Core.Modules
         void IMainloop.Quit(ExitCode code)
         {
             _quitCode = code;
+            _runInMainQueue.CompleteAdding();
             _cancellationTokenSource.Cancel();
         }
 
@@ -301,6 +310,9 @@ namespace SS.Core.Modules
         {
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
+
+            if (_runInMainQueue.IsAddingCompleted)
+                return false;
 
             RunInMainWorkItem<TState> workItem;
 
@@ -314,9 +326,19 @@ namespace SS.Core.Modules
             }
             
             workItem.Set(callback, state);
-            bool ret = _runInMainQueue.TryAdd(workItem);
-            _runInMainAutoResetEvent.Set();
-            return ret;
+
+            bool added = _runInMainQueue.TryAdd(workItem);
+
+            if (added)
+            {
+                _runInMainAutoResetEvent.Set();
+            }
+            else
+            {
+                workItem.Dispose();
+            }
+
+            return added;
         }
 
         void IMainloop.WaitForMainWorkItemDrain()

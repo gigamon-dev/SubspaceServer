@@ -204,11 +204,6 @@ namespace SS.Core.Modules
 
         void IPersistExecutor.SaveAll(Action completed)
         {
-            QueuePutAllWorkItem(completed);
-        }
-
-        private void QueuePutAllWorkItem(Action callback)
-        {
             lock (_lock)
             {
                 _lastSync = DateTime.UtcNow;
@@ -216,7 +211,7 @@ namespace SS.Core.Modules
 
             PutAllWorkItem workItem = _putAllWorkItemPool.Get();
             workItem.Command = PersistCommand.PutAll;
-            workItem.Callback = callback;
+            workItem.Callback = completed;
 
             _workQueue.Add(workItem);
         }
@@ -247,7 +242,7 @@ namespace SS.Core.Modules
 
         private void PeristWorkerThread()
         {
-            while (!_workQueue.IsCompleted)
+            while (true)
             {
                 TimeSpan waitTimeSpan;
 
@@ -268,10 +263,14 @@ namespace SS.Core.Modules
                 if (!_workQueue.TryTake(out PersistWorkItem workItem, waitTimeSpan))
                 {
                     // Did not get a workitem. This means either:
-                    // we've either been signaled to shut down
+                    // we've either been signaled to shut down (no more items will be added)
                     // OR
                     // it's time to do a full sync (put all data to the database)
-                    if (!_workQueue.IsCompleted)
+                    if (_workQueue.IsCompleted)
+                    {
+                        return;
+                    }
+                    else
                     {
                         // Not signaled to shut down, which means we should do a full sync.
                         // The sync is done periodically so that if there were a server crash or power outage,
@@ -367,7 +366,14 @@ namespace SS.Core.Modules
                         break;
                 }
 
-                _mainloop.QueueMainWorkItem(MainloopWorkItem_ExecuteCallbacks, workItem);
+                if (!_mainloop.QueueMainWorkItem(MainloopWorkItem_ExecuteCallbacks, workItem)
+                    && workItem.Command == PersistCommand.PutAll)
+                {
+                    // Couldn't queue a mainloop workitem. This will happen when the server is shutting down.
+                    // When the mainloop exits, that thread requests that we save everything by adding a PutAll request, and it waits for us to execute the callback.
+                    // Do the callback on worker thread.
+                    MainloopWorkItem_ExecuteCallbacks(workItem);
+                }
             }
 
             void DoEndInterval(PersistInterval interval, string arenaGroup)

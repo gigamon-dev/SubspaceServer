@@ -238,7 +238,8 @@ namespace SS.Core.ComponentInterfaces
         // The caller could wait on the Task to complete (e.g. main thread when shutting down)
         // or could ContinueWith() to execute logic that should happen on completion (e.g. Core module and ArenaManager modules).
         // Consider allocations, with this callback approach, the work items are pooled objects.
-        // With Task there will be an allocation. Can't use ValueTask since it's always processed asynchronously.
+        // With Task there will be an allocation. Is it possible to use ValueTask with pooled IValueTaskSource objects?
+        // How would the caller use it? It would need to await whereas currently it just knows the callback eventually will get executed on the mainloop thread.
 
         #region Player methods
 

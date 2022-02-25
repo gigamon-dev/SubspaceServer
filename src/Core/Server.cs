@@ -1,6 +1,7 @@
 using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SS.Core
@@ -152,6 +153,8 @@ namespace SS.Core
                 _mm.ReleaseInterface(ref mainloop);
             }
 
+            Console.WriteLine($"I <{nameof(Server)}> Exited main loop.");
+
             // Try to send a friendly message to anyone connected.
             // Note: There is no guarantee the Network module will send it before being unloaded.
             IChat chat = _mm.GetInterface<IChat>();
@@ -167,7 +170,18 @@ namespace SS.Core
                 }
             }
 
+            IPersistExecutor persistExecutor = _mm.GetInterface<IPersistExecutor>();
+            if (persistExecutor != null)
+            {
+                Console.WriteLine($"I <{nameof(Server)}> Saving scores.");
+
+                using AutoResetEvent autoResetEvent = new(false);
+                persistExecutor.SaveAll(() => autoResetEvent.Set()); // TODO: use the callback to wait until complete
+                autoResetEvent.WaitOne();
+            }
+
             // Unload.
+            Console.WriteLine($"I <{nameof(Server)}> Unloading modules.");
             _mm.DoPreUnloadStage();
             _mm.UnloadAllModules();
             _mm = null;
