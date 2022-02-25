@@ -194,7 +194,18 @@ namespace SS.Core.Modules
                     ad.Balls[i].Time = ServerTick.Now + (uint)newGameDelay;
             }
 
-            // TODO: Persist logic
+            IPersistExecutor persistExecutor = _broker.GetInterface<IPersistExecutor>();
+            if (persistExecutor != null)
+            {
+                try
+                {
+                    persistExecutor.EndInterval(PersistInterval.Game, arena);
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref persistExecutor);
+                }
+            }
         }
 
         void IBalls.GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out bool isGoalOwner) => GetGoalInfo(arena, freq, coordinate, out isScorable, out isGoalOwner);

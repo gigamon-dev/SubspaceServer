@@ -1346,6 +1346,10 @@ namespace SS.Core.Modules
             }
         }
 
+        [ConfigHelp("Billing", "HonorScoreResetRequests", ConfigScope.Global, typeof(bool), DefaultValue = "1", 
+            Description = "Whether to reset scores when the billing server says it is time to.")]
+        [ConfigHelp("Billing", "ScoreResetArenaGroups", ConfigScope.Global, typeof(string), DefaultValue = Constants.ArenaGroup_Public,
+            Description = "Which arena group(s) to affect when honoring a billing server score reset request.")]
         private void ProcessScoreReset(byte[] pkt, int len)
         {
             if (len < B2S_ScoreReset.Length)
@@ -1363,24 +1367,32 @@ namespace SS.Core.Modules
 
             if (_configManager.GetInt(_configManager.Global, "Billing", "HonorScoreResetRequests", 1) != 0)
             {
-                IPersist persist = _broker.GetInterface<IPersist>();
+                IPersistExecutor persistExecutor = _broker.GetInterface<IPersistExecutor>();
 
-                if (persist != null)
+                if (persistExecutor != null)
                 {
                     try
                     {
-                        // Reset scores in public arenas.
-                        // TODO: persist.EndInterval()
-                        _logManager.LogM(LogLevel.Info, nameof(BillingUdp), "Billing server requested score reset, resetting scores.");
+                        string arenaGroups = _configManager.GetStr(_configManager.Global, "Billing", "ScoreResetArenaGroups");
+                        if (arenaGroups == null) // null only, white-space means none
+                            arenaGroups = Constants.ArenaGroup_Public;
+
+                        ReadOnlySpan<char> remaining = arenaGroups;
+                        ReadOnlySpan<char> token;
+                        while ((token = remaining.GetToken(", \t", out remaining)).Length > 0)
+                        {
+                            persistExecutor.EndInterval(PersistInterval.Reset, token.ToString());
+                            _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Billing server requested a score reset, resetting scores of arena group '{token}'.");
+                        }
                     }
                     finally
                     {
-                        _broker.ReleaseInterface(ref persist);
+                        _broker.ReleaseInterface(ref persistExecutor);
                     }
                 }
                 else
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Billing server requested score reset, but IPersist is not available.");
+                    _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Billing server requested score reset, but the IPersistExecutor interface is not available.");
                 }
             }
             else
