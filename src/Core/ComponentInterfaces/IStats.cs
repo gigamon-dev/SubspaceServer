@@ -36,7 +36,7 @@ namespace SS.Core.ComponentInterfaces
         #region IncrementStat methods
 
         /// <summary>
-        /// Increments a player's statistic in ALL intervals.
+        /// Increments a player's statistic.
         /// </summary>
         /// <param name="player">The player to increment the stat for.</param>
         /// <param name="statCode">The statistic to increment.</param>
