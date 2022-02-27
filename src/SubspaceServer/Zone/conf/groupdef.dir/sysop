@@ -4,6 +4,7 @@ seesysoplogall
 
 ; setgroup:
 higher_than_smod
+higher_than_sysop
 
 ; prefix chars
 prefix_#
@@ -53,6 +54,8 @@ privcmd_set_local_password
 
 ; temporary
 cmd_dropturret
+cmd_makefake
+privcmd_killfake
 
 cmd_py
 privcmd_py
