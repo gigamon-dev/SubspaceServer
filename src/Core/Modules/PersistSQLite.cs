@@ -187,10 +187,10 @@ CREATE TABLE [PlayerData](
                 conn.Open();
 
                 using SQLiteTransaction transaction = conn.BeginTransaction();
-                DbGetPlayerData(conn, player.Name, arenaGroup, interval, key, outStream);
+                bool ret = DbGetPlayerData(conn, player.Name, arenaGroup, interval, key, outStream);
                 transaction.Commit();
 
-                return true;
+                return ret;
             }
             catch (Exception ex)
             {
@@ -280,10 +280,10 @@ CREATE TABLE [PlayerData](
                 conn.Open();
 
                 using SQLiteTransaction transaction = conn.BeginTransaction();
-                DbGetArenaData(conn, arenaGroup, interval, key, outStream);
+                bool ret = DbGetArenaData(conn, arenaGroup, interval, key, outStream);
                 transaction.Commit();
 
-                return true;
+                return ret;
             }
             catch (Exception ex)
             {
@@ -591,7 +591,7 @@ RETURNING PersistPlayerId";
             }
         }
 
-        private static void DbGetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private static bool DbGetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -616,7 +616,10 @@ WHERE PersistPlayerId = @PersistPlayerId
                 {
                     using Stream blobStream = reader.GetStream(0);
                     blobStream.CopyTo(outStream);
+                    return true;
                 }
+
+                return false;
             }
             catch (Exception ex)
             {
@@ -685,7 +688,7 @@ WHERE PersistPlayerId = @PersistPlayerId
             }
         }
 
-        private static void DbGetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private static bool DbGetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -706,7 +709,10 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
                 {
                     using var blobStream = reader.GetStream(0);
                     blobStream.CopyTo(outStream);
+                    return true;
                 }
+
+                return false;
             }
             catch (Exception ex)
             {
