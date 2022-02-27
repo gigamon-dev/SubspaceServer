@@ -1,4 +1,6 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets.Game;
@@ -6,8 +8,10 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules
 {
@@ -28,12 +32,16 @@ namespace SS.Core.Modules
         private INetwork _net;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
-        //private IPersist _persist;
         private IPrng _prng;
+
+        private IPersist _persist;
+
         private InterfaceRegistrationToken _iGameToken;
 
         private int _pdkey;
         private int _adkey;
+
+        private DelegatePersistentData<Player> _persistRegistration;
 
         private readonly object _specmtx = new();
         private readonly object _freqshipmtx = new();
@@ -185,7 +193,6 @@ namespace SS.Core.Modules
             INetwork net,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
-            //IPersist persist,
             IPrng prng)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -202,14 +209,20 @@ namespace SS.Core.Modules
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            //_persist = persist ?? throw new ArgumentNullException(nameof(persist));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+
+            _persist = broker.GetInterface<IPersist>();
 
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
-            
-            //if(_persist != null)
-                //_persist.
+
+            if (_persist != null)
+            {
+                _persistRegistration = new(
+                    (int)PersistKey.GameShipLock, PersistInterval.ForeverNotShared, PersistScope.PerArena, Persist_GetShipLockData, Persist_SetShipLockData, null);
+
+                _persist.RegisterPersistentData(_persistRegistration);
+            }
 
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
@@ -266,7 +279,8 @@ namespace SS.Core.Modules
 
             _mainloop.WaitForMainWorkItemDrain();
 
-            //if(_persist != null)
+            if (_persist != null && _persistRegistration != null)
+                _persist.UnregisterPersistentData(_persistRegistration);
 
             _arenaManager.FreeArenaData(_adkey);
             _playerData.FreePlayerData(_pdkey);
@@ -610,6 +624,52 @@ namespace SS.Core.Modules
             }
 
             Attach(p, to);
+        }
+
+        #endregion
+
+        #region Persist methods
+
+        private void Persist_GetShipLockData(Player player, Stream outStream)
+        {
+            if (player == null || player[_pdkey] is not PlayerData pd)
+                return;
+
+            lock (_freqshipmtx)
+            {
+                ExpireLock(player);
+
+                if (pd.expires != null)
+                {
+                    SSProto.ShipLock protoShipLock = new();
+                    protoShipLock.Expires = Timestamp.FromDateTime(pd.expires.Value);
+
+                    protoShipLock.WriteTo(outStream);
+                }
+            }
+        }
+
+        private void Persist_SetShipLockData(Player player, Stream inStream)
+        {
+            if (player == null || player[_pdkey] is not PlayerData pd)
+                return;
+
+            lock (_freqshipmtx)
+            {
+                SSProto.ShipLock protoShipLock = SSProto.ShipLock.Parser.ParseFrom(inStream);
+                pd.expires = protoShipLock.Expires.ToDateTime();
+                pd.lockship = true;
+
+                // Try expiring once now, and...
+                ExpireLock(player);
+
+                // If the lock is still active, force to spec.
+                if (pd.lockship)
+                {
+                    player.Ship = ShipType.Spec;
+                    player.Freq = player.Arena.SpecFreq;
+                }
+            }
         }
 
         #endregion
