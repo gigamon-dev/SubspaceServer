@@ -101,20 +101,11 @@ namespace SS.Core.ComponentInterfaces
             ClearDataCallback = clearDataCallback;
         }
 
-        public override void GetData(T target, Stream outStream)
-        {
-            GetDataCallback(target, outStream);
-        }
+        public override void GetData(T target, Stream outStream) => GetDataCallback?.Invoke(target, outStream);
 
-        public override void SetData(T target, Stream inStream)
-        {
-            SetDataCallback(target, inStream);
-        }
+        public override void SetData(T target, Stream inStream) => SetDataCallback?.Invoke(target, inStream);
 
-        public override void ClearData(T target)
-        {
-            ClearDataCallback(target);
-        }
+        public override void ClearData(T target) => ClearDataCallback?.Invoke(target);
     }
 
     public abstract class PersistentData<T, TState> : PersistentData<T>
@@ -152,20 +143,11 @@ namespace SS.Core.ComponentInterfaces
             ClearDataCallback = clearDataCallback;
         }
 
-        public override void GetData(T target, Stream outStream)
-        {
-            GetDataCallback(target, outStream, State);
-        }
+        public override void GetData(T target, Stream outStream) => GetDataCallback?.Invoke(target, outStream, State);
 
-        public override void SetData(T target, Stream inStream)
-        {
-            SetDataCallback(target, inStream, State);
-        }
+        public override void SetData(T target, Stream inStream) => SetDataCallback?.Invoke(target, inStream, State);
 
-        public override void ClearData(T target)
-        {
-            ClearDataCallback(target, State);
-        }
+        public override void ClearData(T target) => ClearDataCallback?.Invoke(target, State);
     }
 
     /// <summary>
