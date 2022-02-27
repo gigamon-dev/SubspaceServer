@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -6,9 +8,11 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules
 {
@@ -141,9 +145,22 @@ namespace SS.Core.Modules
             public DateTime LastCheck;
 
             public readonly object Lock = new();
+
+            public void Clear()
+            {
+                lock (Lock)
+                {
+                    Mask.Clear();
+                    Expires = null;
+                    MessageCount = 0;
+                    LastCheck = DateTime.UtcNow;
+                }
+            }
         }
 
-        #region IModule Members
+        private DelegatePersistentData<Player> _persistRegistration;
+
+        #region Module Members
 
         public bool Load(
             ComponentBroker broker,
@@ -180,8 +197,12 @@ namespace SS.Core.Modules
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
-            //if(_persist != null)
-                //_persist.
+            if (_persist != null)
+            {
+                _persistRegistration = new DelegatePersistentData<Player>(
+                    (int)PersistKey.Chat, PersistInterval.ForeverNotShared, PersistScope.PerArena, Persist_GetData, Persist_SetData, Persist_ClearData);
+                _persist.RegisterPersistentData(_persistRegistration);
+            }
 
             _cfg = new Config(_configManager);
 
@@ -207,8 +228,8 @@ namespace SS.Core.Modules
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
 
-            //if(_persist != null)
-               //_persist.
+            if (_persist != null && _persistRegistration != null)
+                _persist.UnregisterPersistentData(_persistRegistration);
 
             _arenaManager.FreeArenaData(_adKey);
             _playerData.FreePlayerData(_pdKey);
@@ -738,6 +759,48 @@ namespace SS.Core.Modules
 
         #endregion
 
+        #region Persist methods
+
+        private void Persist_GetData(Player player, Stream outStream)
+        {
+            if (player == null || player[_pdKey] is not PlayerData pd)
+                return;
+
+            if (pd.Expires != null)
+            {
+                SSProto.ChatMask protoChatMask = new();
+                protoChatMask.Mask = pd.Mask.Value;
+                protoChatMask.Expires = pd.Expires != null ? Timestamp.FromDateTime(pd.Expires.Value) : null;
+                protoChatMask.MessageCount = pd.MessageCount;
+                protoChatMask.LastCheck = Timestamp.FromDateTime(pd.LastCheck);
+
+                protoChatMask.WriteTo(outStream);
+            }
+        }
+
+        private void Persist_SetData(Player player, Stream inStream)
+        {
+            if (player == null || player[_pdKey] is not PlayerData pd)
+                return;
+
+            SSProto.ChatMask protoChatMask = SSProto.ChatMask.Parser.ParseFrom(inStream);
+
+            pd.Mask = new ChatMask(protoChatMask.Mask);
+            pd.Expires = protoChatMask.Expires?.ToDateTime();
+            pd.MessageCount = protoChatMask.MessageCount;
+            pd.LastCheck = protoChatMask.LastCheck.ToDateTime();
+        }
+
+        private void Persist_ClearData(Player player)
+        {
+            if (player == null || player[_pdKey] is not PlayerData pd)
+                return;
+
+            pd.Clear();
+        }
+
+        #endregion
+
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
@@ -759,13 +822,7 @@ namespace SS.Core.Modules
 
             if (action == PlayerAction.PreEnterArena)
             {
-                lock (pd.Lock)
-                {
-                    pd.Mask.Clear();
-                    pd.Expires = null;
-                    pd.MessageCount = 0;
-                    pd.LastCheck = DateTime.UtcNow;
-                }
+                pd.Clear();
             }
         }
 

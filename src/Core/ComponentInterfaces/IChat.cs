@@ -88,6 +88,8 @@ namespace SS.Core.ComponentInterfaces
 
         public static ChatMask operator |(ChatMask a, ChatMask b) => new ChatMask(a._maskVector.Data | b._maskVector.Data);
 
+        public int Value => _maskVector.Data;
+
         public bool IsClear => _maskVector.Data == 0;
 
         public bool IsRestricted(ChatMessageType messageType) => _maskVector[BitVector32Masks.GetMask((int)messageType)];
