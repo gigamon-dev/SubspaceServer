@@ -32,6 +32,7 @@ namespace SS.Core.Modules
 
         // Command group dependencies (these are set using reflection)
         private IArenaManager _arenaManager;
+        private IArenaPlayerStats _arenaPlayerStats;
         private IBalls _balls;
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
@@ -181,6 +182,7 @@ namespace SS.Core.Modules
                 {
                     InterfaceDependencies = new()
                     {
+                        typeof(IArenaPlayerStats),
                         typeof(IConfigManager),
                         typeof(IPersistExecutor),
                         typeof(IScoreStats),
@@ -250,6 +252,7 @@ namespace SS.Core.Modules
             // Setting the command group dependencies to null to remove the warnings.
             // These will actually get set via reflection when the command groups are loaded.
             _arenaManager = null;
+            _arenaPlayerStats = null;
             _balls = null;
             _capabilityManager = null;
             _configManager = null;
@@ -677,7 +680,7 @@ namespace SS.Core.Modules
 
                 foreach (Player player in set)
                 {
-                    _scoreStats.IncrementStat(player, (int)StatCode.FlagPoints, pointsToAdd);
+                    _arenaPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, (ulong)pointsToAdd);
                 }
 
                 if (!target.TryGetArenaTarget(out Arena arena))

@@ -1850,16 +1850,16 @@ namespace SS.Core.Modules
             // record the kill points on our side
             if (pts != 0)
             {
-                IStats stats = _broker.GetInterface<IStats>();
-                if (stats != null)
+                IAllPlayerStats allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
+                if (allPlayerStats != null)
                 {
                     try
                     {
-                        stats.IncrementStat(killer, (int)StatCode.KillPoints, pts);
+                        allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, (ulong)pts);
                     }
                     finally
                     {
-                        _broker.ReleaseInterface(ref stats);
+                        _broker.ReleaseInterface(ref allPlayerStats);
                     }
                 }
             }

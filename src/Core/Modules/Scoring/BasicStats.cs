@@ -9,17 +9,17 @@ namespace SS.Core.Modules.Scoring
     public class BasicStats : IModule
     {
         //private IPlayerData _playerData;
-        private IStats _stats;
+        private IAllPlayerStats _allPlayerStats;
 
         #region Module members
 
         public bool Load(
             ComponentBroker broker,
             //IPlayerData playerData,
-            IStats stats)
+            IAllPlayerStats allPlayerStats)
         {
             //_playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _stats = stats ?? throw new ArgumentNullException(nameof(stats));
+            _allPlayerStats = allPlayerStats ?? throw new ArgumentNullException(nameof(allPlayerStats));
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             KillCallback.Register(broker, Callback_Kill);
@@ -48,43 +48,43 @@ namespace SS.Core.Modules.Scoring
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterGame)
-                _stats.StartTimer(p, (int)StatCode.ArenaTotalTime);
+                _allPlayerStats.StartTimer(p, StatCodes.ArenaTotalTime, null);
             else if (action == PlayerAction.LeaveArena)
-                _stats.StopTimer(p, (int)StatCode.ArenaTotalTime);
+                _allPlayerStats.StopTimer(p, StatCodes.ArenaTotalTime, null);
         }
 
         private void Callback_Kill(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
         {
-            _stats.IncrementStat(killer, (int)StatCode.Kills, 1);
-            _stats.IncrementStat(killed, (int)StatCode.Deaths, 1);
+            _allPlayerStats.IncrementStat(killer, StatCodes.Kills, null, 1);
+            _allPlayerStats.IncrementStat(killed, StatCodes.Deaths, null, 1);
 
             if (killer.Freq == killed.Freq)
             {
-                _stats.IncrementStat(killer, (int)StatCode.TeamKills, 1);
-                _stats.IncrementStat(killed, (int)StatCode.TeamDeaths, 1);
+                _allPlayerStats.IncrementStat(killer, StatCodes.TeamKills, null, 1);
+                _allPlayerStats.IncrementStat(killed, StatCodes.TeamDeaths, null, 1);
             }
 
             if (flagCount > 0)
             {
-                _stats.IncrementStat(killer, (int)StatCode.FlagKills, 1);
-                _stats.IncrementStat(killed, (int)StatCode.FlagDeaths, 1);
+                _allPlayerStats.IncrementStat(killer, StatCodes.FlagKills, null, 1);
+                _allPlayerStats.IncrementStat(killed, StatCodes.FlagDeaths, null, 1);
             }
         }
 
         private void Callback_BallPickup(Arena arena, Player p, byte ballId)
         {
-            _stats.StartTimer(p, (int)StatCode.BallCarryTime);
-            _stats.IncrementStat(p, (int)StatCode.BallCarries, 1);
+            _allPlayerStats.StartTimer(p, StatCodes.BallCarryTime, null);
+            _allPlayerStats.IncrementStat(p, StatCodes.BallCarries, null, 1);
         }
 
         private void Callback_BallShoot(Arena arena, Player p, byte ballId)
         {
-            _stats.StopTimer(p, (int)StatCode.BallCarryTime);
+            _allPlayerStats.StopTimer(p, StatCodes.BallCarryTime, null);
         }
 
         private void Callback_BallGoal(Arena arena, Player p, byte ballId, MapCoordinate coordinate)
         {
-            _stats.IncrementStat(p, (int)StatCode.BallGoals, 1);
+            _allPlayerStats.IncrementStat(p, StatCodes.BallGoals, null, 1);
         }
     }
 }

@@ -26,21 +26,25 @@ namespace SS.Core.Persist.Protobuf {
           string.Concat(
             "CgtTdGF0cy5wcm90bxIYc3MuY29yZS5wZXJzaXN0LnByb3RvYnVmGh5nb29n",
             "bGUvcHJvdG9idWYvZHVyYXRpb24ucHJvdG8aH2dvb2dsZS9wcm90b2J1Zi90",
-            "aW1lc3RhbXAucHJvdG8iugEKCFN0YXRJbmZvEhQKCmludDMyVmFsdWUYAiAB",
-            "KAVIABIsCgdlbGFwc2VkGAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0",
-            "aW9uSAASLwoJdGltZXN0YW1wGAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRp",
-            "bWVzdGFtcEgAEhUKC2RvdWJsZVZhbHVlGAUgASgBSAASFQoLdWludDY0VmFs",
-            "dWUYBiABKARIAEILCglzdGF0X2luZm8ipgEKC1BsYXllclN0YXRzEkMKB3N0",
-            "YXRNYXAYASADKAsyMi5zcy5jb3JlLnBlcnNpc3QucHJvdG9idWYuUGxheWVy",
-            "U3RhdHMuU3RhdE1hcEVudHJ5GlIKDFN0YXRNYXBFbnRyeRILCgNrZXkYASAB",
-            "KAUSMQoFdmFsdWUYAiABKAsyIi5zcy5jb3JlLnBlcnNpc3QucHJvdG9idWYu",
-            "U3RhdEluZm86AjgBIkEKCkVuZGluZ1RpbWUSMwoPZW5kaW5nVGltZXN0YW1w",
-            "GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIbqgIYU1MuQ29y",
-            "ZS5QZXJzaXN0LlByb3RvYnVmYgZwcm90bzM="));
+            "aW1lc3RhbXAucHJvdG8i4QIKCFN0YXRJbmZvEhQKCmludDMyVmFsdWUYASAB",
+            "KAVIABIVCgt1aW50MzJWYWx1ZRgCIAEoDUgAEhQKCmludDY0VmFsdWUYAyAB",
+            "KANIABIVCgt1aW50NjRWYWx1ZRgEIAEoBEgAEhUKC3NpbnQzMlZhbHVlGAUg",
+            "ASgRSAASFQoLc2ludDY0VmFsdWUYBiABKBJIABIWCgxmaXhlZDMyVmFsdWUY",
+            "ByABKAdIABIWCgxmaXhlZDY0VmFsdWUYCCABKAZIABIXCg1zZml4ZWQzMlZh",
+            "bHVlGAkgASgPSAASFwoNc2ZpeGVkNjRWYWx1ZRgKIAEoEEgAEi8KCXRpbWVz",
+            "dGFtcBgLIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIABItCghk",
+            "dXJhdGlvbhgMIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbkgAQgsK",
+            "CXN0YXRfaW5mbyKmAQoLUGxheWVyU3RhdHMSQwoHc3RhdE1hcBgBIAMoCzIy",
+            "LnNzLmNvcmUucGVyc2lzdC5wcm90b2J1Zi5QbGF5ZXJTdGF0cy5TdGF0TWFw",
+            "RW50cnkaUgoMU3RhdE1hcEVudHJ5EgsKA2tleRgBIAEoBRIxCgV2YWx1ZRgC",
+            "IAEoCzIiLnNzLmNvcmUucGVyc2lzdC5wcm90b2J1Zi5TdGF0SW5mbzoCOAEi",
+            "QQoKRW5kaW5nVGltZRIzCg9lbmRpbmdUaW1lc3RhbXAYASABKAsyGi5nb29n",
+            "bGUucHJvdG9idWYuVGltZXN0YW1wQhuqAhhTUy5Db3JlLlBlcnNpc3QuUHJv",
+            "dG9idWZiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::SS.Core.Persist.Protobuf.StatInfo), global::SS.Core.Persist.Protobuf.StatInfo.Parser, new[]{ "Int32Value", "Elapsed", "Timestamp", "DoubleValue", "Uint64Value" }, new[]{ "StatInfo" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SS.Core.Persist.Protobuf.StatInfo), global::SS.Core.Persist.Protobuf.StatInfo.Parser, new[]{ "Int32Value", "Uint32Value", "Int64Value", "Uint64Value", "Sint32Value", "Sint64Value", "Fixed32Value", "Fixed64Value", "Sfixed32Value", "Sfixed64Value", "Timestamp", "Duration" }, new[]{ "StatInfo" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SS.Core.Persist.Protobuf.PlayerStats), global::SS.Core.Persist.Protobuf.PlayerStats.Parser, new[]{ "StatMap" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::SS.Core.Persist.Protobuf.EndingTime), global::SS.Core.Persist.Protobuf.EndingTime.Parser, new[]{ "EndingTimestamp" }, null, null, null, null)
           }));
@@ -87,17 +91,38 @@ namespace SS.Core.Persist.Protobuf {
         case StatInfoOneofCase.Int32Value:
           Int32Value = other.Int32Value;
           break;
-        case StatInfoOneofCase.Elapsed:
-          Elapsed = other.Elapsed.Clone();
+        case StatInfoOneofCase.Uint32Value:
+          Uint32Value = other.Uint32Value;
+          break;
+        case StatInfoOneofCase.Int64Value:
+          Int64Value = other.Int64Value;
+          break;
+        case StatInfoOneofCase.Uint64Value:
+          Uint64Value = other.Uint64Value;
+          break;
+        case StatInfoOneofCase.Sint32Value:
+          Sint32Value = other.Sint32Value;
+          break;
+        case StatInfoOneofCase.Sint64Value:
+          Sint64Value = other.Sint64Value;
+          break;
+        case StatInfoOneofCase.Fixed32Value:
+          Fixed32Value = other.Fixed32Value;
+          break;
+        case StatInfoOneofCase.Fixed64Value:
+          Fixed64Value = other.Fixed64Value;
+          break;
+        case StatInfoOneofCase.Sfixed32Value:
+          Sfixed32Value = other.Sfixed32Value;
+          break;
+        case StatInfoOneofCase.Sfixed64Value:
+          Sfixed64Value = other.Sfixed64Value;
           break;
         case StatInfoOneofCase.Timestamp:
           Timestamp = other.Timestamp.Clone();
           break;
-        case StatInfoOneofCase.DoubleValue:
-          DoubleValue = other.DoubleValue;
-          break;
-        case StatInfoOneofCase.Uint64Value:
-          Uint64Value = other.Uint64Value;
+        case StatInfoOneofCase.Duration:
+          Duration = other.Duration.Clone();
           break;
       }
 
@@ -111,7 +136,7 @@ namespace SS.Core.Persist.Protobuf {
     }
 
     /// <summary>Field number for the "int32Value" field.</summary>
-    public const int Int32ValueFieldNumber = 2;
+    public const int Int32ValueFieldNumber = 1;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int Int32Value {
@@ -122,44 +147,32 @@ namespace SS.Core.Persist.Protobuf {
       }
     }
 
-    /// <summary>Field number for the "elapsed" field.</summary>
-    public const int ElapsedFieldNumber = 3;
+    /// <summary>Field number for the "uint32Value" field.</summary>
+    public const int Uint32ValueFieldNumber = 2;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Google.Protobuf.WellKnownTypes.Duration Elapsed {
-      get { return statInfoCase_ == StatInfoOneofCase.Elapsed ? (global::Google.Protobuf.WellKnownTypes.Duration) statInfo_ : null; }
+    public uint Uint32Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Uint32Value ? (uint) statInfo_ : 0; }
       set {
         statInfo_ = value;
-        statInfoCase_ = value == null ? StatInfoOneofCase.None : StatInfoOneofCase.Elapsed;
+        statInfoCase_ = StatInfoOneofCase.Uint32Value;
       }
     }
 
-    /// <summary>Field number for the "timestamp" field.</summary>
-    public const int TimestampFieldNumber = 4;
+    /// <summary>Field number for the "int64Value" field.</summary>
+    public const int Int64ValueFieldNumber = 3;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Google.Protobuf.WellKnownTypes.Timestamp Timestamp {
-      get { return statInfoCase_ == StatInfoOneofCase.Timestamp ? (global::Google.Protobuf.WellKnownTypes.Timestamp) statInfo_ : null; }
+    public long Int64Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Int64Value ? (long) statInfo_ : 0L; }
       set {
         statInfo_ = value;
-        statInfoCase_ = value == null ? StatInfoOneofCase.None : StatInfoOneofCase.Timestamp;
-      }
-    }
-
-    /// <summary>Field number for the "doubleValue" field.</summary>
-    public const int DoubleValueFieldNumber = 5;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double DoubleValue {
-      get { return statInfoCase_ == StatInfoOneofCase.DoubleValue ? (double) statInfo_ : 0D; }
-      set {
-        statInfo_ = value;
-        statInfoCase_ = StatInfoOneofCase.DoubleValue;
+        statInfoCase_ = StatInfoOneofCase.Int64Value;
       }
     }
 
     /// <summary>Field number for the "uint64Value" field.</summary>
-    public const int Uint64ValueFieldNumber = 6;
+    public const int Uint64ValueFieldNumber = 4;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ulong Uint64Value {
@@ -170,15 +183,122 @@ namespace SS.Core.Persist.Protobuf {
       }
     }
 
+    /// <summary>Field number for the "sint32Value" field.</summary>
+    public const int Sint32ValueFieldNumber = 5;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int Sint32Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Sint32Value ? (int) statInfo_ : 0; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = StatInfoOneofCase.Sint32Value;
+      }
+    }
+
+    /// <summary>Field number for the "sint64Value" field.</summary>
+    public const int Sint64ValueFieldNumber = 6;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long Sint64Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Sint64Value ? (long) statInfo_ : 0L; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = StatInfoOneofCase.Sint64Value;
+      }
+    }
+
+    /// <summary>Field number for the "fixed32Value" field.</summary>
+    public const int Fixed32ValueFieldNumber = 7;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Fixed32Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Fixed32Value ? (uint) statInfo_ : 0; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = StatInfoOneofCase.Fixed32Value;
+      }
+    }
+
+    /// <summary>Field number for the "fixed64Value" field.</summary>
+    public const int Fixed64ValueFieldNumber = 8;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong Fixed64Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Fixed64Value ? (ulong) statInfo_ : 0UL; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = StatInfoOneofCase.Fixed64Value;
+      }
+    }
+
+    /// <summary>Field number for the "sfixed32Value" field.</summary>
+    public const int Sfixed32ValueFieldNumber = 9;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int Sfixed32Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Sfixed32Value ? (int) statInfo_ : 0; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = StatInfoOneofCase.Sfixed32Value;
+      }
+    }
+
+    /// <summary>Field number for the "sfixed64Value" field.</summary>
+    public const int Sfixed64ValueFieldNumber = 10;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long Sfixed64Value {
+      get { return statInfoCase_ == StatInfoOneofCase.Sfixed64Value ? (long) statInfo_ : 0L; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = StatInfoOneofCase.Sfixed64Value;
+      }
+    }
+
+    /// <summary>Field number for the "timestamp" field.</summary>
+    public const int TimestampFieldNumber = 11;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Google.Protobuf.WellKnownTypes.Timestamp Timestamp {
+      get { return statInfoCase_ == StatInfoOneofCase.Timestamp ? (global::Google.Protobuf.WellKnownTypes.Timestamp) statInfo_ : null; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = value == null ? StatInfoOneofCase.None : StatInfoOneofCase.Timestamp;
+      }
+    }
+
+    /// <summary>Field number for the "duration" field.</summary>
+    public const int DurationFieldNumber = 12;
+    /// <summary>
+    ///double doubleValue = 14;
+    ///float floatValue = 15;
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Google.Protobuf.WellKnownTypes.Duration Duration {
+      get { return statInfoCase_ == StatInfoOneofCase.Duration ? (global::Google.Protobuf.WellKnownTypes.Duration) statInfo_ : null; }
+      set {
+        statInfo_ = value;
+        statInfoCase_ = value == null ? StatInfoOneofCase.None : StatInfoOneofCase.Duration;
+      }
+    }
+
     private object statInfo_;
     /// <summary>Enum of possible cases for the "stat_info" oneof.</summary>
     public enum StatInfoOneofCase {
       None = 0,
-      Int32Value = 2,
-      Elapsed = 3,
-      Timestamp = 4,
-      DoubleValue = 5,
-      Uint64Value = 6,
+      Int32Value = 1,
+      Uint32Value = 2,
+      Int64Value = 3,
+      Uint64Value = 4,
+      Sint32Value = 5,
+      Sint64Value = 6,
+      Fixed32Value = 7,
+      Fixed64Value = 8,
+      Sfixed32Value = 9,
+      Sfixed64Value = 10,
+      Timestamp = 11,
+      Duration = 12,
     }
     private StatInfoOneofCase statInfoCase_ = StatInfoOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -210,10 +330,17 @@ namespace SS.Core.Persist.Protobuf {
         return true;
       }
       if (Int32Value != other.Int32Value) return false;
-      if (!object.Equals(Elapsed, other.Elapsed)) return false;
-      if (!object.Equals(Timestamp, other.Timestamp)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(DoubleValue, other.DoubleValue)) return false;
+      if (Uint32Value != other.Uint32Value) return false;
+      if (Int64Value != other.Int64Value) return false;
       if (Uint64Value != other.Uint64Value) return false;
+      if (Sint32Value != other.Sint32Value) return false;
+      if (Sint64Value != other.Sint64Value) return false;
+      if (Fixed32Value != other.Fixed32Value) return false;
+      if (Fixed64Value != other.Fixed64Value) return false;
+      if (Sfixed32Value != other.Sfixed32Value) return false;
+      if (Sfixed64Value != other.Sfixed64Value) return false;
+      if (!object.Equals(Timestamp, other.Timestamp)) return false;
+      if (!object.Equals(Duration, other.Duration)) return false;
       if (StatInfoCase != other.StatInfoCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -223,10 +350,17 @@ namespace SS.Core.Persist.Protobuf {
     public override int GetHashCode() {
       int hash = 1;
       if (statInfoCase_ == StatInfoOneofCase.Int32Value) hash ^= Int32Value.GetHashCode();
-      if (statInfoCase_ == StatInfoOneofCase.Elapsed) hash ^= Elapsed.GetHashCode();
-      if (statInfoCase_ == StatInfoOneofCase.Timestamp) hash ^= Timestamp.GetHashCode();
-      if (statInfoCase_ == StatInfoOneofCase.DoubleValue) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(DoubleValue);
+      if (statInfoCase_ == StatInfoOneofCase.Uint32Value) hash ^= Uint32Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Int64Value) hash ^= Int64Value.GetHashCode();
       if (statInfoCase_ == StatInfoOneofCase.Uint64Value) hash ^= Uint64Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Sint32Value) hash ^= Sint32Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Sint64Value) hash ^= Sint64Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Fixed32Value) hash ^= Fixed32Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Fixed64Value) hash ^= Fixed64Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed32Value) hash ^= Sfixed32Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed64Value) hash ^= Sfixed64Value.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Timestamp) hash ^= Timestamp.GetHashCode();
+      if (statInfoCase_ == StatInfoOneofCase.Duration) hash ^= Duration.GetHashCode();
       hash ^= (int) statInfoCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -247,24 +381,52 @@ namespace SS.Core.Persist.Protobuf {
       output.WriteRawMessage(this);
     #else
       if (statInfoCase_ == StatInfoOneofCase.Int32Value) {
-        output.WriteRawTag(16);
+        output.WriteRawTag(8);
         output.WriteInt32(Int32Value);
       }
-      if (statInfoCase_ == StatInfoOneofCase.Elapsed) {
-        output.WriteRawTag(26);
-        output.WriteMessage(Elapsed);
+      if (statInfoCase_ == StatInfoOneofCase.Uint32Value) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(Uint32Value);
       }
-      if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
-        output.WriteRawTag(34);
-        output.WriteMessage(Timestamp);
-      }
-      if (statInfoCase_ == StatInfoOneofCase.DoubleValue) {
-        output.WriteRawTag(41);
-        output.WriteDouble(DoubleValue);
+      if (statInfoCase_ == StatInfoOneofCase.Int64Value) {
+        output.WriteRawTag(24);
+        output.WriteInt64(Int64Value);
       }
       if (statInfoCase_ == StatInfoOneofCase.Uint64Value) {
-        output.WriteRawTag(48);
+        output.WriteRawTag(32);
         output.WriteUInt64(Uint64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sint32Value) {
+        output.WriteRawTag(40);
+        output.WriteSInt32(Sint32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sint64Value) {
+        output.WriteRawTag(48);
+        output.WriteSInt64(Sint64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Fixed32Value) {
+        output.WriteRawTag(61);
+        output.WriteFixed32(Fixed32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Fixed64Value) {
+        output.WriteRawTag(65);
+        output.WriteFixed64(Fixed64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed32Value) {
+        output.WriteRawTag(77);
+        output.WriteSFixed32(Sfixed32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed64Value) {
+        output.WriteRawTag(81);
+        output.WriteSFixed64(Sfixed64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
+        output.WriteRawTag(90);
+        output.WriteMessage(Timestamp);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Duration) {
+        output.WriteRawTag(98);
+        output.WriteMessage(Duration);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -277,24 +439,52 @@ namespace SS.Core.Persist.Protobuf {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (statInfoCase_ == StatInfoOneofCase.Int32Value) {
-        output.WriteRawTag(16);
+        output.WriteRawTag(8);
         output.WriteInt32(Int32Value);
       }
-      if (statInfoCase_ == StatInfoOneofCase.Elapsed) {
-        output.WriteRawTag(26);
-        output.WriteMessage(Elapsed);
+      if (statInfoCase_ == StatInfoOneofCase.Uint32Value) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(Uint32Value);
       }
-      if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
-        output.WriteRawTag(34);
-        output.WriteMessage(Timestamp);
-      }
-      if (statInfoCase_ == StatInfoOneofCase.DoubleValue) {
-        output.WriteRawTag(41);
-        output.WriteDouble(DoubleValue);
+      if (statInfoCase_ == StatInfoOneofCase.Int64Value) {
+        output.WriteRawTag(24);
+        output.WriteInt64(Int64Value);
       }
       if (statInfoCase_ == StatInfoOneofCase.Uint64Value) {
-        output.WriteRawTag(48);
+        output.WriteRawTag(32);
         output.WriteUInt64(Uint64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sint32Value) {
+        output.WriteRawTag(40);
+        output.WriteSInt32(Sint32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sint64Value) {
+        output.WriteRawTag(48);
+        output.WriteSInt64(Sint64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Fixed32Value) {
+        output.WriteRawTag(61);
+        output.WriteFixed32(Fixed32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Fixed64Value) {
+        output.WriteRawTag(65);
+        output.WriteFixed64(Fixed64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed32Value) {
+        output.WriteRawTag(77);
+        output.WriteSFixed32(Sfixed32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed64Value) {
+        output.WriteRawTag(81);
+        output.WriteSFixed64(Sfixed64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
+        output.WriteRawTag(90);
+        output.WriteMessage(Timestamp);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Duration) {
+        output.WriteRawTag(98);
+        output.WriteMessage(Duration);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
@@ -309,17 +499,38 @@ namespace SS.Core.Persist.Protobuf {
       if (statInfoCase_ == StatInfoOneofCase.Int32Value) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(Int32Value);
       }
-      if (statInfoCase_ == StatInfoOneofCase.Elapsed) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Elapsed);
+      if (statInfoCase_ == StatInfoOneofCase.Uint32Value) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Uint32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Int64Value) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(Int64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Uint64Value) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Uint64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sint32Value) {
+        size += 1 + pb::CodedOutputStream.ComputeSInt32Size(Sint32Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sint64Value) {
+        size += 1 + pb::CodedOutputStream.ComputeSInt64Size(Sint64Value);
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Fixed32Value) {
+        size += 1 + 4;
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Fixed64Value) {
+        size += 1 + 8;
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed32Value) {
+        size += 1 + 4;
+      }
+      if (statInfoCase_ == StatInfoOneofCase.Sfixed64Value) {
+        size += 1 + 8;
       }
       if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Timestamp);
       }
-      if (statInfoCase_ == StatInfoOneofCase.DoubleValue) {
-        size += 1 + 8;
-      }
-      if (statInfoCase_ == StatInfoOneofCase.Uint64Value) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Uint64Value);
+      if (statInfoCase_ == StatInfoOneofCase.Duration) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Duration);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -337,11 +548,32 @@ namespace SS.Core.Persist.Protobuf {
         case StatInfoOneofCase.Int32Value:
           Int32Value = other.Int32Value;
           break;
-        case StatInfoOneofCase.Elapsed:
-          if (Elapsed == null) {
-            Elapsed = new global::Google.Protobuf.WellKnownTypes.Duration();
-          }
-          Elapsed.MergeFrom(other.Elapsed);
+        case StatInfoOneofCase.Uint32Value:
+          Uint32Value = other.Uint32Value;
+          break;
+        case StatInfoOneofCase.Int64Value:
+          Int64Value = other.Int64Value;
+          break;
+        case StatInfoOneofCase.Uint64Value:
+          Uint64Value = other.Uint64Value;
+          break;
+        case StatInfoOneofCase.Sint32Value:
+          Sint32Value = other.Sint32Value;
+          break;
+        case StatInfoOneofCase.Sint64Value:
+          Sint64Value = other.Sint64Value;
+          break;
+        case StatInfoOneofCase.Fixed32Value:
+          Fixed32Value = other.Fixed32Value;
+          break;
+        case StatInfoOneofCase.Fixed64Value:
+          Fixed64Value = other.Fixed64Value;
+          break;
+        case StatInfoOneofCase.Sfixed32Value:
+          Sfixed32Value = other.Sfixed32Value;
+          break;
+        case StatInfoOneofCase.Sfixed64Value:
+          Sfixed64Value = other.Sfixed64Value;
           break;
         case StatInfoOneofCase.Timestamp:
           if (Timestamp == null) {
@@ -349,11 +581,11 @@ namespace SS.Core.Persist.Protobuf {
           }
           Timestamp.MergeFrom(other.Timestamp);
           break;
-        case StatInfoOneofCase.DoubleValue:
-          DoubleValue = other.DoubleValue;
-          break;
-        case StatInfoOneofCase.Uint64Value:
-          Uint64Value = other.Uint64Value;
+        case StatInfoOneofCase.Duration:
+          if (Duration == null) {
+            Duration = new global::Google.Protobuf.WellKnownTypes.Duration();
+          }
+          Duration.MergeFrom(other.Duration);
           break;
       }
 
@@ -372,20 +604,47 @@ namespace SS.Core.Persist.Protobuf {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
-          case 16: {
+          case 8: {
             Int32Value = input.ReadInt32();
             break;
           }
-          case 26: {
-            global::Google.Protobuf.WellKnownTypes.Duration subBuilder = new global::Google.Protobuf.WellKnownTypes.Duration();
-            if (statInfoCase_ == StatInfoOneofCase.Elapsed) {
-              subBuilder.MergeFrom(Elapsed);
-            }
-            input.ReadMessage(subBuilder);
-            Elapsed = subBuilder;
+          case 16: {
+            Uint32Value = input.ReadUInt32();
             break;
           }
-          case 34: {
+          case 24: {
+            Int64Value = input.ReadInt64();
+            break;
+          }
+          case 32: {
+            Uint64Value = input.ReadUInt64();
+            break;
+          }
+          case 40: {
+            Sint32Value = input.ReadSInt32();
+            break;
+          }
+          case 48: {
+            Sint64Value = input.ReadSInt64();
+            break;
+          }
+          case 61: {
+            Fixed32Value = input.ReadFixed32();
+            break;
+          }
+          case 65: {
+            Fixed64Value = input.ReadFixed64();
+            break;
+          }
+          case 77: {
+            Sfixed32Value = input.ReadSFixed32();
+            break;
+          }
+          case 81: {
+            Sfixed64Value = input.ReadSFixed64();
+            break;
+          }
+          case 90: {
             global::Google.Protobuf.WellKnownTypes.Timestamp subBuilder = new global::Google.Protobuf.WellKnownTypes.Timestamp();
             if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
               subBuilder.MergeFrom(Timestamp);
@@ -394,12 +653,13 @@ namespace SS.Core.Persist.Protobuf {
             Timestamp = subBuilder;
             break;
           }
-          case 41: {
-            DoubleValue = input.ReadDouble();
-            break;
-          }
-          case 48: {
-            Uint64Value = input.ReadUInt64();
+          case 98: {
+            global::Google.Protobuf.WellKnownTypes.Duration subBuilder = new global::Google.Protobuf.WellKnownTypes.Duration();
+            if (statInfoCase_ == StatInfoOneofCase.Duration) {
+              subBuilder.MergeFrom(Duration);
+            }
+            input.ReadMessage(subBuilder);
+            Duration = subBuilder;
             break;
           }
         }
@@ -417,20 +677,47 @@ namespace SS.Core.Persist.Protobuf {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
-          case 16: {
+          case 8: {
             Int32Value = input.ReadInt32();
             break;
           }
-          case 26: {
-            global::Google.Protobuf.WellKnownTypes.Duration subBuilder = new global::Google.Protobuf.WellKnownTypes.Duration();
-            if (statInfoCase_ == StatInfoOneofCase.Elapsed) {
-              subBuilder.MergeFrom(Elapsed);
-            }
-            input.ReadMessage(subBuilder);
-            Elapsed = subBuilder;
+          case 16: {
+            Uint32Value = input.ReadUInt32();
             break;
           }
-          case 34: {
+          case 24: {
+            Int64Value = input.ReadInt64();
+            break;
+          }
+          case 32: {
+            Uint64Value = input.ReadUInt64();
+            break;
+          }
+          case 40: {
+            Sint32Value = input.ReadSInt32();
+            break;
+          }
+          case 48: {
+            Sint64Value = input.ReadSInt64();
+            break;
+          }
+          case 61: {
+            Fixed32Value = input.ReadFixed32();
+            break;
+          }
+          case 65: {
+            Fixed64Value = input.ReadFixed64();
+            break;
+          }
+          case 77: {
+            Sfixed32Value = input.ReadSFixed32();
+            break;
+          }
+          case 81: {
+            Sfixed64Value = input.ReadSFixed64();
+            break;
+          }
+          case 90: {
             global::Google.Protobuf.WellKnownTypes.Timestamp subBuilder = new global::Google.Protobuf.WellKnownTypes.Timestamp();
             if (statInfoCase_ == StatInfoOneofCase.Timestamp) {
               subBuilder.MergeFrom(Timestamp);
@@ -439,12 +726,13 @@ namespace SS.Core.Persist.Protobuf {
             Timestamp = subBuilder;
             break;
           }
-          case 41: {
-            DoubleValue = input.ReadDouble();
-            break;
-          }
-          case 48: {
-            Uint64Value = input.ReadUInt64();
+          case 98: {
+            global::Google.Protobuf.WellKnownTypes.Duration subBuilder = new global::Google.Protobuf.WellKnownTypes.Duration();
+            if (statInfoCase_ == StatInfoOneofCase.Duration) {
+              subBuilder.MergeFrom(Duration);
+            }
+            input.ReadMessage(subBuilder);
+            Duration = subBuilder;
             break;
           }
         }

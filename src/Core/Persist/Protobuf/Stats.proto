@@ -10,11 +10,20 @@ import "google/protobuf/timestamp.proto";
 
 message StatInfo {
 	oneof stat_info {
-		int32 int32Value = 2;
-		google.protobuf.Duration elapsed = 3;
-		google.protobuf.Timestamp timestamp = 4;
-		double doubleValue = 5;
-		uint64 uint64Value = 6;
+		int32 int32Value = 1;
+		uint32 uint32Value = 2;
+		int64 int64Value = 3;
+		uint64 uint64Value = 4;
+		sint32 sint32Value = 5;
+		sint64 sint64Value = 6;
+		fixed32 fixed32Value = 7;
+		fixed64 fixed64Value= 8;
+		sfixed32 sfixed32Value = 9;
+		sfixed64 sfixed64Value = 10;
+		google.protobuf.Timestamp timestamp = 11;
+		google.protobuf.Duration duration = 12;
+		//double doubleValue = 14;
+		//float floatValue = 15;
 	};
 }
 

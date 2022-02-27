@@ -411,17 +411,12 @@ namespace SS.Core.Modules
                         {
                             // At this point, the player's stats should be loaded into the stats module since _persist.GetPlayer(...) was called earlier.
                             // Try to load scores into the player's PlayerEntering packet.
-                            _scoreStats.TryGetStat(player, (int)StatCode.KillPoints, PersistInterval.Reset, out int value);
-                            player.Packet.KillPoints = value;
+                            _scoreStats.GetScores(player, out int killPoints, out int flagPoints, out short kills, out short deaths);
 
-                            _scoreStats.TryGetStat(player, (int)StatCode.FlagPoints, PersistInterval.Reset, out value);
-                            player.Packet.FlagPoints = value;
-
-                            _scoreStats.TryGetStat(player, (int)StatCode.Kills, PersistInterval.Reset, out value);
-                            player.Packet.Wins = (short)value;
-
-                            _scoreStats.TryGetStat(player, (int)StatCode.Deaths, PersistInterval.Reset, out value);
-                            player.Packet.Losses = (short)value;
+                            player.Packet.KillPoints = killPoints;
+                            player.Packet.FlagPoints = flagPoints;
+                            player.Packet.Wins = kills;
+                            player.Packet.Losses = deaths;
 
                             // Refresh scores for other players in the arena.
                             // This ensures that the latest scores will be in the PlayerEntering packets of all the player's already in the arena.

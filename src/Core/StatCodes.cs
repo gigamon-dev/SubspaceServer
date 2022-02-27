@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Core.ComponentInterfaces;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,7 +7,37 @@ using System.Threading.Tasks;
 
 namespace SS.Core
 {
-    public enum StatCode
+    public static class StatCodes
+    {
+        /* Standard Subspace scores
+         * 
+         * KillPoints and FlagPoints
+         * - The Subspace protocol actually represents this as an Int32.
+         * - However, this server stores it as an UInt64. This makes stats for the 'forever' interval (which never are reset) less likely to overflow.
+         * 
+         * Kills and Deaths
+         * - The Subspace protocol actually represents this as an Int16.
+         * - However, this server stores it as an UInt64.
+         */
+        public static readonly StatCode<ulong> KillPoints = new(StatId.KillPoints); 
+        public static readonly StatCode<ulong> FlagPoints = new(StatId.FlagPoints);
+        public static readonly StatCode<ulong> Kills = new(StatId.Kills);
+        public static readonly StatCode<ulong> Deaths = new(StatId.Deaths);
+
+        public static readonly StatCode<ulong> TeamKills = new(StatId.TeamKills);
+        public static readonly StatCode<ulong> TeamDeaths = new(StatId.TeamDeaths);
+        public static readonly StatCode<TimeSpan> ArenaTotalTime = new(StatId.ArenaTotalTime);
+
+        public static readonly StatCode<ulong> FlagKills = new(StatId.FlagKills);
+        public static readonly StatCode<ulong> FlagDeaths = new(StatId.FlagDeaths);
+
+        public static readonly StatCode<ulong> BallCarries = new(StatId.BallCarries);
+        public static readonly StatCode<TimeSpan> BallCarryTime = new(StatId.BallCarryTime);
+        public static readonly StatCode<ulong> BallGoals = new(StatId.BallGoals);
+    }
+
+
+    public enum StatId
     {
         //
         // These four correspond to standard subspace statistics
