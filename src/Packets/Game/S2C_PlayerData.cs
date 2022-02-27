@@ -4,9 +4,52 @@ using System.Runtime.InteropServices;
 
 namespace SS.Packets.Game
 {
+    /// <summary>
+    /// Builder for creating a 0x03 (Player Entering) packet cluster, which is simply an array of 0x03 PlayerEnter packets repeated after another. 
+    /// Note: The the 0x03 Type byte is included in each item.
+    /// </summary>
+    /// <remarks>
+    /// If the packet size (including the reliable packet that would wrap it) is above the max packet length, 
+    /// the Network module will automatically send it using 0x00 0x08 / 0x00 0x09 (big packets).
+    /// This is preferable over packet grouping because:
+    /// <list type="number">
+    /// <item>
+    /// Big packets will get filled to their max, whereas there will be some space remaining at the end of clustered packets (doesn't divide evenly: (512 - 6 - 2) / (1 + 64))
+    /// </item>
+    /// <item>
+    /// It will not waste nearly as many buffers compared to sending each player's 0x03 packet separately.
+    /// E.g. If there are 150 players in an arena, sending separately means 150 buffers used for adding into the outgoing queue.
+    /// Whereas, 1 large packet sent using 0x08/0x09 big packets uses (150 * 64) / 480 = 20 buffers for adding into the outgoing queue.</item>
+    /// </list>
+    /// </remarks>
+    public ref struct S2C_PlayerDataBuilder
+    {
+        private Span<S2C_PlayerData> _playerDataSpan;
+
+        public S2C_PlayerDataBuilder(Span<byte> buffer)
+        {
+            _playerDataSpan = MemoryMarshal.Cast<byte, S2C_PlayerData>(buffer);
+        }
+
+        public void Set(int index, ref S2C_PlayerData data)
+        {
+            _playerDataSpan[index] = data;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2C_PlayerData
     {
+        /// <summary>
+        /// Number of bytes in a packet.
+        /// </summary>
+        public static readonly int Length;
+
+        static S2C_PlayerData()
+        {
+            Length = Marshal.SizeOf<S2C_PlayerData>();
+        }
+
         private byte _type;
         public sbyte Ship;
         public byte AcceptAudio;

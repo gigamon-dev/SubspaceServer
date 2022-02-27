@@ -2,6 +2,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -181,31 +182,76 @@ namespace SS.Core.Modules
                 //_chatnet.SendToOne(player, "INARENA:%s:%d", a.Name, player.Freq);
             }
 
-            _playerData.Lock();
+            HashSet<Player> enterPlayerSet = _objectPoolManager.PlayerSetPool.Get();
+
             try
             {
-                foreach (Player otherPlayer in _playerData.PlayerList)
+                _playerData.Lock();
+                try
                 {
-                    if (otherPlayer.Status == PlayerState.Playing
-                        && otherPlayer.Arena == arena 
-                        && otherPlayer != player)
+                    foreach (Player otherPlayer in _playerData.PlayerList)
                     {
-                        // send each other info
-                        SendEnter(otherPlayer, player, true);
-                        SendEnter(player, otherPlayer, false);
+                        if (otherPlayer.Status == PlayerState.Playing
+                            && otherPlayer.Arena == arena
+                            && otherPlayer != player)
+                        {
+                            // Add to the collection of players, we'll send later.
+                            enterPlayerSet.Add(otherPlayer);
+                            
+                            // Tell others already in the arena, that the player is entering.
+                            SendEnter(player, otherPlayer, false);
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                if (player.IsStandard)
+                {
+                    enterPlayerSet.Add(player); // include the player's own packet too
+
+                    //
+                    // Send all the player entering packets as one large packet.
+                    //
+
+                    int packetLength = enterPlayerSet.Count * S2C_PlayerData.Length;
+                    byte[] buffer = ArrayPool<byte>.Shared.Rent(packetLength);
+
+                    try
+                    {
+                        Span<byte> bufferSpan = buffer.AsSpan(0, packetLength); // only the part we are going to use (Rent can return a larger array)
+
+                        int index = 0;
+                        S2C_PlayerDataBuilder builder = new(bufferSpan);
+                        foreach (Player enteringPlayer in enterPlayerSet)
+                        {
+                            builder.Set(index++, ref enteringPlayer.Packet);
+                        }
+
+                        _network.SendToOne(player, bufferSpan, NetSendFlags.Reliable);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer, true);
+                    }
+                }
+                else if (player.IsChat)
+                {
+                    foreach (Player enteringPlayer in enterPlayerSet)
+                    {
+                        SendEnter(enteringPlayer, player, true);
                     }
                 }
             }
             finally
             {
-                _playerData.Unlock();
+                _objectPoolManager.PlayerSetPool.Return(enterPlayerSet);
             }
 
             if (player.IsStandard)
             {
-                // send to self
-                _network.SendToOne(player, ref player.Packet, NetSendFlags.Reliable);
-
                 IMapNewsDownload mapNewDownload = Broker.GetInterface<IMapNewsDownload>();
                 if (mapNewDownload != null)
                 {
