@@ -492,7 +492,7 @@ namespace SS.Core.Modules
                 // send it unreliably, urgently, and allow it to be dropped (as many times as is configured)
                 for (int i = 0; i < wallResendCount; i++)
                 {
-                    SendToPlayerOrArena(player, arena, data, NetSendFlags.Unreliable | NetSendFlags.Urgent | NetSendFlags.Droppable);
+                    SendToPlayerOrArena(player, arena, data, NetSendFlags.Unreliable | NetSendFlags.Droppable | NetSendFlags.PriorityP5); // NOTE: PriorityP5 has the Urgent flag set.
                 }
 
                 // send it reliably (always)
