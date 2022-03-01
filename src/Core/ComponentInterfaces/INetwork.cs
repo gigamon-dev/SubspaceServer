@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -119,7 +120,7 @@ namespace SS.Core.ComponentInterfaces
         ulong PriorityStats4 { get; }
     }
 
-    public class NetClientStats
+    public struct NetClientStats
     {
         /// <summary>
         /// Server to client sequence number
@@ -145,7 +146,7 @@ namespace SS.Core.ComponentInterfaces
 
         public IPEndPoint IPEndPoint;
 
-        //TODO: public byte[] BandwidthLimitInfo;
+        public StringBuilder BandwidthLimitInfo { get; init; }
     }
 
     public interface INetwork : IComponentInterface
@@ -315,8 +316,8 @@ namespace SS.Core.ComponentInterfaces
         /// Gets network information for a player.
         /// </summary>
         /// <param name="p">The player to get information about.</param>
-        /// <returns>The information.</returns>
-        NetClientStats GetClientStats(Player p);
+        /// <param name="stats">The information to populate.</param>
+        void GetClientStats(Player p, ref NetClientStats stats);
 
         /// <summary>
         /// Gets how long it has been since a packet was received from a specified player.

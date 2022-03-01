@@ -401,7 +401,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// For receiving sized packets, synchronized with <see cref="bigmtx"/>.
             /// </summary>
-            public SizedReceive sizedrecv = new();
+            public readonly SizedReceive sizedrecv = new();
 
             /// <summary>
             /// For receiving big packets, synchronized with <see cref="bigmtx"/>.
@@ -411,57 +411,62 @@ namespace SS.Core.Modules
             /// <summary>
             /// For sending sized packets, synchronized with <see cref="olmtx"/>.
             /// </summary>
-            public LinkedList<ISizedSendData> sizedsends = new();
+            public readonly LinkedList<ISizedSendData> sizedsends = new();
 
             /// <summary>
             /// bandwidth limiting
             /// </summary>
-            public IBWLimit bw;
+            public IBandwidthLimiter BandwidthLimiter;
 
             /// <summary>
-            /// Array of outgoing lists.  Indexed by <see cref="BandwidthPriorities"/>.
+            /// Array of outgoing lists.  Indexed by <see cref="BandwidthPriority"/>.
             /// </summary>
-            public LinkedList<SubspaceBuffer>[] outlist;
+            public readonly LinkedList<SubspaceBuffer>[] outlist;
 
             /// <summary>
             /// Unsent outgoing reliable packet queue.
             /// Packets in this queue do not have a sequence number assigned yet.
             /// </summary>
             /// <remarks>
-            /// Note: Reliable packets that are in the process of being sent are in <see cref="outlist"/>[<see cref="BandwidthPriorities.Reliable"/>].
+            /// Note: Reliable packets that are in the process of being sent are in <see cref="outlist"/>[<see cref="BandwidthPriority.Reliable"/>].
             /// </remarks>
-            public LinkedList<SubspaceBuffer> UnsentRelOutList = new();
+            public readonly LinkedList<SubspaceBuffer> UnsentRelOutList = new();
 
             /// <summary>
             /// Incoming reliable packets
             /// </summary>
-            public SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
+            public readonly SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
 
             /// <summary>
             /// mutex for <see cref="outlist"/>
             /// </summary>
-            public object olmtx = new();
+            public readonly object olmtx = new();
 
             /// <summary>
             /// mutex for <see cref="relbuf"/>
             /// </summary>
-            public object relmtx = new();
+            public readonly object relmtx = new();
 
             /// <summary>
             /// mutex for (<see cref="BigRecv"/> and <see cref="sizedrecv"/>)
             /// </summary>
-            public object bigmtx = new();
+            public readonly object bigmtx = new();
 
             public ConnData()
             {
-                outlist = new LinkedList<SubspaceBuffer>[(int)Enum.GetValues<BandwidthPriorities>().Max() + 1];
+                outlist = new LinkedList<SubspaceBuffer>[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
+
+                for (int x = 0; x < outlist.Length; x++)
+                {
+                    outlist[x] = new LinkedList<SubspaceBuffer>();
+                }
             }
 
-            public void Initalize(IEncrypt enc, string iEncryptName, IBWLimit bw)
+            public void Initalize(IEncrypt enc, string iEncryptName, IBandwidthLimiter bandwidthLimiter)
             {
                 this.enc = enc;
                 this.iEncryptName = iEncryptName;
-                this.bw = bw;
+                BandwidthLimiter = bandwidthLimiter ?? throw new ArgumentNullException(nameof(bandwidthLimiter));
                 avgrtt = 200; // an initial guess
                 rttdev = 100;
                 lastPkt = DateTime.UtcNow;
@@ -469,8 +474,10 @@ namespace SS.Core.Modules
 
                 for (int x = 0; x < outlist.Length; x++)
                 {
-                    outlist[x] = new LinkedList<SubspaceBuffer>();
+                    outlist[x].Clear();
                 }
+
+                UnsentRelOutList.Clear();
             }
 
             public void Dispose()
@@ -488,7 +495,7 @@ namespace SS.Core.Modules
 
         private class NetClientConnection : ClientConnection
         {
-            public NetClientConnection(IPEndPoint remoteEndpoint, Socket socket, IClientConnectionHandler handler, IClientEncrypt encryptor, string encryptorName, IBWLimit bwLimit)
+            public NetClientConnection(IPEndPoint remoteEndpoint, Socket socket, IClientConnectionHandler handler, IClientEncrypt encryptor, string encryptorName, IBandwidthLimiter bwLimit)
                 : base(handler, encryptorName)
             {
                 ConnData = new();
@@ -508,7 +515,7 @@ namespace SS.Core.Modules
         }
 
         private ComponentBroker _broker;
-        private IBandwidthLimit _bandwithLimit;
+        private IBandwidthLimiterProvider _bandwithLimiterProvider;
         private IConfigManager _configManager;
         private ILagCollect _lagCollect;
         private ILogManager _logManager;
@@ -695,6 +702,19 @@ namespace SS.Core.Modules
                 Initialize();
             }
 
+            /// <summary>
+            /// Checks whether a specified length of data can be appended.
+            /// </summary>
+            /// <param name="length">The # of bytes to check for.</param>
+            /// <returns>True if the data can be appended. Otherwise, false.</returns>
+            public bool CheckAppend(int length)
+            {
+                if (length > Constants.MaxGroupedPacketItemLength)
+                    return false;
+
+                return remainingSpan.Length >= length + 1; // +1 is for the byte that specifies the length
+            }
+
             public bool TryAppend(ReadOnlySpan<byte> data)
             {
                 if (data.Length == 0)
@@ -806,7 +826,7 @@ namespace SS.Core.Modules
             public ulong buffercount, buffersused;
             public readonly ulong[] GroupedStats = new ulong[8];
             public readonly ulong[] RelGroupedStats = new ulong[8];
-            public readonly ulong[] PriorityStats = new ulong[(int)Enum.GetValues<BandwidthPriorities>().Max() + 1];
+            public readonly ulong[] PriorityStats = new ulong[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
 
             public ulong PingsReceived => Interlocked.Read(ref pcountpings);
 
@@ -1195,7 +1215,8 @@ namespace SS.Core.Modules
                         // one more time, just to be sure
                         ClearBuffers(p);
 
-                        // TODO: _bandwithLimit.Free(conn.bw);
+                        _bandwithLimiterProvider.Free(conn.BandwidthLimiter);
+                        conn.BandwidthLimiter = null;
 
                         _playerData.FreePlayer(p);
                     }
@@ -1354,7 +1375,7 @@ namespace SS.Core.Modules
                         continue;
 
                     if (conn.sizedsends.First != null
-                        && conn.outlist[(int)BandwidthPriorities.Reliable].Count + conn.UnsentRelOutList.Count < _config.PresizedQueueThreshold)
+                        && conn.outlist[(int)BandwidthPriority.Reliable].Count + conn.UnsentRelOutList.Count < _config.PresizedQueueThreshold)
                     {
                         ISizedSendData sd = conn.sizedsends.First.Value;
 
@@ -1650,9 +1671,9 @@ namespace SS.Core.Modules
             Clip(ref timeout, 250, 2000);
 
             // update the bandwidth limiter's counters
-            conn.bw.Iter(now);
+            conn.BandwidthLimiter.Iter(now);
 
-            int canSend = conn.bw.GetCanBufferPackets();
+            int canSend = conn.BandwidthLimiter.GetCanBufferPackets();
             int retries = 0;
             int outlistlen = 0;
 
@@ -1663,7 +1684,7 @@ namespace SS.Core.Modules
             {
                 LinkedList<SubspaceBuffer> outlist = conn.outlist[pri];
 
-                if (pri == (int)BandwidthPriorities.Reliable)
+                if (pri == (int)BandwidthPriority.Reliable)
                 {
                     // move packets from UnsentRelOutList to outlist, grouped if possible
                     while (conn.UnsentRelOutList.Count > 0)
@@ -1763,7 +1784,7 @@ namespace SS.Core.Modules
                         }
 #endif
                         //
-                        // Couldn't group the packet, just add it as an regular ungrouped reliable packet.
+                        // Couldn't group the packet, just add it as an regular individual reliable packet.
                         //
 
                         // Move the data back, so that we can prepend it with the reliable header.
@@ -1803,11 +1824,11 @@ namespace SS.Core.Modules
                     ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buf.Bytes);
 
                     if (rp.T1 == 0x00 && rp.T2 == 0x03)
-                        Debug.Assert(pri == (int)BandwidthPriorities.Reliable);
+                        Debug.Assert(pri == (int)BandwidthPriority.Reliable);
                     else if (rp.T1 == 0x00 && rp.T2 == 0x04)
-                        Debug.Assert(pri == (int)BandwidthPriorities.Ack);
+                        Debug.Assert(pri == (int)BandwidthPriority.Ack);
                     else
-                        Debug.Assert((pri != (int)BandwidthPriorities.Reliable) && (pri != (int)BandwidthPriorities.Ack));
+                        Debug.Assert((pri != (int)BandwidthPriority.Reliable) && (pri != (int)BandwidthPriority.Ack));
 
                     // check if it's time to send this yet (use linearly increasing timeouts)
                     if ((buf.Tries != 0) && ((now - buf.LastRetry).TotalMilliseconds <= (timeout * buf.Tries)))
@@ -1820,15 +1841,28 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    // at this point, there's only one more check to determine if we're sending this packet now: bandwidth limiting.
-                    if (!conn.bw.Check(
-                        buf.NumBytes + ((buf.NumBytes <= 255) ? 1 : _config.PerPacketOverhead), // TODO: bandwidth limiting: investigate why 1, isn't there always the IP+UDP header overhead?
-                        pri))
+                    // At this point, there's only one more check to determine if we're sending this packet now: bandwidth limiting.
+                    int checkBytes = buf.NumBytes;
+                    if (buf.NumBytes > Constants.MaxGroupedPacketItemLength)
+                        checkBytes += _config.PerPacketOverhead; // Can't be grouped, so definitely will be sent in its own datagram
+                    else if (packetGrouper.Count == 0 || !packetGrouper.CheckAppend(buf.NumBytes))
+                        checkBytes += _config.PerPacketOverhead + 2 + 1; // Start of a new grouped packet. So, include an overhead of: IP+UDP header + grouped packet header + grouped packet item header
+                    else
+                        checkBytes += 1; // Will be appended into a grouped packet (though, not the first in it). So, only include the overhead of the grouped packet item header.
+
+                    // Note for the above checkBytes calcuation:
+                    // There is still a chance that at the end, there's only 1 packet remaining to be sent in the packetGrouper.
+                    // In which case, when it gets flushed, it will send the individual packet, not grouped.
+                    // This means we'd have told the bandwidth limiter 3 bytes more than we actually send, but that's negligible.
+
+                    if (!conn.BandwidthLimiter.Check(
+                        checkBytes,
+                        (BandwidthPriority)pri))
                     {
                         // try dropping it, if we can
                         if ((buf.Flags & NetSendFlags.Droppable) != 0)
                         {
-                            Debug.Assert(pri < (int)BandwidthPriorities.Reliable);
+                            Debug.Assert(pri < (int)BandwidthPriority.Reliable);
                             outlist.Remove(node);
                             _bufferNodePool.Return(node);
                             buf.Dispose();
@@ -1845,7 +1879,7 @@ namespace SS.Core.Modules
                         // this is a retry, not an initial send. record it for
                         // lag stats and also reduce bw limit (with clipping)
                         retries++;
-                        conn.bw.AdjustForRetry();
+                        conn.BandwidthLimiter.AdjustForRetry();
                     }
 
                     buf.LastRetry = DateTime.UtcNow;
@@ -1855,7 +1889,7 @@ namespace SS.Core.Modules
                     packetGrouper.Send(buf, conn);
 
                     // if we just sent an unreliable packet, free it so we don't send it again
-                    if (pri != (int)BandwidthPriorities.Reliable)
+                    if (pri != (int)BandwidthPriority.Reliable)
                     {
                         outlist.Remove(node);
                         _bufferNodePool.Return(node);
@@ -2428,8 +2462,10 @@ namespace SS.Core.Modules
 
             int len = data.Length;
 
-            // data has to be able to fit into a reliable packet
-            Debug.Assert(len <= Constants.MaxPacket - ReliableHeader.Length);
+            bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
+            
+            // data has to be able to fit (a reliable packet has an additional header, so account for that too)
+            Debug.Assert((isReliable && len <= Constants.MaxPacket - ReliableHeader.Length) || (!isReliable && len <= Constants.MaxPacket));
 
             // you can't buffer already-reliable packets
             Debug.Assert(!(data.Length >= 2 && data[0] == 0x00 && data[1] == 0x03));
@@ -2437,24 +2473,24 @@ namespace SS.Core.Modules
             // reliable packets can't be droppable
             Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
 
-            BandwidthPriorities pri;
+            BandwidthPriority pri;
 
             if ((flags & NetSendFlags.Ack) == NetSendFlags.Ack)
             {
-                pri = BandwidthPriorities.Ack;
+                pri = BandwidthPriority.Ack;
             }
-            else if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
+            else if (isReliable)
             {
-                pri = BandwidthPriorities.Reliable;
+                pri = BandwidthPriority.Reliable;
             }
             else
             {
                 // figure out priority (ignoring the reliable, droppable, and urgent flags)
                 pri = ((int)flags & 0x70) switch
                 {
-                    (int)NetSendFlags.PriorityN1 & 0x70 => BandwidthPriorities.UnreliableLow,
-                    (int)NetSendFlags.PriorityP4 & 0x70 or (int)NetSendFlags.PriorityP5 & 0x70 => BandwidthPriorities.UnreliableHigh,
-                    _ => BandwidthPriorities.Unreliable,
+                    (int)NetSendFlags.PriorityN1 & 0x70 => BandwidthPriority.UnreliableLow,
+                    (int)NetSendFlags.PriorityP4 & 0x70 or (int)NetSendFlags.PriorityP5 & 0x70 => BandwidthPriority.UnreliableHigh,
+                    _ => BandwidthPriority.Unreliable,
                 };
             }
 
@@ -2465,7 +2501,7 @@ namespace SS.Core.Modules
             if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
             {
                 // urgent and not reliable
-                if (conn.bw.Check(len + _config.PerPacketOverhead, (int)pri))
+                if (conn.BandwidthLimiter.Check(len + _config.PerPacketOverhead, pri))
                 {
                     SendRaw(conn, data);
                     return null;
@@ -2625,7 +2661,7 @@ namespace SS.Core.Modules
 
                 Monitor.Enter(conn.olmtx);
 
-                LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriorities.Reliable];
+                LinkedList<SubspaceBuffer> outlist = conn.outlist[(int)BandwidthPriority.Reliable];
                 LinkedListNode<SubspaceBuffer> nextNode = null;
                 for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
                 {
@@ -2668,7 +2704,7 @@ namespace SS.Core.Modules
                         b.Dispose();
 
                         // handle limit adjustment
-                        conn.bw.AdjustForAck();
+                        conn.BandwidthLimiter.AdjustForAck();
 
                         return;
                     }
@@ -3131,7 +3167,7 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            IBandwidthLimit bandwidthLimit,
+            IBandwidthLimiterProvider bandwidthLimiterProvider,
             IConfigManager configManager,
             ILagCollect lagCollect,
             ILogManager logManager,
@@ -3142,7 +3178,7 @@ namespace SS.Core.Modules
             IPrng prng)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _bandwithLimit = bandwidthLimit ?? throw new ArgumentNullException(nameof(bandwidthLimit));
+            _bandwithLimiterProvider = bandwidthLimiterProvider ?? throw new ArgumentNullException(nameof(bandwidthLimiterProvider));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -3482,7 +3518,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            conn.Initalize(enc, iEncryptName, _bandwithLimit.New());
+            conn.Initalize(enc, iEncryptName, _bandwithLimiterProvider.New());
             conn.p = p;
 
             // copy data from ListenData
@@ -3636,7 +3672,10 @@ namespace SS.Core.Modules
             if (len < 1)
                 return;
 
-            if (len > Constants.MaxPacket - ReliableHeader.Length)
+            bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
+
+            if ((isReliable && len > Constants.MaxPacket - ReliableHeader.Length)
+                || (!isReliable && len > Constants.MaxPacket))
             {
                 // use 00 08/9 packets (big data packets)
                 // send these reliably (to maintain ordering with sequence #)
@@ -3887,12 +3926,11 @@ namespace SS.Core.Modules
             return _globalStats;
         }
 
-        NetClientStats INetwork.GetClientStats(Player p)
+        void INetwork.GetClientStats(Player p, ref NetClientStats stats)
         {
             if (p[_connKey] is not ConnData conn)
-                return null;
+                return;
 
-            NetClientStats stats = new();
             stats.s2cn = conn.s2cn;
             stats.c2sn = conn.c2sn;
             stats.PacketsSent = conn.pktSent;
@@ -3908,9 +3946,7 @@ namespace SS.Core.Modules
 
             stats.IPEndPoint = conn.RemoteEndpoint;
 
-            //TODO: _bandwithLimit.
-
-            return stats;
+            conn.BandwidthLimiter.GetInfo(stats.BandwidthLimitInfo);
         }
 
         TimeSpan INetwork.GetLastPacketTimeSpan(Player p)
@@ -3994,7 +4030,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            NetClientConnection cc = new(remoteEndpoint, _clientSocket, handler, encryptor, iClientEncryptName, _bandwithLimit.New());
+            NetClientConnection cc = new(remoteEndpoint, _clientSocket, handler, encryptor, iClientEncryptName, _bandwithLimiterProvider.New());
 
             encryptor?.Initialze(cc);
 

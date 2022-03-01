@@ -44,7 +44,7 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IMapData _mapData;
         private IModuleManager _mm;
-        private INetwork _net;
+        private INetwork _network;
         private IPersistExecutor _persistExecutor;
         private IScoreStats _scoreStats;
 
@@ -264,7 +264,7 @@ namespace SS.Core.Modules
             _mainloop = null;
             _mapData = null;
             _mm = null;
-            _net = null;
+            _network = null;
             _persistExecutor = null;
             _scoreStats = null;
 
@@ -529,7 +529,7 @@ namespace SS.Core.Modules
                 _chat.SendMessage(p, $"{prefix}: reliable dups: {reliableLag.RelDups * 100d / reliableLag.C2SN:F2}% reliable resends: {reliableLag.Retries * 100d / reliableLag.S2CN:F2}%");
                 _chat.SendMessage(p, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal} s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 
-                SendCommonBandwidthInfo(p, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
+                PrintCommonBandwidthInfo(p, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
             }
         }
 
@@ -766,7 +766,7 @@ namespace SS.Core.Modules
 
             // TODO: additional arena list logic (-a argument)
 
-            _net.SendToOne(p, bufferSpan.Slice(0, length), NetSendFlags.Reliable);
+            _network.SendToOne(p, bufferSpan.Slice(0, length), NetSendFlags.Reliable);
         }
 
         [CommandHelp(
@@ -969,7 +969,7 @@ namespace SS.Core.Modules
         {
             ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
 
-            IReadOnlyNetStats stats = _net.GetStats();
+            IReadOnlyNetStats stats = _network.GetStats();
             _chat.SendMessage(p, $"netstats: pings={stats.PingsReceived}  pkts sent={stats.PacketsSent}  pkts recvd={stats.PacketsReceived}");
 
             // IP Header (20 bytes) + UDP Header (8 bytes) = 28 bytes total overhead for each packet
@@ -1033,7 +1033,7 @@ namespace SS.Core.Modules
 
             if (t.IsStandard)
             {
-                SendCommonBandwidthInfo(p, t, connectedTimeSpan, prefix, true);
+                PrintCommonBandwidthInfo(p, t, connectedTimeSpan, prefix, true);
             }
         }
 
@@ -1177,24 +1177,38 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendCommonBandwidthInfo(Player p, Player t, TimeSpan connectedTimeSpan, string prefix, bool includeSensitive)
+        private void PrintCommonBandwidthInfo(Player p, Player t, TimeSpan connectedTimeSpan, string prefix, bool includeSensitive)
         {
-            NetClientStats stats = _net.GetClientStats(t);
+            if (_network == null)
+                return;
 
-            if (includeSensitive)
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
             {
-                _chat.SendMessage(p, $"{prefix}: ip:{stats.IPEndPoint.Address} port:{stats.IPEndPoint.Port} " +
-                    $"encName={stats.EncryptionName} macId={t.MacId} permId={t.PermId}");
+                NetClientStats stats = new() { BandwidthLimitInfo = sb };
+
+                _network.GetClientStats(t, ref stats);
+
+                if (includeSensitive)
+                {
+                    _chat.SendMessage(p, $"{prefix}: ip:{stats.IPEndPoint.Address} port:{stats.IPEndPoint.Port} " +
+                        $"encName={stats.EncryptionName} macId={t.MacId} permId={t.PermId}");
+                }
+
+                int ignoringwpns = _game != null ? (int)(100f * _game.GetIgnoreWeapons(t)) : 0;
+
+                _chat.SendMessage(p,
+                    $"{prefix}: " +
+                    $"ave bw in/out={(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0} " +
+                    $"ignoringWpns={ignoringwpns}% dropped={stats.PacketsDropped}");
+
+                _chat.SendMessage(p, $"{prefix}: bwlimit={stats.BandwidthLimitInfo}");
             }
-
-            int ignoringwpns = (int)(100f * _game.GetIgnoreWeapons(t));
-
-            _chat.SendMessage(p,
-                $"{prefix}: " +
-                $"ave bw in/out={(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0} " +
-                $"ignoringWpns={ignoringwpns} dropped={stats.PacketsDropped}");
-
-            // TODO: bwlimit info
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
 
             if (t.Flags.NoShip)
                 _chat.SendMessage(p, $"{prefix}: lag too high to play");
