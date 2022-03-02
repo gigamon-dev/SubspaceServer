@@ -57,7 +57,7 @@ namespace SS.Core.Modules
         private IObscene _obscene;
         private IPersist _persist;
 
-        private InterfaceRegistrationToken _iChatToken;
+        private InterfaceRegistrationToken<IChat> _iChatToken;
 
         private readonly struct Config
         {
@@ -219,7 +219,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IChat>(ref _iChatToken) != 0)
+            if (broker.UnregisterInterface(ref _iChatToken) != 0)
                 return false;
 
             _network?.RemovePacket(C2SPacketType.Chat, Packet_Chat);

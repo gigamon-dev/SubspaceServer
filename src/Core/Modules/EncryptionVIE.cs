@@ -13,8 +13,8 @@ namespace SS.Core.Modules
 
         private INetworkEncryption _networkEncryption;
         private IPlayerData _playerData;
-        private InterfaceRegistrationToken _iEncryptToken;
-        private InterfaceRegistrationToken _iClientEncryptToken;
+        private InterfaceRegistrationToken<IEncrypt> _iEncryptToken;
+        private InterfaceRegistrationToken<IClientEncrypt> _iClientEncryptToken;
 
         private int _pdKey;
 
@@ -38,10 +38,10 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IEncrypt>(ref _iEncryptToken) != 0)
+            if (broker.UnregisterInterface(ref _iEncryptToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<IClientEncrypt>(ref _iClientEncryptToken) != 0)
+            if (broker.UnregisterInterface(ref _iClientEncryptToken) != 0)
                 return false;
 
             if (!_networkEncryption.RemoveConnectionInitHandler(ProcessConnectionInit))

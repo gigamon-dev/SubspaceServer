@@ -20,8 +20,8 @@ namespace SS.Core.Modules
 
         private ComponentBroker _broker;
         private IPlayerData _playerData;
-        private InterfaceRegistrationToken _iLagCollectToken;
-        private InterfaceRegistrationToken _iLagQueryToken;
+        private InterfaceRegistrationToken<ILagCollect> _iLagCollectToken;
+        private InterfaceRegistrationToken<ILagQuery> _iLagQueryToken;
 
         /// <summary>
         /// per player data key
@@ -47,10 +47,10 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<ILagCollect>(ref _iLagCollectToken) != 0)
+            if (broker.UnregisterInterface(ref _iLagCollectToken) != 0)
                 return false;
 
-            if (_broker.UnregisterInterface<ILagQuery>(ref _iLagQueryToken) != 0)
+            if (broker.UnregisterInterface(ref _iLagQueryToken) != 0)
                 return false;
 
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);

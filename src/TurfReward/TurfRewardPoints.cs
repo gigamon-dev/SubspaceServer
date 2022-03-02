@@ -1,7 +1,6 @@
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 using System;
-using System.Collections.Generic;
 
 namespace TurfReward
 {
@@ -10,7 +9,7 @@ namespace TurfReward
     {
         private ILogManager _log;
         private ITurfReward _turfReward;
-        private InterfaceRegistrationToken _iTurfRewardPointsToken;
+        private InterfaceRegistrationToken<ITurfRewardPoints> _iTurfRewardPointsToken;
 
         #region IModule Members
 
@@ -28,7 +27,7 @@ namespace TurfReward
         {
             _log.LogM(LogLevel.Drivel, nameof(TurfRewardPoints), "Unload");
 
-            if (broker.UnregisterInterface<ITurfRewardPoints>(ref _iTurfRewardPointsToken) != 0)
+            if (broker.UnregisterInterface(ref _iTurfRewardPointsToken) != 0)
                 return false;
 
             return true;

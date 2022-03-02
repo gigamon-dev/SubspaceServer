@@ -34,7 +34,7 @@ namespace SS.Core.Modules
         private IMainloop mainloop;
         private IServerTimer serverTimer;
 
-        private InterfaceRegistrationToken _iConfigManagerToken;
+        private InterfaceRegistrationToken<IConfigManager> _iConfigManagerToken;
 
         /// <summary>
         /// Path --> ConfFile
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IConfigManager>(ref _iConfigManagerToken) != 0)
+            if (broker.UnregisterInterface(ref _iConfigManagerToken) != 0)
                 return false;
 
             return true;

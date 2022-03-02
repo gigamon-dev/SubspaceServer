@@ -14,7 +14,7 @@ namespace SS.Core.Modules
     /// </summary>
     public class ObjectPoolManager : IModule, IObjectPoolManager
     {
-        private InterfaceRegistrationToken _iObjectPoolManagerToken;
+        private InterfaceRegistrationToken<IObjectPoolManager> _iObjectPoolManagerToken;
 
         private readonly ConcurrentDictionary<IPool, IPool> _poolDictionary = new();
 
@@ -41,7 +41,9 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IObjectPoolManager>(ref _iObjectPoolManagerToken);
+            if (broker.UnregisterInterface(ref _iObjectPoolManagerToken) != 0)
+                return false;
+
             return true;
         }
 

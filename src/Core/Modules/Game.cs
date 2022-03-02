@@ -36,7 +36,7 @@ namespace SS.Core.Modules
 
         private IPersist _persist;
 
-        private InterfaceRegistrationToken _iGameToken;
+        private InterfaceRegistrationToken<IGame> _iGameToken;
 
         private int _pdkey;
         private int _adkey;
@@ -253,7 +253,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IGame>(ref _iGameToken) != 0)
+            if (broker.UnregisterInterface(ref _iGameToken) != 0)
                 return false;
 
             //if(_chatnet != null)
@@ -280,7 +280,10 @@ namespace SS.Core.Modules
             _mainloop.WaitForMainWorkItemDrain();
 
             if (_persist != null && _persistRegistration != null)
+            {
                 _persist.UnregisterPersistentData(_persistRegistration);
+                broker.ReleaseInterface(ref _persist);
+            }
 
             _arenaManager.FreeArenaData(_adkey);
             _playerData.FreePlayerData(_pdkey);

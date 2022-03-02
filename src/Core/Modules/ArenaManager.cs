@@ -47,8 +47,8 @@ namespace SS.Core.Modules
         // optional dependencies
         private IPersistExecutor _persistExecutor;
 
-        private InterfaceRegistrationToken _iArenaManagerToken;
-        private InterfaceRegistrationToken _iArenaManagerInternalToken;
+        private InterfaceRegistrationToken<IArenaManager> _iArenaManagerToken;
+        private InterfaceRegistrationToken<IArenaManagerInternal> _iArenaManagerInternalToken;
 
         // for managing per arena data
         private readonly ReaderWriterLock _perArenaDataLock = new();
@@ -1330,10 +1330,10 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (Broker.UnregisterInterface<IArenaManager>(ref _iArenaManagerToken) != 0)
+            if (broker.UnregisterInterface(ref _iArenaManagerToken) != 0)
                 return false;
 
-            if (Broker.UnregisterInterface<IArenaManagerInternal>(ref _iArenaManagerInternalToken) != 0)
+            if (broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
                 return false;
 
             _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);

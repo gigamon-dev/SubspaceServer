@@ -14,7 +14,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken iLogManagerToken;
+        private InterfaceRegistrationToken<ILogManager> _iLogManagerToken;
 
         private NonTransientObjectPool<StringBuilder> _stringBuilderPool;
         private readonly BlockingCollection<LogEntry> _logQueue = new(512);
@@ -73,13 +73,13 @@ namespace SS.Core.Modules
             );
             _objectPoolManager.TryAddTracked(_stringBuilderPool);
 
-            iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
+            _iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<ILogManager>(ref iLogManagerToken) != 0)
+            if (broker.UnregisterInterface(ref _iLogManagerToken) != 0)
                 return false;
 
             _logQueue.CompleteAdding();

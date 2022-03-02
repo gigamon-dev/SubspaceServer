@@ -39,8 +39,8 @@ namespace SS.Core.Modules
         // optional dependencies
         private IBillingFallback _billingFallback;
 
-        private InterfaceRegistrationToken _iAuthToken;
-        private InterfaceRegistrationToken _iBillingToken;
+        private InterfaceRegistrationToken<IAuth> _iAuthToken;
+        private InterfaceRegistrationToken<IBilling> _iBillingToken;
 
         private int _pdKey;
 
@@ -115,10 +115,10 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IBilling>(ref _iBillingToken) != 0)
+            if (broker.UnregisterInterface(ref _iBillingToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
+            if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
 
             DropConnection(BillingState.Disabled);

@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     {
         private IConfigManager _configManager;
         private IArenaManager _arenaManager;
-        private InterfaceRegistrationToken _iArenaPlaceToken;
+        private InterfaceRegistrationToken<IArenaPlace> _iArenaPlaceToken;
 
         private string[] _pubNames;
 
@@ -33,7 +33,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IArenaPlace>(ref _iArenaPlaceToken) != 0)
+            if (broker.UnregisterInterface(ref _iArenaPlaceToken) != 0)
                 return false;
 
             return true;

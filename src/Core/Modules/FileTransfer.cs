@@ -15,7 +15,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private ICapabilityManager _capabilityManager;
         private IPlayerData _playerData;
-        private InterfaceRegistrationToken _iFileTransferToken;
+        private InterfaceRegistrationToken<IFileTransfer> _iFileTransferToken;
 
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
@@ -49,7 +49,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IFileTransfer>(ref _iFileTransferToken) != 0)
+            if (broker.UnregisterInterface(ref _iFileTransferToken) != 0)
                 return false;
 
             _network.RemovePacket(C2SPacketType.UploadFile, Packet_UploadFile);

@@ -14,7 +14,7 @@ namespace SS.Core.Modules
     {
         private ILogManager _logManager;
         private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken _iPersistDatastore;
+        private InterfaceRegistrationToken<IPersistDatastore> _iPersistDatastore;
 
         private const string DatabasePath = "./data";
         private const string DatabaseFileName = "SS.Core.Modules.PersistSQLite.db";
@@ -36,7 +36,9 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IPersistDatastore>(ref _iPersistDatastore);
+            if (broker.UnregisterInterface(ref _iPersistDatastore) != 0)
+                return false;
+
             return true;
         }
 

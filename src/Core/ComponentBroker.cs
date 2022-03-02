@@ -15,7 +15,7 @@ namespace SS.Core
     /// Identifies an interface registration.
     /// Used to unregister a previous registration.
     /// </summary>
-    public abstract class InterfaceRegistrationToken
+    public abstract class InterfaceRegistrationToken<T> where T : IComponentInterface
     {
     }
 
@@ -44,12 +44,12 @@ namespace SS.Core
         /// <summary>
         /// Interface registration data
         /// </summary>
-        private class InterfaceData
+        private abstract class InterfaceData
         {
             /// <summary>
             /// The instance that is registered.
             /// </summary>
-            public IComponentInterface Instance { get; }
+            public abstract IComponentInterface Instance { get; }
 
             /// <summary>
             /// An optional name for the instance. Usually null, but this allows registering multiple instances
@@ -59,31 +59,42 @@ namespace SS.Core
             public string Name { get; }
 
             /// <summary>
-            /// A token that uniquely identifies a registration.
-            /// Returned when an interface is registered and later used to unregister. Only the one who registered will have it, no others can interfere.
-            /// </summary>
-            public InterfaceRegistrationToken RegistrationToken { get; } = new ConcreteInterfaceRegistrationToken();
-
-            /// <summary>
             /// A count of how many active references to the instance there are.
             /// </summary>
             public int ReferenceCount = 0;
 
-            public InterfaceData(IComponentInterface instance, string name)
+            public InterfaceData(string name)
             {
-                Instance = instance ?? throw new ArgumentNullException(nameof(instance));
                 Name = name;
             }
         }
 
-        private class ConcreteInterfaceRegistrationToken : InterfaceRegistrationToken
+        private class InterfaceData<T> : InterfaceData where T : IComponentInterface
+        {
+            private readonly T _instance;
+
+            public override IComponentInterface Instance => _instance;
+
+            /// <summary>
+            /// A token that uniquely identifies a registration.
+            /// Returned when an interface is registered and later used to unregister. Only the one who registered will have it, no others can interfere.
+            /// </summary>
+            public InterfaceRegistrationToken<T> RegistrationToken { get; } = new ConcreteInterfaceRegistrationToken<T>();
+
+            public InterfaceData(T instance, string name) : base(name)
+            {
+                _instance = instance ?? throw new ArgumentNullException(nameof(instance));
+            }
+        }
+
+        private class ConcreteInterfaceRegistrationToken<T> : InterfaceRegistrationToken<T> where T : IComponentInterface
         {
         }
 
         /// <summary>
         /// For synchronizing access to <see cref="_interfaceRegistrations"/>.
         /// </summary>
-        private readonly ReaderWriterLockSlim _interfaceRwLock = new ReaderWriterLockSlim();
+        private readonly ReaderWriterLockSlim _interfaceRwLock = new();
 
         /// <summary>
         /// Dictionary of interface registartions where:
@@ -93,7 +104,7 @@ namespace SS.Core
         /// In the case of an interface getting registered more than once (with the same name or no name), a node earlier in the list "overrides" similar registrations that come after it.
         /// </para>
         /// </summary>
-        private readonly Dictionary<Type, LinkedList<InterfaceData>> _interfaceRegistrations = new Dictionary<Type, LinkedList<InterfaceData>>();
+        private readonly Dictionary<Type, LinkedList<InterfaceData>> _interfaceRegistrations = new();
 
         /// <summary>
         /// Registers an implementation of an interface to be exposed to others via the broker.
@@ -102,7 +113,7 @@ namespace SS.Core
         /// <param name="instance">The implementer instance to register.</param>
         /// <param name="name">An optional name to register the <paramref name="instance"/> as.</param>
         /// <returns></returns>
-        public InterfaceRegistrationToken RegisterInterface<TInterface>(TInterface instance, string name = null) where TInterface : class, IComponentInterface
+        public InterfaceRegistrationToken<TInterface> RegisterInterface<TInterface>(TInterface instance, string name = null) where TInterface : class, IComponentInterface
         {
             if (instance == null)
                 throw new ArgumentNullException(nameof(instance));
@@ -111,7 +122,7 @@ namespace SS.Core
             if (interfaceType.IsInterface == false)
                 throw new Exception(interfaceType.Name + " is not an interface");
 
-            InterfaceData iData = new InterfaceData(instance, name);
+            InterfaceData<TInterface> iData = new(instance, name);
 
             _interfaceRwLock.EnterWriteLock();
 
@@ -139,7 +150,7 @@ namespace SS.Core
         /// <typeparam name="TInterface">The <see cref="Type"/> of interface to un-register.</typeparam>
         /// <param name="token">The unique token that was returned from <see cref="RegisterInterface{TInterface}(TInterface, string)"/>.</param>
         /// <returns>The reference count. Therefore, 0 means success.</returns>
-        public int UnregisterInterface<TInterface>(ref InterfaceRegistrationToken token) where TInterface : class, IComponentInterface
+        public int UnregisterInterface<TInterface>(ref InterfaceRegistrationToken<TInterface> token) where TInterface : class, IComponentInterface
         {
             if (token == null)
                 throw new ArgumentNullException(nameof(token));
@@ -161,7 +172,7 @@ namespace SS.Core
                 LinkedListNode<InterfaceData> node = registrationList.First;
                 while (node != null)
                 {
-                    if (node.Value.RegistrationToken == token)
+                    if (node.Value is InterfaceData<TInterface> interfaceData && interfaceData.RegistrationToken == token)
                         break;
 
                     node = node.Next;
@@ -440,12 +451,12 @@ namespace SS.Core
         /// <summary>
         /// For synchronizing access to the <see cref="_callbackRegistrations"/>.
         /// </summary>
-        private readonly ReaderWriterLockSlim _callbackRwLock = new ReaderWriterLockSlim();
+        private readonly ReaderWriterLockSlim _callbackRwLock = new();
 
         /// <summary>
         /// The callback dictionary where: Key is the delegate type. Value is the delegate itself.
         /// </summary>
-        private readonly Dictionary<Type, Delegate> _callbackRegistrations = new Dictionary<Type, Delegate>();
+        private readonly Dictionary<Type, Delegate> _callbackRegistrations = new();
 
         /// <summary>
         /// Registers a handler for a "callback" (publisher/subscriber event).

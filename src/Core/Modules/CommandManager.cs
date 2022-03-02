@@ -20,7 +20,7 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabilityManager;
         private IConfigManager _configManager;
         private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken _iCommandManagerToken;
+        private InterfaceRegistrationToken<ICommandManager> _iCommandManagerToken;
 
         private IChat _chat;
 
@@ -82,7 +82,7 @@ namespace SS.Core.Modules
         private readonly HashSet<string> _unloggedCommands = new(StringComparer.OrdinalIgnoreCase);
 
         private readonly object _lockObj = new();
-        private event DefaultCommandDelegate _defaultCommandEvent;
+        private event DefaultCommandDelegate DefaultCommandEvent;
 
         #region IModule Members
 
@@ -116,7 +116,7 @@ namespace SS.Core.Modules
 
             lock (_lockObj)
             {
-                _defaultCommandEvent = null;
+                DefaultCommandEvent = null;
             }
 
             // In ASSS, ?commands and ?allcommands are implemented in a separate module, cmdlist.
@@ -146,7 +146,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<ICommandManager>(ref _iCommandManagerToken) != 0)
+            if (broker.UnregisterInterface(ref _iCommandManagerToken) != 0)
                 return false;
 
             _rwLock.EnterWriteLock();
@@ -162,7 +162,7 @@ namespace SS.Core.Modules
 
             lock (_lockObj)
             {
-                _defaultCommandEvent = null;
+                DefaultCommandEvent = null;
             }
 
             return true;
@@ -341,14 +341,14 @@ namespace SS.Core.Modules
             {
                 lock (_lockObj)
                 {
-                    if (_defaultCommandEvent != null)
+                    if (DefaultCommandEvent != null)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(CommandManager),
                             $"A {nameof(ICommandManager.DefaultCommandReceived)} is being subscribed to when one is already subscribed. " +
                             $"Check that you're not loading more than 1 module that registers a default handler (e.g. only one billing module allowed).");
                     }
 
-                    _defaultCommandEvent += value;
+                    DefaultCommandEvent += value;
                 }
             }
 
@@ -356,7 +356,7 @@ namespace SS.Core.Modules
             {
                 lock (_lockObj)
                 {
-                    _defaultCommandEvent -= value;
+                    DefaultCommandEvent -= value;
                 }
             }
         }
@@ -474,7 +474,7 @@ namespace SS.Core.Modules
             if (skipLocal || !foundLocal)
             {
                 // send it to the biller
-                _defaultCommandEvent?.Invoke(cmd, origLine, p, target);
+                DefaultCommandEvent?.Invoke(cmd, origLine, p, target);
             }
             else if (foundLocal)
             {

@@ -26,7 +26,7 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IArenaManager _arenaManager;
         private IMapData _mapData;
-        private InterfaceRegistrationToken _iMapNewsDownloadToken;
+        private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
 
         private int _dlKey;
 
@@ -243,7 +243,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IMapNewsDownload>(ref _iMapNewsDownloadToken) != 0)
+            if (broker.UnregisterInterface(ref _iMapNewsDownloadToken) != 0)
                 return false;
 
             _newsManager.Dispose();

@@ -173,11 +173,18 @@ namespace SS.Core
             IPersistExecutor persistExecutor = _mm.GetInterface<IPersistExecutor>();
             if (persistExecutor != null)
             {
-                Console.WriteLine($"I <{nameof(Server)}> Saving scores.");
+                try
+                {
+                    Console.WriteLine($"I <{nameof(Server)}> Saving scores.");
 
-                using AutoResetEvent autoResetEvent = new(false);
-                persistExecutor.SaveAll(() => autoResetEvent.Set()); // TODO: use the callback to wait until complete
-                autoResetEvent.WaitOne();
+                    using AutoResetEvent autoResetEvent = new(false);
+                    persistExecutor.SaveAll(() => autoResetEvent.Set()); // TODO: use the callback to wait until complete
+                    autoResetEvent.WaitOne();
+                }
+                finally
+                {
+                    _mm.ReleaseInterface(ref persistExecutor);
+                }
             }
 
             // Unload.

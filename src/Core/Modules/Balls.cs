@@ -33,7 +33,7 @@ namespace SS.Core.Modules
         private INetwork _network;
         private IPlayerData _playerData;
         private IPrng _prng;
-        private InterfaceRegistrationToken _iBallsToken;
+        private InterfaceRegistrationToken<IBalls> _iBallsToken;
 
         private int _adKey;
 
@@ -79,7 +79,8 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            _broker.UnregisterInterface<IBalls>(ref _iBallsToken);
+            if (broker.UnregisterInterface(ref _iBallsToken) != 0)
+                return false;
 
             _mainloopTimer.ClearTimer(MainloopTimer_BasicBallTimer, null);
 

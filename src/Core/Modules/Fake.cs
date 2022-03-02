@@ -14,7 +14,7 @@ namespace SS.Core.Modules
         private IChatNet _chatNet;
         private INetwork _network;
 
-        private InterfaceRegistrationToken _iFakeToken;
+        private InterfaceRegistrationToken<IFake> _iFakeToken;
 
         #region Module methods
 
@@ -42,7 +42,8 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IFake>(ref _iFakeToken);
+            if (broker.UnregisterInterface(ref _iFakeToken) != 0)
+                return false;
 
             _commandManager.RemoveCommand("makefake", Command_makefake);
             _commandManager.RemoveCommand("killfake", Command_killfake);

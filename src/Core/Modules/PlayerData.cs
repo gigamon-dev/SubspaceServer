@@ -10,7 +10,7 @@ namespace SS.Core.Modules
     public class PlayerData : IModule, IPlayerData
     {
         internal ComponentBroker Broker;
-        private InterfaceRegistrationToken _iPlayerDataToken;
+        private InterfaceRegistrationToken<IPlayerData> _iPlayerDataToken;
 
         /// <summary>
         /// How long after a PlayerID can be reused after it is freed.
@@ -72,7 +72,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IPlayerData>(ref _iPlayerDataToken) != 0)
+            if (broker.UnregisterInterface(ref _iPlayerDataToken) != 0)
                 return false;
 
             return true;
@@ -336,7 +336,7 @@ namespace SS.Core.Modules
                 // find next available key
                 for (key = 0; key < _perPlayerDataKeys.Keys.Count; key++)
                 {
-                    if (_perPlayerDataKeys.Keys.Contains(key) == false)
+                    if (_perPlayerDataKeys.ContainsKey(key) == false)
                         break;
                 }
 

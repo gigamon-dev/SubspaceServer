@@ -22,10 +22,10 @@ namespace SS.Core.Modules.Scoring
         private IPersist _persist;
         private IPlayerData _playerData;
 
-        private InterfaceRegistrationToken _iGlobalPlayerStatsToken;
-        private InterfaceRegistrationToken _iArenaPlayerStatsToken;
-        private InterfaceRegistrationToken _iAllPlayerStatsToken;
-        private InterfaceRegistrationToken _iScoreStatsToken;
+        private InterfaceRegistrationToken<IGlobalPlayerStats> _iGlobalPlayerStatsToken;
+        private InterfaceRegistrationToken<IArenaPlayerStats> _iArenaPlayerStatsToken;
+        private InterfaceRegistrationToken<IAllPlayerStats> _iAllPlayerStatsToken;
+        private InterfaceRegistrationToken<IScoreStats> _iScoreStatsToken;
 
         private int _pdKey;
 
@@ -109,10 +109,17 @@ namespace SS.Core.Modules.Scoring
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IGlobalPlayerStats>(ref _iGlobalPlayerStatsToken);
-            broker.UnregisterInterface<IArenaPlayerStats>(ref _iArenaPlayerStatsToken);
-            broker.UnregisterInterface<IAllPlayerStats>(ref _iAllPlayerStatsToken);
-            broker.UnregisterInterface<IScoreStats>(ref _iScoreStatsToken);
+            if (broker.UnregisterInterface(ref _iGlobalPlayerStatsToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iArenaPlayerStatsToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iAllPlayerStatsToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iScoreStatsToken) != 0)
+                return false;
 
             PersistIntervalEndedCallback.Unregister(broker, Callback_PersistIntervalEnded);
             NewPlayerCallback.Unregister(broker, Callback_NewPlayer);

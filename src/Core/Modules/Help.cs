@@ -17,7 +17,7 @@ namespace SS.Core.Modules
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken _iConfigHelpToken;
+        private InterfaceRegistrationToken<IConfigHelp> _iConfigHelpToken;
 
         private string _helpCommandName;
         private ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> _settingsLookup;
@@ -50,7 +50,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IConfigHelp>(ref _iConfigHelpToken) != 0)
+            if (broker.UnregisterInterface(ref _iConfigHelpToken) != 0)
                 return false;
 
             _commandManager.RemoveCommand(_helpCommandName, Command_help);

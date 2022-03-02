@@ -21,7 +21,7 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private IArenaManager _arenaManager;
         private ILogManager _logManager;
-        private InterfaceRegistrationToken _iMapDataToken;
+        private InterfaceRegistrationToken<IMapData> _iMapDataToken;
 
         private class ArenaData
         {
@@ -55,7 +55,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IMapData>(ref _iMapDataToken) != 0)
+            if (broker.UnregisterInterface(ref _iMapDataToken) != 0)
                 return false;
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);

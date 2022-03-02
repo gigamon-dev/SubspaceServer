@@ -16,8 +16,8 @@ namespace SS.Core.Modules
         private ICommandManager commandManager;
         private IChat chat;
         private ILogManager log;
-        private InterfaceRegistrationToken iAuthToken;
-        private InterfaceRegistrationToken iBillingFallbackToken;
+        private InterfaceRegistrationToken<IAuth> iAuthToken;
+        private InterfaceRegistrationToken<IBillingFallback> iBillingFallbackToken;
 
         private ConfigHandle pwdFile;
         private HashAlgorithm hashAlgorithm;
@@ -99,10 +99,10 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IBillingFallback>(ref iBillingFallbackToken) != 0)
+            if (broker.UnregisterInterface(ref iBillingFallbackToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<IAuth>(ref iAuthToken) != 0)
+            if (broker.UnregisterInterface(ref iAuthToken) != 0)
                 return false;
 
             commandManager.RemoveCommand("passwd", Command_passwd);

@@ -21,7 +21,7 @@ namespace SS.Core.Modules
         private INetwork _net;
         private IPlayerData _playerData;
         private IPrng _prng;
-        private InterfaceRegistrationToken _iClientSettingsToken;
+        private InterfaceRegistrationToken<IClientSettings> _iClientSettingsToken;
 
         private int _adkey;
         private int _pdkey;
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IClientSettings>(ref _iClientSettingsToken) != 0)
+            if (broker.UnregisterInterface(ref _iClientSettingsToken) != 0)
                 return false;
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);

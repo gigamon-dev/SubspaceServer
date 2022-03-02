@@ -15,7 +15,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         IObjectPoolManager _objectPoolManager;
         private IServerTimer _serverTimer;
-        private InterfaceRegistrationToken _iLogFileToken;
+        private InterfaceRegistrationToken<ILogFile> _iLogFileToken;
 
         private readonly object _lockObj = new();
         private StreamWriter _streamWriter = null;
@@ -50,7 +50,8 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<ILogFile>(ref _iLogFileToken);
+            if (broker.UnregisterInterface(ref _iLogFileToken) != 0)
+                return false;
 
             _serverTimer.ClearTimer(ServerTimer_FlushLog, null);
 

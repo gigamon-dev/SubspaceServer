@@ -29,8 +29,8 @@ namespace SS.Core.Modules
         private IArenaManager _arenaManager;
         private ILogManager _logManager;
         private IConfigManager _configManager;
-        private InterfaceRegistrationToken _iCapabilityManagerToken;
-        private InterfaceRegistrationToken _iGroupManagerToken;
+        private InterfaceRegistrationToken<ICapabilityManager> _iCapabilityManagerToken;
+        private InterfaceRegistrationToken<IGroupManager> _iGroupManagerToken;
 
         /// <summary>
         /// Enumeration representing the source of group membership.
@@ -116,10 +116,10 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<ICapabilityManager>(ref _iCapabilityManagerToken) != 0)
+            if (broker.UnregisterInterface(ref _iCapabilityManagerToken) != 0)
                 return false;
 
-            if (_broker.UnregisterInterface<IGroupManager>(ref _iGroupManagerToken) != 0)
+            if (broker.UnregisterInterface(ref _iGroupManagerToken) != 0)
                 return false;
 
             _configManager.CloseConfigFile(_groupDefConfHandle);

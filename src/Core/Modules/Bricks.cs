@@ -56,8 +56,8 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPrng _prng;
-        private InterfaceRegistrationToken _iBrickManagerToken;
-        private InterfaceRegistrationToken _iBrickHandlerToken;
+        private InterfaceRegistrationToken<IBrickManager> _iBrickManagerToken;
+        private InterfaceRegistrationToken<IBrickHandler> _iBrickHandlerToken;
 
         private int _adKey;
 
@@ -100,8 +100,11 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IBrickHandler>(ref _iBrickManagerToken);
-            broker.UnregisterInterface<IBrickHandler>(ref _iBrickHandlerToken);
+            if (broker.UnregisterInterface(ref _iBrickManagerToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iBrickHandlerToken) != 0)
+                return false;
 
             _network.RemovePacket(C2SPacketType.Brick, Packet_Brick);
 

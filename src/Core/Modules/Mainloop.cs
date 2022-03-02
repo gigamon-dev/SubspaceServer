@@ -16,9 +16,9 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken _iMainloopToken;
-        private InterfaceRegistrationToken _iMainloopTimerToken;
-        private InterfaceRegistrationToken _iServerTimerToken;
+        private InterfaceRegistrationToken<IMainloop> _iMainloopToken;
+        private InterfaceRegistrationToken<IMainloopTimer> _iMainloopTimerToken;
+        private InterfaceRegistrationToken<IServerTimer> _iServerTimerToken;
 
         // for main loop
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -90,13 +90,13 @@ namespace SS.Core.Modules
                 }
             }
 
-            if (broker.UnregisterInterface<IMainloop>(ref _iMainloopToken) != 0)
+            if (broker.UnregisterInterface(ref _iMainloopToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<IServerTimer>(ref _iServerTimerToken) != 0)
+            if (broker.UnregisterInterface(ref _iServerTimerToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<IMainloopTimer>(ref _iMainloopTimerToken) != 0)
+            if (broker.UnregisterInterface(ref _iMainloopTimerToken) != 0)
                 return false;
 
             if (_objectPoolManager != null)

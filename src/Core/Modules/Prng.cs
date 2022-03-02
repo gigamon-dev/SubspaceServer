@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     /// </summary>
     public class Prng : IModule, IPrng
     {
-        private InterfaceRegistrationToken iPrngToken;
+        private InterfaceRegistrationToken<IPrng> iPrngToken;
 
         private readonly object randomLock = new object();
         private readonly Random random = new Random();
@@ -27,7 +27,7 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<IPrng>(ref iPrngToken) != 0)
+            if (broker.UnregisterInterface(ref iPrngToken) != 0)
                 return false;
 
             return true;

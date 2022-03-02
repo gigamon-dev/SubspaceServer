@@ -524,9 +524,9 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPrng _prng;
-        private InterfaceRegistrationToken _iNetworkToken;
-        private InterfaceRegistrationToken _iNetworkClientToken;
-        private InterfaceRegistrationToken _iNetworkEncryptionToken;
+        private InterfaceRegistrationToken<INetwork> _iNetworkToken;
+        private InterfaceRegistrationToken<INetworkClient> _iNetworkClientToken;
+        private InterfaceRegistrationToken<INetworkEncryption> _iNetworkEncryptionToken;
 
         [Flags]
         private enum PingPopulationMode
@@ -3250,13 +3250,13 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface<INetwork>(ref _iNetworkToken) != 0)
+            if (broker.UnregisterInterface(ref _iNetworkToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<INetworkClient>(ref _iNetworkClientToken) != 0)
+            if (broker.UnregisterInterface(ref _iNetworkClientToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface<INetworkEncryption>(ref _iNetworkEncryptionToken) != 0)
+            if (broker.UnregisterInterface(ref _iNetworkEncryptionToken) != 0)
                 return false;
 
             _mainloopTimer.ClearTimer(MainloopTimer_QueueSizedData, null);

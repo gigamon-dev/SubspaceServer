@@ -19,8 +19,8 @@ namespace SS.Core.Modules
         private IPersistDatastore _persistDatastore;
         private IPlayerData _playerData;
 
-        private InterfaceRegistrationToken _iPersistToken;
-        private InterfaceRegistrationToken _iPersistExecutorToken;
+        private InterfaceRegistrationToken<IPersist> _iPersistToken;
+        private InterfaceRegistrationToken<IPersistExecutor> _iPersistExecutorToken;
 
         private readonly List<PersistentData<Player>> _playerRegistrations = new();
         private readonly List<PersistentData<Arena>> _arenaRegistrations = new();
@@ -90,8 +90,11 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IPersist>(ref _iPersistToken);
-            broker.UnregisterInterface<IPersistExecutor>(ref _iPersistExecutorToken);
+            if (broker.UnregisterInterface(ref _iPersistToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iPersistExecutorToken) != 0)
+                return false;
 
             _workQueue.CompleteAdding();
             _workerThread.Join();

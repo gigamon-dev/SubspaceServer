@@ -16,7 +16,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IModuleManager _mm;
-        private InterfaceRegistrationToken _iModuleLoaderToken;
+        private InterfaceRegistrationToken<IModuleLoader> _iModuleLoaderToken;
 
         #region IModule Members
 
@@ -31,7 +31,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IModuleLoader>(ref _iModuleLoaderToken) != 0)
+            if (broker.UnregisterInterface(ref _iModuleLoaderToken) != 0)
                 return false;
 
             return true;

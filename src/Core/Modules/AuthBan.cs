@@ -21,7 +21,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
-        private InterfaceRegistrationToken _iAuthToken;
+        private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
         private readonly Dictionary<uint, BanRecord> _banDictionary = new();
         private readonly object _lockObj = new();
@@ -60,7 +60,8 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface<IAuth>(ref _iAuthToken);
+            if (broker.UnregisterInterface(ref _iAuthToken) != 0)
+                return false;
 
             _commandManager.RemoveCommand("kick", Command_kick);
             _commandManager.RemoveCommand("listkick", Command_listkick);

@@ -34,7 +34,7 @@ namespace SS.Core.Modules
         private IPersistExecutor _persistExecutor;
         private IPlayerData _playerData;
         private IScoreStats _scoreStats;
-        private InterfaceRegistrationToken _iAuthToken;
+        private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
         private IPool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
 
@@ -190,7 +190,7 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (_broker.UnregisterInterface<IAuth>(ref _iAuthToken) != 0)
+            if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
 
             _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);

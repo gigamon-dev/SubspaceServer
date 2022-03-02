@@ -1,7 +1,6 @@
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 using System;
-using System.Collections.Generic;
 
 namespace TurfReward
 {
@@ -14,7 +13,7 @@ namespace TurfReward
             "It is being used to test external assembly loading and arena attaching.";
 
         private ILogManager _log;
-        private InterfaceRegistrationToken _iTurfRewardToken;
+        private InterfaceRegistrationToken<ITurfReward> _iTurfRewardToken;
 
         #region IModule Members
 
@@ -31,7 +30,7 @@ namespace TurfReward
         {
             _log.LogM(LogLevel.Drivel, nameof(TurfReward), "Unload");
 
-            if (broker.UnregisterInterface<ITurfReward>(ref _iTurfRewardToken) != 0)
+            if (broker.UnregisterInterface(ref _iTurfRewardToken) != 0)
                 return false;
             
             return true;
