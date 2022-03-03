@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
@@ -1156,7 +1157,16 @@ namespace SS.Core.Modules
                 if (!isNewer && !isFake && pos.Weapon.Type == WeaponCodes.Null)
                     return;
 
-                // TODO: PPK advisers - EditPPK
+                // Consult the player position advisors to allow other modules to edit the packet.
+                var advisors = arena.GetAdvisors<IPlayerPositionAdvisor>();
+                foreach (var advisor in advisors)
+                {
+                    advisor.EditPositionPacket(p, ref pos);
+
+                    // Allow advisors to drop the position packet.
+                    if (pos.X < 0 || pos.Y < 0) // slightly different than ASSS, here we consider anything negative to mean drop whereas ASSS looks for -1
+                        return;
+                }
 
                 // by default, send unreliable droppable packets. 
                 // weapons get a higher priority.
@@ -1309,7 +1319,19 @@ namespace SS.Core.Modules
 
                                 bool drop = false;
 
-                                // TODO: PPK advisers - EditIndividualPPK
+                                // Consult the advisors to allow other modules to edit the packet going to player i.
+                                foreach (var advisor in advisors)
+                                {
+                                    if (advisor.EditIndividualPositionPacket(p, i, ref copy, ref extralen))
+                                        modified = true;
+
+                                    // Allow advisors to drop the packet.
+                                    if (copy.X < 0 || copy.Y < 0) // slightly different than ASSS, here we consider anything negative to mean drop whereas ASSS looks for -1
+                                    {
+                                        drop = true;
+                                        break;
+                                    }
+                                }
 
                                 wpnDirty = wpnDirty || modified;
                                 posDirty = posDirty || modified;
@@ -1397,6 +1419,8 @@ namespace SS.Core.Modules
                 {
                     _playerData.Unlock();
                 }
+
+                PlayerPositionPacketCallback.Fire(arena, p, in pos);
             }
 
             pd.PlayerPostitionPacket_LastShip = p.Ship;
@@ -1798,7 +1822,11 @@ namespace SS.Core.Modules
                     }
             }
         }
-
+        
+        [ConfigHelp("Prize", "UseTeamkillPrize", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
+            Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
+        [ConfigHelp("Prize", "TeamkillPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
         private void Packet_Die(Player p, byte[] data, int len)
         {
             if (p == null)
@@ -1849,16 +1877,38 @@ namespace SS.Core.Modules
                 _playerData.Unlock();
             }
 
-            // TODO: kill adviser EditDeath
+            var killAdvisors = arena.GetAdvisors<IKillAdvisor>();
 
+            // Consult the advisors after setting the above flags, the flags reflect the real state of the player.
+            foreach (var advisor in killAdvisors)
+            {
+                advisor.EditDeath(arena, ref killer, ref p, ref bty);
+
+                if (p == null || killer == null)
+                    return; // The advisor wants to drop the kill packet.
+
+                if (p.Status != PlayerState.Playing || p.Arena != arena)
+                {
+                    _logManager.LogP(LogLevel.Error, nameof(Game), p, $"An {nameof(IKillAdvisor)} set killed to a bad player.");
+                    return;
+                }
+
+                if (killer.Status != PlayerState.Playing || killer.Arena != arena)
+                {
+                    _logManager.LogP(LogLevel.Error, nameof(Game), killer, $"An {nameof(IKillAdvisor)} set killer to a bad player.");
+                    return;
+                }
+            }
+
+            // Pick the green.
             Prize green;
-
             if ((p.Freq == killer.Freq) && (_configManager.GetInt(arena.Cfg, "Prize", "UseTeamkillPrize", 0) != 0))
             {
                 green = (Prize)_configManager.GetInt(arena.Cfg, "Prize", "TeamkillPrize", 0);
             }
             else
             {
+                // Pick a random green.
                 IClientSettings cset = arena.GetInterface<IClientSettings>();
                 if (cset != null)
                 {
@@ -1877,26 +1927,14 @@ namespace SS.Core.Modules
                 }
             }
 
-            // TODO: kill adviser KillPoints
-
-            // this will figure out how many points to send in the packet
-            // NOTE: asss uses the event to set the points and green, i think it's best to keep it split between an interface call and event
+            // Use advsiors to determine how many points to award.
             short pts = 0;
-            IKillPoints kp = arena.GetInterface<IKillPoints>();
-            if (kp != null)
+            foreach (var advisor in killAdvisors)
             {
-                try
-                {
-                    kp.GetKillPoints(arena, killer, p, bty, flagCount, out pts, out Prize g);
-                    green = g;
-                }
-                finally
-                {
-                    arena.ReleaseInterface(ref kp);
-                }
+                pts += advisor.KillPoints(arena, killer, p, bty, flagCount);
             }
 
-            // allow a module to modify the green sent in the packet
+            // Allow a module to modify the green sent in the packet.
             IKillGreen killGreen = arena.GetInterface<IKillGreen>();
             if (killGreen != null)
             {
@@ -1910,8 +1948,8 @@ namespace SS.Core.Modules
                 }
             }
 
-            // record the kill points on our side
-            if (pts != 0)
+            // Record the kill points on our side.
+            if (pts > 0)
             {
                 IAllPlayerStats allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
                 if (allPlayerStats != null)
@@ -1927,15 +1965,13 @@ namespace SS.Core.Modules
                 }
             }
 
-            FireKillEvent(arena, killer, p, bty, flagCount, pts, green);
-
             NotifyKill(killer, p, pts, flagCount, green);
 
-            FirePostKillEvent(arena, killer, p, bty, flagCount, pts, green);
+            FireKillEvent(arena, killer, p, bty, flagCount, pts, green);
 
             _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{p.Name} killed by {killer.Name} (bty={bty},flags={flagCount},pts={pts})");
 
-            if (p.Flags.SentWeaponPacket == false)
+            if (!p.Flags.SentWeaponPacket)
             {
                 if (p[_pdkey] is PlayerData pd)
                 {
@@ -1957,14 +1993,6 @@ namespace SS.Core.Modules
                 return;
 
             KillCallback.Fire(arena, arena, killer, killed, bty, flagCount, pts, green);
-        }
-
-        private static void FirePostKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
-        {
-            if (arena == null || killer == null || killed == null)
-                return;
-
-            PostKillCallback.Fire(arena, arena, killer, killed, bty, flagCount, pts, green);
         }
 
         private void NotifyKill(Player killer, Player killed, short pts, short flagCount, Prize green)

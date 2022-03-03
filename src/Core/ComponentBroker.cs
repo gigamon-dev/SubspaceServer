@@ -1,28 +1,60 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 
 namespace SS.Core
 {
     /// <summary>
-    /// Base interface for interfaces that are registerable with the <see cref="ComponentBroker"/>.
+    /// Base interface for interfaces that can be registered on a <see cref="ComponentBroker"/>.
     /// </summary>
     public interface IComponentInterface
     {
     }
 
     /// <summary>
+    /// Base interface for advisors that can be registered on a <see cref="ComponentBroker"/>.
+    /// </summary>
+    public interface IComponentAdvisor
+    {
+    }
+
+    /// <summary>
     /// Identifies an interface registration.
-    /// Used to unregister a previous registration.
+    /// Returned when registering an interface and used to unregister.
     /// </summary>
     public abstract class InterfaceRegistrationToken<T> where T : IComponentInterface
     {
     }
 
     /// <summary>
-    /// Functions as an intermediary between components.
-    /// It currently manages interfaces and callbacks.
+    /// Functions as an intermediary between components by managing interfaces, callbacks, and advisors.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <see cref=" ComponentBroker"/> acts as a scope for the components it manages.
+    /// The server has a single root <see cref=" ComponentBroker"/> which acts as the "global" scope.
+    /// This root <see cref=" ComponentBroker"/> is actually the <see cref="ModuleManager"/>.
+    /// Each <see cref="Arena"/> is also a <see cref="ComponentBroker"/>, with the root being the parent.
+    /// </para>
+    /// <para>
+    /// Interfaces are how components expose their functionality to other components.
+    /// A module can implement an interface and register the interface on a <see cref="ComponentBroker"/> to expose it to modules.
+    /// A module can use a <see cref="ComponentBroker"/> to obtain interfaces of other modules too.
+    /// </para>
+    /// <para>
+    /// Callbacks are an implementation of the publisher-subscriber pattern where
+    /// any component can be a publisher, and any component can be a subscriber. 
+    /// There can be multiple publishers and multiple subscribers.
+    /// Registering for a callback on an <see cref="Arena"/> means you only want events for that specific arena.
+    /// Registering for a callback on the root <see cref="ComponentBroker"/> means you want all events, including those fired for an arena.
+    /// </para>
+    /// <para>
+    /// Advisors are interfaces that are expected to possibly have more than one implementation.
+    /// So, using advisors actually means getting a collection of implementations for a specified advsior interface type, 
+    /// and then asking each implementation in the collection for advice on how to proceed with a given task.
+    /// </para>
+    /// </remarks>
     public class ComponentBroker
     {
         protected ComponentBroker() : this(null)
@@ -32,6 +64,11 @@ namespace SS.Core
         protected ComponentBroker(ComponentBroker parent)
         {
             Parent = parent;
+
+            if (Parent != null)
+            {
+                Parent.AdvisorChanged += Parent_AdvisorChanged;
+            }
         }
 
         /// <summary>
@@ -555,6 +592,188 @@ namespace SS.Core
             finally
             {
                 _callbackRwLock.ExitReadLock();
+            }
+        }
+
+        #endregion
+
+        #region Advisor methods
+
+        private abstract class AdvisorData
+        {
+            public abstract void RefreshCombined(ComponentBroker parent);
+        }
+
+        private class AdvisorData<TAdvisor> : AdvisorData where TAdvisor : IComponentAdvisor
+        {
+            /// <summary>
+            /// The registered advisors.
+            /// </summary>
+            public ImmutableArray<TAdvisor> Registered { get; private set; }
+
+            /// <summary>
+            /// <see cref="Registered"/> combined with those from parent.
+            /// </summary>
+            public ImmutableArray<TAdvisor> Advisors { get; private set; }
+
+            public void AddAndRecombine(TAdvisor toAdd, ComponentBroker parent)
+            {
+                if (toAdd != null)
+                {
+                    Registered = Registered.Add(toAdd);
+                }
+
+                RefreshCombined(parent);
+            }
+
+            public void RemoveAndRecombine(TAdvisor toRemove, ComponentBroker parent)
+            {
+                if (toRemove != null)
+                {
+                    Registered = Registered.Remove(toRemove);
+                }
+
+                RefreshCombined(parent);
+            }
+
+            public override void RefreshCombined(ComponentBroker parent)
+            {
+                if (parent != null)
+                {
+                    Advisors = Registered.AddRange(parent.GetAdvisors<TAdvisor>());
+                }
+                else
+                {
+                    Advisors = Registered;
+                }
+            }
+        }
+
+        private readonly Dictionary<Type, AdvisorData> _advisorDictionary = new();
+        private readonly ReaderWriterLockSlim _advisorLock = new();
+
+        private event Action<Type> AdvisorChanged;
+
+        private void Parent_AdvisorChanged(Type advisorType)
+        {
+            _advisorLock.EnterWriteLock();
+
+            try
+            {
+                if (_advisorDictionary.TryGetValue(advisorType, out AdvisorData advisorData))
+                {
+                    advisorData.RefreshCombined(Parent);
+                }
+            }
+            finally
+            {
+                _advisorLock.ExitWriteLock();
+            }
+
+            AdvisorChanged?.Invoke(advisorType);
+        }
+
+        /// <summary>
+        /// Registers an advisor.
+        /// </summary>
+        /// <typeparam name="TAdvisor">The type of advisor to register.</typeparam>
+        /// <param name="advisor">The advisor to register.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="advisor"/> was null.</exception>
+        public void RegisterAdvisor<TAdvisor>(TAdvisor advisor) where TAdvisor : IComponentAdvisor
+        {
+            if (advisor == null)
+                throw new ArgumentNullException(nameof(advisor));
+
+            _advisorLock.EnterWriteLock();
+
+            try
+            {
+                if (!_advisorDictionary.TryGetValue(typeof(TAdvisor), out AdvisorData advisorData)
+                    || advisorData is not AdvisorData<TAdvisor> tAdvisorData)
+                {
+                    tAdvisorData = new AdvisorData<TAdvisor>();
+                }
+
+                tAdvisorData.AddAndRecombine(advisor, Parent);
+            }
+            finally
+            {
+                _advisorLock.ExitWriteLock();
+            }
+
+            AdvisorChanged?.Invoke(typeof(TAdvisor));
+        }
+
+        /// <summary>
+        /// Unregisters an advisor.
+        /// </summary>
+        /// <typeparam name="TAdvisor">The type of advisor to unregister.</typeparam>
+        /// <param name="advisor">The advisor to unregister.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="advisor"/> was null.</exception>
+        public void UnregisterAdvisor<TAdvisor>(TAdvisor advisor) where TAdvisor : IComponentAdvisor
+        {
+            if (advisor == null)
+                throw new ArgumentNullException(nameof(advisor));
+
+            _advisorLock.EnterWriteLock();
+
+            try
+            {
+                if (!_advisorDictionary.TryGetValue(typeof(TAdvisor), out AdvisorData advisorData)
+                    || advisorData is not AdvisorData<TAdvisor> tAdvisorData)
+                {
+                    return;
+                }
+
+                tAdvisorData.RemoveAndRecombine(advisor, Parent);
+
+                if (tAdvisorData.Registered.IsEmpty)
+                {
+                    _advisorDictionary.Remove(typeof(TAdvisor));
+                }
+            }
+            finally
+            {
+                _advisorLock.ExitWriteLock();
+            }
+
+            AdvisorChanged?.Invoke(typeof(TAdvisor));
+        }
+
+        /// <summary>
+        /// Gets a collection of advisors that have been registered.
+        /// </summary>
+        /// <remarks>
+        /// The advisors returned will include any registered on this <see cref="ComponentBroker"/> instance and those from any parent <see cref="ComponentBroker"/>.
+        /// In other words, calling this method on an <see cref="Arena"/> will get those registered on the arena level and on the global level.
+        /// Calling this method on the global <see cref="ComponentBroker"/> will return only those registered on the global level.
+        /// </remarks>
+        /// <typeparam name="TAdvisor">The type of advisors to get.</typeparam>
+        /// <returns>A collection of advisors. The collection is purposely thread-safe.</returns>
+        public ImmutableArray<TAdvisor> GetAdvisors<TAdvisor>() where TAdvisor : IComponentAdvisor
+        {
+            _advisorLock.EnterReadLock();
+
+            try
+            {
+                if (_advisorDictionary.TryGetValue(typeof(TAdvisor), out AdvisorData advisorData)
+                    && advisorData is AdvisorData<TAdvisor> tAdvisorData)
+                {
+                    return tAdvisorData.Advisors;
+                }
+            }
+            finally
+            {
+                _advisorLock.ExitReadLock();
+            }
+
+            if (Parent != null)
+            {
+                return Parent.GetAdvisors<TAdvisor>();
+            }
+            else
+            {
+                return ImmutableArray<TAdvisor>.Empty;
             }
         }
 

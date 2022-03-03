@@ -37,30 +37,4 @@ namespace SS.Core.ComponentCallbacks
                 Fire(broker.Parent, arena, killer, killed, bty, flagCount, pts, green);
         }
     }
-
-    /// <summary>
-    /// Helper class for the <see cref="PostKillDelegate"/> callback.
-    /// </summary>
-    public static class PostKillCallback
-    {
-        public delegate void PostKillDelegate(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green);
-
-        public static void Register(ComponentBroker broker, PostKillDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(ComponentBroker broker, PostKillDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(ComponentBroker broker, Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
-        {
-            broker?.GetCallback<PostKillDelegate>()?.Invoke(arena, killer, killed, bty, flagCount, pts, green);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, arena, killer, killed, bty, flagCount, pts, green);
-        }
-    }
 }

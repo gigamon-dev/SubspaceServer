@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using SS.Core.ComponentAdvisors;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets.Game;
@@ -381,7 +382,13 @@ namespace SS.Core.Modules
 
                 bool allow = true;
 
-                // TODO: advsior logic
+                // Consult advisors to allow other modules to affect the pickup.
+                var advisors = arena.GetAdvisors<IBallsAdvisor>();
+                foreach (var advisor in advisors)
+                {
+                    if (!(allow = advisor.AllowPickupBall(arena, p, ballId, ref bd)))
+                        break;
+                }
 
                 if (!allow)
                 {
@@ -459,7 +466,13 @@ namespace SS.Core.Modules
 
                 bool allow = true;
 
-                // TODO: advisor logic
+                // Consult advisors to allow other modules to affect the ball shot.
+                var advisors = arena.GetAdvisors<IBallsAdvisor>();
+                foreach (var advisor in advisors)
+                {
+                    if (!(allow = advisor.AllowShootBall(arena, p, ballId, false, ref bd)))
+                        break;
+                }
 
                 if (!allow)
                 {
@@ -970,6 +983,7 @@ namespace SS.Core.Modules
 
                 bool block = false;
 
+                // TODO: Move this into the GoalPoints module as an IBallsAdvisor. The GoalPoints module does not exist yet as of this writing.
                 // Check that the goal is allowed (the tile is a goal and it can be scored on by the player's freq).
                 GetGoalInfo(arena, p.Freq, mapCoordinate, out bool isScorable, out _);
 
@@ -978,7 +992,18 @@ namespace SS.Core.Modules
                     block = true;
                 }
 
-                // TODO: advisor logic
+                // Consult advisors to allow other modules to affect the goal.
+                var advisors = arena.GetAdvisors<IBallsAdvisor>();
+                foreach (var advisor in advisors)
+                {
+                    bool allow = advisor.AllowGoal(arena, p, ballId, mapCoordinate, ref bd);
+                    if (!allow)
+                    {
+                        block = true;
+
+                        // At this point, we will allow other modules to redirect the goal's path but the goal being blocked is final.
+                    }
+                }
 
                 if (block)
                 {
@@ -1261,7 +1286,14 @@ namespace SS.Core.Modules
 
                         bool allow = true;
 
-                        // TODO: advisor logic
+                        // Consult advisors to allow other modules to affect the forced ball shooting.
+                        var advisors = arena.GetAdvisors<IBallsAdvisor>();
+                        foreach (var advisor in advisors)
+                        {
+                            // The true isForced parameter indicates that we're forcing the ball to be shot because the player left.
+                            if (!(allow = advisor.AllowShootBall(arena, p, i, true, ref b)))
+                                break;
+                        }
 
                         if (!allow)
                         {
