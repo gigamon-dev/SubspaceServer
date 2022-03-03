@@ -17,14 +17,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <typeparam name="T">The type of pooled object.</typeparam>
         /// <returns>The pool.</returns>
-        IPool<T> GetPool<T>() where T: PooledObject, new();
-
-        /// <summary>
-        /// Gets an object from the default pool for its type and begins tracking the pool if it isn't already being tracked.
-        /// </summary>
-        /// <typeparam name="T">The type of pooled object.</typeparam>
-        /// <returns>The object.</returns>
-        T Get<T>() where T : PooledObject, new();
+        Pool<T> GetPool<T>() where T: PooledObject, new();
 
         /// <summary>
         /// Gets the known pools.

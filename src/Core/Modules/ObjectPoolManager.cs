@@ -49,18 +49,11 @@ namespace SS.Core.Modules
 
         #region IObjectPoolManager Members
 
-        IPool<T> IObjectPoolManager.GetPool<T>()
+        Pool<T> IObjectPoolManager.GetPool<T>()
         {
             var pool = Pool<T>.Default;
             TryAddTrackedPool(pool);
             return pool;
-        }
-
-        T IObjectPoolManager.Get<T>()
-        {
-            var pool = Pool<T>.Default;
-            TryAddTrackedPool(pool);
-            return pool.Get();
         }
 
         IEnumerable<IPool> IObjectPoolManager.Pools => _poolDictionary.Values;

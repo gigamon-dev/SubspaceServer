@@ -25,10 +25,10 @@ namespace SS.Core.Modules
         private readonly List<PersistentData<Player>> _playerRegistrations = new();
         private readonly List<PersistentData<Arena>> _arenaRegistrations = new();
 
-        private IPool<PlayerWorkItem> _playerWorkItemPool;
-        private IPool<ArenaWorkItem> _arenaWorkItemPool;
-        private IPool<IntervalWorkItem> _intervalWorkItemPool;
-        private IPool<PutAllWorkItem> _putAllWorkItemPool;
+        private Pool<PlayerWorkItem> _playerWorkItemPool;
+        private Pool<ArenaWorkItem> _arenaWorkItemPool;
+        private Pool<IntervalWorkItem> _intervalWorkItemPool;
+        private Pool<PutAllWorkItem> _putAllWorkItemPool;
 
         private readonly BlockingCollection<PersistWorkItem> _workQueue = new();
         private Thread _workerThread;

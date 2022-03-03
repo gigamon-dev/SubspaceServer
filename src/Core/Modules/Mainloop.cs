@@ -314,17 +314,7 @@ namespace SS.Core.Modules
             if (_runInMainQueue.IsAddingCompleted)
                 return false;
 
-            RunInMainWorkItem<TState> workItem;
-
-            if (_objectPoolManager != null)
-            {
-                workItem = _objectPoolManager.Get<RunInMainWorkItem<TState>>();
-            }
-            else
-            {
-                workItem = Pool<RunInMainWorkItem<TState>>.Default.Get();
-            }
-            
+            RunInMainWorkItem<TState> workItem = (_objectPoolManager?.GetPool<RunInMainWorkItem<TState>>() ?? Pool<RunInMainWorkItem<TState>>.Default).Get();
             workItem.Set(callback, state);
 
             bool added = _runInMainQueue.TryAdd(workItem);

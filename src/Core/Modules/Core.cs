@@ -36,7 +36,7 @@ namespace SS.Core.Modules
         private IScoreStats _scoreStats;
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
-        private IPool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
+        private Pool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
 
         private int _pdkey;
 

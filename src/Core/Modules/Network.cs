@@ -168,7 +168,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private IPool<SubspaceBuffer> _bufferPool = Pool<SubspaceBuffer>.Default;
+        private Pool<SubspaceBuffer> _bufferPool;
+        private Pool<BigReceive> _bigReceivePool;
+        private Pool<ReliableCallbackInvoker> _reliableCallbackInvokerPool;
         private NonTransientObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
 
         private interface ISizedSendData
@@ -2897,7 +2899,7 @@ namespace SS.Core.Modules
                     if (conn.BigRecv == null)
                     {
                         // Get a BigReceive object and give it to the ConnData object to 'own'.
-                        conn.BigRecv = _objectPoolManager.Get<BigReceive>();
+                        conn.BigRecv = _bigReceivePool.Get();
                     }
 
                     int newSize = conn.BigRecv.Size + buffer.NumBytes - 2;
@@ -3219,7 +3221,8 @@ namespace SS.Core.Modules
             _config.SimplePingPopulationMode = (PingPopulationMode)_configManager.GetInt(_configManager.Global, "Net", "SimplePingPopulationMode", 1);
 
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
-
+            _bigReceivePool = objectPoolManager.GetPool<BigReceive>();
+            _reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliableCallbackInvoker>();
             _bufferNodePool = new(new SubspaceBufferLinkedListNodePooledObjectPolicy());
             _objectPoolManager.TryAddTracked(_bufferNodePool);
 
@@ -3815,7 +3818,7 @@ namespace SS.Core.Modules
 
         void INetwork.SendWithCallback(Player p, ReadOnlySpan<byte> data, ReliableDelegate callback)
         {
-            ReliableCallbackInvoker invoker = _objectPoolManager.Get<ReliableCallbackInvoker>();
+            ReliableCallbackInvoker invoker = _reliableCallbackInvokerPool.Get();
             invoker.SetCallback(callback);
             SendWithCallback(p, data, invoker);
         }
@@ -3827,7 +3830,7 @@ namespace SS.Core.Modules
 
         void INetwork.SendWithCallback<TState>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
         {
-            ReliableCallbackInvoker<TState> invoker = _objectPoolManager.Get<ReliableCallbackInvoker<TState>>();
+            ReliableCallbackInvoker<TState> invoker = _objectPoolManager.GetPool<ReliableCallbackInvoker<TState>>().Get();
             invoker.SetCallback(callback, clos);
             SendWithCallback(p, data, invoker);
         }
