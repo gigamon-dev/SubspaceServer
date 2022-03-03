@@ -2457,21 +2457,28 @@ namespace SS.Core.Modules
 
         private SubspaceBuffer BufferPacket(ConnData conn, ReadOnlySpan<byte> data, NetSendFlags flags, IReliableCallbackInvoker callbackInvoker = null)
         {
-            if (data.Length < 1)
-                throw new ArgumentOutOfRangeException(nameof(data), "Length must be at least 1.");
-
             int len = data.Length;
+            if (len < 1)
+                throw new ArgumentOutOfRangeException(nameof(data), "Length must be at least 1.");
 
             bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
             
+            //
+            // Check some conditions that should be true and would normally be caught when developing in debug mode.
+            //
+
             // data has to be able to fit (a reliable packet has an additional header, so account for that too)
             Debug.Assert((isReliable && len <= Constants.MaxPacket - ReliableHeader.Length) || (!isReliable && len <= Constants.MaxPacket));
 
             // you can't buffer already-reliable packets
-            Debug.Assert(!(data.Length >= 2 && data[0] == 0x00 && data[1] == 0x03));
+            Debug.Assert(!(len >= 2 && data[0] == 0x00 && data[1] == 0x03));
 
             // reliable packets can't be droppable
             Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
+
+            //
+            // Determine the priority.
+            //
 
             BandwidthPriority pri;
 
@@ -2497,6 +2504,10 @@ namespace SS.Core.Modules
             // update global stats based on requested priority
             Interlocked.Add(ref _globalStats.PriorityStats[(int)pri], (ulong)len);
 
+            //
+            // Check if it can be sent immediately instead of being buffered.
+            //
+
             // try the fast path
             if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
             {
@@ -2515,6 +2526,10 @@ namespace SS.Core.Modules
                     }
                 }
             }
+
+            //
+            // Buffer the packet.
+            //
 
             SubspaceBuffer buf = _bufferPool.Get();
             buf.Conn = conn;
@@ -3021,10 +3036,10 @@ namespace SS.Core.Modules
                 if (conn == null)
                     return;
 
-                // the client has requested a cancel for the file transfer
+                // the client has requested a cancel for the sized transfer
                 lock (conn.olmtx)
                 {
-                    // cancel current presized transfer
+                    // cancel current sized transfer
                     LinkedListNode<ISizedSendData> node = conn.sizedsends.First;
                     if (node != null)
                     {
@@ -3569,40 +3584,7 @@ namespace SS.Core.Modules
 
         void INetwork.SendToOne(Player p, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
-            if (p == null)
-                return;
-
-            if (data.Length < 1)
-                return;
-
-            if (!IsOurs(p))
-                return;
-
-            if (p[_connKey] is not ConnData conn)
-                return;
-
-            // see if we can do it the quick way
-            if (data.Length <= (Constants.MaxPacket - ReliableHeader.Length))
-            {
-                lock (conn.olmtx)
-                {
-                    BufferPacket(conn, data, flags);
-                }
-            }
-            else
-            {
-                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-                try
-                {
-                    set.Add(p);
-                    SendToSet(set, data, flags);
-                }
-                finally
-                {
-                    _objectPoolManager.PlayerSetPool.Return(set);
-                }
-            }
+            SendToOne(p, data, flags);
         }
 
         void INetwork.SendToOne<TData>(Player p, ref TData data, NetSendFlags flags) where TData : struct
@@ -3672,12 +3654,49 @@ namespace SS.Core.Modules
             if (len < 1)
                 return;
 
+            /* An important piece of logic that the SendToSet and SendToOne methods take care of (as opposed to the BufferPacket method)
+             * is checking whether the data to send is too large to fit into a single packet and if so, split it up.
+             * Splitting is done by using 0x00 0x08 and 0x00 0x09 'big' packets.
+             * 
+             * A limitation is that only one 'big' data transfer can be 'buffering up' at a time for a connection.
+             * 'Buffering up' meaning from the point the the first 0x00 0x08 packet is buffered till the closing 0x00 0x09 packet is buffered.
+             * In other words, no other 0x00 0x08 or 0x00 0x09 packets can be interleaved with the ones we're sending.
+             * 
+             * For the SendToOne method, this is managed by holding onto the connection's outgoing lock for the duration the data is
+             * being buffered.
+             * 
+             * For SendToSet, the difference is that it is for a collection of players. Attempting to get a hold on each player's outgoing lock
+             * at the same time could likely result in a deadlock.
+             * 
+             * Here are a few approaches I could think of (each with their pros + and cons -):
+             * 1. foreach player, lock the player's outgoing lock, then while spliting the data into 08/09 packets, buffer into the player's outgoing queue
+             *    - less efficient: data splitting is repeated once for each player
+             * 2. Split the data into 08/09 packets and store them in a collection. foreach player, lock the player's outgoing lock, buffer the 08/09 packets in the collection
+             *    + more efficient: data splitting done once
+             *    - higher memory footprint: requires a collection and additional memory for each buffer that goes into the collection
+             * 3. Hold a 'big data buffering up' lock on the module level. Then, while splitting into 08/09 packets, buffer each packet for each player.
+             *    + more efficient: data splitting done once
+             *    - less concurrency: the server would only be able to work on one data split at a time
+             *    
+             * I've opted to go for option #1 due to it's simplicity. Also, sending big data is relatively rare and when it does happen it is being sent to a single player.
+             * Currently, the known places where data is too large and gets split include:
+             * - 0x0F client settings
+             * - 0x03 player entering (when a player enters an arena, that player is sent a jumbo 0x03 containing data for each player in the arena)
+             */
+
+            foreach (Player p in set)
+            {
+                SendToOne(p, data, flags);
+            }
+
+            /*
+            // OPTION #3 (leaving this here in case there ends up being a case where a set of players gets big data)
             bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
 
             if ((isReliable && len > Constants.MaxPacket - ReliableHeader.Length)
                 || (!isReliable && len > Constants.MaxPacket))
             {
-                // use 00 08/9 packets (big data packets)
+                // use 00 08/09 packets (big data packets)
                 // send these reliably (to maintain ordering with sequence #)
                 Span<byte> bufferSpan = stackalloc byte[Constants.ChunkSize + 2];
                 Span<byte> bufferDataSpan = bufferSpan[2..];
@@ -3686,19 +3705,22 @@ namespace SS.Core.Modules
 
                 int position = 0;
 
-                // first send the 08 packets
-                while (len > Constants.ChunkSize)
+                lock (_playerConnectionsSendBigDataLock)
                 {
-                    data.Slice(position, Constants.ChunkSize).CopyTo(bufferDataSpan);
-                    SendToSet(set, bufferSpan, flags | NetSendFlags.Reliable); // ASSS only sends the 09 reliably, but I think 08 needs to also be reliable too.  So I added Reliable here.
-                    position += Constants.ChunkSize;
-                    len -= Constants.ChunkSize;
-                }
+                    // first send the 08 packets
+                    while (len > Constants.ChunkSize)
+                    {
+                        data.Slice(position, Constants.ChunkSize).CopyTo(bufferDataSpan);
+                        SendToSet(set, bufferSpan, flags | NetSendFlags.Reliable); // ASSS only sends the 09 reliably, but I think 08 needs to also be reliable too.  So I added Reliable here.
+                        position += Constants.ChunkSize;
+                        len -= Constants.ChunkSize;
+                    }
 
-                // final packet is the 09 (signals the end of the big data)
-                bufferSpan[1] = 0x09;
-                data.Slice(position, len).CopyTo(bufferDataSpan);
-                SendToSet(set, bufferSpan.Slice(0, len + 2), flags | NetSendFlags.Reliable);
+                    // final packet is the 09 (signals the end of the big data)
+                    bufferSpan[1] = 0x09;
+                    data.Slice(position, len).CopyTo(bufferDataSpan);
+                    SendToSet(set, bufferSpan.Slice(0, len + 2), flags | NetSendFlags.Reliable);
+                }
             }
             else
             {
@@ -3714,6 +3736,79 @@ namespace SS.Core.Modules
                     {
                         BufferPacket(conn, data, flags);
                     }
+                }
+            }
+            */
+        }
+
+        private void SendToOne(Player player, ReadOnlySpan<byte> data, NetSendFlags flags)
+        {
+            if (player == null)
+                return;
+
+            if (data.Length < 1)
+                return;
+
+            if (!IsOurs(player))
+                return;
+
+            if (player[_connKey] is not ConnData conn)
+                return;
+
+            SendToOne(conn, data, flags);
+        }
+
+        private void SendToOne(ConnData conn, ReadOnlySpan<byte> data, NetSendFlags flags)
+        {
+            if (conn == null)
+                return;
+
+            int len = data.Length;
+            if (len < 1)
+                return;
+
+            bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
+
+            if ((isReliable && len > Constants.MaxPacket - ReliableHeader.Length)
+                || (!isReliable && len > Constants.MaxPacket))
+            {
+                // The data is too large and has to be broken up.
+                // Use 00 08 and 00 09 packets (big data packets)
+                // send these reliably (to maintain ordering with sequence #)
+                Span<byte> bufferSpan = stackalloc byte[Constants.ChunkSize + 2];
+                Span<byte> bufferDataSpan = bufferSpan[2..];
+                bufferSpan[0] = 0x00;
+                bufferSpan[1] = 0x08;
+
+                // Only one 'big' data transfer can be 'buffering up' at a time for a connection.
+                // 'Buffering up' meaning from the point the the first 0x00 0x08 packet is buffered till the closing 0x00 0x09 packet is buffered.
+                // In other words, no other 0x00 0x08 or 0x00 0x09 packets can be interleaved with the ones we're buffering.
+                // Therefore, we hold the lock the entire time we buffer up the 0x00 0x08 or 0x00 0x09 packets.
+                lock (conn.olmtx)
+                {
+                    int position = 0;
+
+                    // First send the 08 packets.
+                    while (len > Constants.ChunkSize)
+                    {
+                        data.Slice(position, Constants.ChunkSize).CopyTo(bufferDataSpan);
+                        BufferPacket(conn, bufferSpan, flags | NetSendFlags.Reliable);
+                        position += Constants.ChunkSize;
+                        len -= Constants.ChunkSize;
+                    }
+
+                    // Final packet is the 09 (signals the end of the big data)
+                    // Note: Even if the data fit perfectly into the 08 packets (len == 0), we still need to send the 09 to mark the end.
+                    bufferSpan[1] = 0x09;
+                    data.Slice(position, len).CopyTo(bufferDataSpan);
+                    BufferPacket(conn, bufferSpan.Slice(0, len + 2), flags | NetSendFlags.Reliable);
+                }
+            }
+            else
+            {
+                lock (conn.olmtx)
+                {
+                    BufferPacket(conn, data, flags);
                 }
             }
         }
@@ -3747,23 +3842,20 @@ namespace SS.Core.Modules
             if (p == null)
                 throw new ArgumentNullException(nameof(p));
 
-            if (data == null)
-                throw new ArgumentNullException(nameof(data));
-
             if (data.Length < 1)
                 throw new ArgumentOutOfRangeException(nameof(data), "Length must be >= 1.");
 
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
+            if (!IsOurs(p))
+                return;
+
             if (p[_connKey] is not ConnData conn)
                 return;
 
             // we can't handle big packets here
             Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
-
-            if (!IsOurs(p))
-                return;
 
             lock (conn.olmtx)
             {
@@ -4067,50 +4159,11 @@ namespace SS.Core.Modules
             if (cc is not NetClientConnection ncc)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
 
-            if (data.Length < 1)
-                return;
-
-            lock (ncc.ConnData.olmtx)
-            {
-                if (data.Length > Constants.MaxPacket - ReliableHeader.Length)
-                {
-                    int len = data.Length;
-
-                    // use 00 08 and 00 09 packets (big data packets)
-                    // send these reliably (to maintain ordering with sequence #)
-                    Span<byte> bufferSpan = stackalloc byte[Constants.ChunkSize + 2];
-                    Span<byte> bufferDataSpan = bufferSpan[2..];
-                    bufferSpan[0] = 0x00;
-                    bufferSpan[1] = 0x08;
-
-                    int position = 0;
-
-                    // first send the 08 packets
-                    while (len > Constants.ChunkSize)
-                    {
-                        data.Slice(position, Constants.ChunkSize).CopyTo(bufferDataSpan);
-                        BufferPacket(ncc.ConnData, bufferSpan, flags | NetSendFlags.Reliable);
-                        position += Constants.ChunkSize;
-                        len -= Constants.ChunkSize;
-                    }
-
-                    // final packet is the 09 (signals the end of the big data)
-                    bufferSpan[1] = 0x09;
-                    data.Slice(position, len).CopyTo(bufferDataSpan);
-                    BufferPacket(ncc.ConnData, bufferSpan.Slice(0, len + 2), flags | NetSendFlags.Reliable);
-                }
-                else
-                {
-                    BufferPacket(ncc.ConnData, data, flags);
-                }
-            }
+            SendToOne(ncc.ConnData, data, flags);
         }
 
         void INetworkClient.SendPacket<T>(ClientConnection cc, ref T data, NetSendFlags flags)
         {
-            if (cc is not NetClientConnection)
-                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
-
             ((INetworkClient)this).SendPacket(cc, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
