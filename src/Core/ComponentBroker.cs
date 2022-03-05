@@ -616,15 +616,31 @@ namespace SS.Core
 
         private class ConcreteAdvisorRegistrationToken<T> : AdvisorRegistrationToken<T> where T : IComponentAdvisor
         {
+            /// <summary>
+            /// The broker that created the token.
+            /// </summary>
+            public readonly ComponentBroker Broker;
+
+            /// <summary>
+            /// The advisor that was registered.
+            /// </summary>
             public readonly T Instance;
+
+            /// <summary>
+            /// Whether the token is still active. A token can be used to unregister a previously registered advisor once and only once.
+            /// </summary>
             public bool IsActive { get; private set; }
 
-            public ConcreteAdvisorRegistrationToken(T instance)
+            public ConcreteAdvisorRegistrationToken(ComponentBroker broker, T instance)
             {
+                Broker = broker ?? throw new ArgumentNullException(nameof(broker));
                 Instance = instance ?? throw new ArgumentNullException(nameof(instance));
                 IsActive = true;
             }
 
+            /// <summary>
+            /// Marks the token as having been used.
+            /// </summary>
             public void Deactivate()
             {
                 IsActive = false;
@@ -658,14 +674,18 @@ namespace SS.Core
                 RefreshCombined(parent);
             }
 
-            public void RemoveAndRecombine(TAdvisor toRemove, ComponentBroker parent)
+            public bool RemoveAndRecombine(TAdvisor toRemove, ComponentBroker parent)
             {
-                if (toRemove != null)
-                {
-                    Registered = Registered.Remove(toRemove);
-                }
+                if (toRemove == null)
+                    return false;
+
+                int lengthBefore = Registered.Length;
+                Registered = Registered.Remove(toRemove);
+                if (lengthBefore == Registered.Length)
+                    return false;
 
                 RefreshCombined(parent);
+                return true;
             }
 
             public override void RefreshCombined(ComponentBroker parent)
@@ -740,7 +760,7 @@ namespace SS.Core
 
             AdvisorChanged?.Invoke(typeof(TAdvisor));
 
-            return new ConcreteAdvisorRegistrationToken<TAdvisor>(advisor);
+            return new ConcreteAdvisorRegistrationToken<TAdvisor>(this, advisor);
         }
 
         /// <summary>
@@ -761,8 +781,11 @@ namespace SS.Core
             if (token is not ConcreteAdvisorRegistrationToken<TAdvisor> concreteToken)
                 throw new ArgumentException("Not a valid token.", nameof(token));
 
+            if (concreteToken.Broker != this)
+                throw new ArgumentException("The token is not for this ComponentBroker.", nameof(token));
+
             if (!concreteToken.IsActive)
-                throw new ArgumentException("Token was already used.", nameof(token));
+                throw new ArgumentException("The token was already used.", nameof(token));
 
             _advisorLock.EnterWriteLock();
 
@@ -778,7 +801,11 @@ namespace SS.Core
                     return false;
                 }
 
-                tAdvisorData.RemoveAndRecombine(concreteToken.Instance, Parent);
+                if (!tAdvisorData.RemoveAndRecombine(concreteToken.Instance, Parent))
+                {
+                    return false;
+                }
+
                 concreteToken.Deactivate();
 
                 if (tAdvisorData.Registered.IsEmpty)
