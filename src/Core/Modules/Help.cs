@@ -90,6 +90,10 @@ namespace SS.Core.Modules
                 where assemblyProductAttribute != null && !assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)
                 from type in assembly.GetTypes()
                 let typeAttributes = type.GetCustomAttributes<ConfigHelpAttribute>()
+                let constructorAttributes =
+                    from constructor in type.GetConstructors()
+                    from attr in constructor.GetCustomAttributes<ConfigHelpAttribute>()
+                    select attr
                 let methodAttributes =
                     from method in type.GetRuntimeMethods()
                     from attr in method.GetCustomAttributes<ConfigHelpAttribute>()
@@ -102,7 +106,7 @@ namespace SS.Core.Modules
                     from property in type.GetRuntimeProperties()
                     from attr in property.GetCustomAttributes<ConfigHelpAttribute>()
                     select attr
-                let allAttributes = typeAttributes.Concat(methodAttributes).Concat(fieldAttributes).Concat(propertyAttributes)
+                let allAttributes = typeAttributes.Concat(constructorAttributes).Concat(methodAttributes).Concat(fieldAttributes).Concat(propertyAttributes)
                 from attr in allAttributes
                 let moduleType = GetModuleType(type)
                 select (attr, moduleType?.FullName);

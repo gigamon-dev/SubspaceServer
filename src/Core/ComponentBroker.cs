@@ -21,9 +21,24 @@ namespace SS.Core
 
     /// <summary>
     /// Identifies an interface registration.
-    /// Returned when registering an interface and used to unregister.
     /// </summary>
+    /// <remarks>
+    /// One is returned upon registering an interface, which can be used unregister the interface.
+    /// </remarks>
+    /// <typeparam name="T">The <see cref="IComponentInterface"/> type that the registration is for..</typeparam>
     public abstract class InterfaceRegistrationToken<T> where T : IComponentInterface
+    {
+    }
+
+    /// <summary>
+    /// Identifies an advisor registration.
+    /// </summary>
+    /// <remarks>
+    /// One is returned upon registering an advisor, which can be used to unregister the advisor.
+    /// A token only allows for a single successful use.
+    /// </remarks>
+    /// <typeparam name="T">The <see cref="IComponentAdvisor"/> type that the registration is for.</typeparam>
+    public abstract class AdvisorRegistrationToken<T> where T : IComponentAdvisor
     {
     }
 
@@ -599,6 +614,23 @@ namespace SS.Core
 
         #region Advisor methods
 
+        private class ConcreteAdvisorRegistrationToken<T> : AdvisorRegistrationToken<T> where T : IComponentAdvisor
+        {
+            public readonly T Instance;
+            public bool IsActive { get; private set; }
+
+            public ConcreteAdvisorRegistrationToken(T instance)
+            {
+                Instance = instance ?? throw new ArgumentNullException(nameof(instance));
+                IsActive = true;
+            }
+
+            public void Deactivate()
+            {
+                IsActive = false;
+            }
+        }
+
         private abstract class AdvisorData
         {
             public abstract void RefreshCombined(ComponentBroker parent);
@@ -609,12 +641,12 @@ namespace SS.Core
             /// <summary>
             /// The registered advisors.
             /// </summary>
-            public ImmutableArray<TAdvisor> Registered { get; private set; }
+            public ImmutableArray<TAdvisor> Registered { get; private set; } = ImmutableArray<TAdvisor>.Empty;
 
             /// <summary>
             /// <see cref="Registered"/> combined with those from parent.
             /// </summary>
-            public ImmutableArray<TAdvisor> Advisors { get; private set; }
+            public ImmutableArray<TAdvisor> Advisors { get; private set; } = ImmutableArray<TAdvisor>.Empty;
 
             public void AddAndRecombine(TAdvisor toAdd, ComponentBroker parent)
             {
@@ -678,9 +710,13 @@ namespace SS.Core
         /// </summary>
         /// <typeparam name="TAdvisor">The type of advisor to register.</typeparam>
         /// <param name="advisor">The advisor to register.</param>
+        /// <returns>A token that can be used to unregister the advisor.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="advisor"/> was null.</exception>
-        public void RegisterAdvisor<TAdvisor>(TAdvisor advisor) where TAdvisor : IComponentAdvisor
+        public AdvisorRegistrationToken<TAdvisor> RegisterAdvisor<TAdvisor>(TAdvisor advisor) where TAdvisor : IComponentAdvisor
         {
+            if (!typeof(TAdvisor).IsInterface)
+                throw new Exception("The type parameter must be an interface.");
+
             if (advisor == null)
                 throw new ArgumentNullException(nameof(advisor));
 
@@ -692,6 +728,7 @@ namespace SS.Core
                     || advisorData is not AdvisorData<TAdvisor> tAdvisorData)
                 {
                     tAdvisorData = new AdvisorData<TAdvisor>();
+                    _advisorDictionary.Add(typeof(TAdvisor), tAdvisorData);
                 }
 
                 tAdvisorData.AddAndRecombine(advisor, Parent);
@@ -702,30 +739,47 @@ namespace SS.Core
             }
 
             AdvisorChanged?.Invoke(typeof(TAdvisor));
+
+            return new ConcreteAdvisorRegistrationToken<TAdvisor>(advisor);
         }
 
         /// <summary>
         /// Unregisters an advisor.
         /// </summary>
         /// <typeparam name="TAdvisor">The type of advisor to unregister.</typeparam>
-        /// <param name="advisor">The advisor to unregister.</param>
+        /// <param name="token">Token of the advisor to unregister.</param>
+        /// <returns>True if the advisor was unregistered. Otherwise, false.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="advisor"/> was null.</exception>
-        public void UnregisterAdvisor<TAdvisor>(TAdvisor advisor) where TAdvisor : IComponentAdvisor
+        public bool UnregisterAdvisor<TAdvisor>(ref AdvisorRegistrationToken<TAdvisor> token) where TAdvisor : IComponentAdvisor
         {
-            if (advisor == null)
-                throw new ArgumentNullException(nameof(advisor));
+            if (!typeof(TAdvisor).IsInterface)
+                throw new Exception("The type parameter must be an interface.");
+
+            if (token == null)
+                throw new ArgumentNullException(nameof(token));
+
+            if (token is not ConcreteAdvisorRegistrationToken<TAdvisor> concreteToken)
+                throw new ArgumentException("Not a valid token.", nameof(token));
+
+            if (!concreteToken.IsActive)
+                throw new ArgumentException("Token was already used.", nameof(token));
 
             _advisorLock.EnterWriteLock();
 
             try
             {
+                // double check now that we have the lock
+                if (!concreteToken.IsActive)
+                    throw new ArgumentException("Token was already used.", nameof(token));
+
                 if (!_advisorDictionary.TryGetValue(typeof(TAdvisor), out AdvisorData advisorData)
                     || advisorData is not AdvisorData<TAdvisor> tAdvisorData)
                 {
-                    return;
+                    return false;
                 }
 
-                tAdvisorData.RemoveAndRecombine(advisor, Parent);
+                tAdvisorData.RemoveAndRecombine(concreteToken.Instance, Parent);
+                concreteToken.Deactivate();
 
                 if (tAdvisorData.Registered.IsEmpty)
                 {
@@ -738,6 +792,9 @@ namespace SS.Core
             }
 
             AdvisorChanged?.Invoke(typeof(TAdvisor));
+
+            token = null;
+            return true;
         }
 
         /// <summary>
@@ -752,6 +809,9 @@ namespace SS.Core
         /// <returns>A collection of advisors. The collection is purposely thread-safe.</returns>
         public ImmutableArray<TAdvisor> GetAdvisors<TAdvisor>() where TAdvisor : IComponentAdvisor
         {
+            if (!typeof(TAdvisor).IsInterface)
+                throw new Exception("The type parameter must be an interface.");
+
             _advisorLock.EnterReadLock();
 
             try

@@ -1569,16 +1569,31 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    // TODO: IFreqManager has changed in ASSS
-                    fm.ShipChange(p, ref ship, ref freq);
+                    StringBuilder errorBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        fm.ShipChange(p, ship, errorBuilder);
+
+                        if (errorBuilder.Length > 0)
+                        {
+                            _chat.SendMessage(p, errorBuilder);
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(errorBuilder);
+                    }
                 }
                 finally
                 {
                     _broker.ReleaseInterface(ref fm);
                 }
             }
-
-            SetShipAndFreq(p, ship, freq);
+            else
+            {
+                SetShipAndFreq(p, ship, freq);
+            }
         }
 
         private void Packet_SetFreq(Player p, byte[] data, int len)
@@ -1638,8 +1653,21 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    // TODO: IFreqManager changed in ASSS
-                    fm.FreqChange(p, ref ship, ref freq);
+                    StringBuilder errorBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        fm.FreqChange(p, freq, errorBuilder);
+
+                        if (errorBuilder.Length > 0)
+                        {
+                            _chat.SendMessage(p, errorBuilder);
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(errorBuilder);
+                    }
                 }
                 finally
                 {

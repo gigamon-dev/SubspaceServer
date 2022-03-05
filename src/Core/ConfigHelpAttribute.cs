@@ -13,7 +13,7 @@ namespace SS.Core
     /// <summary>
     /// Attribute for providing help information about a config setting.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property | AttributeTargets.Method | AttributeTargets.Class, Inherited = false, AllowMultiple = true)]
+    [AttributeUsage(AttributeTargets.All, Inherited = false, AllowMultiple = true)]
     public class ConfigHelpAttribute : Attribute
     {
         public ConfigHelpAttribute(string section, string key, ConfigScope scope, Type type)

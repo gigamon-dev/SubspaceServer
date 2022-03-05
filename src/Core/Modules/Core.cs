@@ -382,7 +382,7 @@ namespace SS.Core.Modules
                             {
                                 try
                                 {
-                                    fm.InitialFreq(player, ref requestedShip, ref freq);
+                                    fm.Initial(player, ref requestedShip, ref freq);
                                 }
                                 finally
                                 {
