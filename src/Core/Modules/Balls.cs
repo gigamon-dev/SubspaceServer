@@ -571,7 +571,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Arena arena in _arenaManager.ArenaList)
+                foreach (Arena arena in _arenaManager.Arenas)
                 {
                     if (arena.Status != ArenaState.Running)
                         continue;

@@ -112,7 +112,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        Dictionary<int, Player>.ValueCollection IPlayerData.PlayerList => _playerDictionary.Values;
+        Dictionary<int, Player>.ValueCollection IPlayerData.Players => _playerDictionary.Values;
 
         Player IPlayerData.NewPlayer(ClientType clientType)
         {

@@ -139,7 +139,7 @@ namespace SS.Core.Modules
             ReadUnlock();
         }
 
-        Dictionary<string, Arena>.ValueCollection IArenaManager.ArenaList => _arenaDictionary.Values;
+        Dictionary<string, Arena>.ValueCollection IArenaManager.Arenas => _arenaDictionary.Values;
 
         void IArenaManagerInternal.SendArenaResponse(Player player)
         {
@@ -189,7 +189,7 @@ namespace SS.Core.Modules
                 _playerData.Lock();
                 try
                 {
-                    foreach (Player otherPlayer in _playerData.PlayerList)
+                    foreach (Player otherPlayer in _playerData.Players)
                     {
                         if (otherPlayer.Status == PlayerState.Playing
                             && otherPlayer.Arena == arena
@@ -361,7 +361,7 @@ namespace SS.Core.Modules
                 _playerData.WriteLock();
                 try
                 {
-                    foreach (Player player in _playerData.PlayerList)
+                    foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena == arena &&
                             !player.IsStandard &&
@@ -375,7 +375,7 @@ namespace SS.Core.Modules
                     S2C_WhoAmI whoAmI = new(0);
 
                     // first move playing players elsewhere
-                    foreach (Player player in _playerData.PlayerList)
+                    foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena == arena)
                         {
@@ -517,7 +517,7 @@ namespace SS.Core.Modules
             _playerData.Lock();
             try
             {
-                foreach (Player player in _playerData.PlayerList)
+                foreach (Player player in _playerData.Players)
                 {
                     if (player.Status == PlayerState.Playing &&
                         player.Arena == arena &&
@@ -731,7 +731,7 @@ namespace SS.Core.Modules
 
                             try
                             {
-                                foreach (Player p in _playerData.PlayerList)
+                                foreach (Player p in _playerData.Players)
                                 {
                                     if (p.Status == PlayerState.Playing
                                         && p.Type != ClientType.Fake
@@ -1058,7 +1058,7 @@ namespace SS.Core.Modules
                             _playerData.Lock();
                             try
                             {
-                                foreach (Player p in _playerData.PlayerList)
+                                foreach (Player p in _playerData.Players)
                                 {
                                     if (p.Arena == arena)
                                     {
@@ -1210,7 +1210,7 @@ namespace SS.Core.Modules
                         arenaData.Reap = arena.Status == ArenaState.Running || arena.Status == ArenaState.Closing;
                     }
 
-                    foreach (Player player in _playerData.PlayerList)
+                    foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena != null)
                         {

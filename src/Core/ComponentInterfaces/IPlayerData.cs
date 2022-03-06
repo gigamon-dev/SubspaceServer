@@ -16,7 +16,7 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/> or <see cref="WriteLock"/> and <see cref="WriteUnlock"/>.
         /// </remarks>
-        Dictionary<int, Player>.ValueCollection PlayerList { get; } // ideally this would be IEnumerable<Player>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
+        Dictionary<int, Player>.ValueCollection Players { get; } // ideally this would be IEnumerable<Player>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
 
         /// <summary>
         /// Creates a new player.

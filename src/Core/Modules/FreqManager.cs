@@ -515,7 +515,7 @@ namespace SS.Core.Modules
                 try
                 {
                     
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         if (p.IsHuman
                             && p.Status == PlayerState.Playing
@@ -738,7 +738,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         if (p.Freq == freqNum
                             && p.IsHuman

@@ -241,7 +241,7 @@ namespace SS.Core.Modules.Scoring
 
             try
             {
-                foreach (Player player in _playerData.PlayerList)
+                foreach (Player player in _playerData.Players)
                 {
                     if (player.Status == PlayerState.Playing
                         && (arena == null || player.Arena == arena)

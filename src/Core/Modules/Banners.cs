@@ -66,7 +66,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player other in _playerData.PlayerList)
+                    foreach (Player other in _playerData.Players)
                     {
                         if (other.Status == PlayerState.Playing
                             && other.Arena == arena

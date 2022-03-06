@@ -294,7 +294,7 @@ namespace SS.Core
 
             static bool HasPlayerOnFreq(IPlayerData playerData, Arena arena, int freq)
             {
-                foreach (Player p in playerData.PlayerList)
+                foreach (Player p in playerData.Players)
                 {
                     if (p.Arena == arena && p.Freq == freq)
                         return true;

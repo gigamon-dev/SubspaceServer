@@ -213,7 +213,7 @@ namespace SS.Core.Modules
 
                             try
                             {
-                                foreach (Player p in _playerData.PlayerList)
+                                foreach (Player p in _playerData.Players)
                                 {
                                     if (p.Arena == arena && p.Status == PlayerState.Playing)
                                         SendOneSettings(p, ad);

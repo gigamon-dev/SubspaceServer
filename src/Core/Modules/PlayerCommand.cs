@@ -734,7 +734,7 @@ namespace SS.Core.Modules
                 // refresh arena counts
                 _arenaManager.GetPopulationSummary(out _, out _);
 
-                foreach (Arena arena in _arenaManager.ArenaList)
+                foreach (Arena arena in _arenaManager.Arenas)
                 {
                     int nameLength = StringUtils.DefaultEncoding.GetByteCount(arena.Name) + 1; // +1 because the name in the packet is null terminated
                     int additionalLength = nameLength + 2;
@@ -1868,7 +1868,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player player in _playerData.PlayerList)
+                    foreach (Player player in _playerData.Players)
                     {
                         if (player.Status != PlayerState.Playing)
                             continue;
@@ -1937,7 +1937,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player otherPlayer in _playerData.PlayerList)
+                foreach (Player otherPlayer in _playerData.Players)
                 {
                     if (p.Status != PlayerState.Playing)
                         continue;
@@ -2190,7 +2190,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p2 in _playerData.PlayerList)
+                    foreach (Player p2 in _playerData.Players)
                     {
                         if (p2.Status == PlayerState.Playing
                             && p2.Arena == arena)

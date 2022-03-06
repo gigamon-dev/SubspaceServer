@@ -105,7 +105,7 @@ namespace SS.Core.Modules
                     _playerData.Lock();
                     try
                     {
-                        foreach (Player p in _playerData.PlayerList)
+                        foreach (Player p in _playerData.Players)
                         {
                             if (p[_pdKey] is not PlayerData pd)
                                 return;

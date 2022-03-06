@@ -937,7 +937,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player p in _playerData.PlayerList)
+                foreach (Player p in _playerData.Players)
                 {
                     if (p.Status == PlayerState.Playing &&
                         (p.Arena == arena || arena == null) &&
@@ -965,7 +965,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player p in _playerData.PlayerList)
+                foreach (Player p in _playerData.Players)
                 {
                     if (p.Status == PlayerState.Playing
                         && _capabilityManager.HasCapability(p, capability)
@@ -1266,7 +1266,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        foreach (Player i in _playerData.PlayerList)
+                        foreach (Player i in _playerData.Players)
                         {
                             if (i.Freq == freq
                                 && i.Arena == arena

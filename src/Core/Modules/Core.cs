@@ -228,7 +228,7 @@ namespace SS.Core.Modules
             try
             {
                 PlayerState ns;
-                foreach (Player player in _playerData.PlayerList)
+                foreach (Player player in _playerData.Players)
                 {
                     PlayerState oldstatus = player.Status;
                     switch (oldstatus)

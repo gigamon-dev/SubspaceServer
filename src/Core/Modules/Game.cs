@@ -564,7 +564,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player i in _playerData.PlayerList)
+                foreach (Player i in _playerData.Players)
                 {
                     if (p == null || p[_pdkey] is not PlayerData iData)
                         continue;
@@ -864,7 +864,7 @@ namespace SS.Core.Modules
                     _playerData.Lock();
                     try
                     {
-                        foreach (Player i in _playerData.PlayerList)
+                        foreach (Player i in _playerData.Players)
                         {
                             if (i[_pdkey] is not PlayerData idata)
                                 continue;
@@ -910,7 +910,7 @@ namespace SS.Core.Modules
                     _playerData.Lock();
                     try
                     {
-                        foreach (Player i in _playerData.PlayerList)
+                        foreach (Player i in _playerData.Players)
                         {
                             if (i[_pdkey] is not PlayerData idata)
                                 continue;
@@ -1248,7 +1248,7 @@ namespace SS.Core.Modules
                         DoSpawnCallback(p, SpawnCallback.SpawnReason.AfterDeath);
                     }
 
-                    foreach (Player i in _playerData.PlayerList)
+                    foreach (Player i in _playerData.Players)
                     {
                         if (i[_pdkey] is not PlayerData idata)
                             continue;
@@ -2247,7 +2247,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player playerToCheck in _playerData.PlayerList)
+                    foreach (Player playerToCheck in _playerData.Players)
                     {
                         if (playerToCheck[_pdkey] is not PlayerData pd)
                             continue;

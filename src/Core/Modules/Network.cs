@@ -1146,7 +1146,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         if (p.Status >= PlayerState.Connected
                             && p.Status < PlayerState.TimeWait
@@ -1181,7 +1181,7 @@ namespace SS.Core.Modules
                 DateTime now = DateTime.UtcNow;
                 try
                 {
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         if (p.Status >= PlayerState.Connected
                             && IsOurs(p))
@@ -1365,7 +1365,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player p in _playerData.PlayerList)
+                foreach (Player p in _playerData.Players)
                 {
                     if (!IsOurs(p) || p.Status >= PlayerState.TimeWait)
                         continue;
@@ -2282,7 +2282,7 @@ namespace SS.Core.Modules
                             _pingData.Global.Playing = (uint)playing;
 
                             // arenas that are associated with ListenData
-                            foreach (Arena arena in aman.ArenaList)
+                            foreach (Arena arena in aman.Arenas)
                             {
                                 if (_pingData.ConnectAsPopulationStats.TryGetValue(arena.BaseName, out PopulationStats stats))
                                 {
@@ -3343,7 +3343,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player player in _playerData.PlayerList)
+                foreach (Player player in _playerData.Players)
                 {
                     if (IsOurs(player))
                     {
@@ -3608,7 +3608,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         if (p.Status == PlayerState.Playing
                             && (p.Arena == arena || arena == null)

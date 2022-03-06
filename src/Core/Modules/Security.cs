@@ -207,7 +207,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Arena arena in arenaManager.ArenaList)
+                foreach (Arena arena in arenaManager.Arenas)
                 {
                     if (arena[adKey] is not ArenaData ad)
                         continue;
@@ -385,7 +385,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p in playerData.PlayerList)
+                    foreach (Player p in playerData.Players)
                     {
                         if (p[pdKey] is not PlayerData pd)
                             continue;
@@ -436,7 +436,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p in playerData.PlayerList)
+                    foreach (Player p in playerData.Players)
                     {
                         if (p[pdKey] is not PlayerData pd)
                             continue;

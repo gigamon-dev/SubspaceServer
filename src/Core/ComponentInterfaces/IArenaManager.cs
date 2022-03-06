@@ -24,7 +24,7 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.
         /// </remarks>
-        Dictionary<string, Arena>.ValueCollection ArenaList { get; } // ideally this would be IEnumerable<Arena>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
+        Dictionary<string, Arena>.ValueCollection Arenas { get; } // ideally this would be IEnumerable<Arena>, but exposing the underlying type allows the compiler to use the enumerable struct rather than box it
 
         /// <summary>
         /// Tells the player that he's leaving an arena.

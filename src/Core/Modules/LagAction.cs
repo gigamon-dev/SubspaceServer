@@ -193,7 +193,7 @@ namespace SS.Core.Modules
                 {
                     DateTime? lastChecked = null;
 
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         if (p.Status == PlayerState.Playing
                             && p.IsStandard
@@ -212,7 +212,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    playerCount = _playerData.PlayerList.Count;
+                    playerCount = _playerData.Players.Count;
                 }
                 finally
                 {

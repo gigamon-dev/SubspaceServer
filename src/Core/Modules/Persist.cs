@@ -413,7 +413,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player p in _playerData.PlayerList)
+                    foreach (Player p in _playerData.Players)
                     {
                         Arena arena = p.Arena;
 
@@ -468,7 +468,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        foreach (Arena arena in _arenaManager.ArenaList)
+                        foreach (Arena arena in _arenaManager.Arenas)
                         {
                             if (string.Equals(GetArenaGroup(arena, interval), arenaGroup, StringComparison.OrdinalIgnoreCase))
                             {
@@ -529,7 +529,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Player player in _playerData.PlayerList)
+                    foreach (Player player in _playerData.Players)
                     {
                         if (player.Status == PlayerState.Playing)
                         {
@@ -551,7 +551,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Arena arena in _arenaManager.ArenaList)
+                    foreach (Arena arena in _arenaManager.Arenas)
                     {
                         if (arena.Status == ArenaState.Running)
                         {

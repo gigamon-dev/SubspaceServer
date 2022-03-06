@@ -993,7 +993,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Player p in _playerData.PlayerList)
+                foreach (Player p in _playerData.Players)
                 {
                     if (p[_pdKey] is PlayerData pd)
                     {
@@ -1195,7 +1195,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        foreach (Player p in _playerData.PlayerList)
+                        foreach (Player p in _playerData.Players)
                             if (MemoryExtensions.Equals(p.Squad, recipient, StringComparison.OrdinalIgnoreCase))
                                 set.Add(p);
                     }
