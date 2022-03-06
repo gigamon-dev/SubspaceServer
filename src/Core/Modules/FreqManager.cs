@@ -30,7 +30,7 @@ namespace SS.Core.Modules
         private int _adKey;
         private int _pdKey;
 
-        private ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);
+        private readonly ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);
 
         #region Module members
 
@@ -517,7 +517,8 @@ namespace SS.Core.Modules
                     
                     foreach (Player p in _playerData.Players)
                     {
-                        if (p.IsHuman
+                        if (p.Arena == arena
+                            && p.IsHuman
                             && p.Status == PlayerState.Playing
                             && p.Ship != ShipType.Spec)
                         {
@@ -684,11 +685,11 @@ namespace SS.Core.Modules
                         freq = CreateFreq(arena, newFreqNum);
                         if (freq == null)
                             return;
-
-                        // Add player to freq.
-                        freq.Players.Add(p);
-                        pd.Freq = freq;
                     }
+
+                    // Add player to freq.
+                    freq.Players.Add(p);
+                    pd.Freq = freq;
                 }
             }
             finally
@@ -740,7 +741,8 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in _playerData.Players)
                     {
-                        if (p.Freq == freqNum
+                        if (p.Arena == arena
+                            && p.Freq == freqNum
                             && p.IsHuman
                             && p.Status == PlayerState.Playing
                             && (p.Ship != ShipType.Spec || ad.Config.SpectatorsCountForTeamSize))
@@ -1012,6 +1014,8 @@ namespace SS.Core.Modules
                 Description = "The number of teams that the freq manager will require to exist.")]
             [ConfigHelp("Team", "RememberedTeams", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "The number of teams that the freq manager will keep in memory. Must be at least as high as RequiredTeams.")]
+            [ConfigHelp("Team", "PrivFreqStart", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+                Description = "Freqs above this value are considered private freqs.")]
             [ConfigHelp("Team", "BalancedAgainstStart", ConfigScope.Arena, typeof(int), DefaultValue = "1",
                 Description = "Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be" +
                 "checked for balance even when players are not changing to or from" +
@@ -1026,14 +1030,12 @@ namespace SS.Core.Modules
                 Description = "If players entering the arena are always assigned to spectator mode.")]
             [ConfigHelp("Team", "MaxPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "100",
                 Description = "This is the most players that will be allowed to play in the arena at once. Zero means no limit.")]
-            [ConfigHelp("Team", "MaxPerTeam", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+            [ConfigHelp("Team", "MaxPerTeam", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
                 Description = "The maximum number of players on a public freq. Zero means these teams are not accessible.")]
-            [ConfigHelp("Team", "MaxPerPrivateTeam", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+            [ConfigHelp("Team", "MaxPerPrivateTeam", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
                 Description = "The maximum number of players on a private freq. Zero means these teams are not accessible.")]
-            [ConfigHelp("Team", "IncludeSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "100",
+            [ConfigHelp("Team", "IncludeSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "Whether to include spectators when enforcing maximum freq sizes.")]
-            [ConfigHelp("Team", "MaxPerPrivateTeam", ConfigScope.Arena, typeof(int), DefaultValue = "100",
-                Description = "The maximum number of players on a private freq. Zero means these teams are not accessible.")]
             [ConfigHelp("Team", "MaxXres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "Maximum screen width allowed in the arena. Zero means no limit.")]
             [ConfigHelp("Team", "MaxYres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
