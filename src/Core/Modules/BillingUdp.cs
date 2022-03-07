@@ -42,7 +42,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
         private InterfaceRegistrationToken<IBilling> _iBillingToken;
 
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         private TimeSpan _retryTimeSpan;
         private int _pendingAuths;

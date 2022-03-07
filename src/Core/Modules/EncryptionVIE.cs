@@ -16,7 +16,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IEncrypt> _iEncryptToken;
         private InterfaceRegistrationToken<IClientEncrypt> _iClientEncryptToken;
 
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         #region Module methods
 

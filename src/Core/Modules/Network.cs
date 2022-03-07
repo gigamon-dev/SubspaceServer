@@ -636,7 +636,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key to ConnData
         /// </summary>
-        private int _connKey;
+        private PlayerDataKey _connKey;
 
         private readonly ConcurrentDictionary<EndPoint, Player> _clienthash = new();
 

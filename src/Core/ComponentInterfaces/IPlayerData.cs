@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.ObjectPool;
+using System;
 using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
@@ -69,14 +70,23 @@ namespace SS.Core.ComponentInterfaces
         /// Allocates a slot for per-player data.
         /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Player"/> object.
         /// </summary>
-        /// <typeparam name="T">The type to store in the slot.</typeparam>
-        /// <returns>A key that can be used to access the data using <see cref="Player.this(int)"/>.</returns>
-        int AllocatePlayerData<T>() where T : class, new();
+        /// <typeparam name="T">The type of data to store in the slot.</typeparam>
+        /// <returns>A key that can be used to access the data using <see cref="Player.this"/>.</returns>
+        PlayerDataKey AllocatePlayerData<T>() where T : class, new();
+
+        /// <summary>
+        /// Allocates a slot for per-player data.
+        /// </summary>
+        /// <typeparam name="T">The type of data to store in the slot.</typeparam>
+        /// <param name="policy">The policy to use</param>
+        /// <returns>A key that can be used to access the data using <see cref="Player.this"/>.</returns>
+        /// <exception cref="ArgumentNullException">The policy was <see langword="null"/>.</exception>
+        PlayerDataKey AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class;
 
         /// <summary>
         /// Frees a per-player data slot.
         /// </summary>
         /// <param name="key">The key from <see cref="AllocatePlayerData{T}"/>.</param>
-        void FreePlayerData(int key);
+        void FreePlayerData(PlayerDataKey key);
     }
 }

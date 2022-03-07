@@ -28,7 +28,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IFreqBalancer> _iFreqBalancerRegistrationToken;
 
         private int _adKey;
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         private readonly ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);
 
@@ -340,7 +340,7 @@ namespace SS.Core.Modules
 
         int IFreqBalancer.GetMaximumDifference(Arena arena, short freq1, short freq2)
         {
-            if (arena[_pdKey] is not ArenaData ad)
+            if (arena[_adKey] is not ArenaData ad)
                 return int.MaxValue;
 
             if (ad.Config.DefaultBalancer_forceEvenTeams)

@@ -27,7 +27,7 @@ namespace SS.Core.Modules.Scoring
         private InterfaceRegistrationToken<IAllPlayerStats> _iAllPlayerStatsToken;
         private InterfaceRegistrationToken<IScoreStats> _iScoreStatsToken;
 
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         private readonly HashSet<PersistInterval> _intervals = new()
         {

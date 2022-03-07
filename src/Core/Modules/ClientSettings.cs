@@ -24,7 +24,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IClientSettings> _iClientSettingsToken;
 
         private int _adkey;
-        private int _pdkey;
+        private PlayerDataKey _pdkey;
 
         private readonly object _setMtx = new();
 

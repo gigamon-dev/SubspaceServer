@@ -32,7 +32,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
 
         private int _adKey;
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         private TimeSpan _checkInterval;
         private Thread _checkThread;

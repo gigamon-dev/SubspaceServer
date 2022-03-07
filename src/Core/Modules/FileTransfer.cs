@@ -20,7 +20,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
         /// </summary>
-        private int _udKey;
+        private PlayerDataKey _udKey;
 
         #region IModule Members
 

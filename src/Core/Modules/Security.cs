@@ -56,7 +56,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Player data key for accessing <see cref="PlayerData"/>.
         /// </summary>
-        private int pdKey;
+        private PlayerDataKey pdKey;
 
         /// <summary>
         /// The expected length of the scrty data.

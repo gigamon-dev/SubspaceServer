@@ -207,7 +207,35 @@ namespace SS.Core
         TimeWait
     };
 
+    /// <summary>
+    /// A key for accessing per-player data.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A per-player data slot is allocated using <see cref="IPlayerData.AllocatePlayerData{T}"/>, which returns a <see cref="PlayerDataKey"/>.
+    /// The data can then be accessed by using the <see cref="Player.this"/> indexer on any of the <see cref="Player"/> objects.
+    /// When the data slot is no longer required, it can be freed using <see cref="IPlayerData.FreePlayerData(PlayerDataKey)"/>.
+    /// </para>
+    /// <para>
+    /// Modules normally allocate a slot when they are loaded and free the slot when they are unloaded.
+    /// </para>
+    /// </remarks>
+    public readonly struct PlayerDataKey
+    {
+        internal readonly int Id;
+
+        /// <summary>
+        /// Internal constructor, only the <see cref="PlayerData"/> module is meant to create it.
+        /// </summary>
+        /// <param name="key"></param>
+        internal PlayerDataKey(int id)
+        {
+            Id = id;
+        }
+    }
+
     // TODO: Investigate thread safety. Possibly the attempt is at locking all player data in the PlayerData module? Though there are places that dont?
+    [DebuggerDisplay("[{Name}] [pid={Id}] ({Type})")]
     public class Player : IPlayerTarget
     {
         private S2C_PlayerData _packet;
@@ -429,7 +457,21 @@ namespace SS.Core
             /// time of last position packet
             /// </summary>
             public ServerTick Time { get; internal set; }
-        };
+
+            internal void Initialize()
+            {
+                X = 0;
+                Y = 0;
+                XSpeed = 0;
+                YSpeed = 0;
+                Rotation = 0;
+                IsLastRotationClockwise = false;
+                Bounty = 0;
+                Status = 0;
+                Energy = 0;
+                Time = 0;
+            }
+        }
 
         /// <summary>
         /// Recent information about the player's position.
@@ -592,6 +634,11 @@ namespace SS.Core
                 get { return flagVector[BitVector32Masks.GetMask(12)]; }
                 internal set { flagVector[BitVector32Masks.GetMask(12)] = value; }
             }
+
+            internal void Initialize()
+            {
+                flagVector = new(0);
+            }
         }
 
         /// <summary>
@@ -609,8 +656,36 @@ namespace SS.Core
             Id = id;
             Manager = manager ?? throw new ArgumentNullException(nameof(manager));
 
-            // TODO: maybe change pid to short?  asss uses int all over, wonder why...
-            _packet = new() { Type = (byte)S2CPacketType.PlayerEntering, PlayerId = (short)id };
+            Initialize();
+        }
+
+        internal void Initialize()
+        {
+            _packet = new() { Type = (byte)S2CPacketType.PlayerEntering, PlayerId = (short)Id };
+            Ship = ShipType.Spec;
+            Freq = -1;
+            Attached = -1;
+            Type = ClientType.Unknown;
+            Status = PlayerState.Uninitialized;
+            WhenLoggedIn = PlayerState.Uninitialized;
+            Arena = null;
+            NewArena = null;
+            _name = null;
+            Squad = null;
+            Xres = 0;
+            Yres = 0;
+            ConnectTime = DateTime.UtcNow;
+            ConnectAs = null;
+            Position.Initialize();
+            MacId = 0;
+            PermId = 0;
+            IpAddress = IPAddress.None;
+            ConnectAs = null;
+            ClientName = null;
+            LastDeath = 0;
+            NextRespawn = 0;
+            Flags.Initialize();
+            _extraData.Clear();
         }
 
         /// <summary>
@@ -643,12 +718,24 @@ namespace SS.Core
         /// </summary>
         /// <param name="key">Key from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
         /// <returns>The data or <see langword="null"/> if not found.</returns>
-        public object this[int key]
+        public object this[PlayerDataKey key]
         {
-            get => _extraData.TryGetValue(key, out object obj) ? obj : null;
+            get => _extraData.TryGetValue(key.Id, out object obj) ? obj : null;
 
             // Only to be used by the PlayerData module.
-            internal set => _extraData[key] = value;
+            internal set => _extraData[key.Id] = value;
+        }
+
+        public bool TryGetExtraData<T>(PlayerDataKey key, out T data) where T : class
+        {
+            if (!_extraData.TryGetValue(key.Id, out object obj))
+            {
+                data = default;
+                return false;
+            }
+
+            data = obj as T;
+            return data != null;            
         }
 
         /// <summary>
@@ -656,32 +743,9 @@ namespace SS.Core
         /// </summary>
         /// <remarks>Only to be used by the <see cref="PlayerData"/> module.</remarks>
         /// <param name="key">The key, from <see cref="IPlayerData.AllocatePlayerData{T}"/>, of the per-player data to remove.</param>
-        internal void RemoveExtraData(int key)
+        internal bool TryRemoveExtraData(PlayerDataKey key, out object data)
         {
-            if (_extraData.TryRemove(key, out object data)
-                && data is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-        }
-
-        /// <summary>
-        /// Removes all of the player's per-player data.
-        /// </summary>
-        /// <remarks>
-        /// Only to be used by the <see cref="PlayerData"/> module.
-        /// </remarks>
-        internal void RemoveAllExtraData()
-        {
-            foreach (object ppd in _extraData.Values)
-            {
-                if (ppd is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
-            }
-
-            _extraData.Clear();
+            return _extraData.TryRemove(key.Id, out data);
         }
 
         #endregion

@@ -18,7 +18,7 @@ namespace SS.Core.Modules
         private INetwork _network;
         private IPlayerData _playerData;
 
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         #region Module members
 

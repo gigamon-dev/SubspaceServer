@@ -26,7 +26,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key
         /// </summary>
-        private int _lagkey;
+        private PlayerDataKey _lagkey;
 
         #region IModule Members
 

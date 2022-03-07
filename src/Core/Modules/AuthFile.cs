@@ -24,7 +24,7 @@ namespace SS.Core.Modules
         private HashEncoding hashEncoding;
         private readonly object hashLock = new object();
         private bool allowUnknown;
-        private int pdKey;
+        private PlayerDataKey pdKey;
 
         private const string ConfigFileName = "passwd.conf";
 

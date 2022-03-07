@@ -109,7 +109,7 @@ namespace SS.Core.Modules
         private Config _cfg;
 
         private int _adKey;
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         private class ArenaData
         {

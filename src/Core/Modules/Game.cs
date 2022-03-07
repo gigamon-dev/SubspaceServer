@@ -39,7 +39,7 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IGame> _iGameToken;
 
-        private int _pdkey;
+        private PlayerDataKey _pdkey;
         private int _adkey;
 
         private DelegatePersistentData<Player> _persistRegistration;

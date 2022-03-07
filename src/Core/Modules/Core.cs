@@ -38,7 +38,7 @@ namespace SS.Core.Modules
 
         private Pool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
 
-        private int _pdkey;
+        private PlayerDataKey _pdkey;
 
         private const ushort ClientVersion_VIE = 134;
         private const ushort ClientVersion_Cont = 40;

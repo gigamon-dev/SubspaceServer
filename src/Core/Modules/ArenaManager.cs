@@ -81,7 +81,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key (SpawnLoc) 
         /// </summary>
-        private int _spawnkey;
+        private PlayerDataKey _spawnkey;
 
         private class ArenaData
         {
@@ -289,7 +289,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManager.LeaveArena(Player player)
+        void IArenaManagerInternal.LeaveArena(Player player)
         {
             LeaveArena(player);
         }
@@ -1286,8 +1286,7 @@ namespace SS.Core.Modules
 
             _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
 
-            IArenaManager amc = this;
-            _adkey = amc.AllocateArenaData<ArenaData>();
+            _adkey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
 
             _network.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
             _network.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
@@ -1351,9 +1350,7 @@ namespace SS.Core.Modules
 
             _playerData.FreePlayerData(_spawnkey);
 
-            IArenaManager amc = this;
-            amc.FreeArenaData(_spawnkey);
-            amc.FreeArenaData(_adkey);
+            ((IArenaManager)this).FreeArenaData(_adkey);
 
             _arenaDictionary.Clear();
 

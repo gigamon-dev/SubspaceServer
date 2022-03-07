@@ -1,3 +1,4 @@
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
@@ -19,49 +20,25 @@ namespace SS.Core.Modules
 
         private readonly ReaderWriterLockSlim _globalPlayerDataRwLock = new(LockRecursionPolicy.SupportsRecursion);
 
-        private int _nextPid = 0;
+        private int _nextPlayerId = 0;
 
         /// <summary>
         /// Dictionary to look up players by Id.
-        /// Doubles as the list of players that can be enumerated on (PlayerList).
+        /// Doubles as the list of players that can be enumerated on.
         /// </summary>
         private readonly Dictionary<int, Player> _playerDictionary = new(256);
 
-        private class FreePlayerInfo
-        {
-            /// <summary>
-            /// The time the associated player object (predominantly its Id) will be available.
-            /// </summary>
-            public DateTime AvailableTimestamp;
-
-            /// <summary>
-            /// The player object
-            /// </summary>
-            public Player Player;
-
-            public FreePlayerInfo(Player player)
-            {
-                Player = player;
-                SetAvailableTimestampFromNow();
-            }
-
-            public void SetAvailableTimestampFromNow()
-            {
-                AvailableTimestamp = DateTime.UtcNow + PlayerReuseDelay;
-            }
-        }
-
         /// <summary>
         /// Queue of unused player objects and when each becomes available again.
-        /// This is used to keep track of the PlayerIDs (and associated <see cref="Player"/> object) can be reused and when.
+        /// This is used to keep track of the PlayerIds (and associated <see cref="Player"/> object) can be reused and when.
         /// </summary>
         private readonly Queue<FreePlayerInfo> _freePlayersQueue = new(256);
 
         // for managing per player data
-        private readonly ReaderWriterLockSlim _perPlayerDataLock = new(LockRecursionPolicy.NoRecursion);
-        private readonly SortedList<int, Type> _perPlayerDataKeys = new();
+        private readonly SortedList<int, ExtraDataFactory> _perPlayerDataRegistrations = new();
+        private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = 256 };
 
-        #region IModule Members
+        #region Module Members
 
         public bool Load(ComponentBroker broker)
         {
@@ -132,7 +109,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // no available player objects, create a new one
-                    player = new Player(_nextPid++, this);
+                    player = new Player(_nextPlayerId++, this);
                 }
 
                 // set player info
@@ -146,18 +123,9 @@ namespace SS.Core.Modules
                 player.ConnectAs = null;
 
                 // initialize the player's per player data
-                _perPlayerDataLock.EnterReadLock();
-
-                try
+                foreach ((int keyId, ExtraDataFactory info) in _perPlayerDataRegistrations)
                 {
-                    foreach (KeyValuePair<int, Type> kvp in _perPlayerDataKeys)
-                    {
-                        player[kvp.Key] = Activator.CreateInstance(kvp.Value);
-                    }
-                }
-                finally
-                {
-                    _perPlayerDataLock.ExitReadLock();
+                    player[new PlayerDataKey(keyId)] = info.Get();
                 }
 
                 _playerDictionary.Add(player.Id, player);
@@ -174,6 +142,9 @@ namespace SS.Core.Modules
 
         void IPlayerData.FreePlayer(Player player)
         {
+            if (player == null)
+                return;
+
             NewPlayerCallback.Fire(Broker, player, false);
 
             WriteLock();
@@ -183,7 +154,15 @@ namespace SS.Core.Modules
                 // remove the player from the dictionary
                 _playerDictionary.Remove(player.Id);
 
-                player.RemoveAllExtraData();
+                foreach ((int keyId, ExtraDataFactory info) in _perPlayerDataRegistrations)
+                {
+                    if (player.TryRemoveExtraData(new PlayerDataKey(keyId), out object data))
+                    {
+                        info.Return(data);
+                    }
+                }
+
+                player.Initialize();
 
                 _freePlayersQueue.Enqueue(new FreePlayerInfo(player));
             }
@@ -205,7 +184,7 @@ namespace SS.Core.Modules
                 // this will set state to PlayerState.LeavingArena, if it was anywhere above PlayerState.LoggedIn
                 if (player.Arena != null)
                 {
-                    IArenaManager aman = Broker.GetInterface<IArenaManager>();
+                    IArenaManagerInternal aman = Broker.GetInterface<IArenaManagerInternal>();
                     if (aman != null)
                     {
                         try
@@ -254,7 +233,7 @@ namespace SS.Core.Modules
                 {
                     if (name.Equals(player.Name, StringComparison.OrdinalIgnoreCase)
                         // this is a sort of hackish way of not returning players who are on their way out.
-                        && player.Status < PlayerState.LeavingZone 
+                        && player.Status < PlayerState.LeavingZone
                         && player.WhenLoggedIn < PlayerState.LeavingZone)
                     {
                         return player;
@@ -325,71 +304,124 @@ namespace SS.Core.Modules
             }
         }
 
-        int IPlayerData.AllocatePlayerData<T>()
+        PlayerDataKey IPlayerData.AllocatePlayerData<T>()
         {
-            int key = 0;
+            // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
+            return (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
+                ? AllocatePlayerData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
+                : AllocatePlayerData(() => new NonPooledExtraDataFactory<T>());
+        }
 
-            _perPlayerDataLock.EnterWriteLock();
+        PlayerDataKey IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
+        {
+            if (policy == null)
+                throw new ArgumentNullException(nameof(policy));
+
+            // It's the policy's job to clear/reset an object when it's returned to the pool.
+            return AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
+        }
+
+        private PlayerDataKey AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        {
+            if (createExtraDataFactoryFunc == null)
+                throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
+
+            WriteLock();
 
             try
             {
-                // find next available key
-                for (key = 0; key < _perPlayerDataKeys.Keys.Count; key++)
+                //
+                // Register
+                //
+
+                int keyId;
+
+                // find next available
+                for (keyId = 0; keyId < _perPlayerDataRegistrations.Keys.Count; keyId++)
                 {
-                    if (_perPlayerDataKeys.ContainsKey(key) == false)
+                    if (_perPlayerDataRegistrations.ContainsKey(keyId) == false)
                         break;
                 }
 
-                _perPlayerDataKeys[key] = typeof(T);
-            }
-            finally
-            {
-                _perPlayerDataLock.ExitWriteLock();
-            }
+                PlayerDataKey key = new(keyId);
+                ExtraDataFactory factory = createExtraDataFactoryFunc();
+                _perPlayerDataRegistrations[keyId] = factory;
 
-            WriteLock();
+                //
+                // Add the data to each player
+                //
 
-            try
-            {
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    player[key] = new T();
+                    player[key] = factory.Get();
                 }
+
+                return key;
             }
             finally
             {
                 WriteUnlock();
             }
-
-            return key;
         }
 
-        void IPlayerData.FreePlayerData(int key)
+        void IPlayerData.FreePlayerData(PlayerDataKey key)
         {
             WriteLock();
 
             try
             {
+                //
+                // Unregister
+                //
+
+                if (!_perPlayerDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
+                    return;
+
+                //
+                // Remove the data from every player
+                //
+
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    player.RemoveExtraData(key);
+                    if (player.TryRemoveExtraData(key, out object data))
+                    {
+                        factory.Return(data);
+                    }
                 }
+
+                factory.Dispose();
             }
             finally
             {
                 WriteUnlock();
             }
+        }
 
-            _perPlayerDataLock.EnterWriteLock();
+        #endregion
 
-            try
+        #region Helper Types
+
+        private class FreePlayerInfo
+        {
+            /// <summary>
+            /// The time the associated player object (predominantly its Id) will be available.
+            /// </summary>
+            public DateTime AvailableTimestamp;
+
+            /// <summary>
+            /// The player object
+            /// </summary>
+            public Player Player;
+
+            public FreePlayerInfo(Player player)
             {
-                // remove the key from 
-                _perPlayerDataKeys.Remove(key);
+                Player = player;
+                SetAvailableTimestampFromNow();
             }
-            finally
+
+            public void SetAvailableTimestampFromNow()
             {
-                _perPlayerDataLock.ExitWriteLock();
+                AvailableTimestamp = DateTime.UtcNow + PlayerReuseDelay;
             }
         }
 

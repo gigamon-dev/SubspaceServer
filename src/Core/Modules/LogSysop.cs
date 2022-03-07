@@ -35,7 +35,7 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
 
-        private int _pdKey;
+        private PlayerDataKey _pdKey;
 
         private int MaxLast = 640; // TODO: make this a config setting?
         private static readonly int MaxLine = ChatPacket.MaxMessageChars;

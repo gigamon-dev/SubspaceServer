@@ -77,7 +77,7 @@ namespace SS.Core.Modules
             public GroupSource Source;
         }
 
-        private int _pdkey;
+        private PlayerDataKey _pdkey;
 
         private ConfigHandle _groupDefConfHandle;
         private ConfigHandle _staffConfHandle;
