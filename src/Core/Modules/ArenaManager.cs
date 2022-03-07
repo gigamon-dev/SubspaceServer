@@ -1,3 +1,4 @@
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -21,7 +22,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// the read-write lock for the global arena list
         /// </summary>
-        private readonly ReaderWriterLock _arenaLock = new();
+        private readonly ReaderWriterLockSlim _arenaLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly Dictionary<string, Arena> _arenaDictionary = new(StringComparer.OrdinalIgnoreCase);
 
@@ -51,8 +52,8 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IArenaManagerInternal> _iArenaManagerInternalToken;
 
         // for managing per arena data
-        private readonly ReaderWriterLock _perArenaDataLock = new();
-        private readonly SortedList<int, Type> _perArenaDataKeys = new();
+        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
+        private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = 32 };
 
         // population
         private int _playersTotal;
@@ -60,7 +61,6 @@ namespace SS.Core.Modules
         private DateTime? _populationLastRefreshed;
         private readonly TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
         private readonly object _populationRefreshLock = new();
-
 
         private class SpawnLoc
         {
@@ -101,28 +101,28 @@ namespace SS.Core.Modules
         /// <summary>
         /// per arena data key (ArenaData) 
         /// </summary>
-        private int _adkey;
+        private ArenaDataKey _adkey;
 
         #region Locks
 
         private void ReadLock()
         {
-            _arenaLock.AcquireReaderLock(Timeout.Infinite);
+            _arenaLock.EnterReadLock();
         }
 
         private void ReadUnlock()
         {
-            _arenaLock.ReleaseReaderLock();
+            _arenaLock.ExitReadLock();
         }
 
         private void WriteLock()
         {
-            _arenaLock.AcquireWriterLock(Timeout.Infinite);
+            _arenaLock.EnterWriteLock();
         }
 
         private void WriteUnlock()
         {
-            _arenaLock.ReleaseWriterLock();
+            _arenaLock.ExitWriteLock();
         }
 
         #endregion
@@ -787,66 +787,92 @@ namespace SS.Core.Modules
             return true; // keep running
         }
 
-        int IArenaManager.AllocateArenaData<T>()
+        ArenaDataKey IArenaManager.AllocateArenaData<T>()
         {
-            int key = 0;
+            // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
+            return (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
+                ? AllocateArenaData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
+                : AllocateArenaData(() => new NonPooledExtraDataFactory<T>());
+        }
 
-            _perArenaDataLock.AcquireWriterLock(Timeout.Infinite);
+        ArenaDataKey IArenaManager.AllocateArenaData<T>(IPooledObjectPolicy<T> policy)
+        {
+            if (policy == null)
+                throw new ArgumentNullException(nameof(policy));
+
+            // It's the policy's job to clear/reset an object when it's returned to the pool.
+            return AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
+        }
+
+        private ArenaDataKey AllocateArenaData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        {
+            WriteLock();
+
             try
             {
+                //
+                // Register
+                //
+
+                int keyId = 0;
+
                 // find next available key
-                for (key = 0; key < _perArenaDataKeys.Keys.Count; key++)
+                for (keyId = 0; keyId < _extraDataRegistrations.Keys.Count; keyId++)
                 {
-                    if (_perArenaDataKeys.ContainsKey(key) == false)
+                    if (_extraDataRegistrations.Keys[keyId] != keyId)
                         break;
                 }
 
-                _perArenaDataKeys[key] = typeof(T);
-            }
-            finally
-            {
-                _perArenaDataLock.ReleaseWriterLock();
-            }
+                ArenaDataKey key = new(keyId);
+                ExtraDataFactory factory = createExtraDataFactoryFunc();
+                _extraDataRegistrations[keyId] = factory;
+            
+                //
+                // Add the data to each arena.
+                //
 
-            ReadLock();
-            try
-            {
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    arena[key] = new T();
+                    arena[key] = factory.Get();
                 }
+
+                return key;
             }
             finally
             {
-                ReadUnlock();
+                WriteUnlock();
             }
-
-            return key;
         }
 
-        void IArenaManager.FreeArenaData(int key)
+        void IArenaManager.FreeArenaData(ArenaDataKey key)
         {
-            ReadLock();
+            WriteLock();
+
             try
             {
+                //
+                // Unregister
+                //
+
+                _extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory);
+
+                //
+                // Remove the data from every arena
+                //
+
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    arena.RemoveExtraData(key);
+                    if (arena.TryRemoveExtraData(key, out object data))
+                    {
+                        factory.Return(data);
+                    }
                 }
-            }
-            finally
-            {
-                ReadUnlock();
-            }
 
-            _perArenaDataLock.AcquireWriterLock(Timeout.Infinite);
-            try
-            {
-                _perArenaDataKeys.Remove(key);
+                factory.Dispose();
             }
             finally
             {
-                _perArenaDataLock.ReleaseWriterLock();
+                WriteUnlock();
             }
         }
 
@@ -1108,18 +1134,15 @@ namespace SS.Core.Modules
                                 if (arenaData.Resurrect)
                                 {
                                     // clear all private data on recycle, so it looks to modules like it was just created.
-                                    _perArenaDataLock.AcquireReaderLock(Timeout.Infinite);
-                                    try
+                                    foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                                     {
-                                        foreach (KeyValuePair<int, Type> kvp in _perArenaDataKeys)
+                                        ArenaDataKey key = new(keyId);
+                                        if (arena.TryRemoveExtraData(key, out object data))
                                         {
-                                            arena.RemoveExtraData(kvp.Key);
-                                            arena[kvp.Key] = Activator.CreateInstance(kvp.Value);
+                                            factory.Return(data);
                                         }
-                                    }
-                                    finally
-                                    {
-                                        _perArenaDataLock.ReleaseReaderLock();
+
+                                        arena[key] = factory.Get();
                                     }
 
                                     arenaData.Resurrect = false;
@@ -1128,6 +1151,16 @@ namespace SS.Core.Modules
                                 else
                                 {
                                     _arenaDictionary.Remove(arena.Name);
+
+                                    // remove all the extra data object and return them to their factory
+                                    foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
+                                    {
+                                        ArenaDataKey key = new(keyId);
+                                        if (arena.TryRemoveExtraData(key, out object data))
+                                        {
+                                            factory.Return(data);
+                                        }
+                                    }
 
                                     // make sure that any work associated with the arena that is to run on the mainloop is complete
                                     _mainloop.WaitForMainWorkItemDrain();
@@ -1168,22 +1201,15 @@ namespace SS.Core.Modules
             Arena arena = new(Broker, name, this);
             arena.KeepAlive = permanent;
 
-            _perArenaDataLock.AcquireReaderLock(Timeout.Infinite);
-            try
-            {
-                foreach (KeyValuePair<int, Type> kvp in _perArenaDataKeys)
-                {
-                    arena[kvp.Key] = Activator.CreateInstance(kvp.Value);
-                }
-            }
-            finally
-            {
-                _perArenaDataLock.ReleaseReaderLock();
-            }
-
             WriteLock();
+
             try
             {
+                foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
+                {
+                    arena[new ArenaDataKey(keyId)] = factory.Get();
+                }
+            
                 _arenaDictionary.Add(name, arena);
             }
             finally
@@ -1310,7 +1336,7 @@ namespace SS.Core.Modules
 
         private bool MainloopTimer_DoArenaMaintenance()
         {
-            _arenaLock.AcquireWriterLock(Timeout.Infinite);
+            WriteLock();
 
             try
             {
@@ -1321,7 +1347,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _arenaLock.ReleaseWriterLock();
+                WriteUnlock();
             }
 
             return true;

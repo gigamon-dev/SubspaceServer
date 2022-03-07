@@ -51,7 +51,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Arena data key for accessing <see cref="ArenaData"/>.
         /// </summary>
-        private int adKey;
+        private ArenaDataKey adKey;
 
         /// <summary>
         /// Player data key for accessing <see cref="PlayerData"/>.

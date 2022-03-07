@@ -78,7 +78,7 @@ namespace SS.Core.ComponentInterfaces
         /// Allocates a slot for per-player data.
         /// </summary>
         /// <typeparam name="T">The type of data to store in the slot.</typeparam>
-        /// <param name="policy">The policy to use</param>
+        /// <param name="policy">The policy to use for object pooling.</param>
         /// <returns>A key that can be used to access the data using <see cref="Player.this"/>.</returns>
         /// <exception cref="ArgumentNullException">The policy was <see langword="null"/>.</exception>
         PlayerDataKey AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class;

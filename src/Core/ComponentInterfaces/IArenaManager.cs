@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Microsoft.Extensions.ObjectPool;
+using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -81,13 +82,22 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <typeparam name="T">The type to store in the slot.</typeparam>
         /// <returns>A key that can be used to access the data using <see cref="Arena.this(int)"/>.</returns>
-        int AllocateArenaData<T>() where T : class, new();
+        ArenaDataKey AllocateArenaData<T>() where T : class, new();
+
+        /// <summary>
+        /// Allocates a slot for per-arena data.
+        /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Arena"/> object.
+        /// </summary>
+        /// <typeparam name="T">The type to store in the slot.</typeparam>
+        /// <param name="policy">The policy to use for object pooling.</param>
+        /// <returns>A key that can be used to access the data using <see cref="Arena.this(int)"/>.</returns>
+        ArenaDataKey AllocateArenaData<T>(IPooledObjectPolicy<T> policy) where T : class;
 
         /// <summary>
         /// Frees a per-arena data slot.
         /// </summary>
         /// <param name="key">The key from <see cref="AllocateArenaData{T}"/>.</param>
-        void FreeArenaData(int key);
+        void FreeArenaData(ArenaDataKey key);
 
         /// <summary>
         /// Puts a "hold" on an arena, preventing it from proceeding to the

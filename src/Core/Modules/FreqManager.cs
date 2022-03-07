@@ -27,7 +27,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IFreqManager> _iFreqManagerRegistrationToken;
         private InterfaceRegistrationToken<IFreqBalancer> _iFreqBalancerRegistrationToken;
 
-        private int _adKey;
+        private ArenaDataKey _adKey;
         private PlayerDataKey _pdKey;
 
         private readonly ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);

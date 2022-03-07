@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private IPrng _prng;
         private InterfaceRegistrationToken<IClientSettings> _iClientSettingsToken;
 
-        private int _adkey;
+        private ArenaDataKey _adkey;
         private PlayerDataKey _pdkey;
 
         private readonly object _setMtx = new();

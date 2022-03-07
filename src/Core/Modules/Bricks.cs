@@ -59,7 +59,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IBrickManager> _iBrickManagerToken;
         private InterfaceRegistrationToken<IBrickHandler> _iBrickHandlerToken;
 
-        private int _adKey;
+        private ArenaDataKey _adKey;
 
         #region Module methods
 

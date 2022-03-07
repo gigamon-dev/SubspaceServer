@@ -93,6 +93,34 @@ namespace SS.Core
         PostDestroy
     };
 
+    /// <summary>
+    /// A key for accessing "extra data" per-arena.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A per-arena data slot is allocated using <see cref="IArenaManager.AllocateArenaData{T}"/>, which returns a <see cref="ArenaDataKey"/>.
+    /// The data can then be accessed by using the <see cref="Arena.this"/> indexer or <see cref="Arena.TryGetExtraData{T}(ArenaDataKey, out T)"/> on any of the <see cref="Arena"/> objects.
+    /// When the data slot is no longer required, it can be freed using <see cref="IArenaManager.FreeArenaData(ArenaDataKey)"/>.
+    /// </para>
+    /// <para>
+    /// Modules normally allocate a slot when they are loaded and free the slot when they are unloaded.
+    /// </para>
+    /// </remarks>
+    public readonly struct ArenaDataKey
+    {
+        internal readonly int Id;
+
+        /// <summary>
+        /// Internal constructor, only the <see cref="ArenaManager"/> module is meant to create it.
+        /// </summary>
+        /// <param name="key"></param>
+        internal ArenaDataKey(int id)
+        {
+            Id = id;
+        }
+    }
+
+    [DebuggerDisplay("{Name} ({Status})")]
     public class Arena : ComponentBroker, IArenaTarget
     {
         public const int DefaultSpecFreq = 8025;
@@ -200,26 +228,44 @@ namespace SS.Core
         /// </summary>
         /// <param name="key">Key from <see cref="IArenaManager.AllocateArenaData{T}"/>.</param>
         /// <returns></returns>
-        public object this[int key]
+        public object this[ArenaDataKey key]
         {
-            get => _extraData.TryGetValue(key, out object obj) ? obj : null;
+            get => _extraData.TryGetValue(key.Id, out object obj) ? obj : null;
 
             // Only to be used by the ArenaManager module.
-            internal set => _extraData[key] = value;
+            internal set => _extraData[key.Id] = value;
+        }
+
+        /// <summary>
+        /// Attempts to get extra data with the specified key.
+        /// </summary>
+        /// <typeparam name="T">The type of the data.</typeparam>
+        /// <param name="key">The key of the data to get, from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
+        /// <param name="data">The data if found and was of type <typeparamref name="T"/>. Otherwise, <see langword="null"/>.</param>
+        /// <returns>True if the data was found and was of type <typeparamref name="T"/>. Otherwise, false.</returns>
+        public bool TryGetExtraData<T>(ArenaDataKey key, out T data) where T : class
+        {
+            if (_extraData.TryGetValue(key.Id, out object obj)
+                && obj is T tData)
+            {
+                data = tData;
+                return true;
+            }
+
+            data = default;
+            return false;
         }
 
         /// <summary>
         /// Removes per-arena data for a single key.
         /// </summary>
         /// <remarks>Only to be used by the <see cref="ArenaManager"/> module.</remarks>
-        /// <param name="key">The key, from <see cref="IArenaManager.AllocateArenaData{T}"/>, of the per-arena data to remove.</param>
-        internal void RemoveExtraData(int key)
+        /// <param name="key">The key, from <see cref="IArenaManager.AllocatePlayerData{T}"/>, of the per-arena data to remove.</param>
+        /// <param name="data">The data removed, or the default value if nothing was removed.</param>
+        /// <returns><see langword="true"/> if the data was removed; otherwise <see langword="false"/>.</returns>
+        internal bool TryRemoveExtraData(ArenaDataKey key, out object data)
         {
-            if (_extraData.TryRemove(key, out object data)
-                && data is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }            
+            return _extraData.TryRemove(key.Id, out data);
         }
 
         #endregion
@@ -255,7 +301,7 @@ namespace SS.Core
 
         public void CleanupTeamTargets()
         {
-            if (_teamTargets.Count == 0)
+            if (_teamTargets.IsEmpty)
                 return;
 
             IPlayerData playerData = GetInterface<IPlayerData>();

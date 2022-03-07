@@ -28,7 +28,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
 
-        private int _dlKey;
+        private ArenaDataKey _dlKey;
 
         /// <summary>
         /// Map that's used if the configured one cannot be read.

@@ -36,7 +36,7 @@ namespace SS.Core.Modules
         private DateTime? _lastSync;
         private readonly object _lock = new();
 
-        private int _adKey;
+        private ArenaDataKey _adKey;
 
         private int _maxRecordLength;
 

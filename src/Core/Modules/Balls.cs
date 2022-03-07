@@ -36,7 +36,7 @@ namespace SS.Core.Modules
         private IPrng _prng;
         private InterfaceRegistrationToken<IBalls> _iBallsToken;
 
-        private int _adKey;
+        private ArenaDataKey _adKey;
 
         #region Module members
 

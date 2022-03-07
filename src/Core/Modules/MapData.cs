@@ -29,7 +29,7 @@ namespace SS.Core.Modules
             public readonly ReaderWriterLockSlim Lock = new();
         }
 
-        private int adKey;
+        private ArenaDataKey adKey;
 
         #region IModule Members
 

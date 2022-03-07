@@ -208,12 +208,12 @@ namespace SS.Core
     };
 
     /// <summary>
-    /// A key for accessing per-player data.
+    /// A key for accessing "extra data" per-player.
     /// </summary>
     /// <remarks>
     /// <para>
     /// A per-player data slot is allocated using <see cref="IPlayerData.AllocatePlayerData{T}"/>, which returns a <see cref="PlayerDataKey"/>.
-    /// The data can then be accessed by using the <see cref="Player.this"/> indexer on any of the <see cref="Player"/> objects.
+    /// The data can then be accessed by using the <see cref="Player.this"/> indexer or <see cref="Player.TryGetExtraData{T}(PlayerDataKey, out T)"/> on any of the <see cref="Player"/> objects.
     /// When the data slot is no longer required, it can be freed using <see cref="IPlayerData.FreePlayerData(PlayerDataKey)"/>.
     /// </para>
     /// <para>
@@ -716,8 +716,8 @@ namespace SS.Core
         /// <summary>
         /// Per Player Data
         /// </summary>
-        /// <param name="key">Key from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
-        /// <returns>The data or <see langword="null"/> if not found.</returns>
+        /// <param name="key">The key of the data to get, from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
+        /// <returns>The data if found, or <see langword="null"/> if not found.</returns>
         public object this[PlayerDataKey key]
         {
             get => _extraData.TryGetValue(key.Id, out object obj) ? obj : null;
@@ -726,16 +726,24 @@ namespace SS.Core
             internal set => _extraData[key.Id] = value;
         }
 
+        /// <summary>
+        /// Attempts to get extra data with the specified key.
+        /// </summary>
+        /// <typeparam name="T">The type of the data.</typeparam>
+        /// <param name="key">The key of the data to get, from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
+        /// <param name="data">The data if found and was of type <typeparamref name="T"/>. Otherwise, <see langword="null"/>.</param>
+        /// <returns>True if the data was found and was of type <typeparamref name="T"/>. Otherwise, false.</returns>
         public bool TryGetExtraData<T>(PlayerDataKey key, out T data) where T : class
         {
-            if (!_extraData.TryGetValue(key.Id, out object obj))
+            if (_extraData.TryGetValue(key.Id, out object obj)
+                && obj is T tData)
             {
-                data = default;
-                return false;
+                data = tData;
+                return true;
             }
 
-            data = obj as T;
-            return data != null;            
+            data = default;
+            return false;
         }
 
         /// <summary>
@@ -743,6 +751,8 @@ namespace SS.Core
         /// </summary>
         /// <remarks>Only to be used by the <see cref="PlayerData"/> module.</remarks>
         /// <param name="key">The key, from <see cref="IPlayerData.AllocatePlayerData{T}"/>, of the per-player data to remove.</param>
+        /// <param name="data">The data removed, or the default value if nothing was removed.</param>
+        /// <returns><see langword="true"/> if the data was removed; otherwise <see langword="false"/>.</returns>
         internal bool TryRemoveExtraData(PlayerDataKey key, out object data)
         {
             return _extraData.TryRemove(key.Id, out data);

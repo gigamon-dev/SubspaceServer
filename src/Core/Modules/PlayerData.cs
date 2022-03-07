@@ -35,7 +35,7 @@ namespace SS.Core.Modules
         private readonly Queue<FreePlayerInfo> _freePlayersQueue = new(256);
 
         // for managing per player data
-        private readonly SortedList<int, ExtraDataFactory> _perPlayerDataRegistrations = new();
+        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
         private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = 256 };
 
         #region Module Members
@@ -123,7 +123,7 @@ namespace SS.Core.Modules
                 player.ConnectAs = null;
 
                 // initialize the player's per player data
-                foreach ((int keyId, ExtraDataFactory info) in _perPlayerDataRegistrations)
+                foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
                 {
                     player[new PlayerDataKey(keyId)] = info.Get();
                 }
@@ -154,7 +154,7 @@ namespace SS.Core.Modules
                 // remove the player from the dictionary
                 _playerDictionary.Remove(player.Id);
 
-                foreach ((int keyId, ExtraDataFactory info) in _perPlayerDataRegistrations)
+                foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
                 {
                     if (player.TryRemoveExtraData(new PlayerDataKey(keyId), out object data))
                     {
@@ -337,15 +337,15 @@ namespace SS.Core.Modules
                 int keyId;
 
                 // find next available
-                for (keyId = 0; keyId < _perPlayerDataRegistrations.Keys.Count; keyId++)
+                for (keyId = 0; keyId < _extraDataRegistrations.Keys.Count; keyId++)
                 {
-                    if (_perPlayerDataRegistrations.ContainsKey(keyId) == false)
+                    if (_extraDataRegistrations.Keys[keyId] != keyId)
                         break;
                 }
 
                 PlayerDataKey key = new(keyId);
                 ExtraDataFactory factory = createExtraDataFactoryFunc();
-                _perPlayerDataRegistrations[keyId] = factory;
+                _extraDataRegistrations[keyId] = factory;
 
                 //
                 // Add the data to each player
@@ -374,7 +374,7 @@ namespace SS.Core.Modules
                 // Unregister
                 //
 
-                if (!_perPlayerDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
+                if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
                     return;
 
                 //

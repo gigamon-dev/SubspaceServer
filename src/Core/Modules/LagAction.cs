@@ -31,7 +31,7 @@ namespace SS.Core.Modules
         private INetwork _network;
         private IPlayerData _playerData;
 
-        private int _adKey;
+        private ArenaDataKey _adKey;
         private PlayerDataKey _pdKey;
 
         private TimeSpan _checkInterval;
