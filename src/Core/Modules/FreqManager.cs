@@ -27,7 +27,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IFreqManager> _iFreqManagerRegistrationToken;
         private InterfaceRegistrationToken<IFreqBalancer> _iFreqBalancerRegistrationToken;
 
-        private ArenaDataKey _adKey;
+        private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
         private readonly ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);
@@ -91,7 +91,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -146,7 +146,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             errorMessage?.Clear(); // Clear so that we can tell if an enforcer wrote a message.
@@ -235,7 +235,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             errorMessage?.Clear(); // Clear so that we can tell if an enforcer wrote a message.
@@ -340,7 +340,7 @@ namespace SS.Core.Modules
 
         int IFreqBalancer.GetMaximumDifference(Arena arena, short freq1, short freq2)
         {
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return int.MaxValue;
 
             if (ad.Config.DefaultBalancer_forceEvenTeams)
@@ -366,7 +366,7 @@ namespace SS.Core.Modules
 
             bool BalancerAllowChange(Arena arena, Player player, short newFreqNum, StringBuilder errorMessage)
             {
-                if (arena[_adKey] is not ArenaData ad)
+                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                     return false;
 
                 lock (ad.Lock)
@@ -479,7 +479,7 @@ namespace SS.Core.Modules
                 if (arena == null)
                     return false;
 
-                if (arena[_adKey] is not ArenaData ad)
+                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                     return false;
 
                 if ((ad.Config.MaxXResolution > 0 && player.Xres > ad.Config.MaxXResolution)
@@ -505,7 +505,7 @@ namespace SS.Core.Modules
                 if (arena == null)
                     return false;
 
-                if (arena[_adKey] is not ArenaData ad)
+                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                     return false;
 
                 int count = 0;
@@ -559,7 +559,7 @@ namespace SS.Core.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -577,7 +577,7 @@ namespace SS.Core.Modules
 
             void PruneFreqs(Arena arena)
             {
-                if (arena[_adKey] is not ArenaData ad)
+                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                     return;
 
                 lock (ad.Lock)
@@ -669,7 +669,7 @@ namespace SS.Core.Modules
                     // Possibly disband the freq altogether, if it's not required.
                     if (!freq.IsRemembered && freq.Players.Count == 0)
                     {
-                        if (arena[_adKey] is not ArenaData ad)
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                             return;
 
                         ad.Freqs.Remove(freq);
@@ -700,7 +700,7 @@ namespace SS.Core.Modules
 
         private Freq CreateFreq(Arena arena, short freqNum)
         {
-            if (arena?[_adKey] is not ArenaData ad)
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return null;
 
             Freq freq = _freqPool.Get();
@@ -711,7 +711,7 @@ namespace SS.Core.Modules
 
         private int GetMaxFreqSize(Arena arena, short freqNum)
         {
-            if (arena?[_adKey] is not ArenaData ad)
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
 
             return freqNum >= ad.Config.FirstPrivateFreq
@@ -721,7 +721,7 @@ namespace SS.Core.Modules
 
         private bool FreqNotFull(Arena arena, short freqNum, StringBuilder errorMessage)
         {
-            if (arena[_adKey] is not ArenaData ad)
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
             int max = GetMaxFreqSize(arena, freqNum);
@@ -782,7 +782,7 @@ namespace SS.Core.Modules
 
         private short FindEntryFreq(Arena arena, Player p, StringBuilder errorMessage)
         {
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return arena.SpecFreq;
 
             IFreqBalancer balancer = arena.GetInterface<IFreqBalancer>();
@@ -874,7 +874,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return null;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return null;
 
             //return ad.Freqs.Find(f => f.FreqNum == freqNum); // TODO: check if this allocates a new delegate object each call

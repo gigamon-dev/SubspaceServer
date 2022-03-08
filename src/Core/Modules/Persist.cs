@@ -36,7 +36,7 @@ namespace SS.Core.Modules
         private DateTime? _lastSync;
         private readonly object _lock = new();
 
-        private ArenaDataKey _adKey;
+        private ArenaDataKey<ArenaData> _adKey;
 
         private int _maxRecordLength;
 
@@ -230,7 +230,7 @@ namespace SS.Core.Modules
             "them to share scores. ")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             if (action == ArenaAction.Create)
@@ -714,7 +714,7 @@ namespace SS.Core.Modules
                 return Constants.ArenaGroup_Global;
 
             if (interval.IsShared()
-                && arena[_adKey] is ArenaData ad)
+                && arena.TryGetExtraData(_adKey, out ArenaData ad))
             {
                 return ad.ArenaGroup;
             }

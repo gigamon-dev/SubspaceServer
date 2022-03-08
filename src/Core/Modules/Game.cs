@@ -40,7 +40,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IGame> _iGameToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
-        private ArenaDataKey _adkey;
+        private ArenaDataKey<ArenaData> _adkey;
 
         private DelegatePersistentData<Player> _persistRegistration;
 
@@ -355,7 +355,7 @@ namespace SS.Core.Modules
 
         void IGame.LockArena(Arena arena, bool notify, bool onlyArenaState, bool initial, bool spec)
         {
-            if (arena[_adkey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             ad.initLockship = true;
@@ -370,7 +370,7 @@ namespace SS.Core.Modules
 
         void IGame.UnlockArena(Arena arena, bool notify, bool onlyArenaState)
         {
-            if (arena[_adkey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             ad.initLockship = false;
@@ -384,7 +384,7 @@ namespace SS.Core.Modules
 
         bool IGame.HasLock(Arena arena)
         {
-            if (arena == null || arena[_adkey] is not ArenaData ad)
+            if (arena == null || !arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return false;
 
             return ad.initLockship;
@@ -501,13 +501,10 @@ namespace SS.Core.Modules
 
         void IGame.ResetPlayerEnergyViewing(Player p)
         {
-            if (p == null)
+            if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
-                return;
-
-            if (p.Arena[_adkey] is not ArenaData ad)
+            if (p.Arena == null || !p.Arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             SeeEnergy seeNrg = SeeEnergy.None;
@@ -525,13 +522,10 @@ namespace SS.Core.Modules
 
         void IGame.ResetSpectatorEnergyViewing(Player p)
         {
-            if (p == null)
+            if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
-                return;
-
-            if (p.Arena[_adkey] is not ArenaData ad)
+            if (p.Arena == null || !p.Arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             SeeEnergy seeNrgSpec = SeeEnergy.None;
@@ -552,7 +546,7 @@ namespace SS.Core.Modules
             if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return false;
 
-            if (p.Arena[_adkey] is not ArenaData ad)
+            if (p.Arena == null || !p.Arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return false;
 
             if (pd.MapRegionNoAnti)
@@ -715,7 +709,8 @@ namespace SS.Core.Modules
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ArenaData ad = arena[_adkey] as ArenaData;
+                if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+                    return;
 
                 ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "RegionCheckInterval", 100) * 10);
 
@@ -780,15 +775,11 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
-            if (p == null)
+            if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (arena == null || !arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
-
-            ArenaData ad = null;
-            if (arena != null)
-                ad = arena[_adkey] as ArenaData;
 
             if (action == PlayerAction.PreEnterArena)
             {
@@ -1031,7 +1022,7 @@ namespace SS.Core.Modules
             if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
-            if (arena[_adkey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             DateTime now = DateTime.UtcNow;
@@ -1876,7 +1867,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adkey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             ref C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data.AsSpan(0, C2S_Die.Length));
@@ -2055,7 +2046,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adkey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
             ref GreenPacket g = ref MemoryMarshal.AsRef<GreenPacket>(data);
@@ -2332,7 +2323,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (p.Arena[_adkey] is not ArenaData ad)
+                if (p.Arena == null || !p.Arena.TryGetExtraData(_adkey, out ArenaData ad))
                     return;
 
                 if (spec)

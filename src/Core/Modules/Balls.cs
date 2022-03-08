@@ -36,7 +36,7 @@ namespace SS.Core.Modules
         private IPrng _prng;
         private InterfaceRegistrationToken<IBalls> _iBallsToken;
 
-        private ArenaDataKey _adKey;
+        private ArenaDataKey<ArenaData> _adKey;
 
         #region Module members
 
@@ -105,7 +105,7 @@ namespace SS.Core.Modules
 
         bool IBalls.TryGetBallSettings(Arena arena, out BallSettings ballSettings)
         {
-            if (arena == null || arena[_adKey] is not ArenaData ad)
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
             {
                 ballSettings = default;
                 return false;
@@ -126,7 +126,7 @@ namespace SS.Core.Modules
             if (ballCount < 0 || ballCount > MaxBalls)
                 return false;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
             lock (ad.Lock)
@@ -145,7 +145,7 @@ namespace SS.Core.Modules
         {
             if (arena == null
                 || ballId < 0
-                || arena[_adKey] is not ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData ad))
             {
                 ballData = default;
                 return false;
@@ -176,7 +176,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -218,7 +218,7 @@ namespace SS.Core.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -286,7 +286,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -328,7 +328,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -430,7 +430,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             ref BallPacket c2s = ref MemoryMarshal.AsRef<BallPacket>(data);
@@ -525,7 +525,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             ref C2S_Goal c2s = ref MemoryMarshal.AsRef<C2S_Goal>(data);
@@ -576,7 +576,7 @@ namespace SS.Core.Modules
                     if (arena.Status != ArenaState.Running)
                         continue;
 
-                    if (arena[_adKey] is not ArenaData ad)
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                         continue;
 
                     lock (ad.Lock)
@@ -663,7 +663,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return 0;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
 
             int newSpawnCount = 1;
@@ -743,7 +743,7 @@ namespace SS.Core.Modules
             if (newBallCount < 0 || newBallCount > MaxBalls)
                 return false;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
             lock (ad.Lock)
@@ -783,7 +783,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -803,7 +803,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -821,7 +821,7 @@ namespace SS.Core.Modules
             if (ballId < 0)
                 return false;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
             lock (ad.Lock)
@@ -895,7 +895,7 @@ namespace SS.Core.Modules
             if (ballId < 0)
                 return false;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
             // Keep information consistent, player's freq for owned balls, freq of -1 for unowned balls.
@@ -921,7 +921,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -970,7 +970,7 @@ namespace SS.Core.Modules
             if (ballId < 0)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             lock (ad.Lock)
@@ -1060,7 +1060,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
             {
                 isScorable = false;
                 isGoalOwner = false;
@@ -1240,7 +1240,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             // Nake sure that if someone leaves, any balls the player was carrying drop.

@@ -108,7 +108,7 @@ namespace SS.Core.Modules
 
         private Config _cfg;
 
-        private ArenaDataKey _adKey;
+        private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
         private class ArenaData
@@ -611,7 +611,7 @@ namespace SS.Core.Modules
             if(arena == null)
                 return new ChatMask();
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return new ChatMask();
 
             ad.Lock.EnterReadLock();
@@ -631,7 +631,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             ad.Lock.EnterWriteLock();
@@ -1534,7 +1534,9 @@ namespace SS.Core.Modules
             if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return false;
 
-            ArenaData ad = (p.Arena != null) ? p.Arena[_adKey] as ArenaData : null;
+            ArenaData ad = null;
+            p.Arena?.TryGetExtraData(_adKey, out ad);
+            
             ChatMask mask;
 
             lock (pd.Lock)

@@ -51,7 +51,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Arena data key for accessing <see cref="ArenaData"/>.
         /// </summary>
-        private ArenaDataKey adKey;
+        private ArenaDataKey<ArenaData> adKey;
 
         /// <summary>
         /// Player data key for accessing <see cref="PlayerData"/>.
@@ -209,7 +209,7 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in arenaManager.Arenas)
                 {
-                    if (arena[adKey] is not ArenaData ad)
+                    if (!arena.TryGetExtraData(adKey, out ArenaData ad))
                         continue;
 
                     if (arena.Status == ArenaState.Running)
@@ -512,7 +512,7 @@ namespace SS.Core.Modules
             if (!p.TryGetExtraData(pdKey, out PlayerData pd))
                 return;
 
-            if (arena[adKey] is not ArenaData ad)
+            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
                 return;
 
             ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(new Span<byte>(data, 0, length));

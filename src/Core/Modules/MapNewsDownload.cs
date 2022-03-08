@@ -1,4 +1,5 @@
 ﻿using Ionic.Zlib;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -28,7 +29,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
 
-        private ArenaDataKey _dlKey;
+        private ArenaDataKey<LinkedList<MapDownloadData>> _dlKey;
 
         /// <summary>
         /// Map that's used if the configured one cannot be read.
@@ -43,157 +44,6 @@ namespace SS.Core.Modules
             0x00, 0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x04,
             0x00, 0x00, 0x05, 0x00, 0x02
         };
-
-        private class MapDownloadData
-        {
-            /// <summary>
-            /// crc32 of file
-            /// </summary>
-            public uint checksum;
-
-            /// <summary>
-            /// uncompressed length
-            /// </summary>
-            public uint uncmplen;
-
-            /// <summary>
-            /// compressed length
-            /// </summary>
-            public uint cmplen;
-
-            /// <summary>
-            /// if the file is optional (lvzs are optional)
-            /// </summary>
-            public bool optional;
-
-            /// <summary>
-            /// compressed bytes of the file, includes the packet header
-            /// </summary>
-            public byte[] cmpmap;
-
-            /// <summary>
-            /// name of the file
-            /// </summary>
-            public string filename;
-
-            public override string ToString()
-            {
-                return filename;
-            }
-        }
-
-        private class NewsManager : IDisposable
-        {
-            private readonly string _newsFilename;
-            private byte[] _compressedNewsData; // includes packet header
-            private uint _newsChecksum;
-            private FileSystemWatcher _fileWatcher;
-            private readonly ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim();
-
-            public NewsManager(string filename)
-            {
-                if (string.IsNullOrEmpty(filename))
-                    throw new ArgumentNullException("filename");
-
-                _newsFilename = filename;
-
-                _fileWatcher = new FileSystemWatcher(".", _newsFilename);
-                _fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
-                _fileWatcher.Changed += FileWatcher_Changed;
-                _fileWatcher.EnableRaisingEvents = true;
-
-                ProcessNewsFile();
-            }
-
-            private void FileWatcher_Changed(object sender, FileSystemEventArgs e)
-            {
-                ProcessNewsFile();
-            }
-
-            private void ProcessNewsFile()
-            {
-                uint checksum;
-                byte[] compressedData;
-
-                using(FileStream newsStream = File.OpenRead(_newsFilename))
-                {
-                    // calculate the checksum
-                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
-                    checksum = (uint)crc32.GetCrc32(newsStream);
-
-                    newsStream.Position = 0;
-
-                    // compress using zlib
-                    using MemoryStream compressedStream = new MemoryStream();
-                    using (ZlibStream zlibStream = new ZlibStream(
-                        compressedStream,
-                        CompressionMode.Compress,
-                        CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
-                    {
-                        newsStream.CopyTo(zlibStream);
-                    }
-
-                    compressedData = compressedStream.ToArray();
-                }
-
-                // prepare the file packet
-                byte[] fileData = new byte[17 + compressedData.Length]; // 17 is the size of the header
-                fileData[0] = (byte)S2CPacketType.IncomingFile;
-                // intentionally leaving 16 bytes of 0 for the name
-                Array.Copy(compressedData, 0, fileData, 17, compressedData.Length);
-
-                // update the data members
-                _rwLock.EnterWriteLock();
-
-                try
-                {
-                    _compressedNewsData = fileData;
-                    _newsChecksum = checksum;
-                }
-                finally
-                {
-                    _rwLock.ExitWriteLock();
-                }
-            }
-
-            public bool TryGetNews(out byte[] data, out uint checksum)
-            {
-                _rwLock.EnterReadLock();
-
-                try
-                {
-                    if (_compressedNewsData != null)
-                    {
-                        data = _compressedNewsData;
-                        checksum = _newsChecksum;
-                        return true;
-                    }
-                }
-                finally
-                {
-                    _rwLock.ExitReadLock();
-                }
-
-                data = null;
-                checksum = 0;
-                return false;
-            }
-
-            #region IDisposable Members
-
-            public void Dispose()
-            {
-                if (_fileWatcher != null)
-                {
-                    _fileWatcher.EnableRaisingEvents = false;
-                    _fileWatcher.Changed -= FileWatcher_Changed;
-                    _fileWatcher.Dispose();
-                    _fileWatcher = null;
-                }
-            }
-
-            #endregion
-        }
 
         /// <summary>
         /// manages news.txt
@@ -223,7 +73,7 @@ namespace SS.Core.Modules
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
 
-            _dlKey = _arenaManager.AllocateArenaData<LinkedList<MapDownloadData>>();
+            _dlKey = _arenaManager.AllocateArenaData(new MapDownloadLinkedListPooledObjectPolicy());
 
             _net.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
             _net.AddPacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
@@ -272,7 +122,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!(arena[_dlKey] is LinkedList<MapDownloadData> dls))
+            if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
                 return;
 
             if (dls.Count == 0)
@@ -332,7 +182,7 @@ namespace SS.Core.Modules
             }
             else if (action == ArenaAction.Destroy)
             {
-                if (!(arena[_dlKey] is LinkedList<MapDownloadData> dls))
+                if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
                     return;
 
                 dls.Clear();
@@ -346,7 +196,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (!(arena[_dlKey] is LinkedList<MapDownloadData> dls))
+                if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
                     return;
 
                 MapDownloadData data = null;
@@ -568,7 +418,7 @@ namespace SS.Core.Modules
 
         private MapDownloadData GetMap(Arena arena, int lvznum, bool wantOpt)
         {
-            if (!(arena[_dlKey] is LinkedList<MapDownloadData> dls))
+            if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
                 return null;
 
             int idx=lvznum;
@@ -679,6 +529,176 @@ namespace SS.Core.Modules
 
             public Player Player { get; }
             public MapDownloadData MapDownloadData { get; }
+        }
+
+        private class NewsManager : IDisposable
+        {
+            private readonly string _newsFilename;
+            private byte[] _compressedNewsData; // includes packet header
+            private uint _newsChecksum;
+            private FileSystemWatcher _fileWatcher;
+            private readonly ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim();
+
+            public NewsManager(string filename)
+            {
+                if (string.IsNullOrEmpty(filename))
+                    throw new ArgumentNullException("filename");
+
+                _newsFilename = filename;
+
+                _fileWatcher = new FileSystemWatcher(".", _newsFilename);
+                _fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
+                _fileWatcher.Changed += FileWatcher_Changed;
+                _fileWatcher.EnableRaisingEvents = true;
+
+                ProcessNewsFile();
+            }
+
+            private void FileWatcher_Changed(object sender, FileSystemEventArgs e)
+            {
+                ProcessNewsFile();
+            }
+
+            private void ProcessNewsFile()
+            {
+                uint checksum;
+                byte[] compressedData;
+
+                using (FileStream newsStream = File.OpenRead(_newsFilename))
+                {
+                    // calculate the checksum
+                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                    checksum = (uint)crc32.GetCrc32(newsStream);
+
+                    newsStream.Position = 0;
+
+                    // compress using zlib
+                    using MemoryStream compressedStream = new MemoryStream();
+                    using (ZlibStream zlibStream = new ZlibStream(
+                        compressedStream,
+                        CompressionMode.Compress,
+                        CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                    {
+                        newsStream.CopyTo(zlibStream);
+                    }
+
+                    compressedData = compressedStream.ToArray();
+                }
+
+                // prepare the file packet
+                byte[] fileData = new byte[17 + compressedData.Length]; // 17 is the size of the header
+                fileData[0] = (byte)S2CPacketType.IncomingFile;
+                // intentionally leaving 16 bytes of 0 for the name
+                Array.Copy(compressedData, 0, fileData, 17, compressedData.Length);
+
+                // update the data members
+                _rwLock.EnterWriteLock();
+
+                try
+                {
+                    _compressedNewsData = fileData;
+                    _newsChecksum = checksum;
+                }
+                finally
+                {
+                    _rwLock.ExitWriteLock();
+                }
+            }
+
+            public bool TryGetNews(out byte[] data, out uint checksum)
+            {
+                _rwLock.EnterReadLock();
+
+                try
+                {
+                    if (_compressedNewsData != null)
+                    {
+                        data = _compressedNewsData;
+                        checksum = _newsChecksum;
+                        return true;
+                    }
+                }
+                finally
+                {
+                    _rwLock.ExitReadLock();
+                }
+
+                data = null;
+                checksum = 0;
+                return false;
+            }
+
+            #region IDisposable Members
+
+            public void Dispose()
+            {
+                if (_fileWatcher != null)
+                {
+                    _fileWatcher.EnableRaisingEvents = false;
+                    _fileWatcher.Changed -= FileWatcher_Changed;
+                    _fileWatcher.Dispose();
+                    _fileWatcher = null;
+                }
+            }
+
+            #endregion
+        }
+
+        private class MapDownloadData
+        {
+            /// <summary>
+            /// crc32 of file
+            /// </summary>
+            public uint checksum;
+
+            /// <summary>
+            /// uncompressed length
+            /// </summary>
+            public uint uncmplen;
+
+            /// <summary>
+            /// compressed length
+            /// </summary>
+            public uint cmplen;
+
+            /// <summary>
+            /// if the file is optional (lvzs are optional)
+            /// </summary>
+            public bool optional;
+
+            /// <summary>
+            /// compressed bytes of the file, includes the packet header
+            /// </summary>
+            public byte[] cmpmap;
+
+            /// <summary>
+            /// name of the file
+            /// </summary>
+            public string filename;
+
+            public override string ToString()
+            {
+                return filename;
+            }
+        }
+
+        private class MapDownloadLinkedListPooledObjectPolicy : PooledObjectPolicy<LinkedList<MapDownloadData>>
+        {
+            public int InitialCapacity { get; set; } = 8;
+
+            public override LinkedList<MapDownloadData> Create()
+            {
+                return new LinkedList<MapDownloadData>();
+            }
+
+            public override bool Return(LinkedList<MapDownloadData> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
         }
     }
 }

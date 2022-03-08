@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private IPrng _prng;
         private InterfaceRegistrationToken<IClientSettings> _iClientSettingsToken;
 
-        private ArenaDataKey _adkey;
+        private ArenaDataKey<ArenaClientSettingsData> _adkey;
         private PlayerDataKey<PlayerClientSettingsData> _pdkey;
 
         private readonly object _setMtx = new();
@@ -99,7 +99,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adkey] is not ArenaClientSettingsData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaClientSettingsData ad))
                 return;
 
             lock (_setMtx)
@@ -117,7 +117,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return 0;
 
-            if (arena[_adkey] is not ArenaClientSettingsData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaClientSettingsData ad))
                 return 0;
 
             lock (_setMtx)
@@ -131,7 +131,7 @@ namespace SS.Core.Modules
             if(arena == null)
                 return 0;
 
-            if (arena[_adkey] is not ArenaClientSettingsData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaClientSettingsData ad))
                 return 0;
 
             int max = ad.pwps[28];
@@ -183,7 +183,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adkey] is not ArenaClientSettingsData ad)
+            if (!arena.TryGetExtraData(_adkey, out ArenaClientSettingsData ad))
                 return;
 
             lock (_setMtx)

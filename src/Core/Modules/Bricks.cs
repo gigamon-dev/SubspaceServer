@@ -59,7 +59,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IBrickManager> _iBrickManagerToken;
         private InterfaceRegistrationToken<IBrickHandler> _iBrickHandlerToken;
 
-        private ArenaDataKey _adKey;
+        private ArenaDataKey<ArenaBrickData> _adKey;
 
         #region Module methods
 
@@ -135,7 +135,7 @@ namespace SS.Core.Modules
             Description = "# of times a brick packet is sent unreliably, in addition to the reliable send.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena[_adKey] is not ArenaBrickData abd)
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
             if (action == ArenaAction.Create)
@@ -164,7 +164,7 @@ namespace SS.Core.Modules
         {
             if (action == PlayerAction.EnterArena)
             {
-                if (arena[_adKey] is not ArenaBrickData abd)
+                if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                     return;
 
                 lock (abd.Lock)
@@ -313,7 +313,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (arena[_adKey] is not ArenaBrickData abd)
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
             ref C2S_Brick c2sBrick = ref MemoryMarshal.AsRef<C2S_Brick>(data);
@@ -375,7 +375,7 @@ namespace SS.Core.Modules
             if (bricks == null || bricks.Count <= 0)
                 return;
 
-            if (arena[_adKey] is not ArenaBrickData abd)
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
             lock (abd.Lock)
@@ -430,7 +430,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaBrickData abd)
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
             ServerTick now = ServerTick.Now;
@@ -532,7 +532,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (arena[_adKey] is not ArenaBrickData abd)
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
             DoBrickModeCallback.Fire(arena, p, abd.BrickMode, x, y, abd.BrickSpan, in bricks);

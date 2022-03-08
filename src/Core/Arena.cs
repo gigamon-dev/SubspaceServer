@@ -96,24 +96,25 @@ namespace SS.Core
     /// <summary>
     /// A key for accessing "extra data" per-arena.
     /// </summary>
+    /// <typeparam name="T">The type of "extra data".</typeparam>
     /// <remarks>
     /// <para>
-    /// A per-arena data slot is allocated using <see cref="IArenaManager.AllocateArenaData{T}"/>, which returns a <see cref="ArenaDataKey"/>.
-    /// The data can then be accessed by using the <see cref="Arena.this"/> indexer or <see cref="Arena.TryGetExtraData{T}(ArenaDataKey, out T)"/> on any of the <see cref="Arena"/> objects.
-    /// When the data slot is no longer required, it can be freed using <see cref="IArenaManager.FreeArenaData(ArenaDataKey)"/>.
+    /// A per-arena data slot is allocated using <see cref="IArenaManager.AllocateArenaData{T}"/>, which returns a <see cref="ArenaDataKey{T}"/>.
+    /// The data can then be accessed by using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/> on any of the <see cref="Arena"/> objects.
+    /// When the data slot is no longer required, it can be freed using <see cref="IArenaManager.FreeArenaData{T}(ArenaDataKey{T})"/>.
     /// </para>
     /// <para>
     /// Modules normally allocate a slot when they are loaded and free the slot when they are unloaded.
     /// </para>
     /// </remarks>
-    public readonly struct ArenaDataKey
+    public readonly struct ArenaDataKey<T>
     {
         internal readonly int Id;
 
         /// <summary>
         /// Internal constructor, only the <see cref="ArenaManager"/> module is meant to create it.
         /// </summary>
-        /// <param name="key"></param>
+        /// <param name="id">Id that uniquely identifies an "extra data" slot.</param>
         internal ArenaDataKey(int id)
         {
             Id = id;
@@ -224,26 +225,13 @@ namespace SS.Core
         private readonly ConcurrentDictionary<int, object> _extraData = new();
 
         /// <summary>
-        /// Per Arena Data
-        /// </summary>
-        /// <param name="key">Key from <see cref="IArenaManager.AllocateArenaData{T}"/>.</param>
-        /// <returns></returns>
-        public object this[ArenaDataKey key]
-        {
-            get => _extraData.TryGetValue(key.Id, out object obj) ? obj : null;
-
-            // Only to be used by the ArenaManager module.
-            internal set => _extraData[key.Id] = value;
-        }
-
-        /// <summary>
         /// Attempts to get extra data with the specified key.
         /// </summary>
         /// <typeparam name="T">The type of the data.</typeparam>
         /// <param name="key">The key of the data to get, from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
         /// <param name="data">The data if found and was of type <typeparamref name="T"/>. Otherwise, <see langword="null"/>.</param>
         /// <returns>True if the data was found and was of type <typeparamref name="T"/>. Otherwise, false.</returns>
-        public bool TryGetExtraData<T>(ArenaDataKey key, out T data) where T : class
+        public bool TryGetExtraData<T>(ArenaDataKey<T> key, out T data) where T : class
         {
             if (_extraData.TryGetValue(key.Id, out object obj)
                 && obj is T tData)
@@ -257,15 +245,27 @@ namespace SS.Core
         }
 
         /// <summary>
-        /// Removes per-arena data for a single key.
+        /// Sets extra data.
         /// </summary>
         /// <remarks>Only to be used by the <see cref="ArenaManager"/> module.</remarks>
-        /// <param name="key">The key, from <see cref="IArenaManager.AllocatePlayerData{T}"/>, of the per-arena data to remove.</param>
+        /// <param name="keyId">Id of the data to set.</param>
+        /// <param name="data">The data to set.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="data"/> was null.</exception>
+        internal void SetExtraData(int keyId, object data)
+        {
+            _extraData[keyId] = data ?? throw new ArgumentNullException(nameof(data));
+        }
+
+        /// <summary>
+        /// Removes extra data.
+        /// </summary>
+        /// <remarks>Only to be used by the <see cref="ArenaManager"/> module.</remarks>
+        /// <param name="keyId">Id of the data to remove.</param>
         /// <param name="data">The data removed, or the default value if nothing was removed.</param>
         /// <returns><see langword="true"/> if the data was removed; otherwise <see langword="false"/>.</returns>
-        internal bool TryRemoveExtraData(ArenaDataKey key, out object data)
+        internal bool TryRemoveExtraData(int keyId, out object data)
         {
-            return _extraData.TryRemove(key.Id, out data);
+            return _extraData.TryRemove(keyId, out data);
         }
 
         #endregion

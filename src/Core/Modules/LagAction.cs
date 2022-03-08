@@ -31,7 +31,7 @@ namespace SS.Core.Modules
         private INetwork _network;
         private IPlayerData _playerData;
 
-        private ArenaDataKey _adKey;
+        private ArenaDataKey<ArenaLagLimits> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
         private TimeSpan _checkInterval;
@@ -132,7 +132,7 @@ namespace SS.Core.Modules
         {
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                if (arena[_adKey] is not ArenaLagLimits lagLimits)
+                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits lagLimits))
                     return;
 
                 ConfigHandle ch = arena.Cfg;
@@ -252,7 +252,7 @@ namespace SS.Core.Modules
                 if (arena == null)
                     return;
 
-                if (arena[_adKey] is not ArenaLagLimits lagLimits)
+                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits lagLimits))
                     return;
 
                 lock (lagLimits.Lock)

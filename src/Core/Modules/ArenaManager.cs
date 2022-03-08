@@ -101,7 +101,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per arena data key (ArenaData) 
         /// </summary>
-        private ArenaDataKey _adkey;
+        private ArenaDataKey<ArenaData> _adkey;
 
         #region Locks
 
@@ -406,7 +406,7 @@ namespace SS.Core.Modules
                 // arena to close and then get resurrected
                 arena.Status = ArenaState.Closing;
 
-                if (arena[_adkey] is ArenaData arenaData)
+                if (arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                     arenaData.Resurrect = true;
 
                 return true;
@@ -631,7 +631,7 @@ namespace SS.Core.Modules
                     {
                         // arena is on it's way out
                         // this isn't a problem, just make sure that it will come back
-                        if (arena[_adkey] is not ArenaData arenaData)
+                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                             return;
 
                         arenaData.Resurrect = true;
@@ -787,24 +787,24 @@ namespace SS.Core.Modules
             return true; // keep running
         }
 
-        ArenaDataKey IArenaManager.AllocateArenaData<T>()
+        ArenaDataKey<T> IArenaManager.AllocateArenaData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
             return (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
-                ? AllocateArenaData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
-                : AllocateArenaData(() => new NonPooledExtraDataFactory<T>());
+                ? AllocateArenaData<T>(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
+                : AllocateArenaData<T>(() => new NonPooledExtraDataFactory<T>());
         }
 
-        ArenaDataKey IArenaManager.AllocateArenaData<T>(IPooledObjectPolicy<T> policy)
+        ArenaDataKey<T> IArenaManager.AllocateArenaData<T>(IPooledObjectPolicy<T> policy)
         {
             if (policy == null)
                 throw new ArgumentNullException(nameof(policy));
 
             // It's the policy's job to clear/reset an object when it's returned to the pool.
-            return AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
+            return AllocateArenaData<T>(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
         }
 
-        private ArenaDataKey AllocateArenaData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        private ArenaDataKey<T> AllocateArenaData<T>(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
             WriteLock();
 
@@ -823,7 +823,7 @@ namespace SS.Core.Modules
                         break;
                 }
 
-                ArenaDataKey key = new(keyId);
+                ArenaDataKey<T> key = new(keyId);
                 ExtraDataFactory factory = createExtraDataFactoryFunc();
                 _extraDataRegistrations[keyId] = factory;
             
@@ -833,7 +833,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    arena[key] = factory.Get();
+                    arena.SetExtraData(keyId, factory.Get());
                 }
 
                 return key;
@@ -844,7 +844,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManager.FreeArenaData(ArenaDataKey key)
+        void IArenaManager.FreeArenaData<T>(ArenaDataKey<T> key)
         {
             WriteLock();
 
@@ -862,7 +862,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    if (arena.TryRemoveExtraData(key, out object data))
+                    if (arena.TryRemoveExtraData(key.Id, out object data))
                     {
                         factory.Return(data);
                     }
@@ -886,7 +886,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (arena[_adkey] is not ArenaData arenaData)
+                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                             return;
 
                         arenaData.Holds++;
@@ -913,7 +913,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (arena[_adkey] is not ArenaData arenaData)
+                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                             return;
 
                         if (arenaData.Holds > 0)
@@ -1029,7 +1029,9 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    ArenaData arenaData = arena[_adkey] as ArenaData;
+                    if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                        continue;
+
                     ArenaState status = arena.Status;
 
                     switch (status)
@@ -1136,13 +1138,12 @@ namespace SS.Core.Modules
                                     // clear all private data on recycle, so it looks to modules like it was just created.
                                     foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                                     {
-                                        ArenaDataKey key = new(keyId);
-                                        if (arena.TryRemoveExtraData(key, out object data))
+                                        if (arena.TryRemoveExtraData(keyId, out object data))
                                         {
                                             factory.Return(data);
                                         }
 
-                                        arena[key] = factory.Get();
+                                        arena.SetExtraData(keyId, factory.Get());
                                     }
 
                                     arenaData.Resurrect = false;
@@ -1155,8 +1156,7 @@ namespace SS.Core.Modules
                                     // remove all the extra data object and return them to their factory
                                     foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                                     {
-                                        ArenaDataKey key = new(keyId);
-                                        if (arena.TryRemoveExtraData(key, out object data))
+                                        if (arena.TryRemoveExtraData(keyId, out object data))
                                         {
                                             factory.Return(data);
                                         }
@@ -1207,7 +1207,7 @@ namespace SS.Core.Modules
             {
                 foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                 {
-                    arena[new ArenaDataKey(keyId)] = factory.Get();
+                    arena.SetExtraData(keyId, factory.Get());
                 }
             
                 _arenaDictionary.Add(name, arena);
@@ -1232,21 +1232,25 @@ namespace SS.Core.Modules
                 {
                     foreach (Arena arena in _arenaDictionary.Values)
                     {
-                        ArenaData arenaData = arena[_adkey] as ArenaData;
+                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                            continue;
+                        
                         arenaData.Reap = arena.Status == ArenaState.Running || arena.Status == ArenaState.Closing;
                     }
 
                     foreach (Player player in _playerData.Players)
                     {
-                        if (player.Arena != null)
+                        if (player.Arena != null
+                            && player.Arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                         {
-                            ArenaData arenaData = player.Arena[_adkey] as ArenaData;
+
                             arenaData.Reap = false;
                         }
 
-                        if (player.NewArena != null && player.Arena != player.NewArena)
+                        if (player.NewArena != null 
+                            && player.Arena != player.NewArena
+                            && player.NewArena.TryGetExtraData(_adkey, out arenaData))
                         {
-                            ArenaData arenaData = player.NewArena[_adkey] as ArenaData;
                             if (player.NewArena.Status == ArenaState.Closing)
                             {
                                 arenaData.Resurrect = true;
@@ -1260,7 +1264,8 @@ namespace SS.Core.Modules
 
                     foreach (Arena arena in _arenaDictionary.Values)
                     {
-                        ArenaData arenaData = arena[_adkey] as ArenaData;
+                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                            continue;
 
                         if (arenaData.Reap && (arena.Status == ArenaState.Closing || !arena.KeepAlive))
                         {
