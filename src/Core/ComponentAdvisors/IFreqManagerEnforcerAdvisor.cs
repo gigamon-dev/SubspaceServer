@@ -61,20 +61,20 @@ namespace SS.Core.ComponentAdvisors
         /// <summary>
         /// Gets the ships a player is allowed to use.
         /// </summary>
-        /// <param name="player"></param>
-        /// <param name="ship"></param>
-        /// <param name="freq"></param>
-        /// <param name="errorMessage"></param>
+        /// <param name="player">The player to check for.</param>
+        /// <param name="ship">The ship under consideration.</param>
+        /// <param name="freq">The team that the player will be on.</param>
+        /// <param name="errorMessage">An optional message.</param>
         /// <returns>A mask containing flags describing the allowed ships.</returns>
         ShipMask GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage) => ShipMask.All;
 
         /// <summary>
         /// Checks whether a player can switch to a new freq.
         /// </summary>
-        /// <param name="player"></param>
-        /// <param name="newFreq"></param>
-        /// <param name="errorMessage"></param>
-        /// <returns></returns>
+        /// <param name="player">The player to check for.</param>
+        /// <param name="newFreq">The team under consideration.</param>
+        /// <param name="errorMessage">An optional message.</param>
+        /// <returns><see langword="true"/> to signal that the player is allowed to change to the freq. Otherwise, <see langword="false"/>.</returns>
         bool CanChangeToFreq(Player player, short newFreq, StringBuilder errorMessage) => true;
 
         /// <summary>
@@ -82,20 +82,20 @@ namespace SS.Core.ComponentAdvisors
         /// </summary>
         /// <remarks>
         /// This is called before the frequency they're landing on has been decided,
-        /// so <see cref="Player.Freq"/> shoudl not be looked at.
+        /// so <see cref="Player.Freq"/> should not be looked at.
         /// This is only called if the player is in spectator mode.
         /// </remarks>
-        /// <param name="player"></param>
-        /// <param name="errorMessage"></param>
-        /// <returns></returns>
+        /// <param name="player">The player to check.</param>
+        /// <param name="errorMessage">An optional message.</param>
+        /// <returns><see langword="true"/> to signal that the player is allowed to enter the game. Otherwise, <see langword="false"/>.</returns>
         bool CanEnterGame(Player player, StringBuilder errorMessage) => true;
 
         /// <summary>
-        /// Checks whether a player can change from their current ship/or freq.
+        /// Checks whether a player can change from their current ship/freq.
         /// </summary>
-        /// <param name="player"></param>
-        /// <param name="errorMessage"></param>
-        /// <returns></returns>
+        /// <param name="player">The player to check.</param>
+        /// <param name="errorMessage">An optional message.</param>
+        /// <returns><see langword="true"/> to signal that the player is allowed change from their current ship/freq. Otherwise, <see langword="false"/>.</returns>
         bool IsUnlocked(Player player, StringBuilder errorMessage) => true;
     }
 }

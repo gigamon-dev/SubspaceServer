@@ -1,5 +1,5 @@
-﻿using Microsoft.Extensions.ObjectPool;
-using SS.Core.ComponentAdvisors;
+﻿using SS.Core.ComponentAdvisors;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
@@ -33,14 +33,17 @@ namespace SS.Core.Modules.Enforcers
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-            _adKey = _arenaManager.AllocateArenaData(new ArenaDataPooledObjectPolicy());
+            _adKey = _arenaManager.AllocateArenaData<ArenaData>();
+            ArenaActionCallback.Register(broker, Callback_ArenaAction);
 
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
+            ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             _arenaManager.FreeArenaData(_adKey);
+
             return true;
         }
 
@@ -140,32 +143,37 @@ namespace SS.Core.Modules.Enforcers
 
         #endregion
 
-        #region Helper types
+        #region Callbacks
 
-        private class ArenaData
+        private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
-            public ShipMask? ArenaMask = null;
-            public Dictionary<short, ShipMask> FreqMasks = new();
+            if (action == ArenaAction.ConfChanged)
+                if (arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                    arenaData.ClearSettings();
         }
 
-        private class ArenaDataPooledObjectPolicy : PooledObjectPolicy<ArenaData>
+        #endregion
+
+        #region Helper types
+
+        private class ArenaData : IPooledExtraData
         {
-            public override ArenaData Create()
+            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
+            
+            // settings
+            public ShipMask? ArenaMask = null;
+            public Dictionary<short, ShipMask> FreqMasks = new();
+
+            public void ClearSettings()
             {
-                return new ArenaData();
+                ArenaMask = null;
+                FreqMasks.Clear();
             }
 
-            public override bool Return(ArenaData obj)
+            void IPooledExtraData.Reset()
             {
-                if (obj == null)
-                    return false;
-
-                obj.AdvisorToken = null;
-                obj.ArenaMask = null;
-                obj.FreqMasks.Clear();
-
-                return true;
+                AdvisorToken = null;
+                ClearSettings();
             }
         }
 
