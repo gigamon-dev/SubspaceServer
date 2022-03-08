@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Configuration;
 using System;
@@ -48,6 +49,8 @@ namespace SS.Core.Modules
 
         // Lock that synchronizes access.  Many can read at the same time.  Only one can write or modify the collections and objects within them at a given time.
         private readonly ReaderWriterLockSlim rwLock = new ReaderWriterLockSlim();
+
+        private readonly DefaultObjectPool<List<DocumentInfo>> documentInfoListPool = new(new DocumentInfoListPooledObjectPolicy());
 
         public bool Load(
             ComponentBroker broker, 
@@ -128,7 +131,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            LinkedList<DocumentInfo> notifyList = null;
+            List<DocumentInfo> notifyList = null;
 
             rwLock.EnterUpgradeableReadLock();
 
@@ -178,9 +181,9 @@ namespace SS.Core.Modules
                             if (docInfo.IsChangeNotificationPending)
                             {
                                 if (notifyList == null)
-                                    notifyList = new LinkedList<DocumentInfo>();
+                                    notifyList = documentInfoListPool.Get();
 
-                                notifyList.AddLast(docInfo);
+                                notifyList.Add(docInfo);
                             }
                         }
 
@@ -202,13 +205,25 @@ namespace SS.Core.Modules
             // notify of changes (outside of reader/writer lock)
             if (notifyList != null)
             {
+                mainloop.QueueMainWorkItem(MainloopWork_NotifyChanged, notifyList);
+            }
+
+            return true;
+        }
+
+        private void MainloopWork_NotifyChanged(List<DocumentInfo> notifyList)
+        {
+            try
+            {
                 foreach (var docInfo in notifyList)
                 {
                     docInfo.NotifyChanged();
                 }
             }
-
-            return true;
+            finally
+            {
+                documentInfoListPool.Return(notifyList);
+            }
         }
 
         private bool ServerTimer_SaveChanges()
@@ -760,6 +775,23 @@ namespace SS.Core.Modules
 
                     IsChangeNotificationPending = false;
                 }
+            }
+        }
+
+        private class DocumentInfoListPooledObjectPolicy : PooledObjectPolicy<List<DocumentInfo>>
+        {
+            public override List<DocumentInfo> Create()
+            {
+                return new List<DocumentInfo>();
+            }
+
+            public override bool Return(List<DocumentInfo> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
+                return true;
             }
         }
     }
