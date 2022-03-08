@@ -40,6 +40,17 @@ namespace SS.Core.ComponentAdvisors
                 _ => ShipMask.None,
             };
         }
+
+        /// <summary>
+        /// Checks if a mask includes a specific ship.
+        /// </summary>
+        /// <param name="mask">The mask to check.</param>
+        /// <param name="ship">The ship to look for.</param>
+        /// <returns>True if the ship is in the mask. Otherwise, false.</returns>
+        public static bool HasShip(this ShipMask mask, ShipType ship)
+        {
+            return (mask & ship.GetShipMask()) != 0;
+        }
     }
 
     /// <summary>
