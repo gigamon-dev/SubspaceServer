@@ -942,7 +942,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(attachMods))
                 return;
 
-            string[] attachModsArray = attachMods.Split("\t:;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            string[] attachModsArray = attachMods.Split(" \t:;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
 
             foreach (string moduleToAttach in attachModsArray)
             {
