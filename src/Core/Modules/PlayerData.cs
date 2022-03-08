@@ -11,6 +11,7 @@ namespace SS.Core.Modules
     public class PlayerData : IModule, IPlayerData
     {
         internal ComponentBroker Broker;
+        private ILogManager _logManager;
         private InterfaceRegistrationToken<IPlayerData> _iPlayerDataToken;
 
         /// <summary>
@@ -40,9 +41,11 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        public bool Load(ComponentBroker broker)
+        public bool Load(ComponentBroker broker, ILogManager logManager)
         {
             Broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+
             _iPlayerDataToken = broker.RegisterInterface<IPlayerData>(this);
             return true;
         }
@@ -307,9 +310,10 @@ namespace SS.Core.Modules
         PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
-            return (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
-                ? AllocatePlayerData<T>(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
-                : AllocatePlayerData<T>(() => new NonPooledExtraDataFactory<T>());
+            if (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
+                return new PlayerDataKey<T>(AllocatePlayerData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider)));
+            else
+                return new PlayerDataKey<T>(AllocatePlayerData(() => new NonPooledExtraDataFactory<T>()));
         }
 
         PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
@@ -318,10 +322,10 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(policy));
 
             // It's the policy's job to clear/reset an object when it's returned to the pool.
-            return AllocatePlayerData<T>(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
+            return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
-        private PlayerDataKey<T> AllocatePlayerData<T>(Func<ExtraDataFactory> createExtraDataFactoryFunc) where T : class
+        private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
             if (createExtraDataFactoryFunc == null)
                 throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
@@ -337,26 +341,25 @@ namespace SS.Core.Modules
                 int keyId;
 
                 // find next available
-                for (keyId = 0; keyId < _extraDataRegistrations.Keys.Count; keyId++)
+                for (keyId = 1; keyId <= _extraDataRegistrations.Keys.Count; keyId++)
                 {
-                    if (_extraDataRegistrations.Keys[keyId] != keyId)
+                    if (_extraDataRegistrations.Keys[keyId-1] != keyId)
                         break;
                 }
 
-                PlayerDataKey<T> key = new(keyId);
                 ExtraDataFactory factory = createExtraDataFactoryFunc();
                 _extraDataRegistrations[keyId] = factory;
 
                 //
-                // Add the data to each player
+                // Add the data to each player.
                 //
 
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    player.SetExtraData(key.Id, factory.Get());
+                    player.SetExtraData(keyId, factory.Get());
                 }
 
-                return key;
+                return keyId;
             }
             finally
             {
@@ -366,6 +369,17 @@ namespace SS.Core.Modules
 
         void IPlayerData.FreePlayerData<T>(PlayerDataKey<T> key)
         {
+            if (key.Id == 0)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(ArenaManager), $"There was an attempt to FreeArenaData with an uninitialized key (Id = 0).");
+                return;
+            }
+
+            FreePlayerData(key.Id);
+        }
+
+        private void FreePlayerData(int keyId)
+        {
             WriteLock();
 
             try
@@ -374,7 +388,7 @@ namespace SS.Core.Modules
                 // Unregister
                 //
 
-                if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
+                if (!_extraDataRegistrations.Remove(keyId, out ExtraDataFactory factory))
                     return;
 
                 //
@@ -383,7 +397,7 @@ namespace SS.Core.Modules
 
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    if (player.TryRemoveExtraData(key.Id, out object data))
+                    if (player.TryRemoveExtraData(keyId, out object data))
                     {
                         factory.Return(data);
                     }

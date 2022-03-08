@@ -790,9 +790,10 @@ namespace SS.Core.Modules
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
-            return (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
-                ? AllocateArenaData<T>(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
-                : AllocateArenaData<T>(() => new NonPooledExtraDataFactory<T>());
+            if (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
+                return new ArenaDataKey<T>(AllocateArenaData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider)));
+            else
+                return new ArenaDataKey<T>(AllocateArenaData(() => new NonPooledExtraDataFactory<T>()));
         }
 
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>(IPooledObjectPolicy<T> policy)
@@ -801,11 +802,14 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(policy));
 
             // It's the policy's job to clear/reset an object when it's returned to the pool.
-            return AllocateArenaData<T>(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
+            return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
-        private ArenaDataKey<T> AllocateArenaData<T>(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        private int AllocateArenaData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
+            if (createExtraDataFactoryFunc == null)
+                throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
+
             WriteLock();
 
             try
@@ -814,16 +818,15 @@ namespace SS.Core.Modules
                 // Register
                 //
 
-                int keyId = 0;
+                int keyId;
 
-                // find next available key
-                for (keyId = 0; keyId < _extraDataRegistrations.Keys.Count; keyId++)
+                // find next available
+                for (keyId = 1; keyId <= _extraDataRegistrations.Keys.Count; keyId++)
                 {
-                    if (_extraDataRegistrations.Keys[keyId] != keyId)
+                    if (_extraDataRegistrations.Keys[keyId-1] != keyId)
                         break;
                 }
 
-                ArenaDataKey<T> key = new(keyId);
                 ExtraDataFactory factory = createExtraDataFactoryFunc();
                 _extraDataRegistrations[keyId] = factory;
             
@@ -836,7 +839,7 @@ namespace SS.Core.Modules
                     arena.SetExtraData(keyId, factory.Get());
                 }
 
-                return key;
+                return keyId;
             }
             finally
             {
@@ -846,6 +849,17 @@ namespace SS.Core.Modules
 
         void IArenaManager.FreeArenaData<T>(ArenaDataKey<T> key)
         {
+            if (key.Id == 0)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(ArenaManager), $"There was an attempt to FreeArenaData with an uninitialized key (Id = 0).");
+                return;
+            }
+
+            FreeArenaData(key.Id);
+        }
+
+        private void FreeArenaData(int keyId)
+        {
             WriteLock();
 
             try
@@ -854,7 +868,8 @@ namespace SS.Core.Modules
                 // Unregister
                 //
 
-                _extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory);
+                if (!_extraDataRegistrations.Remove(keyId, out ExtraDataFactory factory))
+                    return;
 
                 //
                 // Remove the data from every arena
@@ -862,7 +877,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    if (arena.TryRemoveExtraData(key.Id, out object data))
+                    if (arena.TryRemoveExtraData(keyId, out object data))
                     {
                         factory.Return(data);
                     }
