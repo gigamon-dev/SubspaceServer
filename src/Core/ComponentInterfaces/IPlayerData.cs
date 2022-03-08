@@ -70,6 +70,14 @@ namespace SS.Core.ComponentInterfaces
         /// Allocates a slot for per-player data.
         /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Player"/> object.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// If <typeparamref name="T"/> implements <see cref="IPooledExtraData"/>, an object pool is used.
+        /// </para>
+        /// <para>
+        /// If <typeparamref name="T"/> implements <see cref="System.IDisposable"/>, objects will get disposed when they are discarded.
+        /// </para>
+        /// </remarks>
         /// <typeparam name="T">The type of data to store in the slot.</typeparam>
         /// <returns>A key that can be used to access the data using <see cref="Player.TryGetExtraData{T}(PlayerDataKey{T}, out T)"/>.</returns>
         PlayerDataKey<T> AllocatePlayerData<T>() where T : class, new();
@@ -77,6 +85,11 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Allocates a slot for per-player data.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// If <typeparamref name="T"/> implements <see cref="System.IDisposable"/>, objects will get disposed when they are discarded.
+        /// </para>
+        /// </remarks>
         /// <typeparam name="T">The type of data to store in the slot.</typeparam>
         /// <param name="policy">The policy to use for object pooling.</param>
         /// <returns>A key that can be used to access the data using <see cref="Player.TryGetExtraData{T}(PlayerDataKey{T}, out T)"/>.</returns>
