@@ -39,7 +39,7 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IGame> _iGameToken;
 
-        private PlayerDataKey _pdkey;
+        private PlayerDataKey<PlayerData> _pdkey;
         private ArenaDataKey _adkey;
 
         private DelegatePersistentData<Player> _persistRegistration;
@@ -347,7 +347,7 @@ namespace SS.Core.Modules
 
         bool IGame.HasLock(Player p)
         {
-            if (p == null || p[_pdkey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return false;
 
             return pd.lockship;
@@ -405,7 +405,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return 0;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return 0;
 
             return pd.ignoreWeapons / (double)Constants.RandMax;
@@ -416,7 +416,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             pd.ignoreWeapons = (int)(Constants.RandMax * proportion);
@@ -471,7 +471,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             pd.wpnSent = (uint)(pd.wpnSent + packets);
@@ -482,7 +482,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             pd.pl_epd.seeNrg = value;
@@ -493,7 +493,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             pd.pl_epd.seeNrgSpec = value;
@@ -504,7 +504,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             if (p.Arena[_adkey] is not ArenaData ad)
@@ -528,7 +528,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             if (p.Arena[_adkey] is not ArenaData ad)
@@ -549,7 +549,7 @@ namespace SS.Core.Modules
 
         bool IGame.IsAntiwarped(Player p, HashSet<Player> playersAntiwarping)
         {
-            if (p == null || p[_pdkey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return false;
 
             if (p.Arena[_adkey] is not ArenaData ad)
@@ -566,7 +566,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player i in _playerData.Players)
                 {
-                    if (p == null || p[_pdkey] is not PlayerData iData)
+                    if (p == null || !p.TryGetExtraData(_pdkey, out PlayerData iData))
                         continue;
 
                     if (i.Arena == p.Arena
@@ -636,7 +636,7 @@ namespace SS.Core.Modules
 
         private void Persist_GetShipLockData(Player player, Stream outStream)
         {
-            if (player == null || player[_pdkey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             lock (_freqshipmtx)
@@ -655,7 +655,7 @@ namespace SS.Core.Modules
 
         private void Persist_SetShipLockData(Player player, Stream inStream)
         {
-            if (player == null || player[_pdkey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             lock (_freqshipmtx)
@@ -783,7 +783,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             ArenaData ad = null;
@@ -866,7 +866,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.Players)
                         {
-                            if (i[_pdkey] is not PlayerData idata)
+                            if (!i.TryGetExtraData(_pdkey, out PlayerData idata))
                                 continue;
 
                             if (idata.speccing == p)
@@ -912,7 +912,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.Players)
                         {
-                            if (i[_pdkey] is not PlayerData idata)
+                            if (!i.TryGetExtraData(_pdkey, out PlayerData idata))
                                 continue;
 
                             if (idata.speccing == p)
@@ -941,7 +941,7 @@ namespace SS.Core.Modules
                 {
                     if (data.pl_epd.seeEpd)
                     {
-                        if (data.speccing[_pdkey] is not PlayerData odata)
+                        if (!data.speccing.TryGetExtraData(_pdkey, out PlayerData odata))
                             return;
 
                         if (--odata.epdQueries <= 0)
@@ -967,7 +967,7 @@ namespace SS.Core.Modules
 
                 if (data.pl_epd.seeEpd)
                 {
-                    if (t[_pdkey] is not PlayerData tdata)
+                    if (!t.TryGetExtraData(_pdkey, out PlayerData tdata))
                         return;
 
                     if (tdata.epdQueries++ == 0)
@@ -1028,7 +1028,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             if (arena[_adkey] is not ArenaData ad)
@@ -1250,7 +1250,7 @@ namespace SS.Core.Modules
 
                     foreach (Player i in _playerData.Players)
                     {
-                        if (i[_pdkey] is not PlayerData idata)
+                        if (!i.TryGetExtraData(_pdkey, out PlayerData idata))
                             continue;
 
                         if (i.Status == PlayerState.Playing
@@ -1431,7 +1431,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             Arena arena = p.Arena;
@@ -1482,7 +1482,7 @@ namespace SS.Core.Modules
             if (p.Status != PlayerState.Playing || p.Ship != ShipType.Spec)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             ref C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data.AsSpan(0, C2S_SpecRequest.Length));
@@ -1522,7 +1522,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             ShipType ship = (ShipType)data[1];
@@ -1621,7 +1621,7 @@ namespace SS.Core.Modules
             if(p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             Arena arena = p.Arena;
@@ -1689,7 +1689,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             ShipType oldShip = p.Ship;
@@ -1836,7 +1836,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             lock (_freqshipmtx)
@@ -2001,7 +2001,7 @@ namespace SS.Core.Modules
 
             if (!p.Flags.SentWeaponPacket)
             {
-                if (p[_pdkey] is PlayerData pd)
+                if (p.TryGetExtraData(_pdkey, out PlayerData pd))
                 {
                     if (pd.deathWithoutFiring++ == ad.MaxDeathWithoutFiring)
                     {
@@ -2198,7 +2198,7 @@ namespace SS.Core.Modules
 
                 foreach (Player p in set)
                 {
-                    if (p[_pdkey] is not PlayerData pd)
+                    if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                         continue;
 
                     if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
@@ -2249,7 +2249,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player playerToCheck in _playerData.Players)
                     {
-                        if (playerToCheck[_pdkey] is not PlayerData pd)
+                        if (!playerToCheck.TryGetExtraData(_pdkey, out PlayerData pd))
                             continue;
 
                         if (pd.speccing == targetPlayer
@@ -2322,8 +2322,7 @@ namespace SS.Core.Modules
 
             if (targetPlayer != null)
             {
-                PlayerData pd = targetPlayer[_pdkey] as PlayerData;
-                if (pd != null)
+                if (!targetPlayer.TryGetExtraData(_pdkey, out PlayerData pd))
                     return;
 
                 if (spec)

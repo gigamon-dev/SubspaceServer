@@ -81,7 +81,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key (SpawnLoc) 
         /// </summary>
-        private PlayerDataKey _spawnkey;
+        private PlayerDataKey<SpawnLoc> _spawnkey;
 
         private class ArenaData
         {
@@ -278,7 +278,7 @@ namespace SS.Core.Modules
                 span[0] = (byte)S2CPacketType.EnteringArena;
                 _network.SendToOne(player, span, NetSendFlags.Reliable);
 
-                if (player[_spawnkey] is SpawnLoc sp)
+                if (player.TryGetExtraData(_spawnkey, out SpawnLoc sp))
                 {
                     if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
                     {
@@ -655,7 +655,7 @@ namespace SS.Core.Modules
                 player.Packet.AcceptAudio = voices ? (byte)1 : (byte)0;
                 player.Flags.ObscenityFilter = obscene;
 
-                if (player[_spawnkey] is SpawnLoc sp)
+                if (player.TryGetExtraData(_spawnkey, out SpawnLoc sp))
                 {
                     sp.X = (short)spawnX;
                     sp.Y = (short)spawnY;

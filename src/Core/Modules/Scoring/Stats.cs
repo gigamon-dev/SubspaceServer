@@ -27,7 +27,7 @@ namespace SS.Core.Modules.Scoring
         private InterfaceRegistrationToken<IAllPlayerStats> _iAllPlayerStatsToken;
         private InterfaceRegistrationToken<IScoreStats> _iScoreStatsToken;
 
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         private readonly HashSet<PersistInterval> _intervals = new()
         {
@@ -247,7 +247,7 @@ namespace SS.Core.Modules.Scoring
                         && (arena == null || player.Arena == arena)
                         && player != exclude)
                     {
-                        if (player[_pdKey] is not PlayerData pd)
+                        if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                             continue;
 
                         // ASSS checks if the player has any stat that is dirty.
@@ -337,7 +337,7 @@ namespace SS.Core.Modules.Scoring
 
         void IScoreStats.ScoreReset(Player p, PersistInterval interval)
         {
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             var stats = GetArenaStatsByInterval(pd, interval);
@@ -371,7 +371,7 @@ namespace SS.Core.Modules.Scoring
 
         private void DoStatInfoOperation<T>(StatScope scope, Player player, int statId, PersistInterval? interval, Action<StatInfo<T>> operationCallback) where T : struct, IEquatable<T>
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -416,7 +416,7 @@ namespace SS.Core.Modules.Scoring
 
         private void DoTimerStatOperation(StatScope scope, Player player, int statId, PersistInterval? interval, Action<TimerStatInfo> operationCallback)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (interval == null)
@@ -557,7 +557,7 @@ namespace SS.Core.Modules.Scoring
 
         private void SetStat<T>(StatScope scope, Player player, int statId, PersistInterval interval, T value) where T : struct, IEquatable<T>
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if ((scope & StatScope.Global) == StatScope.Global)
@@ -587,7 +587,7 @@ namespace SS.Core.Modules.Scoring
 
         private void SetTimerStat(StatScope scope, Player player, int statId, PersistInterval interval, TimeSpan value)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             DateTime now = DateTime.UtcNow;
@@ -634,7 +634,7 @@ namespace SS.Core.Modules.Scoring
             if (scope != StatScope.Global && scope != StatScope.Arena)
                 throw new ArgumentException("Only Global or Arena scope are allowed. Combined scopes are not allowed", nameof(scope));
 
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
             {
                 value = default;
                 return false;
@@ -677,7 +677,7 @@ namespace SS.Core.Modules.Scoring
             if (scope != StatScope.Global && scope != StatScope.Arena)
                 throw new ArgumentException("Only Global or Arena scope are allowed. Combined scopes are not allowed", nameof(scope));
 
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
             {
                 value = default;
                 return false;
@@ -750,7 +750,7 @@ namespace SS.Core.Modules.Scoring
 
         private void GetPersistData(Player player, Stream outStream, (PersistInterval Interval, PersistScope Scope) state)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
@@ -822,7 +822,7 @@ namespace SS.Core.Modules.Scoring
 
         private void SetPersistData(Player player, Stream inStream, (PersistInterval Interval, PersistScope Scope) state)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
@@ -903,7 +903,7 @@ namespace SS.Core.Modules.Scoring
 
         private void ClearPersistData(Player player, (PersistInterval Interval, PersistScope Scope) state)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
@@ -936,7 +936,7 @@ namespace SS.Core.Modules.Scoring
                 targetPlayer = p;
             }
 
-            if (targetPlayer[_pdKey] is not PlayerData pd)
+            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             PersistScope scope = PersistScope.PerArena;
@@ -1022,7 +1022,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_NewPlayer(Player p, bool isNew)
         {
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)

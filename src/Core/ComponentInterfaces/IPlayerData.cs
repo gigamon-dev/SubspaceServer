@@ -71,22 +71,23 @@ namespace SS.Core.ComponentInterfaces
         /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Player"/> object.
         /// </summary>
         /// <typeparam name="T">The type of data to store in the slot.</typeparam>
-        /// <returns>A key that can be used to access the data using <see cref="Player.this"/>.</returns>
-        PlayerDataKey AllocatePlayerData<T>() where T : class, new();
+        /// <returns>A key that can be used to access the data using <see cref="Player.TryGetExtraData{T}(PlayerDataKey{T}, out T)"/>.</returns>
+        PlayerDataKey<T> AllocatePlayerData<T>() where T : class, new();
 
         /// <summary>
         /// Allocates a slot for per-player data.
         /// </summary>
         /// <typeparam name="T">The type of data to store in the slot.</typeparam>
         /// <param name="policy">The policy to use for object pooling.</param>
-        /// <returns>A key that can be used to access the data using <see cref="Player.this"/>.</returns>
+        /// <returns>A key that can be used to access the data using <see cref="Player.TryGetExtraData{T}(PlayerDataKey{T}, out T)"/>.</returns>
         /// <exception cref="ArgumentNullException">The policy was <see langword="null"/>.</exception>
-        PlayerDataKey AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class;
+        PlayerDataKey<T> AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class;
 
         /// <summary>
         /// Frees a per-player data slot.
         /// </summary>
+        /// <typeparam name="T">The type of data to store in the slot.</typeparam>
         /// <param name="key">The key from <see cref="AllocatePlayerData{T}"/>.</param>
-        void FreePlayerData(PlayerDataKey key);
+        void FreePlayerData<T>(PlayerDataKey<T> key) where T : class;
     }
 }

@@ -35,7 +35,7 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
 
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         private int MaxLast = 640; // TODO: make this a config setting?
         private static readonly int MaxLine = ChatPacket.MaxMessageChars;
@@ -107,7 +107,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player p in _playerData.Players)
                         {
-                            if (p[_pdKey] is not PlayerData pd)
+                            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                                 return;
 
                             if (pd.SeeWhat == SeeWhat.All
@@ -148,7 +148,7 @@ namespace SS.Core.Modules
         {
             if (action == PlayerAction.Connect || action == PlayerAction.EnterArena)
             {
-                if (p[_pdKey] is not PlayerData pd)
+                if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                     return;
 
                 if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeSysopLogAll))

@@ -77,7 +77,7 @@ namespace SS.Core.Modules
             public GroupSource Source;
         }
 
-        private PlayerDataKey _pdkey;
+        private PlayerDataKey<PlayerData> _pdkey;
 
         private ConfigHandle _groupDefConfHandle;
         private ConfigHandle _staffConfHandle;
@@ -142,7 +142,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return false;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return false;
 
             return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
@@ -173,7 +173,7 @@ namespace SS.Core.Modules
             if (a == null || b == null)
                 return false;
 
-            if (b[_pdkey] is not PlayerData bpd)
+            if (!b.TryGetExtraData(_pdkey, out PlayerData bpd))
                 return false;
 
             return ((ICapabilityManager)this).HasCapability(a, $"higher_than_{bpd.Group}");
@@ -188,7 +188,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return null;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return null;
 
             return pd.Group;
@@ -199,7 +199,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             // first set it for the current session
@@ -226,7 +226,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(group))
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             pd.Group = group;
@@ -238,7 +238,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             // in all cases, set current group to default
@@ -283,7 +283,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             switch (action)
@@ -310,7 +310,7 @@ namespace SS.Core.Modules
 
             if (isNew)
             {
-                if (p[_pdkey] is not PlayerData pd)
+                if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                     return;
 
                 pd.Group = Group_None;

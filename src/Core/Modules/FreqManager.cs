@@ -28,7 +28,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IFreqBalancer> _iFreqBalancerRegistrationToken;
 
         private ArenaDataKey _adKey;
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         private readonly ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);
 
@@ -607,7 +607,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (action == PlayerAction.PreEnterArena)
@@ -639,7 +639,7 @@ namespace SS.Core.Modules
 
         private void UpdateFreqs(Arena arena, Player p, short newFreqNum, short oldFreqNum)
         {
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (newFreqNum == oldFreqNum)

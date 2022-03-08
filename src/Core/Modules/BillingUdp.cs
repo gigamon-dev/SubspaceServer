@@ -42,7 +42,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
         private InterfaceRegistrationToken<IBilling> _iBillingToken;
 
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         private TimeSpan _retryTimeSpan;
         private int _pendingAuths;
@@ -185,7 +185,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
             {
                 FallbackDone(p, BillingFallbackResult.NotFound);
                 return;
@@ -389,7 +389,7 @@ namespace SS.Core.Modules
 
         private void Packet_RegData(Player p, byte[] data, int length)
         {
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (length < 1 || length - 1 > S2B_UserDemographics.DataLength)
@@ -524,7 +524,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (_lockObj)
@@ -578,7 +578,7 @@ namespace SS.Core.Modules
             if (message.Length < 1)
                 return;
 
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -664,7 +664,7 @@ namespace SS.Core.Modules
             if (!isFromPlayer)
                 return;
 
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (_lockObj)
@@ -692,7 +692,7 @@ namespace SS.Core.Modules
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = p;
             
-            if (targetPlayer?[_pdKey] is not PlayerData pd)
+            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -719,7 +719,7 @@ namespace SS.Core.Modules
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = p;
 
-            if (targetPlayer?[_pdKey] is not PlayerData pd)
+            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -804,7 +804,7 @@ namespace SS.Core.Modules
 
         private void DefaultCommandReceived(string commandName, string line, Player p, ITarget target)
         {
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -928,7 +928,7 @@ namespace SS.Core.Modules
 
         private void FallbackDone(Player p, BillingFallbackResult result)
         {
-            if (p == null || p[_pdKey] is not PlayerData pd)
+            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (pd.LoginData == null)
@@ -995,7 +995,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player p in _playerData.Players)
                 {
-                    if (p[_pdKey] is PlayerData pd)
+                    if (p.TryGetExtraData(_pdKey, out PlayerData pd))
                     {
                         pd.IsKnownToBiller = false;
                     }
@@ -1042,7 +1042,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (pd.LoginData == null)

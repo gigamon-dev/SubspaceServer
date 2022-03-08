@@ -109,7 +109,7 @@ namespace SS.Core.Modules
         private Config _cfg;
 
         private ArenaDataKey _adKey;
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         private class ArenaData
         {
@@ -651,7 +651,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return new ChatMask();
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return new ChatMask();
 
             lock (pd.Lock)
@@ -664,7 +664,7 @@ namespace SS.Core.Modules
         void IChat.GetPlayerChatMask(Player p, out ChatMask mask, out TimeSpan? remaining)
         {
             if (p == null
-                || p[_pdKey] is not PlayerData pd)
+                || !p.TryGetExtraData(_pdKey, out PlayerData pd))
             {
                 mask = default;
                 remaining = default;
@@ -687,7 +687,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -763,7 +763,7 @@ namespace SS.Core.Modules
 
         private void Persist_GetData(Player player, Stream outStream)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (pd.Expires != null)
@@ -780,7 +780,7 @@ namespace SS.Core.Modules
 
         private void Persist_SetData(Player player, Stream inStream)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             SSProto.ChatMask protoChatMask = SSProto.ChatMask.Parser.ParseFrom(inStream);
@@ -793,7 +793,7 @@ namespace SS.Core.Modules
 
         private void Persist_ClearData(Player player)
         {
-            if (player == null || player[_pdKey] is not PlayerData pd)
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             pd.Clear();
@@ -817,7 +817,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (action == PlayerAction.PreEnterArena)
@@ -994,7 +994,7 @@ namespace SS.Core.Modules
 
         private void CheckFlood(Player p)
         {
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -1531,7 +1531,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return false;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return false;
 
             ArenaData ad = (p.Arena != null) ? p.Arena[_adKey] as ArenaData : null;
@@ -1566,7 +1566,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             DateTime now = DateTime.UtcNow;

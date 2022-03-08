@@ -125,7 +125,7 @@ namespace SS.Core.Modules
                 // initialize the player's per player data
                 foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
                 {
-                    player[new PlayerDataKey(keyId)] = info.Get();
+                    player.SetExtraData(keyId, info.Get());
                 }
 
                 _playerDictionary.Add(player.Id, player);
@@ -156,7 +156,7 @@ namespace SS.Core.Modules
 
                 foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
                 {
-                    if (player.TryRemoveExtraData(new PlayerDataKey(keyId), out object data))
+                    if (player.TryRemoveExtraData(keyId, out object data))
                     {
                         info.Return(data);
                     }
@@ -304,24 +304,24 @@ namespace SS.Core.Modules
             }
         }
 
-        PlayerDataKey IPlayerData.AllocatePlayerData<T>()
+        PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
             return (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
-                ? AllocatePlayerData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
-                : AllocatePlayerData(() => new NonPooledExtraDataFactory<T>());
+                ? AllocatePlayerData<T>(() => new DefaultPooledExtraDataFactory<T>(_poolProvider))
+                : AllocatePlayerData<T>(() => new NonPooledExtraDataFactory<T>());
         }
 
-        PlayerDataKey IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
+        PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
         {
             if (policy == null)
                 throw new ArgumentNullException(nameof(policy));
 
             // It's the policy's job to clear/reset an object when it's returned to the pool.
-            return AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
+            return AllocatePlayerData<T>(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy));
         }
 
-        private PlayerDataKey AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        private PlayerDataKey<T> AllocatePlayerData<T>(Func<ExtraDataFactory> createExtraDataFactoryFunc) where T : class
         {
             if (createExtraDataFactoryFunc == null)
                 throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
@@ -343,7 +343,7 @@ namespace SS.Core.Modules
                         break;
                 }
 
-                PlayerDataKey key = new(keyId);
+                PlayerDataKey<T> key = new(keyId);
                 ExtraDataFactory factory = createExtraDataFactoryFunc();
                 _extraDataRegistrations[keyId] = factory;
 
@@ -353,7 +353,7 @@ namespace SS.Core.Modules
 
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    player[key] = factory.Get();
+                    player.SetExtraData(key.Id, factory.Get());
                 }
 
                 return key;
@@ -364,7 +364,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IPlayerData.FreePlayerData(PlayerDataKey key)
+        void IPlayerData.FreePlayerData<T>(PlayerDataKey<T> key)
         {
             WriteLock();
 
@@ -383,7 +383,7 @@ namespace SS.Core.Modules
 
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    if (player.TryRemoveExtraData(key, out object data))
+                    if (player.TryRemoveExtraData(key.Id, out object data))
                     {
                         factory.Return(data);
                     }

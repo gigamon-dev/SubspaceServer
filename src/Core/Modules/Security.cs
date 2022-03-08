@@ -56,7 +56,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Player data key for accessing <see cref="PlayerData"/>.
         /// </summary>
-        private PlayerDataKey pdKey;
+        private PlayerDataKey<PlayerData> pdKey;
 
         /// <summary>
         /// The expected length of the scrty data.
@@ -355,7 +355,7 @@ namespace SS.Core.Modules
                 }
                 else if (action == PlayerAction.LeaveArena)
                 {
-                    if ((p[pdKey] is PlayerData pd))
+                    if (p.TryGetExtraData(pdKey, out PlayerData pd))
                     {
                         if (pd.Sent)
                         {
@@ -387,7 +387,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in playerData.Players)
                     {
-                        if (p[pdKey] is not PlayerData pd)
+                        if (!p.TryGetExtraData(pdKey, out PlayerData pd))
                             continue;
 
                         if (p.Status == PlayerState.Playing
@@ -438,7 +438,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in playerData.Players)
                     {
-                        if (p[pdKey] is not PlayerData pd)
+                        if (!p.TryGetExtraData(pdKey, out PlayerData pd))
                             continue;
 
                         if (pd.Sent)
@@ -509,7 +509,7 @@ namespace SS.Core.Modules
 
             logManager.LogP(LogLevel.Drivel, nameof(Security), p, "Got a security response.");
 
-            if (p[pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(pdKey, out PlayerData pd))
                 return;
 
             if (arena[adKey] is not ArenaData ad)

@@ -32,7 +32,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
 
         private ArenaDataKey _adKey;
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         private TimeSpan _checkInterval;
         private Thread _checkThread;
@@ -197,7 +197,7 @@ namespace SS.Core.Modules
                     {
                         if (p.Status == PlayerState.Playing
                             && p.IsStandard
-                            && p[_pdKey] is PlayerData pd)
+                            && p.TryGetExtraData(_pdKey, out PlayerData pd))
                         {
                             lock (pd.Lock)
                             {
@@ -240,7 +240,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             try

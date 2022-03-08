@@ -636,7 +636,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key to ConnData
         /// </summary>
-        private PlayerDataKey _connKey;
+        private PlayerDataKey<ConnData> _connKey;
 
         private readonly ConcurrentDictionary<EndPoint, Player> _clienthash = new();
 
@@ -1152,7 +1152,7 @@ namespace SS.Core.Modules
                             && p.Status < PlayerState.TimeWait
                             && IsOurs(p))
                         {
-                            if (p[_connKey] is not ConnData conn)
+                            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                                 continue;
 
                             if (Monitor.TryEnter(conn.olmtx))
@@ -1211,7 +1211,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in toFree)
                     {
-                        if (p[_connKey] is not ConnData conn)
+                        if (!p.TryGetExtraData(_connKey, out ConnData conn))
                             continue;
 
                         // one more time, just to be sure
@@ -1370,7 +1370,7 @@ namespace SS.Core.Modules
                     if (!IsOurs(p) || p.Status >= PlayerState.TimeWait)
                         continue;
 
-                    if (p[_connKey] is not ConnData conn)
+                    if (!p.TryGetExtraData(_connKey, out ConnData conn))
                         continue;
 
                     if (Monitor.TryEnter(conn.olmtx) == false)
@@ -1436,7 +1436,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             lock (conn.olmtx)
@@ -1508,7 +1508,7 @@ namespace SS.Core.Modules
             if (toFree == null)
                 throw new ArgumentNullException(nameof(toFree));
 
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             // this is used for lagouts and also for timewait
@@ -1589,7 +1589,7 @@ namespace SS.Core.Modules
             if (_lagCollect == null)
                 return;
 
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             ReliableLagData rld = new()
@@ -1996,8 +1996,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                conn = p[_connKey] as ConnData;
-                if (conn == null)
+                if (!p.TryGetExtraData(_connKey, out conn))
                 {
                     buffer.Dispose();
                     return;
@@ -3097,7 +3096,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             if (conn.sizedrecv.offset != 0)
@@ -3347,7 +3346,7 @@ namespace SS.Core.Modules
                 {
                     if (IsOurs(player))
                     {
-                        if (player[_connKey] is not ConnData conn)
+                        if (!player.TryGetExtraData(_connKey, out ConnData conn))
                             continue;
 
                         SendRaw(conn, disconnectSpan);
@@ -3516,13 +3515,18 @@ namespace SS.Core.Modules
                 else
                 {
                     // otherwise, something is horribly wrong. make a note to this effect
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"[pid={p.Id}] NewConnection called for an established address.");
+                    _logManager.LogP(LogLevel.Error, nameof(Network), p, $"NewConnection called for an established address.");
                     return null;
                 }
             }
 
             p = _playerData.NewPlayer(clientType);
-            ConnData conn = p[_connKey] as ConnData;
+
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            {
+                _logManager.LogP(LogLevel.Error, nameof(Network), p, $"NewConnection created a new player, but ConnData not found.");
+                return null;
+            }
 
             IEncrypt enc = null;
             if (iEncryptName != null)
@@ -3531,7 +3535,7 @@ namespace SS.Core.Modules
 
                 if (enc == null)
                 {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"[pid={p.Id}] NewConnection called to use IEncrypt '{iEncryptName}', but not found.");
+                    _logManager.LogP(LogLevel.Error, nameof(Network), p, $"NewConnection called to use IEncrypt '{iEncryptName}', but not found.");
                     return null;
                 }
             }
@@ -3571,11 +3575,11 @@ namespace SS.Core.Modules
 
             if (remoteEndpoint != null)
             {
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"[pid={p.Id}] New connection from {remoteEndpoint}.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, $"New connection from {remoteEndpoint}.");
             }
             else
             {
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"[pid={p.Id}] New internal connection.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, $"New internal connection.");
             }
 
             return p;
@@ -3755,7 +3759,7 @@ namespace SS.Core.Modules
             if (!IsOurs(player))
                 return;
 
-            if (player[_connKey] is not ConnData conn)
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             SendToOne(conn, data, flags);
@@ -3854,7 +3858,7 @@ namespace SS.Core.Modules
             if (!IsOurs(p))
                 return;
 
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             // we can't handle big packets here
@@ -3907,7 +3911,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return false;
 
             SizedSendData<T> sd = new(requestCallback, clos, len, 0);
@@ -4023,7 +4027,7 @@ namespace SS.Core.Modules
 
         void INetwork.GetClientStats(Player p, ref NetClientStats stats)
         {
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             stats.s2cn = conn.s2cn;
@@ -4046,7 +4050,7 @@ namespace SS.Core.Modules
 
         TimeSpan INetwork.GetLastPacketTimeSpan(Player p)
         {
-            if (p[_connKey] is not ConnData conn)
+            if (!p.TryGetExtraData(_connKey, out ConnData conn))
                 return TimeSpan.Zero;
 
             //lock (conn.) // TODO: need to figure out locking

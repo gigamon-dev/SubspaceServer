@@ -38,7 +38,7 @@ namespace SS.Core.Modules
 
         private Pool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
 
-        private PlayerDataKey _pdkey;
+        private PlayerDataKey<CorePlayerData> _pdkey;
 
         private const ushort ClientVersion_VIE = 134;
         private const ushort ClientVersion_Cont = 40;
@@ -311,7 +311,7 @@ namespace SS.Core.Modules
                 Player player = action.Player;
                 PlayerState oldStatus = action.OldStatus;
 
-                if (player[_pdkey] is not CorePlayerData pdata)
+                if (!player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
                     continue;
 
                 switch (oldStatus)
@@ -478,7 +478,7 @@ namespace SS.Core.Modules
                 return;
 
             // Calling this method means we're bypassing PlayerState.NeedAuth, so do some cleanup.
-            if (p[_pdkey] is CorePlayerData pdata
+            if (p.TryGetExtraData(_pdkey, out CorePlayerData pdata)
                 && pdata.LoginPacketBuffer != null)
             {
                 pdata.LoginPacketBuffer.Dispose();
@@ -518,7 +518,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdkey] is not CorePlayerData pdata)
+            if (!p.TryGetExtraData(_pdkey, out CorePlayerData pdata))
                 return;
 
             if (!p.IsStandard)
@@ -641,7 +641,7 @@ namespace SS.Core.Modules
 
         private void AuthDone(Player p, AuthData auth)
         {
-            if (p == null || auth == null || p[_pdkey] is not CorePlayerData pdata)
+            if (p == null || auth == null || !p.TryGetExtraData(_pdkey, out CorePlayerData pdata))
                 return;
 
             if (p.Status != PlayerState.WaitAuth)
@@ -672,7 +672,7 @@ namespace SS.Core.Modules
                 // increment stage yet. we'll do it when the other player leaves
                 if (oldp != null && oldp != p)
                 {
-                    if (p[_pdkey] is not CorePlayerData oldd)
+                    if (!p.TryGetExtraData(_pdkey, out CorePlayerData oldd))
                         return;
 
                     _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] Player already on, kicking him off (pid {p.Id} replacing {oldp.Id}).");
@@ -733,7 +733,9 @@ namespace SS.Core.Modules
                     player.Status = PlayerState.DoGlobalCallbacks;
                 else if (player.Status == PlayerState.WaitGlobalSync2)
                 {
-                    CorePlayerData pdata = player[_pdkey] as CorePlayerData;
+                    if (!player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
+                        return;
+                    
                     Player replacedBy = pdata.ReplacedBy;
                     if (replacedBy != null)
                     {
@@ -790,7 +792,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (player[_pdkey] is not CorePlayerData pdata)
+            if (!player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
                 return;
 
             AuthData auth = pdata.AuthData;

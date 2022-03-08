@@ -16,7 +16,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IEncrypt> _iEncryptToken;
         private InterfaceRegistrationToken<IClientEncrypt> _iClientEncryptToken;
 
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<EncData> _pdKey;
 
         #region Module methods
 
@@ -58,7 +58,7 @@ namespace SS.Core.Modules
 
         int IEncrypt.Encrypt(Player p, Span<byte> data, int len)
         {
-            if (p[_pdKey] is not EncData pd)
+            if (!p.TryGetExtraData(_pdKey, out EncData pd))
                 return len;
 
             return pd.Encrypt(data, len);
@@ -66,7 +66,7 @@ namespace SS.Core.Modules
 
         int IEncrypt.Decrypt(Player p, Span<byte> data, int len)
         {
-            if (p[_pdKey] is not EncData pd)
+            if (!p.TryGetExtraData(_pdKey, out EncData pd))
                 return len;
 
             return pd.Decrypt(data, len);
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
 
         void IEncrypt.Void(Player p)
         {
-            if (p[_pdKey] is not EncData pd)
+            if (!p.TryGetExtraData(_pdKey, out EncData pd))
                 return;
 
             pd.Reset();
@@ -167,7 +167,7 @@ namespace SS.Core.Modules
                 return true;
             }
 
-            if (p[_pdKey] is not EncData pd)
+            if (!p.TryGetExtraData(_pdKey, out EncData pd))
                 return false; // should not happen, sanity
 
             int key = -packet.Key;

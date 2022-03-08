@@ -26,7 +26,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key
         /// </summary>
-        private PlayerDataKey _lagkey;
+        private PlayerDataKey<PlayerLagStats> _lagkey;
 
         #region IModule Members
 
@@ -69,7 +69,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdatePositionStats(ms, clientPing, serverWeaponCount);
         }
 
@@ -78,7 +78,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateReliableAckStats(ms);
         }
 
@@ -87,7 +87,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateClientLatencyStats(in data);
         }
 
@@ -96,7 +96,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateTimeSyncStats(in data);
         }
 
@@ -105,7 +105,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateReliableStats(in data);
         }
 
@@ -114,7 +114,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.Reset();
         }
 
@@ -127,7 +127,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryPositionPing(out ping);
             else
                 ping = default;
@@ -138,7 +138,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryClientPing(out ping);
             else
                 ping = default;
@@ -149,7 +149,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryReliablePing(out ping);
             else
                 ping = default;
@@ -160,7 +160,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryPacketloss(out packetloss);
             else
                 packetloss = default;
@@ -171,7 +171,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryReliableLag(out data);
             else
                 data = default;
@@ -182,7 +182,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryTimeSyncHistory(in history);
             else
                 history.Clear();
@@ -193,7 +193,7 @@ namespace SS.Core.Modules
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (player[_lagkey] is PlayerLagStats lagStats)
+            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 return lagStats.QueryTimeSyncDrift();
             else
                 return 0;
@@ -206,7 +206,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (player[_lagkey] is not PlayerLagStats lagStats)
+            if (!player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 return;
 
             if (action == PlayerAction.Connect)

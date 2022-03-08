@@ -18,7 +18,7 @@ namespace SS.Core.Modules
         private INetwork _network;
         private IPlayerData _playerData;
 
-        private PlayerDataKey _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         #region Module members
 
@@ -71,7 +71,7 @@ namespace SS.Core.Modules
                         if (other.Status == PlayerState.Playing
                             && other.Arena == arena
                             && other != p
-                            && other[_pdKey] is PlayerData opd)
+                            && other.TryGetExtraData(_pdKey, out PlayerData opd))
                         {
                             lock (opd.Lock)
                             {
@@ -123,7 +123,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -141,7 +141,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)

@@ -24,7 +24,7 @@ namespace SS.Core.Modules
         private HashEncoding hashEncoding;
         private readonly object hashLock = new object();
         private bool allowUnknown;
-        private PlayerDataKey pdKey;
+        private PlayerDataKey<PlayerData> pdKey;
 
         private const string ConfigFileName = "passwd.conf";
 
@@ -125,7 +125,7 @@ namespace SS.Core.Modules
 
         void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
         {
-            if (p[pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(pdKey, out PlayerData pd))
                 return;
 
             Span<byte> nameBytes = lp.NameBytes.SliceNullTerminated();
@@ -183,7 +183,7 @@ namespace SS.Core.Modules
 
         void IBillingFallback.Check<T>(Player p, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state)
         {
-            if (p[pdKey] is not PlayerData pd)
+            if (!p.TryGetExtraData(pdKey, out PlayerData pd))
             {
                 done(state, BillingFallbackResult.NotFound);
                 return;
@@ -349,7 +349,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (targetPlayer[pdKey] is not PlayerData pd
+            if (!targetPlayer.TryGetExtraData(pdKey, out PlayerData pd)
                 || string.IsNullOrWhiteSpace(pd.PasswordHash))
             {
                 chat.SendMessage(p, "Hashed password missing.");

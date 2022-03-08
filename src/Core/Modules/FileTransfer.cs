@@ -20,7 +20,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
         /// </summary>
-        private PlayerDataKey _udKey;
+        private PlayerDataKey<UploadDataContext> _udKey;
 
         #region IModule Members
 
@@ -102,7 +102,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(path))
                 return false;
 
-            if (p[_udKey] is not UploadDataContext ud)
+            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return false;
 
             if (path.Length > 256)
@@ -132,7 +132,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            if (p[_udKey] is not UploadDataContext ud)
+            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             ud.WorkingDirectory = path;
@@ -143,7 +143,7 @@ namespace SS.Core.Modules
             if (p == null)
                 throw new ArgumentNullException(nameof(p));
 
-            if (p[_udKey] is not UploadDataContext ud)
+            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return null;
 
             return ud.WorkingDirectory;
@@ -156,7 +156,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_udKey] is not UploadDataContext ud)
+            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             if (action == PlayerAction.Connect)
@@ -174,7 +174,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_udKey] is not UploadDataContext ud)
+            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             if (!_capabilityManager.HasCapability(p, Constants.Capabilities.UploadFile))
@@ -205,7 +205,7 @@ namespace SS.Core.Modules
             if (p == null)
                 return;
 
-            if (p[_udKey] is not UploadDataContext ud)
+            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             if (offset == -1)
