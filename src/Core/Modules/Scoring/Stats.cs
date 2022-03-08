@@ -971,7 +971,7 @@ namespace SS.Core.Modules.Scoring
             if (stats == null)
                 return;
 
-            _chat.SendMessage(p, $"The server is keeping track of the following {(scope == PersistScope.Global ? "global " : "")}{interval} stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
+            _chat.SendMessage(p, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
 
             DateTime now = DateTime.UtcNow;
 
@@ -1071,8 +1071,8 @@ namespace SS.Core.Modules.Scoring
                 StatId.Assists => "assists",
                 StatId.TeamKills => "team kills",
                 StatId.TeamDeaths => "team deaths",
-                StatId.ArenaTotalTime => "total time (this arena)",
-                StatId.ArenaSpecTime => "spec time (this arena)",
+                StatId.ArenaTotalTime => "total time",
+                StatId.ArenaSpecTime => "spec time",
                 StatId.DamageTaken => "damage taken",
                 StatId.DamageDealt => "damage dealt",
                 StatId.FlagPickups => "flag pickups",
