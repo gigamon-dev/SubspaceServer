@@ -265,7 +265,6 @@ namespace SS.Core.Modules
                 }
 
                 _hitLimit = true;
-                Console.WriteLine("BW LIMIT HIT");
                 return false;
             }
 
