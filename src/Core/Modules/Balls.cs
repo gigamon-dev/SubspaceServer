@@ -210,7 +210,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IBalls.GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out bool isGoalOwner) => GetGoalInfo(arena, freq, coordinate, out isScorable, out isGoalOwner);
+        void IBalls.GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out int? ownerFreq) => GetGoalInfo(arena, freq, coordinate, out isScorable, out ownerFreq);
 
         #endregion
 
@@ -856,7 +856,7 @@ namespace SS.Core.Modules
                 int x = ad.Spawns[idx].X + (int)(randomRadius * Math.Cos(randomAngle));
                 int y = ad.Spawns[idx].Y + (int)(randomRadius * Math.Sin(randomAngle));
 
-                // wrap around, don't clip, so raddii of 2048 from a corner work properly
+                // wrap around, don't clip, so radii of 2048 from a corner work properly
                 while (x < 0) x += 1024;
                 while (x > 1023) x -= 1024;
                 while (y < 0) y += 1024;
@@ -899,7 +899,7 @@ namespace SS.Core.Modules
                 return false;
 
             // Keep information consistent, player's freq for owned balls, freq of -1 for unowned balls.
-            newPos.Freq = (newPos.Carrier != null) ? newPos.Carrier.Freq : -1;
+            newPos.Freq = (newPos.Carrier != null) ? newPos.Carrier.Freq : (short)-1;
 
             lock (ad.Lock)
             {
@@ -983,15 +983,6 @@ namespace SS.Core.Modules
 
                 bool block = false;
 
-                // TODO: Move this into the GoalPoints module as an IBallsAdvisor. The GoalPoints module does not exist yet as of this writing.
-                // Check that the goal is allowed (the tile is a goal and it can be scored on by the player's freq).
-                GetGoalInfo(arena, p.Freq, mapCoordinate, out bool isScorable, out _);
-
-                if (!isScorable)
-                {
-                    block = true;
-                }
-
                 // Consult advisors to allow other modules to affect the goal.
                 var advisors = arena.GetAdvisors<IBallsAdvisor>();
                 foreach (var advisor in advisors)
@@ -1048,7 +1039,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out bool isGoalOwner)
+        private void GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out int? ownerFreq)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
@@ -1056,14 +1047,14 @@ namespace SS.Core.Modules
             if (_mapData.GetTile(arena, coordinate)?.IsGoal != true)
             {
                 isScorable = false;
-                isGoalOwner = false;
+                ownerFreq = null;
                 return;
             }
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
             {
                 isScorable = false;
-                isGoalOwner = false;
+                ownerFreq = null;
                 return;
             }
 
@@ -1080,19 +1071,19 @@ namespace SS.Core.Modules
             {
                 case SoccerMode.All:
                     isScorable = true; // any freq can score on it
-                    isGoalOwner = false; // it's not any team's own goal
+                    ownerFreq = null; // it's not any team's own goal
                     return;
 
                 case SoccerMode.LeftRight:
                     freq %= 2;
-                    isScorable = x < 512 ? freq == 1 : freq == 0;
-                    isGoalOwner = !isScorable;
+                    ownerFreq = x < 512 ? 0 : 1;
+                    isScorable = freq != ownerFreq;
                     return;
 
                 case SoccerMode.TopBottom:
                     freq %= 2;
-                    isScorable = x < 512 ? freq == 1 : freq == 0;
-                    isGoalOwner = !isScorable;
+                    ownerFreq = y < 512 ? 0 : 1;
+                    isScorable = freq != ownerFreq;
                     return;
 
                 case SoccerMode.QuadrantsDefend1:
@@ -1102,14 +1093,12 @@ namespace SS.Core.Modules
                         if (y < 512)
                         {
                             // top left
-                            isGoalOwner = freq == 0;
-                            isScorable = !isGoalOwner;
+                            ownerFreq = 0;
                         }
                         else
                         {
                             // bottom left
-                            isGoalOwner = freq == 2;
-                            isScorable = !isGoalOwner;
+                            ownerFreq = 2;
                         }
                     }
                     else
@@ -1117,16 +1106,16 @@ namespace SS.Core.Modules
                         if (y < 512)
                         {
                             // top right
-                            isGoalOwner = freq == 1;
-                            isScorable = !isGoalOwner;
+                            ownerFreq = 1;
                         }
                         else
                         {
                             // bottom right
-                            isGoalOwner = freq == 3;
-                            isScorable = !isGoalOwner;
+                            ownerFreq = 3;
                         }
                     }
+
+                    isScorable = freq != ownerFreq;
                     return;
 
                 case SoccerMode.QuadrantsDefend3:
@@ -1157,12 +1146,11 @@ namespace SS.Core.Modules
                             isScorable = freq == 0;
                         }
                     }
-                    isGoalOwner = false; // no team is the sole owner
+                    ownerFreq = null; // no team is the sole owner
                     return;
 
                 case SoccerMode.SidesDefend1:
                     freq %= 4;
-                    int? ownerFreq = null;
 
                     if (x < y)
                     {
@@ -1190,8 +1178,11 @@ namespace SS.Core.Modules
                             ownerFreq = 3;
                         }
                     }
+                    else
+                    {
+                        ownerFreq = null;
+                    }
 
-                    isGoalOwner = ownerFreq == freq;
                     isScorable = ownerFreq != null && ownerFreq != freq;
                     return;
 
@@ -1227,7 +1218,7 @@ namespace SS.Core.Modules
                     }
 
                     isScorable = scorableFreq == freq;
-                    isGoalOwner = false; // no team is the sole owner
+                    ownerFreq = null; // no team is the sole owner
                     return;
 
                 default:

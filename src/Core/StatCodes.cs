@@ -34,6 +34,9 @@ namespace SS.Core
         public static readonly StatCode<ulong> BallCarries = new(StatId.BallCarries);
         public static readonly StatCode<TimeSpan> BallCarryTime = new(StatId.BallCarryTime);
         public static readonly StatCode<ulong> BallGoals = new(StatId.BallGoals);
+
+        public static readonly StatCode<ulong> BallGamesWon = new(StatId.BallGamesWon);
+        public static readonly StatCode<ulong> BallGamesLost = new(StatId.BallGamesLost);
     }
 
 

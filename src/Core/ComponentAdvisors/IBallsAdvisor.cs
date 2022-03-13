@@ -43,6 +43,6 @@ namespace SS.Core.ComponentAdvisors
         /// <see langword="true"/> to allow the goal to be scored.</returns>
         /// <see langword="false"/> to disallow the goal. Note that Continuum will continue sending goal packets several times in this case.
         /// </returns>
-        bool AllowGoal(Arena arena, Player player, int ballId, MapCoordinate mapCoordinate, ref BallData ballData);
+        bool AllowGoal(Arena arena, Player player, int ballId, MapCoordinate mapCoordinate, ref BallData ballData) => true;
     }
 }

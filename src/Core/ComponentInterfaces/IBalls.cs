@@ -122,7 +122,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Freq of the carrier.
         /// </summary>
-        public int Freq;
+        public short Freq;
 
         /// <summary>
         /// The time that the ball was last fired (will be 0 for balls being held).
@@ -194,9 +194,12 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="freq">The team to get information for.</param>
         /// <param name="coordinate">The coordinate to check.</param>
         /// <param name="isScorable">True if the coordinate is a goal tile and the <paramref name="freq"/> can score on it. Otherwise, false.</param>
-        /// <param name="isGoalOwner">True if the coordinate is a goal tile and the <paramref name="freq"/> is the sole owner of it.  Otherwise, false.</param>
+        /// <param name="ownerFreq">
+        /// The freq that owns the goal. <see langword="null"/> if there is no owner. 
+        /// There is no owner for <see cref="SoccerMode.All"/>, <see cref="SoccerMode.QuadrantsDefend3"/>, and <see cref="SoccerMode.SidesDefend3"/>.
+        /// </param>
         /// <exception cref="ArgumentNullException">Arena is null.</exception>
         /// <exception cref="Exception">Invalid <see cref="SoccerMode"/> for the arena.</exception>
-        void GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out bool isGoalOwner);
+        void GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out int? ownerFreq);
     }
 }
