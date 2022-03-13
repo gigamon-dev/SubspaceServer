@@ -638,7 +638,7 @@ namespace SS.Core.Modules
                 if (workItem.Command == PersistCommand.EndInterval
                     && workItem is IntervalWorkItem intervalWorkItem)
                 {
-                    PersistIntervalEndedCallback.Fire(_broker, intervalWorkItem.Interval);
+                    PersistIntervalEndedCallback.Fire(_broker, intervalWorkItem.Interval, intervalWorkItem.ArenaGroup);
                 }
             }
             finally

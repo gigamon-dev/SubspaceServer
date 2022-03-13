@@ -1012,7 +1012,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_PersistIntervalEnded(PersistInterval interval)
+        private void Callback_PersistIntervalEnded(PersistInterval interval, string arenaGroup)
         {
             if (interval == PersistInterval.Reset)
             {
