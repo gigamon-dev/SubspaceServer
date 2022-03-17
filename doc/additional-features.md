@@ -51,7 +51,7 @@ On top of that, since it's using just a single reliable packet, there is only 1 
 
 ### When are there multiple pieces of reliable data being sent?
 This occurs more often than you'd expect. Here are some examples:
-- When a player enters an arena, there is a lot of data send reliably.
+- When a player enters an arena, there is a lot of data sent reliably.
 - When the server sends multiple lines of chat messages. E.g. player runs a command or game stats are listed.
 - When the server sends multiple lvz object changes.
 - etc.. 
@@ -70,7 +70,7 @@ ASSS does detect when a conf file is modified and will reload it. However, it on
 
 Subspace Server .NET watches all used conf files, including those from nested #include statements. When a conf file is modified, it will trigger the reload of all the root conf files that use it (including indirectly, through nested #include statements).
 
-> The terminology Subspace Server .NET uses for 'root' conf files is "ConfDocument".  See the SS.Core.Configuration.ConfDocument class.
+> The terminology Subspace Server .NET uses for 'root' conf files is "ConfDocument".  See the [SS.Core.Configuration.ConfDocument](../src/Core/Configuration/ConfDocument.cs) class.
 
 ---
 ## ConfigManager - Changes saved to proper location
@@ -78,7 +78,7 @@ When ASSS modifies a conf file, it just adds an override setting to the end of a
 
 ---
 ## ArenaManager - Player Entering packet to include multiple
-When a player enters an arena, the server sends a list of all players currently in the arena. This is done with the 0x03 (Player Entering) game packet which is sent reliably. ASSS sends (queues up) one packet for each player in the arena. E.g., if there were 150 players in the arena, it queues up 150 separate packets. In turn, the network module will send these reliable packets in grouped packets (albeit with the  limitations describe in [Network module - reliable packet grouping](#network-module---reliable-packet-grouping)).
+When a player enters an arena, the server sends a list of all players currently in the arena. This is done with the 0x03 (Player Entering) game packet which is sent reliably. ASSS sends (queues up) one packet for each player in the arena. E.g., if there were 150 players in the arena, it queues up 150 separate packets. In turn, the network module will send these reliable packets in grouped packets (albeit with the limitations described in [Network module - reliable packet grouping](#network-module---reliable-packet-grouping)).
 
 The 0x03 (Player Entering) game packet allows for sending multiple in 1 packet. That is, the entire 0x03 is can be repeated for each player, sent in 1 jumbo packet. 
 Subspace Server .NET does this, and depending on the resulting size, the Network module may split the jumbo packet
@@ -87,7 +87,7 @@ data per packet than using reliably sent grouped packets. Also, it reduces the #
 
 ---
 ## Bricks module - send multiple bricks in one brick packet
-The 0x21 (Brick) packet allows sending information for multiple bricks at one time by repeating the data portion (header not repeated). ASSS only queues up 1 brick per brick packet. Subspace Server .NET utilizes the ability to send multiple bricks per packet.
+The 0x21 (Brick) packet allows sending information for multiple bricks at one time by repeating the data portion (header not repeated). ASSS only queues up 1 brick per brick packet. Subspace Server .NET utilizes the ability to send multiple bricks per brick packet.
 
 When a player enters an arena, the server sends all of the currently active bricks to that player. In the worst case scenario (there being the maximum # of active bricks, 256), ASSS would queue up 256 separate brick packets, using 256 buffers. Whereas Subspace Server .NET can send it using 9 buffers.
 
@@ -100,8 +100,8 @@ The ASSS stats module only tracks per-arena stats. In Subspace Server .NET, the 
 
 ---
 ## Stats module - additional data types available
-In ASSS the stats module stores an Int32. This is also true for its "timer" stats which track # of seconds elapsed.
+The ASSS `stats` module stores a stat as an Int32. This is also true for its "timer" stats which track # of seconds elapsed.
 
 In Subspace Server .NET the Stats module currently supports the following data types: Int32, Int64, UInt32, UInt64, DateTime, and TimeSpan (for "timer" stats). Since the "timer" stats use a TimeSpan, the granularity is no longer limited to seconds.
 
-Also, the stats module is using Google's [Protocol Buffers (protobuf)](https://developers.google.com/protocol-buffers) to serialize data. So it's possbile that there is some size savings from the use of variable length encodings.
+Also, the stats module is using Google's [Protocol Buffers (protobuf)](https://developers.google.com/protocol-buffers) to serialize data. So it's possible that there is some size savings from the use of variable length encodings.
