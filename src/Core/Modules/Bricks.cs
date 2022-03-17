@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets;
@@ -61,6 +62,15 @@ namespace SS.Core.Modules
 
         private ArenaDataKey<ArenaBrickData> _adKey;
 
+        /// <summary>
+        /// Pool of <see cref="List{T}"/>s for <see cref="Brick"/>.
+        /// </summary>
+        private ObjectPool<List<Brick>> _brickListPool;
+        /// <summary>
+        /// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
+        /// </summary>
+        private ObjectPool<List<BrickData>> _brickDataListPool;
+
         #region Module methods
 
         public bool Load(
@@ -83,6 +93,10 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+
+            DefaultObjectPoolProvider provider = new();
+            _brickListPool = provider.Create(new BrickListPooledObjectPolicy());
+            _brickDataListPool = provider.Create(new BrickDataListPooledObjectPolicy());
 
             _adKey = _arenaManager.AllocateArenaData<ArenaBrickData>();
 
@@ -329,7 +343,7 @@ namespace SS.Core.Modules
             {
                 lock (abd.Lock)
                 {
-                    List<Brick> brickList = _objectPoolManager.BrickListPool.Get();
+                    List<Brick> brickList = _brickListPool.Get();
 
                     try
                     {
@@ -342,7 +356,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _objectPoolManager.BrickListPool.Return(brickList);
+                        _brickListPool.Return(brickList);
                     }
                 }
             }
@@ -354,7 +368,7 @@ namespace SS.Core.Modules
 
         void IBrickManager.DropBrick(Arena arena, short freq, short x1, short y1, short x2, short y2)
         {
-            List<Brick> brickList = _objectPoolManager.BrickListPool.Get();
+            List<Brick> brickList = _brickListPool.Get();
 
             try
             {
@@ -363,7 +377,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _objectPoolManager.BrickListPool.Return(brickList);
+                _brickListPool.Return(brickList);
             }
         }
 
@@ -391,7 +405,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                List<BrickData> brickDataList = _objectPoolManager.BrickDataListPool.Get();
+                List<BrickData> brickDataList = _brickDataListPool.Get();
 
                 try
                 {
@@ -420,7 +434,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _objectPoolManager.BrickDataListPool.Return(brickDataList);
+                    _brickDataListPool.Return(brickDataList);
                 }
             }
         }
@@ -538,6 +552,8 @@ namespace SS.Core.Modules
             DoBrickModeCallback.Fire(arena, p, abd.BrickMode, x, y, abd.BrickSpan, in bricks);
         }
 
+        #region Helper types
+
         public class ArenaBrickData
         {
             /// <summary>
@@ -600,5 +616,45 @@ namespace SS.Core.Modules
             Vertical,
             Horizontal,
         }
+
+        private class BrickListPooledObjectPolicy : PooledObjectPolicy<List<Brick>>
+        {
+            public int InitialCapacity { get; set; } = 8;
+
+            public override List<Brick> Create()
+            {
+                return new List<Brick>(InitialCapacity);
+            }
+
+            public override bool Return(List<Brick> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class BrickDataListPooledObjectPolicy : PooledObjectPolicy<List<BrickData>>
+        {
+            public int InitialCapacity { get; set; } = 8;
+
+            public override List<BrickData> Create()
+            {
+                return new List<BrickData>(InitialCapacity);
+            }
+
+            public override bool Return(List<BrickData> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        #endregion
     }
 }
