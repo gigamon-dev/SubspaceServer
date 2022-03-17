@@ -268,14 +268,20 @@ using SS.Core;
 
 public interface IMyExample : IComponentInterface
 {
-    // Any members you want to expose, usually methods.
-    // For example,
+    // It's a normal C# interface, so you can include 
+    // any members your want to expose to others.
+    // These are usually methods, but is not limited to that.
+    // For example, the IPlayerData interface has a property
+    // to access the collection of Players.
+
+    // Here's an example of exposing a method that we'll use later.
     void DoSomething();
 }
 ```
 
-Next, implement the interface. Normally you would have your module implement the interface. It needs to be registered for other parts to discover and access it. Call the `RegisterInterface` method on the `ComponentBroker`, passing in the instance that implements the interface. This returns a token which can later be used to unregister the interface by calling `UnregisterInterface`. This token ensures that only the one that registered the interface (has the token) can unregister it.
+Next, implement the interface. Normally, the module itself will implement the interface. Next, it needs to be registered for other parts to discover and access it. Call the `RegisterInterface` method on the `ComponentBroker`, passing in the instance that implements the interface. This returns a token which can later be used to unregister the interface by calling `UnregisterInterface`. This token ensures that only the one that registered the interface (has the token) can unregister it.
 
+Here's an example of registering an interface in the `Load` method and unregistering it in the `Unload` method:
 ```C#
 using SS.Core;
 
@@ -329,7 +335,7 @@ Under the hood, a Component Callback is just a delegate that the `ComponentBroke
 
 > **Design note:** If you're familiar with other more robust Publisher-subscriber implementations, you might be wondering why doesn't it use weak references. The answer is, I just went for simplicity and speed.
 
-Each of the built-in Component Callbacks use a static helper class to assist with registering, unregistering, and firing. You can use the `ComponentBroker` directly, but the helper class make it easier to use, especially for firing/invoking a callback. These helpers can be found in the [SS.Core.ComponentCallbacks](../src/Core/ComponentCallbacks) namespace.
+Each of the built-in Component Callbacks use a static helper class to assist with registering, unregistering, and firing. You can use the `ComponentBroker` directly, but the helper class makes it easier to use, especially for firing/invoking a callback. These helpers can be found in the [SS.Core.ComponentCallbacks](../src/Core/ComponentCallbacks) namespace.
 
 
 ### Registering/Unregistering for a Component Callback
@@ -423,7 +429,7 @@ public class ExampleModule : IModule, IArenaAttachableModule
 ```
 
 ### Creating a new Component Callback
-To create a new Component Callback, the bare minimum you need to define is a delegate. However, as mentioned earlier, it's nicer to wrap it all up in a static helper class. Here's an example of how to do that.
+To create a new Component Callback, the bare minimum needed is to define a delegate. However, as mentioned earlier, it's nicer to wrap it all up in a static helper class. Here's an example of how to do that.
 
 > On the helper class, there's no requirement that the names of the methods be `Register`, `Unregister`, and `Fire`. However, it is easy to understand and so it's recommended to just stick with those names as a convention.
 
@@ -481,19 +487,21 @@ When you want to fire (invoke) a Component Callback just use the helper class `F
 ```C#
 // For example, if you had the root broker in a variable named 'broker', 
 // you could fire a zone-wide Component Callback by doing:
-MyExampleDelegate(broker, 123, "Subspace forever!", true);
+MyExampleCallback.Fire(broker, 123, "Subspace forever!", true);
 
 // Or, let's say you had an Arena varible named 'arena'
 // you could fire it on that arena with:
-MyExampleDelegate(arena, 123, "Subspace forever!", true);
+MyExampleCallback.Fire(arena, 123, "Subspace forever!", true);
 
 ```
 
+Of course, you are not limited to only firing callbacks you defined. You can also fire any of the built-in callbacks if it makes sense for your use case. However, most likely, you'll be firing callbacks that you defined.
+
 ## Component Advisors
-Advisors are interfaces that are expected to have more than one implementation. The `ComponentBroker` just keeps track of a collection of instances that implement a particular interface. 
+Advisors are interfaces that are expected to have more than one implementation. The `ComponentBroker` just keeps track of a collection of instances for each advisor interface type.
 - Registering adds an instance to the collection. 
 - Unregistering removes an instance from the collection. 
-- Using advisors just means getting a collection of implementations for a specified advsior interface type, and then asking each implementation in the collection for advice on how to proceed with a given task.
+- Using an advisor just means getting a collection of implementations for a specified advsior interface type, and then asking each implementation in the collection for advice on how to proceed with a given task.
 
 ### Defining a Component Advisor interface
 ``` C#
@@ -586,7 +594,7 @@ public class UseAdvisorExampleModule : IModule
 
     // Make believe this was used at some point
     // in the operation of your module.
-    public void SomeLogic(Player player)
+    public void DoSomething(Player player)
     {
         bool allow = true;
 
@@ -594,6 +602,9 @@ public class UseAdvisorExampleModule : IModule
         var advisors = _broker.GetAdvisors<IMyExampleAdvisor>();
 
         // Ask each advisor for advice.
+        // How you decide to use advice from an advisor is up to you.
+        // Here we'll consider something to be allowed, only if
+        // every advisor says it's allowed.
         foreach (var advisor in advsiors)
         {
             if (!advisor.IsAllowedToDoSomething(player))
@@ -619,37 +630,56 @@ public class UseAdvisorExampleModule : IModule
 
 
 ## The `Player` class and Per-player data
-The `Player` class is one of the most used and most important types used in the server. References of the `Player` type are passed around all throughout the server. As you could have guessed, each instance represents an actual player. This is usually a client connected to the server, though "fake" ones can exist for other reason too (e.g. replays, AI bots, etc). The `PlayerData` module manages all the `Player` objects and is accessible through the `IPlayerData` interface.
+The `Player` class is one of the most used and most important types in the server. References of the `Player` type are passed around all throughout the server. As you could have guessed, each instance represents an actual player. This is usually a client connected to the server, though "fake" ones can exist for other reasons too (e.g. playing a recording, AI bots, etc). The `PlayerData` module manages all the `Player` objects and is accessible through the `IPlayerData` interface.
 
 It is very likely that there will be a need to store data about a player when building a module. A module is free to manage its own data structures. So it is entirely possible for a module to maintain a Dictionary that maps from a `Player` (or PlayerId) to a custom piece of data. However, instead of doing that, the `PlayerData` module provides a **per-player** data mechanism.
 
-On the `IPlayerData` interface, there are two methods `AllocatePlayerData` and `FreePlayerData`. 
+On the `IPlayerData` interface, there are two methods `AllocatePlayerData` and `FreePlayerData`:
 - The `AllocatePlayerData` method reserves a slot for a given data type, provided through a generic type parameter (must be a class). What reserving a slot means, is that each `Player` object will get an instance of that class. `AllocatePlayerData` returns a key. That key can then be used on a `Player` object by calling the `TryGetExtraData` method to get that player's instance of the data.
 - The `FreePlayerData` method is used when the slot is no longer needed.
 
 Normally, `AllocatePlayerData` is used when a module loads and `FreePlayerData` is used when a module unloads.
 
 > **Design:**<br>
-In ASSS, per-player data is implemented using a chunk of reserved bytes inside of each Player struct. Having the data within the Player struct means that accessing it could be faster, as it's right next to all of the other data for that player (likely read on the same memory page). The chunk of reserved memory is limited in size though. To storing a large piece of data, a module would just store a pointer in the per-player data, pointing to some other memory location (allocated with malloc).<br><br>
+In ASSS, per-player data is implemented using a chunk of reserved bytes inside of each Player struct. Having the data within the Player struct means that accessing it could be faster, as it's right next to all of the other data for that player (likely read on the same memory page). The chunk of reserved memory is limited in size though. To store a large piece of data, a module would just store a pointer in the per-player data, pointing to some other memory location (allocated with malloc).<br><br>
 In Subspace Server .NET, per-player data is stored using a Dictionary in each `Player` object which just contains references to other objects. This is equivalent to how modules in ASSS store pointers in per-player data. If there is a penality for the extra indirection, it is mostly irrelevant. Note: Adding functionality to reserve bytes inside of a `Player`, like ASSS does, is possible using a fixed-sized buffer, but it seems unnecessary.
 
 ## The `Arena` class and Per-arena data
 
-The `Arena` class is another type widely used within the server. As you've already learned, it's important as a `ComponentBroker`. It is passed in many callbacks and through many methods on interfaces. It is very likely there will be a need to store data for an `Arena`. Therefore, the `ArenaManager` module provides a similar mechanism: per-arena data. It works identically to per-player data, except for arenas. Use the `IArenaManager` interface to call the `AllocateArenaData` and `FreeArenaData` methods. Use the `TryGetExtraData` method on an `Arena` to access that arena's data.
+The `Arena` class is another type widely used within the server. As you've already learned, it's important as a `ComponentBroker`. It is passed in many callbacks and through many methods on interfaces. As with `Player`, it is very likely there will be a need to store data for an `Arena`. Therefore, the `ArenaManager` module provides a similar mechanism: **per-arena** data. It works identically to per-player data, except for arenas. Use the `IArenaManager` interface to call the `AllocateArenaData` and `FreeArenaData` methods. Use the `TryGetExtraData` method on an `Arena` to access that arena's data.
 
 ## IDisposable pattern
 - If a module implements the `IDisposable` interface, the server will call the `Dispose` method after the module is unloaded.
 - If the class provided for Per-Player Data or Per-Arena Data implements the `IDisposable` interface, the server handles calling the `Dispose` method before the object is dropped from use.
 
 ## Object Pooling
+As you probably already know, is very easy to allocate memory on the heap in .NET. However, those allocations come at a cost. When the references to that memory go out of scope, it's up to the garbage collector to clean up. Garbage collection takes time. In a real-time video game, having a delay can be very bad. Yes, this is the server-side, but any delay is going to seen as lag. Therefore, memory allocations and garbage collection are of a concern.
+
+Object pooling is a technique in which objects can be reused. The basic idea behind it is that a pool of objects is maintained. This pool is used such that when an object is needed, it will try to get one from the pool, rather than allocate a new one. And when an object is no longer needed, it can be returned to the pool so that it can be reused later on.
+
+> **Fun fact:** ASSS does pooling too, even though it is in C which doesn't have garbage collection. The ASSS 'net' module keeps a pool of data buffers, so that it doesn't need to allocate memory every time it needs to send or receive data.
 
 ### Microsoft.Extensions.ObjectPool
+The Microsoft.Extensions.ObjectPool NuGet package provides a very useful implementation of object pooling. It is used extensively in the server. However, keep in mind, the pools that Microsoft.Extensions.ObjectPool provides is not ideal for every use case. The pooling functionality Microsoft.Extensions.ObjectPool contains is geared toward short-term object use. That is, for scenarios where an object is used for a very short time, and then returned back to the pool. 
 
-### ObjectPoolManager module
+Out of the box, the pools Microsoft.Extensions.ObjectPool provides is not a good match for use cases where objects may be held for extended periods of time, such as a producer-consumer queue where hundreds or thousands of objects may be held up waiting to be procesed, and eventually to be released. To cover this scenario, the `SS.Utilities` assembly contains an implementation, `NonTransientObjectPool<T>`. It is a very simple implementation which uses a `System.Collection.Concurrent.ConcurrentBag<T>`. This implementation may not be the best solution possible, but it gets the job done.
+
+### Objects aware of their pool
+In certain scenarios, it makes sense that an object itself keeps track of the pool it originated from, and have the ability to return itself to that pool. For this type of scenario, the `SS.Utilities` assembly contains the `PooledObject` class and associated `Pool` class. `PooledObject` implements the `IDisposable` interface. When disposed, the object returns itself to its originating pool.
+
+> **Design:** If you've ever used ADO.NET, this design is similar to how disposing a database connection returns the connection to a pool to be reused.
+
+### ObjectPoolManager
+
+Rather than having to create your own pools, the `IObjectPoolManager` interface of the `ObjectPoolManager` module provides access to pools for certain types that may be useful.
+- StringBuilderPool: A pool of StringBuilder objects.
+- PlayerSetPool: A pool of HashSet<Player> objects. Useful whenever you need to keep track of a set of `Player` objects.
 
 ### Object Pooling of Per-Player Data and Per-Arena Data
+The per-player data and per-arena data APIs support object pooling too. This can be done in two ways: by implementing the `IPooledExtraData` interface OR by using special overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods. Each way has its own pros and cons.
 
-#### IPooledExtraData
+#### `IPooledExtraData`
+If the class being used for per-player data or per-arena data implements the `SS.Core.IPooledExtraData` interface, the server is able to use a pool for those objects. The `IPooledExtraData` interface just contains a `Reset` method, which is meant to reset the object back to its original state as if it had just been constructed. The idea being, if you're able to reset an object, it can be reused. This approach means the type is aware that it may be used in a pool and is providing the `Reset` functionality itself.
 
-#### IPooledObjectPolicy\<T\> method overloads of AllocatePlayerData and AllocateArenaData
-
+#### `IPooledObjectPolicy\<T\>` method overloads of `AllocatePlayerData` and `AllocateArenaData`
+There are overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods which allow passing in an `IPooledObjectPolicy\<T\>`. This interface is the one from Microsoft.Extensions.ObjectPool. With a custom policy, you are able to define how an object is created and what to do when an object is being returned to the pool (such as resetting an object's state so that it's ok to be reused).
