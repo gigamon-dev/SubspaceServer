@@ -730,7 +730,7 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
             {
                 using SQLiteCommand command = conn.CreateCommand();
                 command.CommandText = @"
-INSERT INTO ArenaData(
+INSERT OR REPLACE INTO ArenaData(
      ArenaGroupIntervalId
     ,PersistKeyId
     ,Data
