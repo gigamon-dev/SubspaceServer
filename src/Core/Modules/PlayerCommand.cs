@@ -148,6 +148,18 @@ namespace SS.Core.Modules
                 });
 
             AddCommandGroup(
+                new CommandGroup("flag")
+                {
+                    InterfaceDependencies = new()
+                    {
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("flagreset", Command_flagreset),
+                    }
+                });
+
+            AddCommandGroup(
                 new CommandGroup("ball")
                 {
                     InterfaceDependencies = new()
@@ -2315,6 +2327,26 @@ namespace SS.Core.Modules
 
             string imageFileName = Path.ChangeExtension(Path.GetFileNameWithoutExtension(mapPath), extension);
             _fileTransfer.SendFile(p, path, imageFileName, true);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Causes the flag game to immediately reset.")]
+        private void Command_flagreset(string command, string parameters, Player p, ITarget target)
+        {
+            Arena arena = p.Arena;
+            if (arena == null)
+                return;
+
+            IFlagGame flagGame = arena.GetInterface<IFlagGame>();
+            if (flagGame == null)
+            {
+                _chat.SendMessage(p, $"No flag game to reset.");
+                return;
+            }
+
+            flagGame.ResetGame(p.Arena);
         }
 
         [CommandHelp(

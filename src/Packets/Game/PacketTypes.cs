@@ -114,7 +114,7 @@ namespace SS.Packets.Game
         SetFreq = 0x0F, 
         AttachTo = 0x10, 
         // missing 12 : appears to be disabled in subgame
-        PickupFlag = 0x13, 
+        TouchFlag = 0x13, 
         TurretKickOff = 0x14, 
         DropFlags = 0x15,
         /// <summary>

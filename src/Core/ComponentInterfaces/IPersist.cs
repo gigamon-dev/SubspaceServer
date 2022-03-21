@@ -7,6 +7,7 @@ namespace SS.Core.ComponentInterfaces
     {
         Stats = 1,
         StatsEndingTime = 2,
+        StaticFlags = 20,
         GameShipLock = 46,
         Chat = 47,
     }

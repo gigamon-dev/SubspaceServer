@@ -1,0 +1,11 @@
+﻿// protoc.exe -I=<include folder> -I=. --csharp_out=. StaticFlags.proto
+
+syntax = "proto3";
+
+package ss.core.persist.protobuf;
+option csharp_namespace = "SS.Core.Persist.Protobuf";
+
+message StaticFlagsData {
+	uint32 mapChecksum = 1;
+	repeated int32 ownerFreqs = 2;
+}
