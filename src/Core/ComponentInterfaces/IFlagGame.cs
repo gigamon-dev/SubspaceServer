@@ -53,8 +53,9 @@ namespace SS.Core.ComponentInterfaces
         /// Gets the owner team of each flag.
         /// </summary>
         /// <param name="arena">The arena to get the flags owners for.</param>
-        /// <returns>The owners.</returns>
-        ReadOnlySpan<short> GetFlagOwners(Arena arena);
+        /// <param name="owners">The owners. This must be the same length as <see cref="IFlagGame.GetFlagCount(Arena)"/>.</param>
+        /// <returns><see langword="true"/> if <paramref name="owners"/> was populated. <see langword="false"/> if there was an error.</returns>
+        bool TryGetFlagOwners(Arena arena, Span<short> owners);
 
         /// <summary>
         /// Sets the owner team of each flag.

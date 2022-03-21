@@ -28,6 +28,7 @@ namespace SS.Core.Modules.FlagGame
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
+        private IMainloopTimer _mainloopTimer;
         private IMapData _mapData;
         private INetwork _network;
         
@@ -45,6 +46,7 @@ namespace SS.Core.Modules.FlagGame
             IArenaManager arenaManager,
             IConfigManager configManager,
             ILogManager logManager,
+            IMainloopTimer mainloopTimer,
             IMapData mapData,
             INetwork network)
         {
@@ -52,6 +54,7 @@ namespace SS.Core.Modules.FlagGame
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _network = network ?? throw new ArgumentNullException(nameof(network));
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -102,13 +105,20 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return;
 
-            for (int i = 0; i < ad.FlagOwners.Length; i++)
-                ad.FlagOwners[i] = -1; // not owned
+            DateTime now = DateTime.UtcNow;
 
-            SendStaticFlagPacket(arena);
+            for (int i = 0; i < ad.Flags.Length; i++)
+            {
+                ref FlagData flagData = ref ad.Flags[i];
+                flagData.OwnerFreq = -1; // not owned;
+                flagData.DirtyPlayer = null;
+                flagData.LastSendTimestamp = now;
+            }
+
+            SendFullFlagUpdate(arena);
 
             FlagGameResetCallback.Fire(arena, arena);
         }
@@ -118,10 +128,10 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return 0;
 
-            return ad.FlagOwners.Length;
+            return ad.Flags.Length;
         }
 
         int IFlagGame.GetFlagCount(Arena arena, int freq)
@@ -129,23 +139,31 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return 0;
 
             int count = 0;
-            for (int i = 0; i < ad.FlagOwners.Length; i++)
-                if (ad.FlagOwners[i] == freq)
+            for (int i = 0; i < ad.Flags.Length; i++)
+                if (ad.Flags[i].OwnerFreq == freq)
                     count++;
 
             return count;
         }
 
-        ReadOnlySpan<short> IStaticFlagGame.GetFlagOwners(Arena arena)
+        bool IStaticFlagGame.TryGetFlagOwners(Arena arena, Span<short> owners)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return ReadOnlySpan<short>.Empty;
+            if (arena == null
+                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || ad.Flags == null
+                || ad.Flags.Length != owners.Length)
+            {
+                return false;
+            }
 
-            return ad.FlagOwners;
+            for (int i = 0; i < ad.Flags.Length; i++)
+                owners[i] = ad.Flags[i].OwnerFreq;
+
+            return true;
         }
 
         bool IStaticFlagGame.SetFlagOwners(Arena arena, ReadOnlySpan<short> flagOwners)
@@ -153,16 +171,23 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return false;
 
-            if (ad.FlagOwners.Length != flagOwners.Length)
+            if (ad.Flags.Length != flagOwners.Length)
                 return false;
 
-            for (int i = 0; i < ad.FlagOwners.Length; i++)
-                ad.FlagOwners[i] = flagOwners[i];
+            DateTime now = DateTime.UtcNow;
 
-            SendStaticFlagPacket(arena);
+            for (int i = 0; i < ad.Flags.Length; i++)
+            {
+                ref FlagData flagData = ref ad.Flags[i];
+                flagData.OwnerFreq = flagOwners[i];
+                flagData.DirtyPlayer = null;
+                flagData.LastSendTimestamp = now;
+            }
+
+            SendFullFlagUpdate(arena);
 
             return true;
         }
@@ -189,7 +214,7 @@ namespace SS.Core.Modules.FlagGame
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return; // module not enabled for the arena, there could be another flag game module that will handle it
 
             if (p.Status != PlayerState.Playing)
@@ -224,16 +249,24 @@ namespace SS.Core.Modules.FlagGame
             }
 
             byte flagId = (byte)packet.FlagId;
-            if (flagId < 0 || flagId >= ad.FlagOwners.Length)
+            if (flagId < 0 || flagId >= ad.Flags.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet - bad flag id.");
                 return;
             }
 
-            short oldFreq = ad.FlagOwners[flagId];
+            ref FlagData flagData = ref ad.Flags[flagId];
+
+            short oldFreq = flagData.OwnerFreq;
             short newFreq = p.Freq;
 
-            ad.FlagOwners[flagId] = newFreq;
+            if (oldFreq == newFreq)
+                return; // no change
+
+            flagData.OwnerFreq = newFreq;
+            flagData.DirtyPlayer = p;
+
+            TrySendSingleFlagUpdateToArena(arena, ad, flagId, ref flagData, DateTime.UtcNow);
 
             StaticFlagClaimedCallback.Fire(arena, arena, p, flagId, oldFreq, newFreq);
         }
@@ -256,26 +289,38 @@ namespace SS.Core.Modules.FlagGame
                 {
                     ad.IsPersistEnabled = _configManager.GetInt(arena.Cfg, "Flag", "PersistentTurfOwners", 1) != 0;
 
-                    ad.FlagOwners = new short[numFlags];
-                    for (int i = 0; i < ad.FlagOwners.Length; i++)
-                        ad.FlagOwners[i] = -1; // not owned
+                    DateTime now = DateTime.UtcNow;
+
+                    ad.Flags = new FlagData[numFlags];
+                    for (int i = 0; i < numFlags; i++)
+                    {
+                        ref FlagData flagData = ref ad.Flags[i];
+                        flagData.OwnerFreq = -1; // not owned
+                        flagData.DirtyPlayer = null;
+                        flagData.LastSendTimestamp = now;
+                    }
 
                     if (ad.FlagGameRegistrationToken == null)
                         ad.FlagGameRegistrationToken = arena.RegisterInterface<IFlagGame>(this);
 
                     if (ad.StaticFlagGameRegistrationToken == null)
                         ad.StaticFlagGameRegistrationToken = arena.RegisterInterface<IStaticFlagGame>(this);
+
+                    _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SendFlagUpdates, arena);
+                    _mainloopTimer.SetTimer(MainloopTimer_SendFlagUpdates, 500, 500, arena, arena);
                 }
                 else
                 {
                     ad.IsPersistEnabled = false;
-                    ad.FlagOwners = null;
+                    ad.Flags = null;
 
                     if (ad.FlagGameRegistrationToken != null)
                         arena.UnregisterInterface(ref ad.FlagGameRegistrationToken);
 
                     if (ad.StaticFlagGameRegistrationToken != null)
                         arena.UnregisterInterface(ref ad.StaticFlagGameRegistrationToken);
+
+                    _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SendFlagUpdates, arena);
 
                     // TODO: does sending an empty, 1 byte 0x22 tell the client to remove the flags?
                 }
@@ -287,6 +332,8 @@ namespace SS.Core.Modules.FlagGame
 
                 if (ad.StaticFlagGameRegistrationToken != null)
                     arena.UnregisterInterface(ref ad.StaticFlagGameRegistrationToken);
+
+                _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SendFlagUpdates, arena);
             }
         }
 
@@ -294,7 +341,28 @@ namespace SS.Core.Modules.FlagGame
         {
             if (action == PlayerAction.EnterArena)
             {
-                SendStaticFlagPacket(p);
+                SendFullFlagUpdate(p);
+            }
+            else if (action == PlayerAction.LeaveArena)
+            {
+                if (!arena.TryGetExtraData(_adKey, out ArenaData ad)
+                    || ad.Flags == null)
+                {
+                    return;
+                }
+
+                DateTime now = DateTime.UtcNow;
+
+                // make sure any pending flag updates are sent before the player leaves
+                for (short flagId = 0; flagId < ad.Flags.Length; flagId++)
+                {
+                    ref FlagData flagData = ref ad.Flags[flagId];
+
+                    if (flagData.DirtyPlayer == p)
+                    {
+                        SendSingleFlagUpdateToArena(arena, flagId, ref flagData, now);
+                    }
+                }
             }
         }
 
@@ -307,14 +375,14 @@ namespace SS.Core.Modules.FlagGame
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (!ad.IsPersistEnabled || ad.FlagOwners == null)
+            if (!ad.IsPersistEnabled || ad.Flags == null)
                 return;
 
             StaticFlagsData staticFlagsData = new();
             staticFlagsData.MapChecksum = _mapData.GetChecksum(arena, 0);
 
-            for (int i = 0; i < ad.FlagOwners.Length; i++)
-                staticFlagsData.OwnerFreqs.Add(ad.FlagOwners[i]);
+            for (int i = 0; i < ad.Flags.Length; i++)
+                staticFlagsData.OwnerFreqs.Add(ad.Flags[i].OwnerFreq);
 
             staticFlagsData.WriteTo(outStream);
         }
@@ -324,7 +392,7 @@ namespace SS.Core.Modules.FlagGame
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (!ad.IsPersistEnabled || ad.FlagOwners == null)
+            if (!ad.IsPersistEnabled || ad.Flags == null)
                 return;
 
             StaticFlagsData staticFlagsData = StaticFlagsData.Parser.ParseFrom(inStream);
@@ -335,19 +403,74 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            if (staticFlagsData.OwnerFreqs.Count != ad.FlagOwners.Length)
+            if (staticFlagsData.OwnerFreqs.Count != ad.Flags.Length)
             {
-                _logManager.LogM(LogLevel.Info, nameof(StaticFlags), $"# of flags in persisted data ({staticFlagsData.OwnerFreqs.Count} does not the current map ({ad.FlagOwners.Length}).");
+                _logManager.LogM(LogLevel.Info, nameof(StaticFlags), $"# of flags in persisted data ({staticFlagsData.OwnerFreqs.Count} does not the current map ({ad.Flags.Length}).");
                 return;
             }
 
-            for (int i = 0; i < ad.FlagOwners.Length; i++)
-                ad.FlagOwners[i] = (short)staticFlagsData.OwnerFreqs[i];
+            DateTime now = DateTime.UtcNow;
+
+            for (int i = 0; i < ad.Flags.Length; i++)
+            {
+                ref FlagData flagData = ref ad.Flags[i];
+                flagData.OwnerFreq = (short)staticFlagsData.OwnerFreqs[i];
+                flagData.DirtyPlayer = null;
+                flagData.LastSendTimestamp = now;
+            }
         }
 
         #endregion
 
-        private void SendStaticFlagPacket(Player player)
+        private bool MainloopTimer_SendFlagUpdates(Arena arena)
+        {
+            if (arena == null
+                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || ad.Flags == null)
+            {
+                return false;
+            }
+
+            DateTime now = DateTime.UtcNow;
+
+            for (short flagId = 0; flagId < ad.Flags.Length; flagId++)
+            {
+                ref FlagData flagData = ref ad.Flags[flagId];
+                TrySendSingleFlagUpdateToArena(arena, ad, flagId, ref flagData, now);
+            }
+
+            return true;
+        }
+
+        private bool TrySendSingleFlagUpdateToArena(Arena arena, ArenaData ad, short flagId, ref FlagData flagData, DateTime now)
+        {
+            if (arena != null
+                && ad != null
+                && flagData.DirtyPlayer != null
+                && (now - flagData.LastSendTimestamp) > ad.SendFlagUpdateCooldown)
+            {
+                SendSingleFlagUpdateToArena(arena, flagId, ref flagData, now);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        private void SendSingleFlagUpdateToArena(Arena arena, short flagId, ref FlagData flagData, DateTime now)
+        {
+            if (arena == null)
+                return;
+
+            S2C_FlagPickup s2c = new(flagId, (short)flagData.DirtyPlayer.Id);
+            _network.SendToArena(arena, null, ref s2c, NetSendFlags.Reliable);
+
+            flagData.DirtyPlayer = null;
+            flagData.LastSendTimestamp = now;
+        }
+
+        private void SendFullFlagUpdate(Player player)
         {
             if (player == null)
                 return;
@@ -359,19 +482,20 @@ namespace SS.Core.Modules.FlagGame
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return;
 
-            Span<byte> packet = stackalloc byte[1 + (ad.FlagOwners.Length * 2)];
+            Span<byte> packet = stackalloc byte[1 + (ad.Flags.Length * 2)];
             packet[0] = (byte)S2CPacketType.TurfFlags;
 
             Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(packet[1..]);
-            ad.FlagOwners.CopyTo(flagOwners);
+            for (int i = 0; i < ad.Flags.Length; i++)
+                flagOwners[i] = ad.Flags[i].OwnerFreq;
 
             _network.SendToOne(player, packet, NetSendFlags.Reliable);
         }
 
-        private void SendStaticFlagPacket(Arena arena)
+        private void SendFullFlagUpdate(Arena arena)
         {
             if (arena == null)
                 return;
@@ -379,19 +503,44 @@ namespace SS.Core.Modules.FlagGame
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (ad.FlagOwners == null)
+            if (ad.Flags == null)
                 return;
 
-            Span<byte> packet = stackalloc byte[1 + (ad.FlagOwners.Length * 2)];
+            Span<byte> packet = stackalloc byte[1 + (ad.Flags.Length * 2)];
             packet[0] = (byte)S2CPacketType.TurfFlags;
 
             Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(packet[1..]);
-            ad.FlagOwners.CopyTo(flagOwners);
+            for (int i = 0; i < ad.Flags.Length; i++)
+                flagOwners[i] = ad.Flags[i].OwnerFreq;
 
             _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
         }
 
         #region Helper types
+
+        private struct FlagData
+        {
+            /// <summary>
+            /// The team that owns the flag.
+            /// </summary>
+            public short OwnerFreq;
+
+            /// <summary>
+            /// The player that last claimed the flag and is "dirty", meaning a flag update needs to be sent to the arena.
+            /// </summary>
+            /// <remarks>
+            /// We keep track of the player rather than just a dirty flag since the packet requires the player's id.
+            /// </remarks>
+            public Player DirtyPlayer;
+
+            /// <summary>
+            /// Timestamp a flag update was last sent for the flag.
+            /// </summary>
+            /// <remarks>
+            /// Used to prevent flooding of flag update packets. For example, when players on different teams are standing on top of the same flag.
+            /// </remarks>
+            public DateTime LastSendTimestamp;
+        }
 
         private class ArenaData
         {
@@ -399,7 +548,8 @@ namespace SS.Core.Modules.FlagGame
             public InterfaceRegistrationToken<IStaticFlagGame> StaticFlagGameRegistrationToken;
 
             public bool IsPersistEnabled = false;
-            public short[] FlagOwners = null;
+            public readonly TimeSpan SendFlagUpdateCooldown = TimeSpan.FromMilliseconds(500); // TODO: make this configurable?
+            public FlagData[] Flags = null;
         }
 
         #endregion
