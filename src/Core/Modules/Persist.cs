@@ -478,7 +478,7 @@ namespace SS.Core.Modules
                                         && registration.Scope == PersistScope.PerArena)
                                     {
                                         PutOneArena(registration, arena);
-                                        registration.ClearData(null);
+                                        registration.ClearData(arena);
                                     }
                                 }
                             }

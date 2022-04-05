@@ -10,6 +10,7 @@ namespace SS.Core.Modules.Scoring
     public class FlagGamePoints : IModule, IArenaAttachableModule
     {
         private IArenaManager _arenaManager;
+        private ICarryFlagGame _carryFlagGame;
         private IChat _chat;
         private IConfigManager _configManager;
         private IPlayerData _playerData;
@@ -21,11 +22,13 @@ namespace SS.Core.Modules.Scoring
         public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
+            ICarryFlagGame carryFlagGame,
             IChat chat,
             IConfigManager configManager,
             IPlayerData playerData)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _carryFlagGame = carryFlagGame ?? throw new ArgumentNullException(nameof(carryFlagGame));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -42,16 +45,23 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
+        [ConfigHelp("Flag", "FlagMode", ConfigScope.Arena, typeof(FlagMode), DefaultValue = "None", 
+            Description ="Style of flag game.\n" +
+            "0 = carry all flags to win (e.g. running/jackpot)\n," +
+            "1 = own all dropped flags to win (e.g. warzone),\n" +
+            "-1 = None (no win condition)")]
+        [ConfigHelp("Flag", "FlagReward", ConfigScope.Arena, typeof(int), DefaultValue = "5000", 
+            Description = "The basic flag reward is calculated as (players in arena)^2 * FlagReward / 1000.")]
+        [ConfigHelp("Flag", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            Description = "Whether to split a flag reward between the members of a freq or give them each the full amount.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
-            ad.CarryFlagGame = arena.GetInterface<ICarryFlagGame>();
-            if (ad.CarryFlagGame == null)
-                return false;
-
             ad.FlagMode = _configManager.GetEnum(arena.Cfg, "Flag", "FlagMode", FlagMode.None);
+            ad.FlagRewardRatio = _configManager.GetInt(arena.Cfg, "Flag", "FlagReward", 5000) / 1000.0;
+            ad.SplitPoints = _configManager.GetInt(arena.Cfg, "Flag", "SplitPoints", 0) != 0;
 
             FlagGainCallback.Register(arena, Callback_FlagGain);
             FlagLostCallback.Register(arena, Callback_FlagLost);
@@ -69,9 +79,6 @@ namespace SS.Core.Modules.Scoring
             FlagLostCallback.Unregister(arena, Callback_FlagLost);
             FlagOnMapCallback.Unregister(arena, Callback_FlagOnMap);
 
-            if (ad.CarryFlagGame != null)
-                arena.ReleaseInterface(ref ad.CarryFlagGame);
-
             return true;
         }
 
@@ -85,9 +92,9 @@ namespace SS.Core.Modules.Scoring
             if (ad.FlagMode == FlagMode.CarryAll)
             {
                 bool isWin = true;
-                for (short i = 0; i < ad.CarryFlagGame.GetFlagCount(arena); i++)
+                for (short i = 0; i < _carryFlagGame.GetFlagCount(arena); i++)
                 {
-                    if (!ad.CarryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
+                    if (!_carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
                         || flagInfo.State != FlagState.Carried
                         || flagInfo.Freq != player.Freq)
                     {
@@ -103,7 +110,7 @@ namespace SS.Core.Modules.Scoring
             }
             else if (ad.FlagMode == FlagMode.OwnAllDropped)
             {
-                if (ad.CarryFlagGame.GetFlagCount(arena, player.Freq) == ad.CarryFlagGame.GetFlagCount(arena))
+                if (_carryFlagGame.GetFlagCount(arena, player.Freq) == _carryFlagGame.GetFlagCount(arena))
                 {
                     // start music
                     ad.IsMusicPlaying = true;
@@ -137,9 +144,9 @@ namespace SS.Core.Modules.Scoring
 
             // Check that all flags are dropped and that one team owns them all.
             bool isWin = true;
-            for (short i = 0; i < ad.CarryFlagGame.GetFlagCount(arena); i++)
+            for (short i = 0; i < _carryFlagGame.GetFlagCount(arena); i++)
             {
-                if (!ad.CarryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
+                if (!_carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
                     || flagInfo.State != FlagState.OnMap
                     || flagInfo.Freq != freq)
                 {
@@ -183,11 +190,45 @@ namespace SS.Core.Modules.Scoring
                 _playerData.Unlock();
             }
 
-            // TODO: flag reward and jackpot logic
+            // reward
+            int points = (int)(playerCount * playerCount * ad.FlagRewardRatio);
 
-            ad.CarryFlagGame.ResetGame(arena, freq, 100);
+            // jackpot
+            IJackpot jackpot = arena.GetInterface<IJackpot>();
+            if (jackpot != null)
+            {
+                try
+                {
+                    points += jackpot.GetJackpot(arena);
+                }
+                finally
+                {
+                    arena.ReleaseInterface(ref jackpot);
+                }
+            }
 
-            // TODO: maybe enter persist game interval here?
+            // split points
+            if (onFreq > 0 && ad.SplitPoints)
+            {
+                points /= onFreq;
+            }
+
+            // Reset the game with a win.
+            _carryFlagGame.ResetGame(arena, freq, points);
+
+            // End the 'game' interval for the arena.
+            IPersistExecutor persistExecutor = arena.GetInterface<IPersistExecutor>();
+            if (persistExecutor != null)
+            {
+                try
+                {
+                    persistExecutor.EndInterval(PersistInterval.Game, arena);
+                }
+                finally
+                {
+                    arena.ReleaseInterface(ref persistExecutor);
+                }
+            }
         }
 
         private enum FlagMode
@@ -207,8 +248,12 @@ namespace SS.Core.Modules.Scoring
 
         private class ArenaData
         {
+            // settings
             public FlagMode FlagMode;
-            public ICarryFlagGame CarryFlagGame;
+            public double FlagRewardRatio;
+            public bool SplitPoints;
+
+            // state
             public bool IsMusicPlaying = false;
         }
     }

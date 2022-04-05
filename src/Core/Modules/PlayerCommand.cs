@@ -27,6 +27,7 @@ namespace SS.Core.Modules
         // Regular dependencies (do not add any of these to a command group)
         private IChat _chat;
         private ICommandManager _commandManager;
+        private ILogManager _logManager;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
 
@@ -39,8 +40,8 @@ namespace SS.Core.Modules
         private IFileTransfer _fileTransfer;
         private IGame _game;
         private IGroupManager _groupManager;
+        private IJackpot _jackpot;
         private ILagQuery _lagQuery;
-        private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMapData _mapData;
         private IModuleManager _mm;
@@ -131,6 +132,22 @@ namespace SS.Core.Modules
                 });
 
             AddCommandGroup(
+                new CommandGroup("jackpot")
+                {
+                    InterfaceDependencies = new()
+                    {
+                        typeof(IArenaManager),
+                        typeof(ICapabilityManager),
+                        typeof(IJackpot),
+                    },
+                    Commands = new[]
+                    {
+                        new CommandInfo("jackpot", Command_jackpot),
+                        new CommandInfo("setjackpot", Command_setjackpot),
+                    }
+                });
+
+            AddCommandGroup(
                 new CommandGroup("config")
                 {
                     InterfaceDependencies = new()
@@ -215,7 +232,6 @@ namespace SS.Core.Modules
                         typeof(ICapabilityManager),
                         typeof(IGroupManager),
                         typeof(IArenaManager),
-                        typeof(ILogManager),
                         typeof(IConfigManager),
                         typeof(IFileTransfer),
                         typeof(IMapData),
@@ -252,12 +268,14 @@ namespace SS.Core.Modules
             ComponentBroker broker,
             IChat chat,
             ICommandManager commandManager,
+            ILogManager logManager,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
@@ -271,8 +289,8 @@ namespace SS.Core.Modules
             _fileTransfer = null;
             _game = null;
             _groupManager = null;
+            _jackpot = null;
             _lagQuery = null;
-            _logManager = null;
             _mainloop = null;
             _mapData = null;
             _mm = null;
@@ -909,6 +927,73 @@ namespace SS.Core.Modules
                 _chat.SendMessage(p, ChatSound.Sheep, sheepMessage);
             else
                 _chat.SendMessage(p, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "none or <arena name> or all",
+            Description = "Displays the current jackpot for this arena, the named arena, or all arenas.")]
+        private void Command_jackpot(string command, string parameters, Player p, ITarget target)
+        {
+            if (!string.IsNullOrWhiteSpace(parameters))
+            {
+                if (string.Equals(parameters, "all", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool canSeePrivArena = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
+
+                    _arenaManager.Lock();
+
+                    try
+                    {
+                        foreach(Arena arena in _arenaManager.Arenas)
+                        {
+                            int jackpotValue;
+                            if (arena.Status == ArenaState.Running
+                                && (!arena.IsPrivate || canSeePrivArena || p.Arena == arena)
+                                && (jackpotValue = _jackpot.GetJackpot(arena)) > 0)
+                            {
+                                _chat.SendMessage(p, $"The jackpot in {arena.Name} is {jackpotValue}.");
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _arenaManager.Unlock();
+                    }
+                }
+                else
+                {
+                    Arena arena = _arenaManager.FindArena(parameters);
+                    if (arena != null)
+                    {
+                        _chat.SendMessage(p, $"The jackpot in {arena.Name} is {_jackpot.GetJackpot(arena)}.");
+                    }
+                    else
+                    {
+                        _chat.SendMessage(p, $"Arena '{parameters}' does not exist.");
+                    }
+                }
+            }
+            else
+            {
+                _chat.SendMessage(p, $"The jackpot is {_jackpot.GetJackpot(p.Arena)}.");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<new jackpot value>",
+            Description = "Sets the jackpot for this arena to a new value.")]
+        private void Command_setjackpot(string command, string parameters, Player p, ITarget target)
+        {
+            if (!int.TryParse(parameters, out int value))
+            {
+                _chat.SendMessage(p, $"setjackpot: bad value");
+                return;
+            }
+
+            _jackpot.SetJackpot(p.Arena, value);
+            _chat.SendMessage(p, $"The jackpot is {_jackpot.GetJackpot(p.Arena)}.");
         }
 
         [CommandHelp(
