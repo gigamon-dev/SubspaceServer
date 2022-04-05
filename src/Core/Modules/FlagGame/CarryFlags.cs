@@ -683,7 +683,7 @@ namespace SS.Core.Modules.FlagGame
                 return false;
 
             if (ad.GameState == GameState.Starting
-                && DateTime.Now <= ad.StartTimestamp)
+                && DateTime.UtcNow >= ad.StartTimestamp)
             {
                 ad.GameState = GameState.Running;
                 ad.CarryFlagBehavior.StartGame(arena);
@@ -827,9 +827,9 @@ namespace SS.Core.Modules.FlagGame
             [ConfigHelp("Flag", "SafeCenter", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "Whether flags that are dropped from a safe zone go in the center of the map, as opposed to near the player.")]
             [ConfigHelp("Flag", "WinDelay", ConfigScope.Arena, typeof(int), DefaultValue = "200",
-                Description = "The delay between dropping the last flag and winning (ticks).")]
-            [ConfigHelp("Flag", "FlagCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-303",
-                Description = "The delay between dropping the last flag and winning (ticks).")]
+                Description = "The amount of time needed for the win condition to be satisfied to count as a win (ticks).")]
+            [ConfigHelp("Flag", "FlagCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-256",
+                Description = "How many flags are present in this arena. This can be set to a range. For example, 6-8 to allow anywhere between 6 and and 8 flags to spawn.")]
             public Settings(IConfigManager configManager, ConfigHandle ch)
             {
                 AutoStart = configManager.GetInt(ch, "Flag", "AutoStart", 1) != 0;
