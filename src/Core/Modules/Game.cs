@@ -1882,11 +1882,11 @@ namespace SS.Core.Modules
 
             short flagCount = p.Packet.FlagsCarried;
 
-            // these flags are primarily for the benefit of other modules
             _playerData.Lock();
 
             try
             {
+                // these flags are primarily for the benefit of other modules
                 p.Flags.IsDead = true;
                 p.LastDeath = ServerTick.Now;
                 p.NextRespawn = p.LastDeath + (uint)ad.cfg_EnterDelay;
@@ -1946,7 +1946,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            // Use advsiors to determine how many points to award.
+            // Use advisors to determine how many points to award.
             short pts = 0;
             foreach (var advisor in killAdvisors)
             {
@@ -1959,7 +1959,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    killGreen.KillGreen(arena, killer, p, bty, flagCount, pts, green);
+                    green = killGreen.KillGreen(arena, killer, p, bty, flagCount, pts, green);
                 }
                 finally
                 {
@@ -1984,11 +1984,26 @@ namespace SS.Core.Modules
                 }
             }
 
-            NotifyKill(killer, p, pts, flagCount, green);
+            // Find out how many flags will get transferred to the killer.
+            short flagTransferCount = flagCount;
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame != null)
+            {
+                try
+                {
+                    flagTransferCount = carryFlagGame.TransferFlagsForPlayerKill(arena, p, killer);
+                }
+                finally
+                {
+                    arena.ReleaseInterface(ref carryFlagGame);
+                }
+            }
 
-            FireKillEvent(arena, killer, p, bty, flagCount, pts, green);
+            NotifyKill(killer, p, pts, flagTransferCount, green);
 
-            _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{p.Name} killed by {killer.Name} (bty={bty},flags={flagCount},pts={pts})");
+            FireKillEvent(arena, killer, p, bty, flagTransferCount, pts, green);
+
+            _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{p.Name} killed by {killer.Name} (bty={bty},flags={flagTransferCount},pts={pts})");
 
             if (!p.Flags.SentWeaponPacket)
             {

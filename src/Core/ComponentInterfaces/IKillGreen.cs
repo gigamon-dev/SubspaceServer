@@ -16,6 +16,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="pts">The total number of points the kill was worth.</param>
         /// <param name="green">The default kill green.</param>
         /// <returns></returns>
-        int KillGreen(Arena arena, Player killer, Player killed, int bounty, int flags, int pts, Prize green);
+        Prize KillGreen(Arena arena, Player killer, Player killed, int bounty, int flags, int pts, Prize green);
     }
 }

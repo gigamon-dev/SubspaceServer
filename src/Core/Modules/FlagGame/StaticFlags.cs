@@ -120,7 +120,7 @@ namespace SS.Core.Modules.FlagGame
 
             SendFullFlagUpdate(arena);
 
-            FlagGameResetCallback.Fire(arena, arena);
+            FlagGameResetCallback.Fire(arena, arena, -1, 0);
         }
 
         int IFlagGame.GetFlagCount(Arena arena)

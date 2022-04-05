@@ -28,13 +28,19 @@ namespace SS.Core
         public static readonly StatCode<ulong> TeamDeaths = new(StatId.TeamDeaths);
         public static readonly StatCode<TimeSpan> ArenaTotalTime = new(StatId.ArenaTotalTime);
 
+        public static readonly StatCode<ulong> FlagPickups = new(StatId.FlagPickups);
+        public static readonly StatCode<TimeSpan> FlagCarryTime = new(StatId.FlagCarryTime);
+        public static readonly StatCode<ulong> FlagDrops = new(StatId.FlagDrops);
+        public static readonly StatCode<ulong> FlagNeutDrops = new(StatId.FlagNeutDrops);
         public static readonly StatCode<ulong> FlagKills = new(StatId.FlagKills);
         public static readonly StatCode<ulong> FlagDeaths = new(StatId.FlagDeaths);
+        public static readonly StatCode<ulong> FlagGamesWon = new(StatId.FlagGamesWon);
+        public static readonly StatCode<ulong> FlagGamesLost = new(StatId.FlagGamesLost);
+        public static readonly StatCode<ulong> TurfTags = new(StatId.TurfTags);
 
         public static readonly StatCode<ulong> BallCarries = new(StatId.BallCarries);
         public static readonly StatCode<TimeSpan> BallCarryTime = new(StatId.BallCarryTime);
         public static readonly StatCode<ulong> BallGoals = new(StatId.BallGoals);
-
         public static readonly StatCode<ulong> BallGamesWon = new(StatId.BallGamesWon);
         public static readonly StatCode<ulong> BallGamesLost = new(StatId.BallGamesLost);
     }

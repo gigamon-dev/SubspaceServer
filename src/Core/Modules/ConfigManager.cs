@@ -439,7 +439,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(value))
                 return defaultValue;
 
-            return Enum.TryParse(value, true, out T enumValue) && (typeof(T).IsDefined(typeof(FlagsAttribute), false) || Enum.IsDefined(enumValue)) 
+            return Enum.TryParse(value, true, out T enumValue)
                 ? enumValue 
                 : defaultValue;
         }

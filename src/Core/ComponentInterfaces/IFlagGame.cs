@@ -1,9 +1,10 @@
-﻿using System;
+﻿using SS.Core.Map;
+using System;
 
 namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
-    /// Flag:CarryFlags setting on whether flags can be picked up.
+    /// Flag:CarryFlags setting on whether flags can be carried, and if so, if there's a limit to how many can be carried at once.
     /// </summary>
     public enum ConfigCarryFlags
     {
@@ -13,7 +14,7 @@ namespace SS.Core.ComponentInterfaces
         None = 0,
 
         /// <summary>
-        /// Flags can be carried.
+        /// Flags can be carried. No limit.
         /// </summary>
         Yes,
 
@@ -66,8 +67,73 @@ namespace SS.Core.ComponentInterfaces
         bool SetFlagOwners(Arena arena, ReadOnlySpan<short> flagOwners);
     }
 
+    public enum FlagState
+    {
+        None,
+        Carried,
+        OnMap,
+    }
+
+    public enum FlagPickupReason
+    {
+        Pickup,
+        Kill,
+        Other,
+    }
+
+    public interface IFlagInfo
+    {
+        FlagState State { get; }
+        Player Carrier { get; }
+        MapCoordinate? Location { get; }
+        short Freq { get; }
+    }
+
+    public interface ICarryFlagSettings
+    {
+        bool AutoStart { get; }
+        TimeSpan ResetDelay { get; }
+        MapCoordinate SpawnCoordinate { get; }
+        int SpawnRadius { get; }
+        int DropRadius { get; }
+        bool FriendlyTransfer { get; }
+        ConfigCarryFlags CarryFlags { get; }
+        bool DropOwned { get; }
+        bool DropCenter { get; }
+        bool NeutOwned { get; }
+        bool NeutCenter { get; }
+        bool TeamKillOwned { get; }
+        bool TeamKillCenter { get; }
+        bool SafeOwned { get; }
+        bool SafeCenter { get; }
+        TimeSpan WinDelay { get; }
+        int MaxFlags { get; }
+        int MinFlags { get; }
+    }
+
     public interface ICarryFlagGame : IFlagGame
     {
+        ICarryFlagSettings GetSettings(Arena arena);
+
+        /// <summary>
+        /// Starts the flag game in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to start the flag game in.</param>
+        /// <returns><see langword="true"/> if the flag game was started. <see langword="false"/> if the flag game was already running.</returns>
+        bool StartGame(Arena arena);
+
+        /// <summary>
+        /// Resets the flag game in an arena
+        /// </summary>
+        /// <remarks>
+        /// Depending on settings, the flag game may automatically be restarted. See the return value.
+        /// </remarks>
+        /// <param name="arena">The arena to reset the flag game in.</param>
+        /// <param name="winnerFreq">The team that won. -1 for no winner.</param>
+        /// <param name="points">The # of points awarded. 0 for no points.</param>
+        /// <returns><see langword="true"/> if the flag game was automatically restarted. <see langword="false"/> if the flag game needs to be manually started.</returns>
+        bool ResetGame(Arena arena, short winnerFreq, int points);
+
         /// <summary>
         /// Gets the # of flags a player is carrying.
         /// </summary>
@@ -75,10 +141,114 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>The # of flags being carried.</returns>
         int GetFlagCount(Player player);
 
-        //void GetFlagInfo()
+        /// <summary>
+        /// Performs flag transfer logic when a player is killed.
+        /// </summary>
+        /// <param name="arena">The arena the kill occured in.</param>
+        /// <param name="killed">The player that was killed.</param>
+        /// <param name="killer">The player that got the kill.</param>
+        /// <returns>
+        /// The # of flags that were transferred from the <paramref name="killed"/> player to the <paramref name="killer"/>.
+        /// This value will be sent in the <see cref="Packets.Game.S2C_Kill"/> packet.
+        /// </returns>
+        short TransferFlagsForPlayerKill(Arena arena, Player killed, Player killer); // TODO: maybe move this to a different interface, only meant for the Game module to call.
 
-        //void NeutFlag(Arena arena, )
+        bool TryAddFlag(Arena arena, out short flagId);
 
-        //void MoveFlag(Arena arena, )
+        bool TryGetFlagInfo(Arena arena, short flagId, out IFlagInfo flagInfo);
+
+        bool TrySetFlagNeuted(Arena arena, short flagId, MapCoordinate? location = null, short freq = -1);
+
+        bool TrySetFlagOnMap(Arena arena, short flagId, MapCoordinate location, short freq);
+
+        bool TrySetFlagCarried(Arena arena, short flagId, Player carrier, FlagPickupReason reason);
+    }
+
+    public enum AdjustFlagReason
+    {
+        /// <summary>
+        /// Regular drop.
+        /// </summary>
+        Dropped,
+
+        /// <summary>
+        /// Dropped by a carrier in a safe zone.
+        /// </summary>
+        InSafe,
+
+        /// <summary>
+        /// Changed ship.
+        /// </summary>
+        ShipChange,
+
+        /// <summary>
+        /// Changed teams.
+        /// </summary>
+        FreqChange,
+
+        /// <summary>
+        /// Left the arena / exited the game.
+        /// </summary>
+        LeftArena,
+    }
+
+    public interface ICarryFlagBehavior : IComponentInterface
+    {
+        /// <summary>
+        /// Called when a game is to be started.
+        /// </summary>
+        /// <remarks>
+        /// An implementation should add flags by calling <see cref="ICarryFlagGame.TryAddFlag(Arena, out short)"/>.
+        /// </remarks>
+        /// <param name="arena">The arena the flag game is being started in.</param>
+        void StartGame(Arena arena);
+
+        //void SpawnFlag(Arena arena, short flagId);
+
+        /// <summary>
+        /// Called when a player is killed.
+        /// </summary>
+        /// <remarks>
+        /// An implementation should determine what should happen to any flags the <paramref name="killed"/> player was carrying.
+        /// Note: this happens prior to the <see cref="ComponentCallbacks.KillCallback"/>.
+        /// </remarks>
+        /// <param name="arena"></param>
+        /// <param name="killed"></param>
+        /// <param name="killer"></param>
+        /// <returns>The # of flags transferred. This is the value to be sent in the <see cref="Packets.Game.S2C_Kill"/> packet.</returns>
+        short PlayerKill(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds);
+
+        /// <summary>
+        /// Called when a player touches a flag.
+        /// </summary>
+        /// <remarks>
+        /// An implementation should determine what happens to the flag. 
+        /// The flag can be allowed to be picked up by calling <see cref="ICarryFlagGame.TrySetFlagCarried(Arena, short, Player)"/> 
+        /// or the implementation can choose do something else.
+        /// </remarks>
+        /// <param name="arena"></param>
+        /// <param name="player"></param>
+        /// <param name="flagId"></param>
+        void TouchFlag(Arena arena, Player player, short flagId);
+
+        /// <summary>
+        /// Called when flags that were being carried need to be adjusted.
+        /// </summary>
+        /// <remarks>
+        /// This occurs:
+        /// <list type="bullet">
+        /// <item>For a normal flag drop, when a player's flag carry timer expires.</item>
+        /// <item>For a flag drop due to being in a safe zone.</item>
+        /// <item>When a player carrying flags changes ship.</item>
+        /// <item>When a player carrying flags changes team.</item>
+        /// <item>When a player carrying flags leaves the arena or logs off.</item>
+        /// </list>
+        /// </remarks>
+        /// <param name="arena"></param>
+        /// <param name="flagIds"></param>
+        /// <param name="reason"></param>
+        /// <param name="oldCarrier"></param>
+        /// <param name="oldFreq"></param>
+        void AdjustFlags(Arena arena, ReadOnlySpan<short> flagIds, AdjustFlagReason reason, Player oldCarrier, short oldFreq);
     }
 }
