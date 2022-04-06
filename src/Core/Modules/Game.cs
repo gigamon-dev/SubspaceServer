@@ -139,6 +139,11 @@ namespace SS.Core.Modules
         private class ArenaData
         {
             /// <summary>
+            /// Client setting to multiply kill points if the killer was carrying a flag.
+            /// </summary>
+            public int FlaggerKillMultiplier;
+
+            /// <summary>
             /// whether spectators in the arena can see extra data for the person they're spectating
             /// </summary>
             public bool SpecSeeExtra;
@@ -672,6 +677,7 @@ namespace SS.Core.Modules
 
         #endregion
 
+        // Flag:FlaggerKillMultiplier is a client setting, so it's in ClientSettingsConfig.cs
         [ConfigHelp("Misc", "RegionCheckInterval", ConfigScope.Arena, typeof(int), DefaultValue = "100", 
             Description = "How often to check for region enter/exit events (in ticks).")]
         [ConfigHelp("Misc", "SpecSeeExtra", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
@@ -711,6 +717,8 @@ namespace SS.Core.Modules
             {
                 if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                     return;
+
+                ad.FlaggerKillMultiplier = _configManager.GetInt(arena.Cfg, "Flag", "FlaggerKillMultiplier", 0);
 
                 ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "RegionCheckInterval", 100) * 10);
 
@@ -1871,7 +1879,7 @@ namespace SS.Core.Modules
                 return;
 
             ref C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data.AsSpan(0, C2S_Die.Length));
-            short bty = packet.Bounty;
+            short bounty = packet.Bounty;
 
             Player killer = _playerData.PidToPlayer(packet.Killer);
             if (killer == null || killer.Status != PlayerState.Playing || killer.Arena != arena)
@@ -1901,7 +1909,7 @@ namespace SS.Core.Modules
             // Consult the advisors after setting the above flags, the flags reflect the real state of the player.
             foreach (var advisor in killAdvisors)
             {
-                advisor.EditDeath(arena, ref killer, ref p, ref bty);
+                advisor.EditDeath(arena, ref killer, ref p, ref bounty);
 
                 if (p == null || killer == null)
                     return; // The advisor wants to drop the kill packet.
@@ -1947,10 +1955,10 @@ namespace SS.Core.Modules
             }
 
             // Use advisors to determine how many points to award.
-            short pts = 0;
+            short points = 0;
             foreach (var advisor in killAdvisors)
             {
-                pts += advisor.KillPoints(arena, killer, p, bty, flagCount);
+                points += advisor.KillPoints(arena, killer, p, bounty, flagCount);
             }
 
             // Allow a module to modify the green sent in the packet.
@@ -1959,28 +1967,11 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    green = killGreen.KillGreen(arena, killer, p, bty, flagCount, pts, green);
+                    green = killGreen.KillGreen(arena, killer, p, bounty, flagCount, points, green);
                 }
                 finally
                 {
                     arena.ReleaseInterface(ref killGreen);
-                }
-            }
-
-            // Record the kill points on our side.
-            if (pts > 0)
-            {
-                IAllPlayerStats allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
-                if (allPlayerStats != null)
-                {
-                    try
-                    {
-                        allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, (ulong)pts);
-                    }
-                    finally
-                    {
-                        _broker.ReleaseInterface(ref allPlayerStats);
-                    }
                 }
             }
 
@@ -1999,11 +1990,37 @@ namespace SS.Core.Modules
                 }
             }
 
-            NotifyKill(killer, p, pts, flagTransferCount, green);
+            // Send the S2C Kill packet.
+            NotifyKill(killer, p, points, flagTransferCount, green);
 
-            FireKillEvent(arena, killer, p, bty, flagTransferCount, pts, green);
+            if (points > 0)
+            {                
+                if (killer.Packet.FlagsCarried > 0
+                    && ad.FlaggerKillMultiplier > 0)
+                {
+                    // This is purposely after NotifyKill because Flag:FlaggerKillMultiplier is a client setting.
+                    // Clients multiply the points from the S2C Kill packet that we just sent.
+                    points += (short)(points * ad.FlaggerKillMultiplier);
+                }
 
-            _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{p.Name} killed by {killer.Name} (bty={bty},flags={flagTransferCount},pts={pts})");
+                // Record the kill points on our side.
+                IAllPlayerStats allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
+                if (allPlayerStats != null)
+                {
+                    try
+                    {
+                        allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, (ulong)points);
+                    }
+                    finally
+                    {
+                        _broker.ReleaseInterface(ref allPlayerStats);
+                    }
+                }
+            }
+
+            FireKillEvent(arena, killer, p, bounty, flagTransferCount, points, green);
+
+            _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{p.Name} killed by {killer.Name} (bty={bounty},flags={flagTransferCount},pts={points})");
 
             if (!p.Flags.SentWeaponPacket)
             {
