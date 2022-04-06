@@ -666,7 +666,7 @@ namespace SS.Core.Modules
             Description = "Resets your own score, or the target player's score.")]
         private void Command_scorereset(string command, string parameters, Player p, ITarget target)
         {
-            // For now, only reset StatInterval.Reset scores, since those are the only ones the client sees.
+            // For now, only reset PersistInterval.Reset scores, since those are the only ones the client sees.
             if (target.TryGetArenaTarget(out Arena arena))
             {
                 if (_configManager.GetInt(arena.Cfg, "Misc", "SelfScoreReset", 0) != 0)
@@ -686,9 +686,9 @@ namespace SS.Core.Modules
 
                 if (arena != null)
                 {
-                    _scoreStats.ScoreReset(p, PersistInterval.Reset);
+                    _scoreStats.ScoreReset(otherPlayer, PersistInterval.Reset);
                     _scoreStats.SendUpdates(arena, null);
-                    _chat.SendMessage(p, $"Player {otherPlayer} has had their score reset.");
+                    _chat.SendMessage(p, $"Player {otherPlayer.Name} has had their score reset.");
                 }
             }
         }
