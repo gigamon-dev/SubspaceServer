@@ -54,6 +54,8 @@ namespace SS.Core.Modules.Scoring
             Description = "The basic flag reward is calculated as (players in arena)^2 * FlagReward / 1000.")]
         [ConfigHelp("Flag", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether to split a flag reward between the members of a freq or give them each the full amount.")]
+        [ConfigHelp("Misc", "VictoryMusic", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            Description = "Whether to play victory music or not.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -62,6 +64,7 @@ namespace SS.Core.Modules.Scoring
             ad.FlagMode = _configManager.GetEnum(arena.Cfg, "Flag", "FlagMode", FlagMode.None);
             ad.FlagRewardRatio = _configManager.GetInt(arena.Cfg, "Flag", "FlagReward", 5000) / 1000.0;
             ad.SplitPoints = _configManager.GetInt(arena.Cfg, "Flag", "SplitPoints", 0) != 0;
+            ad.IsVictoryMusicEnabled = _configManager.GetInt(arena.Cfg, "Misc", "VictoryMusic", 1) != 0;
 
             FlagGainCallback.Register(arena, Callback_FlagGain);
             FlagLostCallback.Register(arena, Callback_FlagLost);
@@ -110,7 +113,8 @@ namespace SS.Core.Modules.Scoring
             }
             else if (ad.FlagMode == FlagMode.OwnAllDropped)
             {
-                if (_carryFlagGame.GetFlagCount(arena, player.Freq) == _carryFlagGame.GetFlagCount(arena))
+                if (ad.IsVictoryMusicEnabled
+                    && _carryFlagGame.GetFlagCount(arena, player.Freq) == _carryFlagGame.GetFlagCount(arena))
                 {
                     // start music
                     ad.IsMusicPlaying = true;
@@ -252,6 +256,7 @@ namespace SS.Core.Modules.Scoring
             public FlagMode FlagMode;
             public double FlagRewardRatio;
             public bool SplitPoints;
+            public bool IsVictoryMusicEnabled;
 
             // state
             public bool IsMusicPlaying = false;
