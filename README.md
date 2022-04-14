@@ -4,7 +4,7 @@ A zone server for the multiplayer game Subspace based on *A Small Subspace Serve
 ## About
 This is a cross-platform server written in C#.  It was developed based on the *A Small Subspace Server* (*ASSS*) open-source project and can be considered a derivative.  As such, the modular design closely resembles that of *ASSS* and is meant to be extended in very much the same ways. 
 
-This project aims to match the core functionality of *ASSS*. Contrary to its name, *ASSS* is not "small". Porting over everything in *ASSS* is not a realistic goal, therefore a choice had to be made on what is considered core functionality. Nearly everything needed to run a zone is available. However, support for flag games is not yet ready. See [asss-equivalents](./doc/asss-equivalents.md) for a more detailed listing. Also, see [additional-features](./doc/additional-features.md) for information about features that this server adds, which are not in *ASSS*.
+This project aims to match the core functionality of *ASSS*. Contrary to its name, *ASSS* is not "small". Porting over everything in *ASSS* is not a realistic goal, therefore a choice had to be made on what is considered essential. Nearly everything needed to run a zone is available. See [asss-equivalents](./doc/asss-equivalents.md) for a more detailed listing. Also, see [additional-features](./doc/additional-features.md) for information about features that this server adds, which are not in *ASSS*.
 
 For guidance on how to extend the server, see the [Developer Guide](./doc/developer-guide.md).
 

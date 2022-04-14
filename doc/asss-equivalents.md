@@ -38,6 +38,7 @@ This document provides an overview of the various server parts and their relatio
 | directory | SS.Core.Modules.DirectoryPublisher | |
 | enc_null | SS.Core.Modules.EncryptionNull | |
 | enc_vie | SS.Core.Modules.EncryptionVIE | |
+| enc_cont:enc_cont | - | Closed source: ASSS only provides the binary since it's not public knowledge. |
 | enf_flagwin | - | No plans to add it. |
 | enf_legalship | SS.Core.Modules.Enforcers.LegalShip | |
 | enf_lockspec | SS.Core.Modules.Enforcers.LockSpec | |
@@ -45,15 +46,15 @@ This document provides an overview of the various server parts and their relatio
 | enf_shipcount | - | No plans to add it. |
 | fake | SS.Core.Modules.Fake | |
 | filetrans | SS.Core.Modules.FileTransfer | |
-| flagcore | | TODO |
+| flagcore | SS.Core.Modules.FlagGame.CarryFlags<br>SS.Core.Modules.FlagGame.StaticFlags | |
 | freqman | SS.Core.Modules.FreqManager | |
 | freqowners | - | No plans to add it. |
 | game | SS.Core.Modules.Game | |
 | game_timer | SS.Core.Modules.GameTimer | |
 | help | SS.Core.Modules.Help | |
 | idle | - | No plans to add it. |
-| scoring:jackpot | | TODO |
-| koth | | TODO |
+| scoring:jackpot | SS.Core.Modules.Scoring.Jackpot | |
+| koth | SS.Core.Modules.Crowns<br>SS.Core.Scoring.Koth | |
 | lagaction | SS.Core.Modules.LagAction | |
 | lagdata | SS.Core.Modules.LagData | |
 | log_console | SS.Core.Modules.LogConsole | |
@@ -76,9 +77,9 @@ This document provides an overview of the various server parts and their relatio
 | persist | SS.Core.Modules.Persist | |
 | playercmd | SS.Core.Modules.PlayerCommand | |
 | playerdata | SS.Core.Modules.PlayerData | |
-| scoring:points_flag | | TODO |
+| scoring:points_flag | SS.Core.Modules.Scoring.FlagGamePoints | |
 | scoring:points_goal | SS.Core.Modules.Scoring.BallGamePoints | |
-| scoring:points_kill | | TODO |
+| scoring:points_kill | SS.Core.Modules.Scoring.KillPoints | |
 | scoring:points_periodic | | TODO |
 | prng | SS.Core.Modules.Prng | |
 | pymod | n/a | Use IronPython? |
@@ -91,7 +92,13 @@ This document provides an overview of the various server parts and their relatio
 | stats | SS.Core.Modules.Stats | |
 | unixsignal | | No plans to add it. |
 | contrib:voices | - | No plans to add it. |
-| watchdamage | | TODO |
+| watchdamage | SS.Core.Modules.WatchDamage | |
+| &lt;py&gt; exceptlogging | - | No plans to add it. |
+| &lt;py&gt; fm_password | - | No plans to add it. |
+| &lt;py&gt; exec | - | No plans to add it. |
+| &lt;py&gt; fg_turf | SS.Core.Modules.FlagGame.StaticFlags | |
+| &lt;py&gt; fg_wz | SS.Core.Modules.FlagGame.CarryFlags<br>SS.Core.Modules.Scoring.FlagGamePoints | |
+| &lt;py&gt; watchgreen | - | No plans to add it. |
 
 ## Interfaces
 | ASSS  | Subspace Server .NET | Notes |
@@ -120,14 +127,14 @@ This document provides an overview of the various server parts and their relatio
 | Iclientencrypt | SS.Core.ComponentInterfaces.IClientEncrypt | |
 | Ifake | SS.Core.ComponentInterfaces.IFake | |
 | Ifiletrans | SS.Core.ComponentInterfaces.IFileTransfer | |
-| Iflagcore | | TODO |
-| Iflaggame | | TODO |
+| Iflagcore | SS.Core.ComponentInterfaces.IFlagGame<br>SS.Core.ComponentInterfaces.ICarryFlagGame<br>SS.Core.ComponentInterfaces.IStaticFlagGame | |
+| Iflaggame | SS.Core.ComponentInterfaces.ICarryFlagBehavior | |
 | Ifreqman | SS.Core.ComponentInterfaces.IFreqManager | |
 | Igame | SS.Core.ComponentInterfaces.IGame | |
 | - | SS.Core.ComponentInterfaces.IGameTimer | |
 | Igroupman | SS.Core.ComponentInterfaces.IGroupManager | |
 | Iidle | - | |
-| Ijackpot | | TODO |
+| Ijackpot | SS.Core.ComponentInterfaces.IJackpot | |
 | Ikillgreen | SS.Core.ComponentInterfaces.IKillGreen | |
 | Ilagquery | SS.Core.ComponentInterfaces.ILagQuery | |
 | Ilagcollect | SS.Core.ComponentInterfaces.ILagCollect | |
@@ -144,7 +151,7 @@ This document provides an overview of the various server parts and their relatio
 | Ioptparser | n/a | Python specific |
 | Ipeer | - | |
 | Iperiodicpoints | | TODO |
-| Ipoints_koth | | TODO |
+| Ipoints_koth | n/a | |
 | Ipersist | SS.Core.ComponentInterfaces.IPersist<br>SS.Core.ComponentInterfaces.IPersistExecutor | |
 | - | SS.Core.ComponentInterfaces.IPersistDatastore | A way to plug in a different database for the Persist module. |
 | Iplayerdata | SS.Core.ComponentInterfaces.IPlayerData | |
@@ -153,7 +160,7 @@ This document provides an overview of the various server parts and their relatio
 | Iredirect | | |
 | Ireldb | - | No plans to convert it. |
 | Istats | SS.Core.ComponentInterfaces.IGlobalPlayerStats<br>SS.Core.ComponentInterfaces.IArenaPlayerStats<br>SS.Core.ComponentInterfaces.IAllPlayerStats<br>SS.Core.ComponentInterfaces.IScoreStats | ASSS only tracks per-arena stats. This server tracks both global (zone-wide) stats and per-arena stats. As such, there are separate interfaces for each and one to affect both simultaneously, IAllPlayerStats.  The IArenaPlayerStats interface is the closest match to Istats in ASSS since that affects per-arena stats. |
-| Iwatchdamage | | |
+| Iwatchdamage | SS.Core.ComponentInterfaces.IWatchDamage | |
 
 ## Callbacks
 | ASSS  | Subspace Server .NET | Notes |
@@ -165,26 +172,26 @@ This document provides an overview of the various server parts and their relatio
 | CB_BALLPICKUP | SS.Core.ComponentCallbacks.BallPickupCallback | |
 | CB_CHATMSG | SS.Core.ComponentCallbacks.ChatMessageCallback | |
 | CB_CONNINIT | n/a | Use INetworkEncryption.AppendConnectionInitHandler instead. |
-| CB_CROWNCHANGE | | TODO |
+| CB_CROWNCHANGE | SS.Core.ComponentCallbacks.CrownToggledCallback | |
 | CB_DOBRICKMODE | SS.Core.ComponentCallbacks.DoBrickModeCallback | |
-| CB_FLAGGAIN | | TODO |
-| CB_FLAGLOST | | TODO |
-| CB_FLAGONMAP | | TODO |
-| CB_FLAGRESET | | TODO |
+| CB_FLAGGAIN | SS.Core.ComponentCallbacks.FlagGainCallback | |
+| CB_FLAGLOST | SS.Core.ComponentCallbacks.FlagLostCallback | |
+| CB_FLAGONMAP | SS.Core.ComponentCallbacks.FlagOnMapCallback |  |
+| CB_FLAGRESET | SS.Core.ComponentCallbacks.FlagGameResetCallback | |
 | CB_GLOBALCONFIGCHANGED | SS.Core.ComponentCallbacks.GlobalConfigChangedCallback | |
 | CB_GOAL | SS.Core.ComponentCallbacks.BallGoalCallback<br>SS.Core.ComponentCallbacks.BallGameGoalCallback | |
 | CB_GREEN | SS.Core.ComponentCallbacks.GreenCallback | |
 | CB_INTERVAL_ENDED | SS.Core.ComponentCallbacks.IPersistIntervalEndedCallback | |
 | CB_KILL | SS.Core.ComponentCallbacks.KillCallback | |
-| CB_KOTH_END | | TODO |
-| CB_KOTH_PLAYER_WIN | | TODO |
-| CB_KOTH_PLAYER_WIN_END | | TODO |
-| CB_KOTH_START | | TODO |
+| CB_KOTH_END |SS.Core.ComponentCallbacks.KothEndedCallback | |
+| CB_KOTH_PLAYER_WIN | SS.Core.ComponentCallbacks.KothWonCallback | |
+| CB_KOTH_PLAYER_WIN_END | n/a | Use KothWonCallback instead. |
+| CB_KOTH_START | SS.Core.ComponentCallbacks.KothStartedCallback | |
 | CB_LOGFUNC | SS.Core.ComponentCallbacks.LogCallback | |
 | CB_MAINLOOP | n/a | Other options exist depending on what you need: IMainloopTimer, IServerTimer, use IMainloop to queue a workitem, do your own waiting on a worker thread (e.g. LagAction module). |
 | CB_NEWPLAYER | SS.Core.ComponentCallbacks.NewPlayerCallback | |
 | CB_PLAYERACTION | SS.Core.ComponentCallbacks.PlayerActionCallback | |
-| CB_PLAYERDAMAGE | | |
+| CB_PLAYERDAMAGE | SS.Core.ComponentCallbacks.PlayerDamageCallback | |
 | CB_PPK | SS.Core.ComponentCallbacks.PlayerPositionCallback | |
 | CB_PRESHIPFREQCHANGE | SS.Core.ComponentCallbacks.PreShipFreqChangeCallback | |
 | CB_REGION | SS.Core.ComponentCallbacks.MapRegionCallback | |
@@ -194,9 +201,9 @@ This document provides an overview of the various server parts and their relatio
 | CB_SHIPFREQCHANGE | SS.Core.ComponentCallbacks.ShipFreqChangeCallback | |
 | CB_SPAWN | SS.Core.ComponentCallbacks.SpawnCallback | |
 | CB_TIMESUP | SS.Core.ComponentCallbacks.GameTimerEndedCallback<br>SS.Core.ComponentCallbacks.GameTimerChangedCallback | |
-| CB_TURFTAG | | TODO |
+| CB_TURFTAG | SS.Core.ComponentCallbacks.StaticFlagClaimedCallback | |
 | CB_WARP | SS.Core.ComponentCallbacks.WarpCallback | |
-| CB_WARZONEWIN | | TODO |
+| CB_WARZONEWIN | n/a | |
 
 ## Advisors
 | ASSS  | Subspace Server .NET | Notes |
