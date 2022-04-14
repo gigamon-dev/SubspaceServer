@@ -49,9 +49,12 @@ namespace SS.Core.ComponentCallbacks
     public class FlagLostCallback
     {
         /// <summary>
-        /// Delegate for when the flag game is reset in an arena.
+        /// Delegate for when a flag is lost in a carry flag game.
         /// </summary>
-        /// <param name="arena">The arena the flag game was reset for.</param>
+        /// <param name="arena">The arena.</param>
+        /// <param name="player">The player that lost the flag.</param>
+        /// <param name="flagId">The ID of the flag that was lost.</param>
+        /// <param name="reason">The reason the flag was lost.</param>
         public delegate void FlagLostDelegate(Arena arena, Player player, short flagId, FlagLostReason reason);
 
         public static void Register(ComponentBroker broker, FlagLostDelegate handler)

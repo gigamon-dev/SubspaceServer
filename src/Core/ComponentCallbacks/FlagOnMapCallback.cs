@@ -8,9 +8,12 @@ namespace SS.Core.ComponentCallbacks
     public class FlagOnMapCallback
     {
         /// <summary>
-        /// Delegate for when the flag game is reset in an arena.
+        /// Delegate for when a flag is placed on the map in a carry flag game.
         /// </summary>
-        /// <param name="arena">The arena the flag game was reset for.</param>
+        /// <param name="arena">The arena.</param>
+        /// <param name="flagId">The ID of the flag that was placed.</param>
+        /// <param name="mapCoordinate">The coordinates the flag was placed.</param>
+        /// <param name="freq">The team the flag is owned by. -1 means unowned.</param>
         public delegate void FlagOnMapDelegate(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq);
 
         public static void Register(ComponentBroker broker, FlagOnMapDelegate handler)
