@@ -799,6 +799,8 @@ namespace SS.Core.Modules.FlagGame
             public int MaxFlags { get; private set; }
             public int MinFlags { get; private set; }
 
+            [ConfigHelp("Flag", "AutoStart", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
+                Description = "Whether a flag game will automatically start.")]
             [ConfigHelp("Flag", "SpawnX", ConfigScope.Arena, typeof(int), DefaultValue = "512",
                 Description = "The X coordinate that new flags spawn at (in tiles).")]
             [ConfigHelp("Flag", "SpawnY", ConfigScope.Arena, typeof(int), DefaultValue = "512",
