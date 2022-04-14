@@ -59,9 +59,9 @@ namespace SS.Packets.Game
         Position = 0x28, 
         MapFilename = 0x29, 
         MapData = 0x2A, 
-        SetKothTimer = 0x2B, 
-        Koth = 0x2C,
-        // missing 2D : some timer change?
+        SetCrownTimer = 0x2B, 
+        Crown = 0x2C,
+        AddCrownTimer = 0x2D,
         Ball = 0x2E, 
         Arena = 0x2F, 
         /// <summary>
@@ -131,7 +131,7 @@ namespace SS.Packets.Game
         ChecksumIsMatch = 0x1B, 
         Brick = 0x1C, 
         SettingChange = 0x1D, 
-        KothExpired = 0x1E, 
+        CrownExpired = 0x1E, 
         ShootBall = 0x1F, 
         PickupBall = 0x20, 
         Goal = 0x21, 

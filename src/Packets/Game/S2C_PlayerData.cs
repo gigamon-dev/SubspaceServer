@@ -144,7 +144,7 @@ namespace SS.Packets.Game
         /// <summary>
         /// Whether the player has a crown.
         /// </summary>
-        private bool HasCrown
+        public bool HasCrown
         {
             get { return (miscBitfield & HasCrownMask) != 0; }
             set
@@ -160,7 +160,7 @@ namespace SS.Packets.Game
         /// Whether clients should send data for damage done to this player.
         /// </summary>
         // FUTURE: not implemented in continuum yet
-        //private bool SendDamage
+        //public bool SendDamage
         //{
         //    get
         //    {
