@@ -269,16 +269,14 @@ namespace SS.Core.Modules.Scoring
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            //if (ad.GameState == GameState.Running)
-            //{
-            //    _chat.SendArenaMessage(arena, "King of the Hill has been reset.");
-            //}
+            if (ad.GameState == GameState.Running)
+            {
+                KothEndedCallback.Fire(arena, arena);
+            }
 
             _crowns.ToggleOff(arena);
 
             ad.GameState = GameState.Stopped;
-
-            // TODO: KothGameResetCallback
 
             if (allowAutoStart && ad.Settings.AutoStart)
             {
@@ -386,7 +384,6 @@ namespace SS.Core.Modules.Scoring
             if (TryStartGame(arena))
             {
                 // Started.
-                ad.GameState = GameState.Running;
                 return false;
             }
 
@@ -437,10 +434,12 @@ namespace SS.Core.Modules.Scoring
                     pd.CrownKills = 0;
                 }
 
+                ad.GameState = GameState.Running;
+
                 _chat.SendArenaMessage(arena, ChatSound.Beep2, $"King of the Hill game started.");
                 _logManager.LogA(LogLevel.Info, nameof(Koth), arena, $"Game started.");
 
-                // TODO: KothStartCallback
+                KothStartedCallback.Fire(arena, arena, crownSet);
 
                 return true;
             }
@@ -507,7 +506,7 @@ namespace SS.Core.Modules.Scoring
                     {
                         // no one has a crown!
 
-                        if (hadCrownSet.Count > 0)
+                        if (hadCrownSet.Count > 0 && IsOneTeam(hadCrownSet))
                         {
                             // All expired at the same time.
                             // Found the winner(s).
@@ -652,13 +651,11 @@ namespace SS.Core.Modules.Scoring
                         sound = ChatSound.None;
 
                     _logManager.LogP(LogLevel.Drivel, nameof(Koth), player, "Won KOTH game.");
-
-                    // TODO: KothPlayerWinCallback
                 }
 
                 _scoreStats.SendUpdates(arena, null);
 
-                // TODO: KothWinCallback
+                KothWonCallback.Fire(arena, arena, winners, points);
 
                 // End the 'game' interval for the arena.
                 IPersistExecutor persistExecutor = arena.GetInterface<IPersistExecutor>();

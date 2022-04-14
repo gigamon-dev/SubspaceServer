@@ -61,6 +61,7 @@ namespace SS.Core.Modules
                     if (player.Arena == arena)
                     {
                         player.Packet.HasCrown = true;
+                        CrownToggledCallback.Fire(arena, player, true);
                     }
                 }
             }
@@ -94,6 +95,7 @@ namespace SS.Core.Modules
                 return;
 
             player.Packet.HasCrown = true;
+            CrownToggledCallback.Fire(arena, player, true);
 
             S2C_Crown onPacket = new(CrownAction.On, duration, (short)player.Id);
             _network.SendToArena(arena, null, ref onPacket, NetSendFlags.Reliable);
@@ -122,11 +124,15 @@ namespace SS.Core.Modules
             {
                 foreach (Player player in _playerData.Players)
                 {
-                    if (player.Arena == arena
-                        && player.Packet.HasCrown)
+                    if (player.Arena == arena)
                     {
-                        player.Packet.HasCrown = false;
-                        sendPacket = true;
+                        if (player.Packet.HasCrown)
+                        {
+                            player.Packet.HasCrown = false;
+                            sendPacket = true;
+                        }
+
+                        CrownToggledCallback.Fire(arena, player, false);
                     }
                 }
             }
@@ -169,6 +175,8 @@ namespace SS.Core.Modules
                 S2C_Crown offPacket = new(CrownAction.Off, TimeSpan.Zero, (short)player.Id);
                 _network.SendToArena(arena, null, ref offPacket, NetSendFlags.Reliable);
             }
+
+            CrownToggledCallback.Fire(arena, player, false);
         }
 
         #endregion
@@ -299,74 +307,6 @@ namespace SS.Core.Modules
             S2C_CrownTimer packet = new(add, timeSpan);
             _network.SendToOne(player, ref packet, NetSendFlags.Reliable);
             return true;
-        }
-
-        /*
-        private void Command_crown(string commandName, string parameters, Player p, ITarget target)
-        {
-            bool isAdd = false;
-            uint? duration = null;
-
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
-            {
-                if (MemoryExtensions.Equals(token, "A", StringComparison.OrdinalIgnoreCase))
-                {
-                    isAdd = true;
-                    continue;
-                }
-
-                if (uint.TryParse(token, out uint result))
-                    duration = result;
-            }
-
-            if (duration == null)
-                return;
-
-            target.TryGetPlayerTarget(out Player targetPlayer);
-
-            S2C_Crown packet = new(
-                isAdd ? CrownAction.On : CrownAction.Off,
-                TimeSpan.FromMilliseconds(duration.Value * 10),
-                targetPlayer != null ? (short)targetPlayer.Id : (short)-1);
-
-            _logManager.LogP(LogLevel.Info, nameof(Koth), p, $"crown type:0x{packet.Type:x} duration:{packet.Duration} player:{packet.PlayerId}");
-
-            _network.SendToArena(p.Arena, null, ref packet, NetSendFlags.Reliable);
-        }
-
-        private void Command_crowntimer(string commandName, string parameters, Player p, ITarget target)
-        {
-            bool isAdd = false;
-            uint? duration = null;
-
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
-            {
-                if (MemoryExtensions.Equals(token, "A", StringComparison.OrdinalIgnoreCase))
-                {
-                    isAdd = true;
-                    continue;
-                }
-
-                if (uint.TryParse(token, out uint result))
-                    duration = result;
-            }
-
-            if (duration == null)
-                return;
-
-            S2C_CrownTimer packet = new(isAdd, TimeSpan.FromMilliseconds(duration.Value * 10));
-
-            _logManager.LogP(LogLevel.Info, nameof(Koth), p, $"crowntimer type:0x{packet.Type:x} duration:{packet.Duration}");
-
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
-                _network.SendToOne(targetPlayer, ref packet, NetSendFlags.Reliable);
-            else
-                _network.SendToOne(p, ref packet, NetSendFlags.Reliable);
-        }
-        */
+        }        
     }
 }
