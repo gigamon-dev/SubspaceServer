@@ -128,7 +128,7 @@ FrequencyShift=900
 TickerDelay=1000
 ExtraPositionData=1
 WarpRadiusLimit=200
-ActivateAppShutdownTime=1500
+ActivateAppShutdownTime = 100
 NearDeathLevel=0
 VictoryMusic=0
 FrequencyShipTypes=0
@@ -186,4 +186,4 @@ CrownRecoverKills=3
 BulletDamageLevel=200
 BulletDamageUpgrade=100
 BulletAliveTime=550
-
+ExactDamage=1

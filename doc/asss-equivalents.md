@@ -73,14 +73,14 @@ This document provides an overview of the various server parts and their relatio
 | objects | SS.Core.Modules.LvzObjects | TODO: currently toggle functionality only |
 | obscene | | TODO: low priority |
 | peer | | TODO: very low priority |
-| scoring:periodic | | TODO |
+| scoring:periodic | SS.Core.Modules.Scoring.PeriodicReward | |
 | persist | SS.Core.Modules.Persist | |
 | playercmd | SS.Core.Modules.PlayerCommand | |
 | playerdata | SS.Core.Modules.PlayerData | |
 | scoring:points_flag | SS.Core.Modules.Scoring.FlagGamePoints | |
 | scoring:points_goal | SS.Core.Modules.Scoring.BallGamePoints | |
 | scoring:points_kill | SS.Core.Modules.Scoring.KillPoints | |
-| scoring:points_periodic | | TODO |
+| scoring:points_periodic | SS.Core.Modules.Scoring.PeriodicReward | |
 | prng | SS.Core.Modules.Prng | |
 | pymod | n/a | Use IronPython? |
 | quickfix | SS.Core.Modules.Quickfix | |
@@ -150,7 +150,8 @@ This document provides an overview of the various server parts and their relatio
 | Iobscene | SS.Core.ComponentInterfaces.IObscene | TODO: Not implemented |
 | Ioptparser | n/a | Python specific |
 | Ipeer | - | |
-| Iperiodicpoints | | TODO |
+| - | SS.Core.ComponentInterfaces.IPeriodicReward | |
+| Iperiodicpoints | SS.Core.ComponentInterfaces.IPeriodicRewardPoints | |
 | Ipoints_koth | n/a | |
 | Ipersist | SS.Core.ComponentInterfaces.IPersist<br>SS.Core.ComponentInterfaces.IPersistExecutor | |
 | - | SS.Core.ComponentInterfaces.IPersistDatastore | A way to plug in a different database for the Persist module. |
