@@ -340,14 +340,14 @@ namespace SS.Core.Modules.Scoring
             if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            var stats = GetArenaStatsByInterval(pd, interval);
-            if (stats == null)
-                return;
-
             DateTime now = DateTime.UtcNow;
 
             lock (pd.Lock)
             {
+                var stats = GetArenaStatsByInterval(pd, interval);
+                if (stats == null)
+                    return;
+
                 foreach (BaseStatInfo statInfo in stats.Values)
                 {
                     if (statInfo is TimerStatInfo timerStatInfo)
@@ -419,30 +419,33 @@ namespace SS.Core.Modules.Scoring
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            if (interval == null)
+            lock (pd.Lock)
             {
-                // all intervals
-                foreach (PersistInterval persistInterval in _intervals)
+                if (interval == null)
                 {
-                    DoTimerStatOperation(scope, player, statId, persistInterval, operationCallback);
+                    // all intervals
+                    foreach (PersistInterval persistInterval in _intervals)
+                    {
+                        DoTimerStatOperation(scope, player, statId, persistInterval, operationCallback);
+                    }
                 }
-            }
-            else
-            {
-                if ((scope & StatScope.Global) == StatScope.Global)
+                else
                 {
-                    // global
-                    var stats = GetGlobalStatsByInterval(pd, interval.Value);
-                    if (stats != null)
-                        DoOperation(stats, statId, operationCallback);
-                }
+                    if ((scope & StatScope.Global) == StatScope.Global)
+                    {
+                        // global
+                        var stats = GetGlobalStatsByInterval(pd, interval.Value);
+                        if (stats != null)
+                            DoOperation(stats, statId, operationCallback);
+                    }
 
-                if ((scope & StatScope.Arena) == StatScope.Arena)
-                {
-                    // arena
-                    var stats = GetArenaStatsByInterval(pd, interval.Value);
-                    if (stats != null)
-                        DoOperation(stats, statId, operationCallback);
+                    if ((scope & StatScope.Arena) == StatScope.Arena)
+                    {
+                        // arena
+                        var stats = GetArenaStatsByInterval(pd, interval.Value);
+                        if (stats != null)
+                            DoOperation(stats, statId, operationCallback);
+                    }
                 }
             }
 
@@ -560,18 +563,21 @@ namespace SS.Core.Modules.Scoring
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            if ((scope & StatScope.Global) == StatScope.Global)
+            lock (pd.Lock)
             {
-                var stats = GetGlobalStatsByInterval(pd, interval);
-                if (stats != null)
-                    SetStat(stats, statId, value);
-            }
+                if ((scope & StatScope.Global) == StatScope.Global)
+                {
+                    var stats = GetGlobalStatsByInterval(pd, interval);
+                    if (stats != null)
+                        SetStat(stats, statId, value);
+                }
 
-            if ((scope & StatScope.Arena) == StatScope.Arena)
-            {
-                var stats = GetArenaStatsByInterval(pd, interval);
-                if (stats != null)
-                    SetStat(stats, statId, value);
+                if ((scope & StatScope.Arena) == StatScope.Arena)
+                {
+                    var stats = GetArenaStatsByInterval(pd, interval);
+                    if (stats != null)
+                        SetStat(stats, statId, value);
+                }
             }
 
             void SetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, T value)
@@ -592,18 +598,21 @@ namespace SS.Core.Modules.Scoring
 
             DateTime now = DateTime.UtcNow;
 
-            if ((scope & StatScope.Global) == StatScope.Global)
+            lock (pd.Lock)
             {
-                var stats = GetGlobalStatsByInterval(pd, interval);
-                if (stats != null)
-                    SetStat(stats, statId, value);
-            }
+                if ((scope & StatScope.Global) == StatScope.Global)
+                {
+                    var stats = GetGlobalStatsByInterval(pd, interval);
+                    if (stats != null)
+                        SetStat(stats, statId, value);
+                }
 
-            if ((scope & StatScope.Arena) == StatScope.Arena)
-            {
-                var stats = GetArenaStatsByInterval(pd, interval);
-                if (stats != null)
-                    SetStat(stats, statId, value);
+                if ((scope & StatScope.Arena) == StatScope.Arena)
+                {
+                    var stats = GetArenaStatsByInterval(pd, interval);
+                    if (stats != null)
+                        SetStat(stats, statId, value);
+                }
             }
 
             void SetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, TimeSpan value)
@@ -640,13 +649,16 @@ namespace SS.Core.Modules.Scoring
                 return false;
             }
 
-            if (scope == StatScope.Global)
+            lock (pd.Lock)
             {
-                return TryGetStat(GetGlobalStatsByInterval(pd, interval), statId, out value);
-            }
-            else
-            {
-                return TryGetStat(GetArenaStatsByInterval(pd, interval), statId, out value);
+                if (scope == StatScope.Global)
+                {
+                    return TryGetStat(GetGlobalStatsByInterval(pd, interval), statId, out value);
+                }
+                else
+                {
+                    return TryGetStat(GetArenaStatsByInterval(pd, interval), statId, out value);
+                }
             }
 
             static bool TryGetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, out T value)
@@ -683,13 +695,16 @@ namespace SS.Core.Modules.Scoring
                 return false;
             }
 
-            if (scope == StatScope.Global)
+            lock (pd.Lock)
             {
-                return TryGetStat(GetGlobalStatsByInterval(pd, interval), statId, out value);
-            }
-            else
-            {
-                return TryGetStat(GetArenaStatsByInterval(pd, interval), statId, out value);
+                if (scope == StatScope.Global)
+                {
+                    return TryGetStat(GetGlobalStatsByInterval(pd, interval), statId, out value);
+                }
+                else
+                {
+                    return TryGetStat(GetArenaStatsByInterval(pd, interval), statId, out value);
+                }
             }
 
             static bool TryGetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, out TimeSpan value)
@@ -753,64 +768,68 @@ namespace SS.Core.Modules.Scoring
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
+            SSProto.PlayerStats playerStats;
+
+            lock (pd.Lock)
             {
-                PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
-                PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
-                _ => null
-            };
+                SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
+                {
+                    PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
+                    PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
+                    _ => null
+                };
 
-            if (stats == null)
-                return;
+                if (stats == null)
+                    return;
 
-            DateTime now = DateTime.UtcNow;
+                DateTime now = DateTime.UtcNow;
+                playerStats = new();
 
-            // serialize stats to outStream
-            SSProto.PlayerStats playerStats = new();
-
-            foreach ((int key, BaseStatInfo baseStatInfo) in stats)
-            {
-                // TODO: add logic for the other integer encodings (based on sign and value), might save some space?
-                if (baseStatInfo is StatInfo<int> intStatInfo)
+                foreach ((int key, BaseStatInfo baseStatInfo) in stats)
                 {
-                    playerStats.StatMap.Add(
-                        key,
-                        new SSProto.StatInfo() { Int32Value = intStatInfo.Value });
-                }
-                else if (baseStatInfo is StatInfo<uint> uintStatInfo)
-                {
-                    playerStats.StatMap.Add(
-                        key,
-                        new SSProto.StatInfo() { Uint32Value = uintStatInfo.Value });
-                }
-                else if (baseStatInfo is StatInfo<long> longStatInfo)
-                {
-                    playerStats.StatMap.Add(
-                        key,
-                        new SSProto.StatInfo() { Int64Value = longStatInfo.Value });
-                }
-                else if (baseStatInfo is StatInfo<ulong> ulongStatInfo)
-                {
-                    playerStats.StatMap.Add(
-                        key,
-                        new SSProto.StatInfo() { Uint64Value = ulongStatInfo.Value });
-                }
-                else if (baseStatInfo is StatInfo<DateTime> dateTimeStatInfo)
-                {
-                    playerStats.StatMap.Add(
-                        key,
-                        new SSProto.StatInfo() { Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(dateTimeStatInfo.Value) });
-                }
-                else if (baseStatInfo is TimerStatInfo timerStatInfo)
-                {
-                    playerStats.StatMap.Add(
-                        key,
-                        new SSProto.StatInfo() { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(timerStatInfo.GetValueAsOf(now)) });
+                    // TODO: add logic for the other integer encodings (based on sign and value), might save some space?
+                    if (baseStatInfo is StatInfo<int> intStatInfo)
+                    {
+                        playerStats.StatMap.Add(
+                            key,
+                            new SSProto.StatInfo() { Int32Value = intStatInfo.Value });
+                    }
+                    else if (baseStatInfo is StatInfo<uint> uintStatInfo)
+                    {
+                        playerStats.StatMap.Add(
+                            key,
+                            new SSProto.StatInfo() { Uint32Value = uintStatInfo.Value });
+                    }
+                    else if (baseStatInfo is StatInfo<long> longStatInfo)
+                    {
+                        playerStats.StatMap.Add(
+                            key,
+                            new SSProto.StatInfo() { Int64Value = longStatInfo.Value });
+                    }
+                    else if (baseStatInfo is StatInfo<ulong> ulongStatInfo)
+                    {
+                        playerStats.StatMap.Add(
+                            key,
+                            new SSProto.StatInfo() { Uint64Value = ulongStatInfo.Value });
+                    }
+                    else if (baseStatInfo is StatInfo<DateTime> dateTimeStatInfo)
+                    {
+                        playerStats.StatMap.Add(
+                            key,
+                            new SSProto.StatInfo() { Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(dateTimeStatInfo.Value) });
+                    }
+                    else if (baseStatInfo is TimerStatInfo timerStatInfo)
+                    {
+                        playerStats.StatMap.Add(
+                            key,
+                            new SSProto.StatInfo() { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(timerStatInfo.GetValueAsOf(now)) });
+                    }
                 }
             }
 
             try
             {
+                // serialize stats to outStream
                 playerStats.WriteTo(outStream);
             }
             catch (Exception ex)
@@ -825,17 +844,6 @@ namespace SS.Core.Modules.Scoring
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
-            {
-                PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
-                PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
-                _ => null
-            };
-
-            if (stats == null)
-                return;
-
-            // deserialize inStream to stats
             SSProto.PlayerStats playerStats;
 
             try
@@ -848,55 +856,68 @@ namespace SS.Core.Modules.Scoring
                 return;
             }
 
-            foreach ((int key, SSProto.StatInfo pStatInfo) in playerStats.StatMap)
+            lock (pd.Lock)
             {
-                if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int32Value)
+                SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
                 {
-                    stats[key] = new StatInfo<int>() { Value = pStatInfo.Int32Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Uint32Value)
+                    PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
+                    PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
+                    _ => null
+                };
+
+                if (stats == null)
+                    return;
+
+                foreach ((int key, SSProto.StatInfo pStatInfo) in playerStats.StatMap)
                 {
-                    stats[key] = new StatInfo<uint>() { Value = pStatInfo.Uint32Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int64Value)
-                {
-                    stats[key] = new StatInfo<long>() { Value = pStatInfo.Int64Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Uint64Value)
-                {
-                    stats[key] = new StatInfo<ulong>() { Value = pStatInfo.Uint64Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sint32Value)
-                {
-                    stats[key] = new StatInfo<int>() { Value = pStatInfo.Sint32Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sint64Value)
-                {
-                    stats[key] = new StatInfo<long>() { Value = pStatInfo.Sint64Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Fixed32Value)
-                {
-                    stats[key] = new StatInfo<uint>() { Value = pStatInfo.Fixed32Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Fixed64Value)
-                {
-                    stats[key] = new StatInfo<ulong>() { Value = pStatInfo.Fixed64Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sfixed32Value)
-                {
-                    stats[key] = new StatInfo<int>() { Value = pStatInfo.Sfixed32Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sfixed64Value)
-                {
-                    stats[key] = new StatInfo<long>() { Value = pStatInfo.Sfixed64Value };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Timestamp)
-                {
-                    stats[key] = new StatInfo<DateTime>() { Value = pStatInfo.Timestamp.ToDateTime() };
-                }
-                else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Duration)
-                {
-                    stats[key] = new TimerStatInfo(pStatInfo.Duration.ToTimeSpan());
+                    if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int32Value)
+                    {
+                        stats[key] = new StatInfo<int>() { Value = pStatInfo.Int32Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Uint32Value)
+                    {
+                        stats[key] = new StatInfo<uint>() { Value = pStatInfo.Uint32Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int64Value)
+                    {
+                        stats[key] = new StatInfo<long>() { Value = pStatInfo.Int64Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Uint64Value)
+                    {
+                        stats[key] = new StatInfo<ulong>() { Value = pStatInfo.Uint64Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sint32Value)
+                    {
+                        stats[key] = new StatInfo<int>() { Value = pStatInfo.Sint32Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sint64Value)
+                    {
+                        stats[key] = new StatInfo<long>() { Value = pStatInfo.Sint64Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Fixed32Value)
+                    {
+                        stats[key] = new StatInfo<uint>() { Value = pStatInfo.Fixed32Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Fixed64Value)
+                    {
+                        stats[key] = new StatInfo<ulong>() { Value = pStatInfo.Fixed64Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sfixed32Value)
+                    {
+                        stats[key] = new StatInfo<int>() { Value = pStatInfo.Sfixed32Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sfixed64Value)
+                    {
+                        stats[key] = new StatInfo<long>() { Value = pStatInfo.Sfixed64Value };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Timestamp)
+                    {
+                        stats[key] = new StatInfo<DateTime>() { Value = pStatInfo.Timestamp.ToDateTime() };
+                    }
+                    else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Duration)
+                    {
+                        stats[key] = new TimerStatInfo(pStatInfo.Duration.ToTimeSpan());
+                    }
                 }
             }
         }
@@ -906,19 +927,22 @@ namespace SS.Core.Modules.Scoring
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
+            lock (pd.Lock)
             {
-                PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
-                PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
-                _ => null
-            };
+                SortedDictionary<int, BaseStatInfo> stats = state.Scope switch
+                {
+                    PersistScope.PerArena => GetArenaStatsByInterval(pd, state.Interval),
+                    PersistScope.Global => GetGlobalStatsByInterval(pd, state.Interval),
+                    _ => null
+                };
 
-            if (stats == null)
-                return;
+                if (stats == null)
+                    return;
 
-            foreach (BaseStatInfo stat in stats.Values)
-            {
-                stat.Clear();
+                foreach (BaseStatInfo stat in stats.Values)
+                {
+                    stat.Clear();
+                }
             }
         }
 
@@ -961,22 +985,23 @@ namespace SS.Core.Modules.Scoring
                 }
             }
 
-            SortedDictionary<int, BaseStatInfo> stats = scope switch
-            {
-                PersistScope.PerArena => GetArenaStatsByInterval(pd, interval),
-                PersistScope.Global => GetGlobalStatsByInterval(pd, interval),
-                _ => null,
-            };
-            
-            if (stats == null)
-                return;
-
-            _chat.SendMessage(p, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
-
-            DateTime now = DateTime.UtcNow;
-
             lock (pd.Lock)
             {
+                SortedDictionary<int, BaseStatInfo> stats = scope switch
+                {
+                    PersistScope.PerArena => GetArenaStatsByInterval(pd, interval),
+                    PersistScope.Global => GetGlobalStatsByInterval(pd, interval),
+                    _ => null,
+                };
+            
+                if (stats == null)
+                    return;
+
+                _chat.SendMessage(p, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
+
+                DateTime now = DateTime.UtcNow;
+
+            
                 foreach ((int statId, BaseStatInfo baseStatinfo) in stats)
                 {
                     string statName = null;
