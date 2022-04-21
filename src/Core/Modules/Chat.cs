@@ -766,16 +766,21 @@ namespace SS.Core.Modules
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            if (pd.Expires != null)
+            SSProto.ChatMask protoChatMask;
+
+            lock (pd.Lock)
             {
-                SSProto.ChatMask protoChatMask = new();
+                if (pd.Expires == null)
+                    return;
+
+                protoChatMask = new();
                 protoChatMask.Mask = pd.Mask.Value;
                 protoChatMask.Expires = pd.Expires != null ? Timestamp.FromDateTime(pd.Expires.Value) : null;
                 protoChatMask.MessageCount = pd.MessageCount;
                 protoChatMask.LastCheck = Timestamp.FromDateTime(pd.LastCheck);
-
-                protoChatMask.WriteTo(outStream);
             }
+
+            protoChatMask.WriteTo(outStream);
         }
 
         private void Persist_SetData(Player player, Stream inStream)
@@ -785,10 +790,13 @@ namespace SS.Core.Modules
 
             SSProto.ChatMask protoChatMask = SSProto.ChatMask.Parser.ParseFrom(inStream);
 
-            pd.Mask = new ChatMask(protoChatMask.Mask);
-            pd.Expires = protoChatMask.Expires?.ToDateTime();
-            pd.MessageCount = protoChatMask.MessageCount;
-            pd.LastCheck = protoChatMask.LastCheck.ToDateTime();
+            lock (pd.Lock)
+            {
+                pd.Mask = new ChatMask(protoChatMask.Mask);
+                pd.Expires = protoChatMask.Expires?.ToDateTime();
+                pd.MessageCount = protoChatMask.MessageCount;
+                pd.LastCheck = protoChatMask.LastCheck.ToDateTime();
+            }
         }
 
         private void Persist_ClearData(Player player)
@@ -796,7 +804,10 @@ namespace SS.Core.Modules
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            pd.Clear();
+            lock (pd.Lock)
+            {
+                pd.Clear();
+            }
         }
 
         #endregion
