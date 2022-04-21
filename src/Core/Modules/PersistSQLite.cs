@@ -18,7 +18,7 @@ namespace SS.Core.Modules
 
         private const string DatabasePath = "./data";
         private const string DatabaseFileName = "SS.Core.Modules.PersistSQLite.db";
-        private const string ConnectionString = $"Data Source={DatabasePath}/{DatabaseFileName};Version=3;";
+        private const string ConnectionString = $"data source={DatabasePath}/{DatabaseFileName};foreign keys=True;pooling=True;version=3";
 
         #region Module methods
 
@@ -94,9 +94,10 @@ CREATE TABLE [ArenaGroupInterval](
 );
 
 CREATE TABLE [CurrentArenaGroupInterval] (
-	[ArenaGroupId]INTEGER NOT NULL,
+	[ArenaGroupId] INTEGER NOT NULL,
 	[Interval] INTEGER NOT NULL,
 	[ArenaGroupIntervalId] INTEGER NOT NULL,
+	FOREIGN KEY([ArenaGroupId]) REFERENCES [ArenaGroup]([ArenaGroupId]),
 	FOREIGN KEY([ArenaGroupIntervalId]) REFERENCES [ArenaGroupInterval]([ArenaGroupIntervalId]),
 	PRIMARY KEY([ArenaGroupId],[Interval])
 );
@@ -123,6 +124,30 @@ CREATE TABLE [PlayerData](
     FOREIGN KEY([ArenaGroupIntervalId]) REFERENCES [ArenaGroupInterval]([ArenaGroupIntervalId]),
     FOREIGN KEY([PersistPlayerId]) REFERENCES [Player]([PersistPlayerId]),
     PRIMARY KEY([PersistPlayerId], [ArenaGroupIntervalId], [PersistKeyId])
+);
+
+CREATE INDEX [IX_ArenaData_ArenaGroupIntervalId] ON [ArenaData] (
+    [ArenaGroupIntervalId]
+);
+
+CREATE INDEX [IX_ArenaGroupInterval_ArenaGroupId] ON [ArenaGroupInterval] (
+    [ArenaGroupId]
+);
+
+CREATE INDEX [IX_CurrentArenaGroupInterval_ArenaGroupId] ON [ArenaGroup] (
+	[ArenaGroupId]
+);
+
+CREATE INDEX [IX_CurrentArenaGroupInterval_ArenaGroupIntervalId] ON [CurrentArenaGroupInterval] (
+	[ArenaGroupIntervalId]
+);
+
+CREATE INDEX [IX_PlayerData_ArenaGroupIntervalId] ON [PlayerData] (
+    [ArenaGroupIntervalId]
+);
+
+CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
+    [PersistPlayerId]
 );
 ";
                         command.ExecuteNonQuery();
