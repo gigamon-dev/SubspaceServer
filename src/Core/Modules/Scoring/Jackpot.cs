@@ -79,7 +79,10 @@ namespace SS.Core.Modules.Scoring
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            ad.Jackpot = 0;
+            lock (ad.Lock)
+            {
+                ad.Jackpot = 0;
+            }
         }
 
         void IJackpot.AddJackpot(Arena arena, int points)
@@ -87,7 +90,10 @@ namespace SS.Core.Modules.Scoring
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            ad.Jackpot += points;
+            lock (ad.Lock)
+            {
+                ad.Jackpot += points;
+            }
         }
 
         int IJackpot.GetJackpot(Arena arena)
@@ -95,7 +101,10 @@ namespace SS.Core.Modules.Scoring
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
 
-            return ad.Jackpot;
+            lock (ad.Lock)
+            {
+                return ad.Jackpot;
+            }
         }
 
         void IJackpot.SetJackpot(Arena arena, int points)
@@ -103,7 +112,10 @@ namespace SS.Core.Modules.Scoring
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            ad.Jackpot = points;
+            lock (ad.Lock)
+            {
+                ad.Jackpot = points;
+            }
         }
 
         #endregion
@@ -119,7 +131,10 @@ namespace SS.Core.Modules.Scoring
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ad.BountyRatio = _configManager.GetInt(arena.Cfg, "Kill", "JackpotBountyPercent", 0) / 1000d;
+                lock (ad.Lock)
+                {
+                    ad.BountyRatio = _configManager.GetInt(arena.Cfg, "Kill", "JackpotBountyPercent", 0) / 1000d;
+                }
             }
         }
 
@@ -128,7 +143,10 @@ namespace SS.Core.Modules.Scoring
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            ad.Jackpot += (int)(bounty * ad.BountyRatio);
+            lock (ad.Lock)
+            {
+                ad.Jackpot += (int)(bounty * ad.BountyRatio);
+            }
         }
 
         #endregion
@@ -137,25 +155,18 @@ namespace SS.Core.Modules.Scoring
 
         private void Persist_GetData(Arena arena, Stream outStream)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return;
+            int points = ((IJackpot)this).GetJackpot(arena);
 
-            if (ad.Jackpot > 0)
+            if (points > 0)
             {
                 Span<byte> data = stackalloc byte[4];
-                BinaryPrimitives.WriteInt32LittleEndian(data, ad.Jackpot);
+                BinaryPrimitives.WriteInt32LittleEndian(data, points);
                 outStream.Write(data);
             }
         }
 
         private void Persist_SetData(Arena arena, Stream inStream)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
-            {
-                ((IJackpot)this).ResetJackpot(arena);
-                return;
-            }
-
             Span<byte> data = stackalloc byte[4];
             Span<byte> remaining = data;
             int bytesRead;
@@ -172,7 +183,9 @@ namespace SS.Core.Modules.Scoring
                 return;
             }
 
-            ad.Jackpot = BinaryPrimitives.ReadInt32LittleEndian(data);
+            int points = BinaryPrimitives.ReadInt32LittleEndian(data);
+
+            ((IJackpot)this).SetJackpot(arena, points);
         }
 
         private void Persist_ClearData(Arena arena)
@@ -187,8 +200,13 @@ namespace SS.Core.Modules.Scoring
 
         private class ArenaData
         {
-            public int Jackpot;
+            // setting
             public double BountyRatio;
+
+            // state
+            public int Jackpot;
+
+            public readonly object Lock = new();
         }
     }
 }
