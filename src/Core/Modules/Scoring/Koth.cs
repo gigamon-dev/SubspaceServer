@@ -54,15 +54,11 @@ namespace SS.Core.Modules.Scoring
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
-            ArenaActionCallback.Register(broker, Callback_ArenaAction);
-
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
-            ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
-
             _arenaManager.FreeArenaData(_adKey);
             _playerData.FreePlayerData(_pdKey);
 
@@ -74,6 +70,7 @@ namespace SS.Core.Modules.Scoring
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
+            ArenaActionCallback.Register(arena, Callback_ArenaAction);
             PlayerActionCallback.Register(arena, Callback_PlayerAction);
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             KillCallback.Register(arena, Callback_Kill);
@@ -97,6 +94,7 @@ namespace SS.Core.Modules.Scoring
 
             _commandManager.RemoveCommand("resetkoth", Command_resetkoth, arena);
 
+            ArenaActionCallback.Unregister(arena, Callback_ArenaAction);
             PlayerActionCallback.Unregister(arena, Callback_PlayerAction);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
             KillCallback.Unregister(arena, Callback_Kill);
@@ -381,7 +379,7 @@ namespace SS.Core.Modules.Scoring
             if (ad.StartAfter == null || DateTime.Now > ad.StartAfter)
                 return true; // not time to start yet
 
-            if (TryStartGame(arena))
+            if (StartGame(arena))
             {
                 // Started.
                 return false;
@@ -390,7 +388,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        private bool TryStartGame(Arena arena)
+        private bool StartGame(Arena arena)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
@@ -534,7 +532,7 @@ namespace SS.Core.Modules.Scoring
                     hadCrownSet.Clear();
                     hadCrownSet.UnionWith(crownSet);
                 }
-                while (TryExpireOldest(crownSet, now, expiredSet));
+                while (ExpireOldest(crownSet, now, expiredSet));
 
                 // No winner yet.
 
@@ -571,7 +569,7 @@ namespace SS.Core.Modules.Scoring
                 return true;
             }
 
-            bool TryExpireOldest(HashSet<Player> players, DateTime now, HashSet<Player> expiredSet)
+            bool ExpireOldest(HashSet<Player> players, DateTime now, HashSet<Player> expiredSet)
             {
                 DateTime? oldestExpired = null;
 
@@ -617,6 +615,7 @@ namespace SS.Core.Modules.Scoring
                 if (winners.Count == 0)
                     return;
 
+                // regular reward formula
                 int points = ad.InitialPlayerCount * ad.InitialPlayerCount * ad.Settings.RewardFactor / 1000;
                 if (points <= 0)
                     return;
@@ -635,6 +634,7 @@ namespace SS.Core.Modules.Scoring
                     }
                 }
 
+                // split
                 if (winners.Count > 0 && ad.Settings.SplitPoints)
                 {
                     points /= winners.Count;
