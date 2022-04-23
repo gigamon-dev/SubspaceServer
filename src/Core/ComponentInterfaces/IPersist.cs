@@ -306,6 +306,17 @@ namespace SS.Core.ComponentInterfaces
         #endregion
 
         /// <summary>
+        /// Resets the <see cref="PersistInterval.Game"/> interval in an arena.
+        /// Data is cleared from any persist registrations and from the persist database.
+        /// </summary>
+        /// <remarks>
+        /// This method does not block. It adds a request into a work queue which will be processed by a worker thread.
+        /// </remarks>
+        /// <param name="arena">The arena to reset the game interval in.</param>
+        /// <param name="completed">A callback that will be executed after the interval is reset. This is guaranteed to be run on the <see cref="IMainloop"/>.</param>
+        void ResetGameInterval(Arena arena, Action<Arena> completed);
+
+        /// <summary>
         /// Adds a request to save all persistent data to the database.
         /// </summary>
         /// <remarks>
@@ -405,5 +416,12 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="key"></param>
         /// <returns></returns>
         bool DeleteArenaData(string arenaGroup, PersistInterval interval, int key);
+
+        /// <summary>
+        /// Clears an arena's <see cref="PersistInterval.Game"/> interval data.
+        /// </summary>
+        /// <param name="arenaGroup"></param>
+        /// <returns></returns>
+        bool ResetGameInterval(string arenaGroup);
     }
 }

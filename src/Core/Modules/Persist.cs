@@ -28,6 +28,7 @@ namespace SS.Core.Modules
         private Pool<PlayerWorkItem> _playerWorkItemPool;
         private Pool<ArenaWorkItem> _arenaWorkItemPool;
         private Pool<IntervalWorkItem> _intervalWorkItemPool;
+        private Pool<ResetGameIntervalWorkItem> _resetGameIntervalWorkItemPool;
         private Pool<PutAllWorkItem> _putAllWorkItemPool;
 
         private readonly BlockingCollection<PersistWorkItem> _workQueue = new();
@@ -69,6 +70,7 @@ namespace SS.Core.Modules
             _playerWorkItemPool = _objectPoolManager.GetPool<PlayerWorkItem>();
             _arenaWorkItemPool = _objectPoolManager.GetPool<ArenaWorkItem>();
             _intervalWorkItemPool = _objectPoolManager.GetPool<IntervalWorkItem>();
+            _resetGameIntervalWorkItemPool = _objectPoolManager.GetPool<ResetGameIntervalWorkItem>();
             _putAllWorkItemPool = _objectPoolManager.GetPool<PutAllWorkItem>();
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -187,20 +189,33 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(arenaGroupOrArenaName))
                 arenaGroupOrArenaName = Constants.ArenaGroup_Global;
 
-            QueueEndIntervalWorkItem(interval, arenaGroupOrArenaName);
+            QueueIntervalWorkItem(PersistCommand.EndInterval, interval, arenaGroupOrArenaName);
         }
 
         void IPersistExecutor.EndInterval(PersistInterval interval, Arena arena)
         {
-            QueueEndIntervalWorkItem(interval, GetArenaGroup(arena, interval));
+            QueueIntervalWorkItem(PersistCommand.EndInterval, interval, GetArenaGroup(arena, interval));
         }
 
-        private void QueueEndIntervalWorkItem(PersistInterval interval, string arenaGroup)
+        private void QueueIntervalWorkItem(PersistCommand command, PersistInterval interval, string arenaGroup)
         {
             IntervalWorkItem workItem = _intervalWorkItemPool.Get();
-            workItem.Command = PersistCommand.EndInterval;
+            workItem.Command = command;
             workItem.Interval = interval;
             workItem.ArenaGroup = arenaGroup;
+
+            _workQueue.Add(workItem);
+        }
+
+        void IPersistExecutor.ResetGameInterval(Arena arena, Action<Arena> callback)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            ResetGameIntervalWorkItem workItem = _resetGameIntervalWorkItemPool.Get();
+            workItem.Command = PersistCommand.ResetGameInterval;
+            workItem.Arena = arena;
+            workItem.Callback = callback;
 
             _workQueue.Add(workItem);
         }
@@ -359,6 +374,17 @@ namespace SS.Core.Modules
                         }
                         break;
 
+                    case PersistCommand.ResetGameInterval:
+                        if (workItem is ResetGameIntervalWorkItem resetIntervalWorkItem)
+                        {
+                            lock (_lock)
+                            {
+                                DoResetGameInterval(resetIntervalWorkItem.Arena);
+                            }
+                        }
+                        
+                        break;
+
                     //case PersistCommand.GetGeneric:
                     //    break;
 
@@ -369,14 +395,74 @@ namespace SS.Core.Modules
                         break;
                 }
 
-                if (!_mainloop.QueueMainWorkItem(MainloopWorkItem_ExecuteCallbacks, workItem)
+                if (!_mainloop.QueueMainWorkItem(MainloopWorkItem_ExecuteCallbacksAndDispose, workItem)
                     && workItem.Command == PersistCommand.PutAll)
                 {
                     // Couldn't queue a mainloop workitem. This will happen when the server is shutting down.
                     // When the mainloop exits, that thread requests that we save everything by adding a PutAll request, and it waits for us to execute the callback.
                     // Do the callback on worker thread.
-                    MainloopWorkItem_ExecuteCallbacks(workItem);
+                    MainloopWorkItem_ExecuteCallbacksAndDispose(workItem);
                 }
+            }
+
+            void DoResetGameInterval(Arena arena)
+            {
+                if (arena == null)
+                    return;
+
+                PlayerState minStatus = PlayerState.ArenaRespAndCBS;
+                PlayerState maxStatus = PlayerState.WaitArenaSync2;
+
+                //
+                // Players
+                //
+
+                _playerData.Lock();
+
+                try
+                {
+                    foreach (Player p in _playerData.Players)
+                    {
+                        Arena playerArena = p.Arena;
+
+                        if (p.Status >= minStatus
+                            && p.Status <= maxStatus
+                            && p.Arena == arena)
+                        {
+                            foreach (PersistentData<Player> registration in _playerRegistrations)
+                            {
+                                if (registration.Interval == PersistInterval.Game
+                                    && registration.Scope == PersistScope.PerArena)
+                                {
+                                    registration.ClearData(p);
+                                }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                //
+                // Arenas
+                //
+
+                foreach (PersistentData<Arena> registration in _arenaRegistrations)
+                {
+                    if (registration.Interval == PersistInterval.Game
+                        && registration.Scope == PersistScope.PerArena)
+                    {
+                        registration.ClearData(arena);
+                    }
+                }
+
+                //
+                // Remove from the database.
+                //
+
+                _persistDatastore.ResetGameInterval(arena.Name);
             }
 
             void DoEndInterval(PersistInterval interval, string arenaGroup)
@@ -626,7 +712,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void MainloopWorkItem_ExecuteCallbacks(PersistWorkItem workItem)
+        private void MainloopWorkItem_ExecuteCallbacksAndDispose(PersistWorkItem workItem)
         {
             if (workItem == null)
                 return;
@@ -744,6 +830,7 @@ namespace SS.Core.Modules
             PutArena,
             PutAll,
             EndInterval,
+            ResetGameInterval,
             //GetGeneric,
             //PutGeneric,
         }
@@ -897,6 +984,41 @@ namespace SS.Core.Modules
                 {
                     ArenaGroup = null;
                     Interval = default;
+                }
+            }
+        }
+
+        private class ResetGameIntervalWorkItem : PersistWorkItem
+        {
+            public override PersistCommand Command
+            {
+                get { return _command; }
+                set
+                {
+                    if (value != PersistCommand.ResetGameInterval)
+                        throw new ArgumentOutOfRangeException(nameof(value));
+
+                    _command = value;
+                }
+            }
+
+            public Arena Arena { get; set; }
+
+            public Action<Arena> Callback { get; set; }
+
+            public override void ExecuteCallback()
+            {
+                Callback(Arena);
+            }
+
+            protected override void Dispose(bool isDisposing)
+            {
+                base.Dispose(isDisposing);
+
+                if (isDisposing)
+                {
+                    Arena = null;
+                    Callback = null;
                 }
             }
         }

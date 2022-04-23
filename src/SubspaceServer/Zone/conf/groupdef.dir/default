@@ -80,3 +80,6 @@ cmd_packetloss
 cmd_zone
 cmd_find
 
+cmd_speedstats
+cmd_best
+privcmd_best

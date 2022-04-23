@@ -45,8 +45,9 @@ namespace SS.Core
         public static readonly StatCode<ulong> BallGamesLost = new(StatId.BallGamesLost);
 
         public static readonly StatCode<ulong> KothGamesWon = new(StatId.KothGamesWon);
+        public static readonly StatCode<ulong> SpeedGamesWon = new(StatId.SpeedGamesWon);
+        public static readonly StatCode<uint> SpeedPersonalBest = new(StatId.SpeedPersonalBest);
     }
-
 
     public enum StatId
     {
@@ -116,9 +117,10 @@ namespace SS.Core
 
         // Other games
         KothGamesWon = 400,
-        //JackpotGamesWon,
-        //SpeedGamesWon,
-        //RabbitGamesWon,
+        SpeedGamesWon = 410,
+        SpeedPersonalBest, // PersistInterval.Forever only
+        //JackpotGamesWon = 420,
+        //RabbitGamesWon = 430,
 
         //
         // Extended ball stats

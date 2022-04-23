@@ -91,7 +91,7 @@ namespace SS.Core.Modules
             {
                 if (duration > TimeSpan.Zero)
                 {
-                    bool started = ad.Start(DateTime.Now, duration);
+                    bool started = ad.Start(DateTime.UtcNow, duration);
                     if (started)
                     {
                         GameTimerChangedCallback.Fire(arena, arena, TimerChange.Started, TimerChangeReason.InterfaceCall, ad.GameLength != TimeSpan.Zero);

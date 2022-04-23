@@ -1125,6 +1125,8 @@ namespace SS.Core.Modules.Scoring
                 StatId.BallKills => "kills",
                 StatId.BallTeamKills => "team kills",
                 StatId.BallSpawns => "ball spawns",
+                StatId.SpeedGamesWon => "speed games won",
+                StatId.SpeedPersonalBest => "speed personal best",
                 _ => null,
             };
         }

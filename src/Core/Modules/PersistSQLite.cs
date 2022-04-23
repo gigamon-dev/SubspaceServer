@@ -377,6 +377,32 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
             }
         }
 
+        bool IPersistDatastore.ResetGameInterval(string arenaGroup)
+        {
+            if (string.IsNullOrWhiteSpace(arenaGroup))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(arenaGroup));
+
+            try
+            {
+                using SQLiteConnection conn = new(ConnectionString);
+                conn.Open();
+
+                using SQLiteTransaction transaction = conn.BeginTransaction();
+                DbResetGameInterval(conn, arenaGroup);
+                transaction.Commit();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogException(
+                    $"Error resetting game interval for ArenaGroup {arenaGroup}.",
+                    ex);
+
+                return false;
+            }
+        }
+
         #endregion
 
         private static int DbGetOrCreateArenaGroupId(SQLiteConnection conn, string arenaGroup)
@@ -542,7 +568,7 @@ VALUES(
             return arenaGroupIntervalId;
         }
 
-        private static int DbGetOrCreateCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        private static int? DbGetCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
         {
             try
             {
@@ -562,11 +588,20 @@ WHERE ag.ArenaGroup = @ArenaGroup
                 {
                     return Convert.ToInt32(arenaGroupIntervalIdObj);
                 }
+
+                return null;
             }
             catch (Exception ex)
             {
                 throw new Exception($"Error querying the CurrentArenaGroupInterval table for ArenaGroup '{arenaGroup}', Interval '{interval}'.", ex);
             }
+        }
+
+        private static int DbGetOrCreateCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        {
+            int? arenaGroupIntervalId = DbGetCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
+            if (arenaGroupIntervalId != null)
+                return arenaGroupIntervalId.Value;
 
             return DbCreateArenaGroupIntervalAndSetCurrent(conn, arenaGroup, interval);
         }
@@ -796,6 +831,43 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
             catch (Exception ex)
             {
                 throw new Exception($"Error deleting from the ArenaGroup table for ArenaGroupIntervalId {arenaGroupIntervalId}, PersistKeyId {persistKey}.", ex);
+            }
+        }
+
+        private static void DbResetGameInterval(SQLiteConnection conn, string arenaGroup)
+        {
+            int? arenaGroupIntervalId = DbGetCurrentArenaGroupIntervalId(conn, arenaGroup, PersistInterval.Game);
+            if (arenaGroupIntervalId == null)
+                return;
+
+            try
+            {
+                using SQLiteCommand command = conn.CreateCommand();
+                command.CommandText = @"
+DELETE FROM ArenaData
+WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId";
+                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId.Value);
+
+                command.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error deleting from the ArenaGroup table for ArenaGroupIntervalId {arenaGroupIntervalId.Value}.", ex);
+            }
+
+            try
+            {
+                using SQLiteCommand command = conn.CreateCommand();
+                command.CommandText = @"
+DELETE FROM PlayerData
+WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId";
+                command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId.Value);
+
+                command.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error deleting from the PlayerData table for ArenaGroupIntervalId {arenaGroupIntervalId.Value}.", ex);
             }
         }
 
