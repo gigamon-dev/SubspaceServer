@@ -136,6 +136,8 @@ namespace SS.Core.Modules.Scoring
                 {
                     ad.GameState = GameState.Starting;
                     ad.StartAfter = null;
+
+                    CheckStart(arena);
                 }
             }
         }
@@ -376,7 +378,7 @@ namespace SS.Core.Modules.Scoring
             if (ad.GameState != GameState.Starting)
                 return false;
 
-            if (ad.StartAfter == null || DateTime.Now > ad.StartAfter)
+            if (ad.StartAfter == null || DateTime.UtcNow < ad.StartAfter)
                 return true; // not time to start yet
 
             if (StartGame(arena))
