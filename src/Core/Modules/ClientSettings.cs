@@ -2,6 +2,7 @@
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
@@ -141,10 +142,7 @@ namespace SS.Core.Modules
 
             int i = 0;
             int j = 28;
-
-            int r;
-
-            r = _prng.Number(0, max - 1);
+            int r = _prng.Number(0, max - 1);
 
             // binary search
             while (r >= ad.pwps[i])
@@ -301,13 +299,19 @@ namespace SS.Core.Modules
 
                 // basic stuff
                 for (int j = 0; j < ss.Int32Settings.Length; j++)
+                {
                     ss.Int32Settings[j] = _configManager.GetInt(ch, shipName, ClientSettingsConfig.ShipLongNames[j], 0);
+                }
 
                 for (int j = 0; j < ss.Int16Settings.Length; j++)
+                {
                     ss.Int16Settings[j] = (short)_configManager.GetInt(ch, shipName, ClientSettingsConfig.ShipShortNames[j], 0);
+                }
 
                 for (int j = 0; j < ss.ByteSettings.Length; j++)
+                {
                     ss.ByteSettings[j] = (byte)_configManager.GetInt(ch, shipName, ClientSettingsConfig.ShipByteNames[j], 0);
+                }
 
                 // weapon bits
                 ref WeaponBits wb = ref ss.Weapons;
@@ -343,13 +347,29 @@ namespace SS.Core.Modules
 
             // rest of settings
             for (int i = 0; i < cs.Int32Settings.Length; i++)
+            {
                 cs.Int32Settings[i] = _configManager.GetInt(ch, ClientSettingsConfig.LongNames[i].Section, ClientSettingsConfig.LongNames[i].Key, 0);
+            }
 
             for (int i = 0; i < cs.Int16Settings.Length; i++)
+            {
                 cs.Int16Settings[i] = (short)_configManager.GetInt(ch, ClientSettingsConfig.ShortNames[i].Section, ClientSettingsConfig.ShortNames[i].Key, 0);
 
+                if (i == 11)
+                {
+                    Debug.Assert(string.Equals("Radar", ClientSettingsConfig.ShortNames[i].Section, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals("MapZoomFactor", ClientSettingsConfig.ShortNames[i].Key, StringComparison.OrdinalIgnoreCase));
+
+                    // Radar:MapZoomFactor of 0 will crash Continuum. Set it to 1 at least.
+                    if (cs.Int16Settings[i] == 0)
+                        cs.Int16Settings[i] = 1;
+                }
+            }
+
             for (int i = 0; i < cs.ByteSettings.Length; i++)
+            {
                 cs.ByteSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.ByteNames[i].Section, ClientSettingsConfig.ByteNames[i].Key, 0);
+            }
 
             ushort total = 0;
             ad.pwps[0] = 0;
