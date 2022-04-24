@@ -237,9 +237,9 @@ namespace SS.Core.Modules
         [ConfigHelp("Bullet", "ExactDamage", ConfigScope.Arena, typeof(bool), DefaultValue ="0", Description = "Whether to use exact bullet damage (Cont .36+)")]
         [ConfigHelp("Spectator", "HideFlags", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to show dropped flags to spectators (Cont .36+)")]
         [ConfigHelp("Spectator", "NoXRadar", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether spectators are disallowed from having X radar (Cont .36+)")]
-        [ConfigHelp("Misc", "SlowFrameCheck", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "")]
+        [ConfigHelp("Misc", "SlowFrameCheck", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "Whether to check for slow frames on the client (possible cheat technique) (flawed on some machines, do not use)")]
         [ConfigHelp("Misc", "DisableScreenshot", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable Continuum's screenshot feature (Cont .37+)")]
-        [ConfigHelp("Misc", "MaxTimerDrift", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "")]
+        [ConfigHelp("Misc", "MaxTimerDrift", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "Percentage how much client timer is allowed to differ from server timer.")]
         [ConfigHelp("Soccer", "DisableWallPass", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable ball-passing through walls (Cont .38+)")]
         [ConfigHelp("Soccer", "DisableBallKilling", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable ball killing in safe zones (Cont .38+)")]
         [ConfigHelp("All", "ShrapnelMax", ConfigScope.Arena, typeof(byte), "Maximum amount of shrapnel released from a ship's bomb")]
@@ -270,6 +270,8 @@ namespace SS.Core.Modules
         [ConfigHelp("Spawn", "Team1-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
         [ConfigHelp("Spawn", "Team2-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
         [ConfigHelp("Spawn", "Team3-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
+        [ConfigHelp("Prize", "UseDeathPrizeWeights", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to use the DPrizeWeight section for death prizes instead of the PrizeWeight section.")]
+        [ConfigHelp("Prize", "NullPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0", Description = "Likelihood of an empty prize appearing.")]
         private void LoadSettings(ArenaClientSettingsData ad, ConfigHandle ch)
         {
             if (ad == null)
