@@ -52,18 +52,18 @@ namespace SS.Core.Modules.Scoring
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
 
-            _commandManager.AddCommand("forceperiodic", Command_forceperiodic);
-            _commandManager.AddCommand("resetperiodic", Command_resetperiodic);
-            _commandManager.AddCommand("stopperiodic", Command_stopperiodic);
+            _commandManager.AddCommand("periodicreward", Command_periodicreward);
+            _commandManager.AddCommand("periodicreset", Command_periodicreset);
+            _commandManager.AddCommand("periodicstop", Command_periodicstop);
 
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
-            _commandManager.RemoveCommand("forceperiodic", Command_forceperiodic);
-            _commandManager.RemoveCommand("resetperiodic", Command_resetperiodic);
-            _commandManager.RemoveCommand("stopperiodic", Command_stopperiodic);
+            _commandManager.RemoveCommand("periodicreward", Command_periodicreward);
+            _commandManager.RemoveCommand("periodicreset", Command_periodicreset);
+            _commandManager.RemoveCommand("periodicstop", Command_periodicstop);
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
 
@@ -79,7 +79,6 @@ namespace SS.Core.Modules.Scoring
         void IPeriodicReward.Reward(Arena arena)
         {
             Reward(arena);
-            StartTimer(arena);
         }
 
         void IPeriodicReward.Reset(Arena arena)
@@ -147,18 +146,30 @@ namespace SS.Core.Modules.Scoring
 
         #region Commands
 
-        private void Command_forceperiodic(string commandName, string parameters, Player p, ITarget target)
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Rewards teams in the current arena as if the periodic timer elapsed.")]
+        private void Command_periodicreward(string commandName, string parameters, Player p, ITarget target)
         {
             ((IPeriodicReward)this).Reward(p.Arena);
         }
 
-        private void Command_resetperiodic(string commandName, string parameters, Player p, ITarget target)
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Resets the periodic timer in the current arena.")]
+        private void Command_periodicreset(string commandName, string parameters, Player p, ITarget target)
         {
             ((IPeriodicReward)this).Reset(p.Arena);
             _chat.SendMessage(p, $"Periodic reward timer reset.");
         }
 
-        private void Command_stopperiodic(string commandName, string parameters, Player p, ITarget target)
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Stops the periodic timer in the current arena.")]
+        private void Command_periodicstop(string commandName, string parameters, Player p, ITarget target)
         {
             ((IPeriodicReward)this).Stop(p.Arena);
             _chat.SendMessage(p, $"Periodic reward timer stopped.");
@@ -166,7 +177,7 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private bool MainloopTimer(Arena arena)
+        private bool MainloopTimer_Reward(Arena arena)
         {
             if (arena == null)
                 return false;
@@ -184,7 +195,7 @@ namespace SS.Core.Modules.Scoring
 
             if (ad.Settings.RewardDelay > TimeSpan.Zero)
             {
-                _mainloopTimer.SetTimer(MainloopTimer, (int)ad.Settings.RewardDelay.TotalMilliseconds, (int)ad.Settings.RewardDelay.TotalMilliseconds, arena, arena);
+                _mainloopTimer.SetTimer(MainloopTimer_Reward, (int)ad.Settings.RewardDelay.TotalMilliseconds, (int)ad.Settings.RewardDelay.TotalMilliseconds, arena, arena);
                 ad.TimerRunning = true;
             }
         }
@@ -196,7 +207,8 @@ namespace SS.Core.Modules.Scoring
 
             if (ad.TimerRunning)
             {
-                _mainloopTimer.ClearTimer<Arena>(MainloopTimer, arena);
+                _mainloopTimer.ClearTimer<Arena>(MainloopTimer_Reward, arena);
+                ad.TimerRunning = false;
             }
         }
 

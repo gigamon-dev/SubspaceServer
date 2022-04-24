@@ -45,6 +45,6 @@ cmd_redirect
 privcmd_redirect
 
 ; periodic commands
-cmd_forceperiodic
-cmd_resetperiodic
-cmd_stopperiodic
+cmd_periodicreward
+cmd_periodicreset
+cmd_periodicstop

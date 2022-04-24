@@ -8,7 +8,7 @@ namespace SS.Core.ComponentInterfaces
     public interface IPeriodicReward : IComponentInterface
     {
         /// <summary>
-        /// Rewards teams in an arena and resets the periodic timer.
+        /// Rewards teams in an arena as if the periodic timer elapsed.
         /// </summary>
         /// <param name="arena">The arena to reward teams in.</param>
         void Reward(Arena arena);

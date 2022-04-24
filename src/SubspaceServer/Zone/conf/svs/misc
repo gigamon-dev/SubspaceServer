@@ -148,7 +148,7 @@ RewardMinimumPlayers=5
 RewardPoints=30
 
 [Periodic]
-RewardDelay=6000
+RewardDelay=0
 RewardMinimumPlayers=2
 RewardPoints=50
 
