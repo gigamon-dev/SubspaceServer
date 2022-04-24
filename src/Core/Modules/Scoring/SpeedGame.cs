@@ -83,6 +83,9 @@ namespace SS.Core.Modules.Scoring
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
+            _mainloopTimer.ClearTimer<Arena>(MainloopTimer_StartGameTimer, arena);
+            _mainloopTimer.ClearTimer<Arena>(MainloopTimer_EndGameTimer, arena);
+
             ArenaActionCallback.Unregister(arena, Callback_ArenaAction);
             PlayerActionCallback.Unregister(arena, Callback_PlayerAction);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
