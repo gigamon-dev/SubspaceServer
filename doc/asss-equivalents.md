@@ -84,7 +84,7 @@ This document provides an overview of the various server parts and their relatio
 | prng | SS.Core.Modules.Prng | |
 | pymod | n/a | Use IronPython? |
 | quickfix | SS.Core.Modules.Quickfix | |
-| funky:record | | TODO |
+| funky:record | SS.Replay.ReplayModule | TODO: Enhance beyond ASSS functionality. Add: bricks, balls, flags, crowns, green/door sync. |
 | redirect | | TODO: very low priority |
 | security | SS.Core.Modules.Security | |
 | sendfile | - | No plans to add it. |

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30406.217
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32421.90
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SubspaceServer", "SubspaceServer\SubspaceServer.csproj", "{C8467BE0-4222-4B1D-AC2E-4A7ADF31BB67}"
 EndProject
@@ -11,7 +11,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Packets", "Packets\Packets.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Core", "Core\Core.csproj", "{FEF75FC5-C8E9-45AC-BF0D-B2027EEFD689}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TurfReward", "TurfReward\TurfReward.csproj", "{D0E50EB7-A554-431E-89BB-8A71D622CF37}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TurfReward", "TurfReward\TurfReward.csproj", "{D0E50EB7-A554-431E-89BB-8A71D622CF37}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Replay", "Replay\Replay.csproj", "{3C4217C3-4376-4F93-AB2E-B824FB191A4D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{D0E50EB7-A554-431E-89BB-8A71D622CF37}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D0E50EB7-A554-431E-89BB-8A71D622CF37}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D0E50EB7-A554-431E-89BB-8A71D622CF37}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C4217C3-4376-4F93-AB2E-B824FB191A4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C4217C3-4376-4F93-AB2E-B824FB191A4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C4217C3-4376-4F93-AB2E-B824FB191A4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C4217C3-4376-4F93-AB2E-B824FB191A4D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -317,7 +317,17 @@ namespace SS.Core.Modules
             RunInMainWorkItem<TState> workItem = (_objectPoolManager?.GetPool<RunInMainWorkItem<TState>>() ?? Pool<RunInMainWorkItem<TState>>.Default).Get();
             workItem.Set(callback, state);
 
-            bool added = _runInMainQueue.TryAdd(workItem);
+            bool added;
+
+            try
+            {
+                added = _runInMainQueue.TryAdd(workItem);
+            }
+            catch (InvalidOperationException)
+            {
+                // Queue is marked as complete for adding.
+                added = false;
+            }
 
             if (added)
             {
@@ -358,6 +368,8 @@ namespace SS.Core.Modules
 
             return ThreadPool.QueueUserWorkItem(callback, state, false);
         }
+
+        bool IMainloop.IsMainloop => Thread.CurrentThread == _mainThread;
 
         #endregion
 
@@ -727,7 +739,7 @@ namespace SS.Core.Modules
                 if (runInMainAutoResetEvent == null)
                     throw new ArgumentNullException(nameof(runInMainAutoResetEvent));
 
-                WaitForMainWorkItem workItem = new();
+                WaitForMainWorkItem workItem = new(); // TODO: object pooling
                 workItem.Wait(runInMainQueue, runInMainAutoResetEvent);
             }
 
@@ -743,7 +755,19 @@ namespace SS.Core.Modules
                 {
                     waitResolved = false;
 
-                    runInMainQueue.Add(this);
+                    if (runInMainQueue.IsAddingCompleted) // checking in advance, but still can be marked between this check and the add
+                        return;
+
+                    try
+                    {
+                        runInMainQueue.Add(this);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // The queue is marked as complete for adding.
+                        return;
+                    }
+
                     runInMainAutoResetEvent.Set();
 
                     while (!waitResolved)

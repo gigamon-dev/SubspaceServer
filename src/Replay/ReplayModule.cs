@@ -1,0 +1,1727 @@
+﻿using SS.Core;
+using SS.Core.ComponentAdvisors;
+using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
+using SS.Packets.Game;
+using SS.Replay.FileFormat;
+using SS.Replay.FileFormat.Events;
+using SS.Utilities;
+using System.Buffers;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace SS.Replay
+{
+    /// <summary>
+    /// A module that provides functionality to record and playback in-game replays, based on the ASSS 'record' module.
+    /// </summary>
+    /// <remarks>
+    /// Do all file operations (including opening of streams) on a worker thread.
+    /// Playback thread to queue mainloop workitems.
+    /// 
+    /// ASSS's record module doesn't support:
+    /// - balls
+    /// - flags
+    /// - crowns
+    /// - bricks (remember to include bricks that were active at the start of the recording)
+    ///
+    /// Chat messages
+    /// - Maybe allow players to switch freqs (as a spectator) and play team messages as if the the player was there on team?
+    /// - Same with enemy freq messages?
+    /// 
+    /// Thoughts about syncing doors/greens:
+    /// - could probably do some faking of the security packet (would require changes to the Security module, perhaps an arena-level override + skip/disable verifications and all)
+    /// 
+    /// ASSS does not record the Position packet "time" field. It actually stores playerId in it.
+    /// When it plays back a recording, the packet will be processed based on the event header ticks, and it uses the current tick count as "time".
+    /// This doesn't seem accurate. Is there a better way? 
+    /// The Game module's position packet handler does something similiar when sending S2C position packets (rather than use the C2S postition packet "time").
+    /// </remarks>
+    public class ReplayModule : IModule, IFreqManagerEnforcerAdvisor
+    {
+        private const uint ReplayFileVersion = 2;
+        private const uint MapChecksumKey = 0x46692018;
+        private const int MaxRecordBuffer = 4096;
+
+        private IArenaManager _arenaManager;
+        private IBalls _balls;
+        private IChat _chat;
+        private IClientSettings _clientSettings;
+        private ICommandManager _commandManager;
+        private IConfigManager _configManager;
+        private IFake _fake;
+        private IGame _game;
+        private ILogManager _logManager;
+        private IMainloop _mainloop;
+        private IMapData _mapData;
+        private INetwork _network;
+        private IObjectPoolManager _objectPoolManager;
+        private IPlayerData _playerData;
+
+        private ArenaDataKey<ArenaData> _adKey;
+
+        private static readonly ArrayPool<byte> _recordBufferPool = ArrayPool<byte>.Create();
+
+        #region Module members
+
+        public bool Load(
+            ComponentBroker broker,
+            IArenaManager arenaManager,
+            IBalls balls,
+            IChat chat,
+            IClientSettings clientSettings,
+            ICommandManager commandManager,
+            IConfigManager configManager,
+            IFake fake,
+            IGame game,
+            ILogManager logManager,
+            IMainloop mainloop,
+            IMapData mapData,
+            INetwork network,
+            IObjectPoolManager objectPoolManager,
+            IPlayerData playerData)
+        {
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _balls = balls ?? throw new ArgumentNullException(nameof(balls));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _fake = fake ?? throw new ArgumentNullException(nameof(fake));
+            _game = game ?? throw new ArgumentNullException(nameof(game));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+
+            _adKey = _arenaManager.AllocateArenaData<ArenaData>();
+
+            _commandManager.AddCommand("replay", Command_replay);
+            _commandManager.AddCommand("gamerecord", Command_replay);
+            _commandManager.AddCommand("rec", Command_replay);
+
+            _network.AddPacket(C2SPacketType.Position, Packet_Position);
+            ArenaActionCallback.Register(broker, Callback_ArenaAction);
+
+            return true;
+        }
+
+        public bool Unload(ComponentBroker broker)
+        {
+            ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
+            _network.RemovePacket(C2SPacketType.Position, Packet_Position);
+
+            _commandManager.RemoveCommand("replay", Command_replay);
+            _commandManager.RemoveCommand("gamerecord", Command_replay);
+            _commandManager.RemoveCommand("rec", Command_replay);
+
+            _arenaManager.FreeArenaData(_adKey);
+
+            return true;
+        }
+
+        #endregion
+
+        #region IFreqManagerEnforcerAdvisor
+
+        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
+        {
+            if (errorMessage != null)
+                errorMessage.Append("Ships are disabled for playback.");
+
+            return ShipMask.None;
+        }
+
+        bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder errorMessage)
+        {
+            if (errorMessage != null)
+                errorMessage.Append("Teams are locked for playback.");
+
+            return false;
+        }
+
+        #endregion
+
+        #region Callbacks
+
+        private void Callback_ArenaAction(Arena arena, ArenaAction action)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (action == ArenaAction.Create)
+            {
+                ad.Settings = new(_configManager, arena.Cfg);
+
+                ad.State = ReplayState.None;
+            }
+            else if (action == ArenaAction.Destroy)
+            {
+                if (ad.State == ReplayState.Recording)
+                    StopRecording(arena);
+                else if (ad.State == ReplayState.Playing)
+                    StopPlayback(arena);
+            }
+        }
+
+        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (action == PlayerAction.EnterArena)
+            {
+                byte[] buffer = _recordBufferPool.Rent(Enter.Length);
+                ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
+                enter = new(ServerTick.Now, (short)p.Id, p.Name, p.Squad, p.Ship, p.Freq);
+
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, Enter.Length));
+            }
+            else if (action == PlayerAction.LeaveArena)
+            {
+                byte[] buffer = _recordBufferPool.Rent(Leave.Length);
+                ref Leave leave = ref MemoryMarshal.AsRef<Leave>(buffer);
+                leave = new(ServerTick.Now, (short)p.Id);
+
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, Leave.Length));
+            }
+        }
+
+        private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Arena arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (newShip == oldShip)
+            {
+                byte[] buffer = _recordBufferPool.Rent(FreqChange.Length);
+                ref FreqChange freqChange = ref MemoryMarshal.AsRef<FreqChange>(buffer);
+                freqChange = new(ServerTick.Now, (short)player.Id, newFreq);
+
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, FreqChange.Length));
+            }
+            else
+            {
+                byte[] buffer = _recordBufferPool.Rent(ShipChange.Length);
+                ref ShipChange shipChange = ref MemoryMarshal.AsRef<ShipChange>(buffer);
+                shipChange = new(ServerTick.Now, (short)player.Id, newShip, newFreq);
+
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, ShipChange.Length));
+            }
+        }
+
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(ShipChange.Length);
+            ref Kill kill = ref MemoryMarshal.AsRef<Kill>(buffer);
+            kill = new(ServerTick.Now, (short)killer.Id, (short)killed.Id, pts, flagCount);
+
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, Kill.Length));
+        }
+
+        private void Callback_ChatMessage(Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, ReadOnlySpan<char> message)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Arena arena = playerFrom.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (type == ChatMessageType.Arena || type == ChatMessageType.Pub || (type == ChatMessageType.Freq && freq == arena.SpecFreq))
+            {
+                int messageByteCount = StringUtils.DefaultEncoding.GetByteCount(message) + 1;
+                byte[] buffer = _recordBufferPool.Rent(Chat.Length + messageByteCount);
+                ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
+                chat = new(ServerTick.Now, (short)playerFrom.Id, type, sound, (ushort)messageByteCount);
+                Span<byte> messageBytes = buffer.AsSpan(Chat.Length, messageByteCount);
+                messageBytes.WriteNullTerminatedString(message);
+
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, Chat.Length + messageByteCount));
+            }
+        }
+
+        #endregion
+
+        private void Packet_Position(Player player, byte[] data, int length)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (length != C2S_PositionPacket.Length && length != C2S_PositionPacket.LengthWithExtra)
+                return;
+
+            Arena arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            lock (ad.Lock)
+            {
+                if (ad.State != ReplayState.Recording)
+                    return;
+            }
+
+            if (ad.RecorderQueue.IsAddingCompleted) // only the mainloop thread changes this, so it can't happen between here the Add method call since this is the mainloop
+                return;
+
+            ref C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
+
+            byte[] buffer = _recordBufferPool.Rent(Position.Length);
+            ref Position position = ref MemoryMarshal.AsRef<Position>(buffer);
+            position = new(ServerTick.Now, c2sPosition);
+            position.PositionPacket.Type = (byte)length;
+            position.PositionPacket.Time = (uint)player.Id;
+
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, EventHeader.Length + length));
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "status | record <file> | play <file> | pause | stop",
+            Description = "Controls a replay recording or playback.")]
+        private void Command_replay(string commandName, string parameters, Player player, ITarget target)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Arena arena = player.Arena;
+            if (arena == null)
+                return;
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
+
+            if (MemoryExtensions.Equals(token, "record", StringComparison.OrdinalIgnoreCase))
+            {
+                token = remaining.GetToken(' ', out remaining);
+                if (token.IsWhiteSpace())
+                {
+                    _chat.SendMessage(player, $"Replay: A filename is required to record to.");
+                    return;
+                }
+
+                if (!StartRecording(arena, token.ToString(), player, null))
+                {
+                    _chat.SendMessage(player, $"Replay: A recording cannot be started at this time.");
+                }
+            }
+            else if (MemoryExtensions.Equals(token, "play", StringComparison.OrdinalIgnoreCase))
+            {
+                token = remaining.GetToken(' ', out remaining);
+                if (token.IsWhiteSpace())
+                {
+                    _chat.SendMessage(player, $"Replay: A filename is required to play from.");
+                    return;
+                }
+
+                if (!StartPlayback(arena, token.ToString(), player))
+                {
+                    _chat.SendMessage(player, $"Replay: A playback cannot be started at this time.");
+                }
+            }
+            else if (MemoryExtensions.Equals(token, "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                lock (ad.Lock)
+                {
+                    if (ad.State == ReplayState.Playing)
+                        StopPlayback(arena);
+                    else if (ad.State == ReplayState.Recording)
+                        StopRecording(arena);
+                }
+            }
+            else if (MemoryExtensions.Equals(token, "pause", StringComparison.OrdinalIgnoreCase))
+            {
+                bool success = false;
+
+                lock (ad.Lock)
+                {
+                    if (ad.State == ReplayState.Playing)
+                    {
+                        if (ad.IsPlaybackPaused)
+                            ad.PlaybackQueue.Add(PlaybackCommand.Resume);
+                        else
+                            ad.PlaybackQueue.Add(PlaybackCommand.Pause);
+
+                        success = true;
+                    }
+                }
+
+                if (!success)
+                {
+                    _chat.SendMessage(player, "Replay: Nothing is being played.");
+                }
+            }
+            else
+            {
+                ReplayState state;
+                string fileName = null;
+                double playbackPosition = 0;
+                bool isPlaybackPaused = false;
+
+                lock (ad.Lock)
+                {
+                    state = ad.State;
+                    if (state == ReplayState.Recording || state == ReplayState.Playing)
+                    {
+                        fileName = ad.FileName;
+                    }
+
+                    if (state == ReplayState.Playing)
+                    {
+                        playbackPosition = ad.PlaybackPosition;
+                        isPlaybackPaused = ad.IsPlaybackPaused;
+                    }
+                }
+
+                switch (state)
+                {
+                    case ReplayState.None:
+                        _chat.SendMessage(player, "Replay: Nothing is being played or recorded.");
+                        break;
+
+                    case ReplayState.Recording:
+                        if (fileName == null)
+                        {
+                            _chat.SendMessage(player, $"Replay: A recording is starting up. Please stand by.");
+                        }
+                        else
+                        {
+                            _chat.SendMessage(player, $"Replay: A replay is being recorded to '{fileName}'.");
+                        }
+
+                        break;
+
+                    case ReplayState.Playing:
+                        if (fileName == null)
+                        {
+                            _chat.SendMessage(player, $"Replay: A playback is starting up. Please stand by.");
+                        }
+                        else
+                        {
+                            _chat.SendMessage(player, $"Replay: A replay is being played from '{fileName}', current position {playbackPosition:P}{(isPlaybackPaused ? " (paused)" : "")}.");
+                        }
+                        break;
+
+                    default:
+                        _chat.SendMessage(player, $"Replay: The {nameof(ReplayModule)} module is in an invalid state.");
+                        break;
+                }
+            }
+        }
+
+        private bool StartRecording(Arena arena, string path, Player recorder, string comments)
+        {
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
+
+            lock (ad.Lock)
+            {
+                if (ad.State != ReplayState.None || ad.RecorderQueue != null)
+                    return false;
+
+                if (ad.RecorderTask != null && !ad.RecorderTask.IsCompleted)
+                    return false;
+
+                ad.State = ReplayState.Recording;
+                ad.StartedBy = recorder?.Name;
+                ad.RecorderQueue = new();
+
+                ServerTick started = ServerTick.Now;
+
+                // TODO: queue up starting info
+                // - players in the arena (enter events)
+                QueuePlayers(arena, ad);
+                // - security info (door/green seeds, and timestamp)
+                //QueueSecurityInfo(arena, ad);
+                // - active bricks
+                //QueueBricks(arena, ad);
+                // - ball info, flag info, crown info
+                //QueueBallInfo(arena, ad);
+                //QueueFlagInfo(arena, ad);
+
+                PlayerActionCallback.Register(arena, Callback_PlayerAction);
+                ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
+                KillCallback.Register(arena, Callback_Kill);
+                ChatMessageCallback.Register(arena, Callback_ChatMessage);
+
+                ad.RecorderTask = Task.Factory.StartNew(() =>
+                {
+                    DoRecording(arena, path, started, comments);
+                }, TaskCreationOptions.LongRunning).ContinueWith((_) =>
+                {
+                    _mainloop.QueueMainWorkItem(MainloopWorkItem_EndRecording, arena);
+                });
+
+                return true;
+            }
+
+            void QueuePlayers(Arena arena, ArenaData ad)
+            {
+                _playerData.Lock();
+
+                try
+                {
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.Arena == arena
+                            && player.Status == PlayerState.Playing)
+                        {
+                            byte[] buffer = _recordBufferPool.Rent(Enter.Length);
+                            ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
+                            enter = new(ServerTick.Now, (short)player.Id, player.Name, player.Squad, player.Ship, player.Freq);
+
+                            ad.RecorderQueue.Add(new RecordBuffer(buffer, Enter.Length));
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+            }
+
+            void QueueSecurityInfo(Arena arena, ArenaData ad)
+            {
+                // TODO: this will require changes to the Security module
+                // - to get the current seeds & timestamp
+                // - a callback to record when it changes
+                // - and a way to override it for an arena --> for playback
+            }
+
+            void QueueBricks(Arena arena, ArenaData ad)
+            {
+                // TODO: this will require changes to the Bricks module:
+                // - a way to get the current bricks
+                // - a callback to record when brick(s) are placed
+                // - a way to set bricks (with earlier timestamps) --> playback
+            }
+        }
+
+        private bool StopRecording(Arena arena)
+        {
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
+
+            lock (ad.Lock)
+            {
+                if (ad.State != ReplayState.Recording || ad.RecorderQueue == null || ad.RecorderQueue.IsAddingCompleted)
+                    return false;
+
+                PlayerActionCallback.Unregister(arena, Callback_PlayerAction);
+                ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+                KillCallback.Unregister(arena, Callback_Kill);
+                ChatMessageCallback.Unregister(arena, Callback_ChatMessage);
+
+                ad.RecorderQueue.CompleteAdding();
+                return true;
+            }
+        }
+
+        private void DoRecording(Arena arena, string path, ServerTick started, string comments)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = Path.Combine("recordings", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{arena.Name}");
+            }
+            else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
+                || path.Length <= ("recordings".Length + 1)
+                || (path["recordings".Length] != Path.DirectorySeparatorChar && path["recordings".Length] != Path.AltDirectorySeparatorChar))
+            {
+                path = Path.Combine("recordings", path);
+            }
+
+            // Create the file.
+            FileStream fileStream;
+
+            try
+            {
+                fileStream = new(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception ex)
+            {
+                LogAndNotify(arena, ad.Settings.NotifyRecordingError, $"Unable to create replay file '{path}'.", ex);
+                return;
+            }
+
+            Notify(arena, ad.Settings.NotifyRecording, $"Started recording '{path}'.");
+
+            try
+            {
+                BlockingCollection<RecordBuffer> recorderQueue;
+
+                lock (ad.Lock)
+                {
+                    recorderQueue = ad.RecorderQueue ?? throw new Exception("The recorder queue was null.");
+                    ad.FileName = path;
+                }
+
+                int commentsLength = comments != null ? StringUtils.DefaultEncoding.GetByteCount(comments) + 1 : 0;
+
+                // Write the file header (though only have partial data and will have to update it at the end).
+                FileHeader fileHeader = new();
+                fileHeader.Header = "ass$game"; // The $ temporary, we will update it at the end.
+                fileHeader.Version = ReplayFileVersion;
+                fileHeader.Offset = (uint)FileHeader.Length + (uint)commentsLength;
+                fileHeader.Events = 0; // This will be updated at the end.
+                fileHeader.EndTime = 0; // This will be updated at the end.
+                fileHeader.MaxPlayerId = 0; // This will be updated at the end.
+                fileHeader.SpecFreq = (uint)arena.SpecFreq;
+                fileHeader.Recorded = DateTimeOffset.UtcNow;
+                fileHeader.MapChecksum = _mapData.GetChecksum(arena, MapChecksumKey);
+                fileHeader.Recorder = ad.StartedBy;
+                fileHeader.ArenaName = arena.Name;
+
+                Span<byte> fileHeaderBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref fileHeader, 1));
+
+                try
+                {
+                    fileStream.Write(fileHeaderBytes);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception("Unable to write file header.", ex);
+                }
+
+                // Write the file header comments.
+                if (commentsLength > 0)
+                {
+                    byte[] commentsBuffer = ArrayPool<byte>.Shared.Rent(commentsLength);
+                    try
+                    {
+                        Span<byte> commentsSpan = commentsBuffer.AsSpan(0, commentsLength);
+                        int numBytes = StringUtils.WriteNullTerminatedString(commentsSpan, comments);
+                        if (numBytes != commentsLength)
+                        {
+                            throw new Exception($"Encoding resulted in {numBytes} bytes when {commentsLength} bytes were expected.");
+                        }
+
+                        fileStream.Write(commentsBuffer);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Unable to write file header (comments).", ex);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(commentsBuffer, true);
+                    }
+                }
+
+                // Open the gzip stream.
+                using GZipStream gzStream = new(fileStream, CompressionLevel.Optimal);
+
+                uint eventCount = 0;
+                int maxPlayerId = 0;
+
+                // Write events.
+                while (!recorderQueue.IsCompleted)
+                {
+                    if (!recorderQueue.TryTake(out RecordBuffer recordBuffer, -1))
+                        continue;
+
+                    try
+                    {
+                        Span<byte> eventBytes = recordBuffer.Buffer.AsSpan(0, recordBuffer.Length);
+                        ref EventHeader eventHeader = ref MemoryMarshal.AsRef<EventHeader>(eventBytes);
+
+                        // Normalize events to start from 0.
+                        eventHeader.Ticks = (ServerTick)(uint)(eventHeader.Ticks - started);
+
+                        // Keep track of the maximum playerId so that it can be written to the header when the recording is complete.
+                        if (eventHeader.Type == EventType.Enter)
+                        {
+                            ref Enter enter = ref MemoryMarshal.AsRef<Enter>(eventBytes);
+                            if (enter.PlayerId > maxPlayerId)
+                                maxPlayerId = enter.PlayerId;
+                        }
+
+                        // Write the event.
+                        try
+                        {
+                            gzStream.Write(eventBytes);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception($"Unable to write event of type {eventHeader.Type}.", ex);
+                        }
+
+                        eventCount++;
+                    }
+                    finally
+                    {
+                        _recordBufferPool.Return(recordBuffer.Buffer, true);
+                    }
+                }
+
+                // Update the file header.
+                fileHeader.Header = "asssgame";
+                fileHeader.Events = eventCount;
+                fileHeader.EndTime = (uint)(ServerTick.Now - started);
+                fileHeader.MaxPlayerId = (uint)maxPlayerId;
+
+                // Write the updated file header to the file.
+                long originalPosition = fileStream.Position;
+                fileStream.Position = 0;
+
+                try
+                {
+                    fileStream.Write(fileHeaderBytes);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception("Unable to edit file header.", ex);
+                }
+
+                fileStream.Position = originalPosition;
+            }
+            catch (Exception ex)
+            {
+                LogAndNotify(arena, ad.Settings.NotifyRecordingError, $"Error recording to '{path}'.", ex);
+            }
+            finally
+            {
+                fileStream.Dispose();
+
+                Notify(arena, ad.Settings.NotifyRecording, $"Stopped recording '{path}'.");
+            }
+        }
+
+        /// <summary>
+        /// Performs cleanup when a recording ends.
+        /// </summary>
+        /// <remarks>
+        /// This is executed on the mainloop thread since the mainloop thread is the producer.
+        /// It is important that it's done on the mainloop thread because the <see cref="Packet_Position"/> method is registered globally and occurs on the mainloop thread.
+        /// </remarks>
+        /// <param name="arena"></param>
+        private void MainloopWorkItem_EndRecording(Arena arena)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            // Make sure callbacks are unregistered and the queue is marked as complete for adding.
+            // If the recording was told to stop, then this will have already been done and calling it again will do nothing.
+            // If the recording errored out, then this will bring it into the state we're expecting.
+            StopRecording(arena);
+
+            lock (ad.Lock)
+            {
+                Debug.Assert(ad.RecorderTask.IsCompleted);
+
+                ad.State = ReplayState.None;
+                ad.FileName = null;
+                ad.StartedBy = null;
+
+                // If there are any remaining queued items, make sure to return their buffers to the pool.
+                while (!ad.RecorderQueue.IsCompleted)
+                {
+                    if (!ad.RecorderQueue.TryTake(out RecordBuffer recordBuffer))
+                        continue;
+
+                    _recordBufferPool.Return(recordBuffer.Buffer, true);
+                }
+
+                ad.RecorderQueue.Dispose();
+                ad.RecorderQueue = null;
+
+                ad.RecorderTask = null;
+            }
+        }
+
+        private bool StartPlayback(Arena arena, string path, Player startedBy)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
+
+            lock (ad.Lock)
+            {
+                if (ad.State != ReplayState.None)
+                    return false;
+
+                if (ad.PlaybackTask != null && !ad.PlaybackTask.IsCompleted)
+                    return false;
+
+                ad.State = ReplayState.Playing;
+                ad.StartedBy = startedBy?.Name;
+                ad.PlaybackPosition = 0;
+                ad.IsPlaybackPaused = false;
+
+                // make sure the queue is empty before we start
+                while (ad.PlaybackQueue.TryTake(out _)) { }
+
+                ad.PlaybackTask = Task.Factory.StartNew(() =>
+                {
+                    DoPlayback(arena, path);
+                }, TaskCreationOptions.LongRunning);
+
+                return true;
+            }
+        }
+
+        private bool StopPlayback(Arena arena)
+        {
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
+
+            lock (ad.Lock)
+            {
+                if (ad.State != ReplayState.Playing)
+                    return false;
+
+                ad.PlaybackQueue.Add(PlaybackCommand.Stop);
+                return true;
+            }
+        }
+
+        private void DoPlayback(Arena arena, string path)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    return;
+                }
+                else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
+                    || path.Length <= ("recordings".Length + 1)
+                    || (path["recordings".Length] != Path.DirectorySeparatorChar && path["recordings".Length] != Path.AltDirectorySeparatorChar))
+                {
+                    path = Path.Combine("recordings", path);
+                }
+
+                // Try to open the file.
+                FileStream fileStream;
+
+                try
+                {
+                    fileStream = new(path, FileMode.Open, FileAccess.Read, FileShare.None);
+                }
+                catch (Exception ex)
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to open replay file '{path}'.", ex);
+                    return;
+                }
+
+                try
+                {
+                    lock (ad.Lock)
+                    {
+                        ad.FileName = path;
+                    }
+
+                    // Try to read the file header.
+                    Span<byte> headerBytes = new byte[FileHeader.Length];
+
+                    try
+                    {
+                        if (ReadFromStream(fileStream, headerBytes) != headerBytes.Length)
+                        {
+                            LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to read file header.", ex);
+                        return;
+                    }
+
+                    ref FileHeader fileHeader = ref MemoryMarshal.AsRef<FileHeader>(headerBytes);
+                    if (!string.Equals(fileHeader.Header, "asssgame", StringComparison.Ordinal))
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
+                        return;
+                    }
+                    else if (fileHeader.Version != ReplayFileVersion)
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unsupported replay version.");
+                        return;
+                    }
+                    else if (ad.Settings.PlaybackMapCheckEnabled 
+                        && fileHeader.MapChecksum != _mapData.GetChecksum(arena, MapChecksumKey))
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The map in the arena does not match the replay's.");
+                        return;
+                    }
+
+                    // Move to where the events begin.
+                    try
+                    {
+                        fileStream.Seek(fileHeader.Offset, SeekOrigin.Begin);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to seek to the beginning of the events.", ex);
+                        return;
+                    }
+
+                    // The events are compressed with gzip. Initialize the stream to decompress and read from.
+                    GZipStream gzStream;
+
+                    try
+                    {
+                        gzStream = new(fileStream, CompressionMode.Decompress, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Error opening gzip stream.", ex);
+                        return;
+                    }
+
+                    try
+                    {
+                        // Notify the arena that playback is starting.
+                        if (ad.Settings.NotifyPlayback != NotifyOption.None)
+                        {
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                            try
+                            {
+                                sb.Append($"Starting playback of '{path}' recorded ");
+
+                                if (!string.IsNullOrWhiteSpace(fileHeader.ArenaName))
+                                    sb.Append($"in arena {fileHeader.ArenaName} ");
+
+                                if (!string.IsNullOrWhiteSpace(fileHeader.Recorder))
+                                    sb.Append($"by {fileHeader.Recorder} ");
+
+                                sb.Append($"on {fileHeader.Recorded}");
+
+                                Notify(arena, ad.Settings.NotifyPlayback, sb);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
+                        }
+
+                        // Lock everyone watching to spectator mode.
+                        LockAllSpec(arena); // TODO: does this need to be done on the mainloop? If so, then we'll need to wait for it to complete too.
+
+                        Span<byte> buffer = stackalloc byte[MaxRecordBuffer]; // no event can be larger than this
+                        buffer.Clear();
+
+                        ref EventHeader head = ref MemoryMarshal.AsRef<EventHeader>(buffer);
+                        ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
+
+                        ServerTick started = ServerTick.Now;
+                        ServerTick? paused = null;
+
+                        int readLength = 0;
+
+                        while (true)
+                        {
+                            // Check if there is a command.
+                            if (ad.PlaybackQueue.TryTake(out PlaybackCommand command, paused == null ? 0 : -1))
+                            {
+                                if (command == PlaybackCommand.Stop)
+                                {
+                                    break;
+                                }
+                                else if (command == PlaybackCommand.Pause)
+                                {
+                                    bool changed = false;
+
+                                    lock (ad.Lock)
+                                    {
+                                        if (!ad.IsPlaybackPaused)
+                                        {
+                                            ad.IsPlaybackPaused = true;
+                                            changed = true;
+                                        }
+                                    }
+
+                                    if (changed)
+                                    {
+                                        paused = ServerTick.Now;
+                                        Notify(arena, ad.Settings.NotifyPlayback, "Playback paused.");
+                                    }
+
+                                    continue;
+                                }
+                                else if (command == PlaybackCommand.Resume)
+                                {
+                                    bool changed = false;
+
+                                    lock (ad.Lock)
+                                    {
+                                        if (ad.IsPlaybackPaused)
+                                        {
+                                            ad.IsPlaybackPaused = false;
+                                            changed = true;
+                                        }
+                                    }
+
+                                    if (changed)
+                                    {
+                                        started += (uint)(ServerTick.Now - paused.Value);
+                                        paused = null;
+                                        Notify(arena, ad.Settings.NotifyPlayback, "Playback resumed.");
+                                    }
+                                }
+                            }
+
+                            if (readLength == 0)
+                            {
+                                // Try to read the next event.
+
+                                try
+                                {
+                                    // Read the event header.
+                                    if ((readLength += ReadFromStream(gzStream, buffer[..EventHeader.Length])) != EventHeader.Length)
+                                    {
+                                        // no more events
+                                        return;
+                                    }
+
+                                    // Read the rest of the event.
+                                    switch (head.Type)
+                                    {
+                                        case EventType.Null:
+                                            break;
+
+                                        case EventType.Enter:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Enter.Length])) != Enter.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for an Enter event.");
+                                                return;
+                                            }
+
+                                            break;
+
+                                        case EventType.Leave:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Leave.Length])) != Leave.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Leave event.");
+                                                return;
+                                            }
+                                            break;
+
+                                        case EventType.ShipChange:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..ShipChange.Length])) != ShipChange.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a ShipChange event.");
+                                                return;
+                                            }
+                                            break;
+
+                                        case EventType.FreqChange:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..FreqChange.Length])) != FreqChange.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a FreqChange event.");
+                                                return;
+                                            }
+                                            break;
+
+                                        case EventType.Kill:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Kill.Length])) != Kill.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Kill event.");
+                                                return;
+                                            }
+                                            break;
+
+                                        case EventType.Chat:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Chat.Length])) != Chat.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Chat event.");
+                                                return;
+                                            }
+
+                                            // The message comes next, but it is variable in length.
+                                            if (chat.MessageLength < 1 || chat.MessageLength >= 512)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Bad message length in Chat event.");
+                                                return;
+                                            }
+
+                                            if ((readLength += ReadFromStream(gzStream, buffer.Slice(Chat.Length, chat.MessageLength))) != Chat.Length + chat.MessageLength)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Chat event message.");
+                                                return;
+                                            }
+
+                                            break;
+
+                                        case EventType.Position:
+                                            // The position event is variable in length.
+                                            // The first byte after the EventHeader (the Type field) actually holds the length.
+                                            if ((readLength += ReadFromStream(gzStream, buffer.Slice(EventHeader.Length, 1))) != EventHeader.Length + 1)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Position event.");
+                                                return;
+                                            }
+
+                                            int length = buffer[EventHeader.Length];
+                                            if (length != 22 && length != 24 && length != 32)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Bad length in Position event.");
+                                                return;
+                                            }
+
+                                            if ((readLength += ReadFromStream(gzStream, buffer.Slice(EventHeader.Length + 1, length - 1))) != EventHeader.Length + length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Position event.");
+                                                return;
+                                            }
+
+                                            break;
+
+                                        case EventType.Packet:
+                                            break; // TODO:
+
+                                        case EventType.Brick:
+                                        case EventType.BallFire:
+                                        case EventType.BallCatch:
+                                        case EventType.BallPacket:
+                                        case EventType.BallGoal:
+                                        case EventType.ArenaMessage: // investigate why this was created? instead of using the chat event?
+                                            break; // TODO:
+
+                                        default:
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
+                                            return;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Unable to read event.", ex);
+                                    return;
+                                }
+                            }
+
+                            // We have an event.
+                            ServerTick now = ServerTick.Now;
+
+                            lock (ad.Lock)
+                            {
+                                ad.PlaybackPosition = (now - started) / (double)fileHeader.EndTime;
+                            }
+
+                            // Check if it's time for the event to be processed.
+                            if (now - started < head.Ticks)
+                            {
+                                // Not yet time to process the event.
+                                // Normally, events will occur at a rate faster than the granularity of sleeping,
+                                // at least on Windows, which is approximately 15.625 ms (1000 ms / 64).
+                                // So, using a SpinWait since we expect to be doing lots of work pretty much continuously.
+                                int waitMs = (int)(head.Ticks - (now - started)) * 10;
+                                //_logManager.LogA(LogLevel.Drivel, nameof(ReplayModule), arena, $"ticks {head.Ticks} waiting for {waitMs} ms");
+                                SpinWait.SpinUntil(() => ad.PlaybackQueue.Count > 0, waitMs);
+                                continue;
+                            }
+
+                            // Queue up the event to be processed by the mainloop thread.
+                            byte[] playbackBytes = _recordBufferPool.Rent(MaxRecordBuffer); // TODO: make this more efficient?
+                            buffer[..readLength].CopyTo(playbackBytes);
+
+                            _mainloop.QueueMainWorkItem(
+                                ProcessPlaybackEvent, // TODO: does this allocate a delegate once or once per call? might need to cache the delegate to reduce allocations
+                                new PlaybackBuffer(arena, playbackBytes, readLength));
+
+                            // Signal to read the next event.
+                            readLength = 0;
+                        }
+                    }
+                    finally
+                    {
+                        gzStream.Dispose();
+                        gzStream = null;
+
+                        _mainloop.WaitForMainWorkItemDrain();
+
+                        // Make sure all faked players leave.
+                        foreach (Player player in ad.PlayerIdMap.Values)
+                        {
+                            _fake.EndFaked(player);
+                        }
+
+                        ad.PlayerIdMap.Clear();
+
+                        // TODO: remove balls
+
+                        Notify(arena, ad.Settings.NotifyPlayback, "Playback stopped.");
+
+                        UnlockAllSpec(arena);
+                    }
+                }
+                finally
+                {
+                    fileStream.Dispose();
+                    fileStream = null;
+                }
+            }
+            finally
+            {
+                lock (ad.Lock)
+                {
+                    ad.State = ReplayState.None;
+                    ad.FileName = null;
+                    ad.StartedBy = null;
+                    ad.PlaybackTask = null;
+                }
+            }
+
+            void ProcessPlaybackEvent(PlaybackBuffer playbackBuffer)
+            {
+                try
+                {
+                    Arena arena = playbackBuffer.Arena;
+                    if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                        return;
+
+                    Span<byte> buffer = playbackBuffer.Buffer;
+                    ref EventHeader head = ref MemoryMarshal.AsRef<EventHeader>(buffer);
+                    ServerTick now = ServerTick.Now;
+                    Player player;
+
+                    switch (head.Type)
+                    {
+                        case EventType.Null:
+                            break;
+
+                        case EventType.Enter:
+                            ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
+
+                            string name = $"~{enter.Name}";
+                            if (ad.PlayerIdMap.ContainsKey(enter.PlayerId))
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Duplicate Enter event for player {enter.PlayerId} '{enter.Name}'.");
+                                break;
+                            }
+
+                            player = _fake.CreateFakePlayer(name, arena, enter.Ship, enter.Freq);
+                            if (player != null)
+                            {
+                                ad.PlayerIdMap.Add(enter.PlayerId, player);
+                            }
+                            break;
+
+                        case EventType.Leave:
+                            ref Leave leave = ref MemoryMarshal.AsRef<Leave>(buffer);
+
+                            if (ad.PlayerIdMap.Remove(leave.PlayerId, out player))
+                            {
+                                _fake.EndFaked(player);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Leave event for non-existent PlayerId {leave.PlayerId}");
+                            }
+                            break;
+
+                        case EventType.ShipChange:
+                            ref ShipChange shipChange = ref MemoryMarshal.AsRef<ShipChange>(buffer);
+
+                            if (ad.PlayerIdMap.TryGetValue(shipChange.PlayerId, out player))
+                            {
+                                _game.SetShipAndFreq(player, shipChange.NewShip, shipChange.NewFreq);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"ShipChange event for non-existent PlayerId {shipChange.PlayerId}");
+                            }
+                            break;
+
+                        case EventType.FreqChange:
+                            ref FreqChange freqChange = ref MemoryMarshal.AsRef<FreqChange>(buffer);
+
+                            if (ad.PlayerIdMap.TryGetValue(freqChange.PlayerId, out player))
+                            {
+                                _game.SetFreq(player, freqChange.NewFreq);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"FreqChange event for non-existent PlayerId {freqChange.PlayerId}");
+                            }
+                            break;
+
+                        case EventType.Kill:
+                            ref Kill kill = ref MemoryMarshal.AsRef<Kill>(buffer);
+
+                            if (!ad.PlayerIdMap.TryGetValue(kill.Killer, out Player killer))
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Kill event for non-existent killer PlayerId {kill.Killer}");
+                            }
+                            else if (!ad.PlayerIdMap.TryGetValue(kill.Killed, out Player killed))
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Kill event for non-existent killed PlayerId {kill.Killed}");
+                            }
+                            else
+                            {
+                                _game.FakeKill(killer, killed, kill.Points, kill.Flags);
+                            }
+                            break;
+
+                        case EventType.Chat:
+                            ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
+
+                            Span<byte> messageBytes = buffer.Slice(Chat.Length, chat.MessageLength);
+                            messageBytes = StringUtils.SliceNullTerminated(messageBytes);
+                            int numChars = StringUtils.DefaultEncoding.GetCharCount(messageBytes);
+                            Span<char> messageChars = stackalloc char[numChars];
+
+                            if (StringUtils.DefaultEncoding.GetChars(messageBytes, messageChars) != numChars)
+                                return;
+
+                            if (chat.Type == ChatMessageType.Arena)
+                            {
+                                _chat.SendArenaMessage(arena, chat.Sound, messageChars);
+                            }
+                            else if (chat.Type == ChatMessageType.Pub || chat.Type == ChatMessageType.Freq)
+                            {
+                                // TODO:
+                            }
+                            break;
+
+                        case EventType.Position:
+                            ref Position position = ref MemoryMarshal.AsRef<Position>(buffer);
+
+                            int length = position.PositionPacket.Type;
+                            short playerId = (short)(uint)position.PositionPacket.Time;
+                            if (ad.PlayerIdMap.TryGetValue(playerId, out player))
+                            {
+                                position.PositionPacket.Type = (byte)C2SPacketType.Position;
+                                position.PositionPacket.Time = now; // This is not entirely accurate!
+                                _game.FakePosition(player, ref position.PositionPacket, length);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Position event for non-existent PlayerId {playerId}");
+                            }
+                            break;
+
+                        case EventType.Packet:
+                            ref PacketWrapper packetWrapper = ref MemoryMarshal.AsRef<PacketWrapper>(buffer);
+                            break;
+
+                        case EventType.Brick:
+                            break;
+
+                        case EventType.BallFire:
+                            break;
+
+                        case EventType.BallCatch:
+                            break;
+
+                        case EventType.BallPacket:
+                            break;
+
+                        case EventType.BallGoal:
+                            break;
+
+                        case EventType.ArenaMessage:
+                            break;
+
+                        default:
+                            break;
+                    }
+                }
+                finally
+                {
+                    _recordBufferPool.Return(playbackBuffer.Buffer, true);
+                }
+            }
+
+            static int ReadFromStream(Stream fileStream, Span<byte> remaining)
+            {
+                int totalRead = 0;
+                int bytesRead;
+                while (remaining.Length > 0 && (bytesRead = fileStream.Read(remaining)) > 0)
+                {
+                    totalRead += bytesRead;
+                    remaining = remaining[bytesRead..];
+                }
+
+                return totalRead;
+            }
+        }
+
+        private void LogAndNotify(Arena arena, NotifyOption notifyOption, string message, Exception ex = null)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                sb.Append(message);
+
+                if (ex != null)
+                {
+                    do
+                    {
+                        sb.Append(' ');
+                        sb.Append(ex.Message);
+                    }
+                    while ((ex = ex.InnerException) != null);
+                }
+
+                _logManager.LogA(LogLevel.Info, nameof(ReplayModule), arena, sb);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
+
+            Notify(arena, notifyOption, message);
+        }
+
+        private void Notify(Arena arena, NotifyOption notifyOption, string message)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (notifyOption == NotifyOption.Player)
+            {
+                if (string.IsNullOrWhiteSpace(ad.StartedBy))
+                    return;
+
+                Player player = _playerData.FindPlayer(ad.StartedBy);
+                if (player == null
+                    || player.Arena != arena
+                    || player.Status != PlayerState.Playing)
+                {
+                    return;
+                }
+
+                // TODO: does this need to be on the mainloop thread?
+                _chat.SendMessage(player, $"Replay: {message}");
+            }
+            else if (notifyOption == NotifyOption.Arena)
+            {
+                // TODO: does this need to be on the mainloop thread?
+                _chat.SendArenaMessage(arena, $"Replay: {message}");
+            }
+        }
+
+        private void Notify(Arena arena, NotifyOption notifyOption, StringBuilder message)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (notifyOption == NotifyOption.Player)
+            {
+                if (string.IsNullOrWhiteSpace(ad.StartedBy))
+                    return;
+
+                Player player = _playerData.FindPlayer(ad.StartedBy);
+                if (player == null
+                    || player.Arena != arena
+                    || player.Status != PlayerState.Playing)
+                {
+                    return;
+                }
+
+                // TODO: does this need to be on the mainloop thread?
+                _chat.SendMessage(player, $"Replay: {message}");
+            }
+            else if (notifyOption == NotifyOption.Arena)
+            {
+                // TODO: does this need to be on the mainloop thread?
+                _chat.SendArenaMessage(arena, $"Replay: {message}");
+            }
+        }
+
+        private void GetWatching(Arena arena, HashSet<Player> set)
+        {
+            if (arena == null || set == null)
+                return;
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    if (player.Status == PlayerState.Playing
+                        && player.Arena == arena
+                        && player.Type != ClientType.Fake)
+                    {
+                        set.Add(player);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+        }
+
+        private void LockAllSpec(Arena arena)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (ad.IFreqManagerEnforcerAdvisorRegistrationToken != null)
+                return;
+
+            ad.IFreqManagerEnforcerAdvisorRegistrationToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
+
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                GetWatching(arena, set);
+
+                foreach (Player player in set)
+                {
+                    _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        private void UnlockAllSpec(Arena arena)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (ad.IFreqManagerEnforcerAdvisorRegistrationToken != null)
+            {
+                arena.UnregisterAdvisor(ref ad.IFreqManagerEnforcerAdvisorRegistrationToken);
+            }
+        }
+
+        #region Helper types
+
+        private enum NotifyOption
+        {
+            /// <summary>
+            /// No notification.
+            /// </summary>
+            None,
+
+            /// <summary>
+            /// The player that started the playback or recording is notified.
+            /// </summary>
+            Player,
+
+            /// <summary>
+            /// The arena is notified.
+            /// </summary>
+            Arena,
+
+            // TODO: maybe add the ability to notify those that can use the ?replay command?
+            //Staff,
+        }
+
+        private enum ReplayState
+        {
+            None,
+            Recording,
+            Playing,
+        }
+
+        private enum PlaybackCommand
+        {
+            Stop,
+            Pause,
+            Resume,
+        }
+
+        private readonly struct RecordBuffer
+        {
+            public readonly byte[] Buffer;
+            public readonly int Length;
+
+            public RecordBuffer(byte[] buffer, int length)
+            {
+                Buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+                Length = length;
+            }
+        }
+
+        private readonly struct PlaybackBuffer
+        {
+            public readonly Arena Arena;
+            public readonly byte[] Buffer;
+            public readonly int Length;
+
+            public PlaybackBuffer(Arena arena, byte[] buffer, int length)
+            {
+                Arena = arena ?? throw new ArgumentNullException(nameof(arena));
+                Buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+                Length = length;
+            }
+        }
+
+        private struct Settings
+        {
+            public readonly NotifyOption NotifyPlayback;
+            public readonly NotifyOption NotifyPlaybackError;
+            public readonly NotifyOption NotifyRecording;
+            public readonly NotifyOption NotifyRecordingError;
+            public readonly bool PlaybackMapCheckEnabled;
+
+            //public readonly bool RecordPublicChat; // TODO: an option to toggle recording of public chat
+            //public readonly bool RecordTeamChat; // TODO: an option to toggle recording of team chat
+            //public readonly bool RecordArenaChat; // TODO: an option to toggle recording of arena (green messages) chat
+            //public readonly bool PlaybackPublicChat; // TODO: an option to toggle playback of public chat (perhaps there's a recording where it's recorded, but you feel it contains inappropriate messages)
+            //public readonly bool PlaybackTeamChat; // TODO: an option to toggle playback of team chat (perhaps there's a recording where it's recorded, but you feel it contains inappropriate messages)
+            //public readonly bool PlaybackArenaChat; // TODO: an option to toggle playback of arena (green messages) chat
+
+            private const string NotifyPlaybackHelpOptions = "None = no notifications, Player = the player that started the playback, Arena = players in the arena.";
+            private const string NotifyRecordingHelpOptions = "None = no notifications, Player = the player that started the recording, Arena = players in the arena.";
+
+            [ConfigHelp("Replay", "NotifyPlayback", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Arena",
+                Description = $"Who gets notifications about playback (start, stop, pause, and resume). {NotifyPlaybackHelpOptions}")]
+            [ConfigHelp("Replay", "NotifyPlaybackError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Recorder",
+                Description = $"Who gets notifications about playback errors. {NotifyPlaybackHelpOptions}")]
+            [ConfigHelp("Replay", "NotifyRecording", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Recorder",
+                Description = $"Who gets notifications about recording (start and stop). {NotifyRecordingHelpOptions}")]
+            [ConfigHelp("Replay", "NotifyRecordingError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Recorder",
+                Description = $"Who gets notifications about recording errors. {NotifyRecordingHelpOptions}")]
+            [ConfigHelp("Replay", "PlaybackMapCheckEnabled", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether to check if the map in the current arena matches the recording's map when starting a playback.")]
+            public Settings(IConfigManager configManager, ConfigHandle ch) : this()
+            {
+                if (configManager == null)
+                    throw new ArgumentNullException(nameof(configManager));
+
+                if (ch == null)
+                    throw new ArgumentNullException(nameof(ch));
+
+                NotifyPlayback = configManager.GetEnum(ch, "Replay", "NotifyPlayback", NotifyOption.Arena);
+                NotifyPlaybackError = configManager.GetEnum(ch, "Replay", "NotifyPlaybackError", NotifyOption.Player);
+                NotifyRecording = configManager.GetEnum(ch, "Replay", "NotifyRecording", NotifyOption.Player);
+                NotifyRecordingError = configManager.GetEnum(ch, "Replay", "NotifyRecordingError", NotifyOption.Player);
+                PlaybackMapCheckEnabled = configManager.GetInt(ch, "Replay", "PlaybackMapCheckEnabled", 1) != 0;
+            }
+        }
+
+        private sealed class ArenaData : IDisposable
+        {
+            public Settings Settings;
+
+            /// <summary>
+            /// Advisor for locking players to spectator mode during a playback.
+            /// </summary>
+            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> IFreqManagerEnforcerAdvisorRegistrationToken;
+
+            /// <summary>
+            /// The current state.
+            /// </summary>
+            public ReplayState State;
+
+            /// <summary>
+            /// The name of the file being recorded or played.
+            /// </summary>
+            /// <remarks>
+            /// This will be <see langword="null"/> until the the file is actually opened by the worker thread.
+            /// </remarks>
+            public string FileName;
+
+            /// <summary>
+            /// The name of the player that started the recording or playback.
+            /// </summary>
+            public string StartedBy;
+
+            /// <summary>
+            /// The current position of a playback (for showing the percentage).
+            /// </summary>
+            public double PlaybackPosition;
+
+            /// <summary>
+            /// Whether the playback is currently paused.
+            /// </summary>
+            public bool IsPlaybackPaused;
+
+            /// <summary>
+            /// The task for recording.
+            /// </summary>
+            public Task RecorderTask;
+
+            /// <summary>
+            /// The task for playback.
+            /// </summary>
+            public Task PlaybackTask;
+
+            /// <summary>
+            /// For playback, maps playerIds in a replay to the fake players.
+            /// </summary>
+            public readonly Dictionary<short, Player> PlayerIdMap = new();
+
+            /// <summary>
+            /// Queue for commands to the thread performing a playback.
+            /// </summary>
+            public readonly BlockingCollection<PlaybackCommand> PlaybackQueue = new();
+
+            /// <summary>
+            /// Queue of events to record.
+            /// </summary>
+            /// <remarks>
+            /// Thread synchronization might seem strange for this field. However, here is the gist.
+            /// The mainloop thread: 
+            /// - is responsible for constructing the queue, 
+            /// - is the sole producer (all events written to the queue are on the mainloop thread, this includes callbacks and packet handlers), 
+            /// - is the one that will mark the queue complete for adding
+            /// - and is the one that will dispose of the queue and the reference to it.
+            /// The <see cref="RecorderTask"/> is the sole consumer.
+            /// </remarks>
+            public BlockingCollection<RecordBuffer> RecorderQueue;
+
+            /// <summary>
+            /// For thread synchronization.
+            /// </summary>
+            public readonly object Lock = new();
+
+            #region IDisposable
+
+            private bool isDisposed;
+
+            private void Dispose(bool disposing)
+            {
+                if (!isDisposed)
+                {
+                    if (disposing)
+                    {
+                        PlaybackQueue?.Dispose();
+                        RecorderQueue?.Dispose();
+                    }
+
+                    isDisposed = true;
+                }
+            }
+
+            void IDisposable.Dispose()
+            {
+                Dispose(disposing: true);
+                GC.SuppressFinalize(this);
+            }
+
+            #endregion
+        }
+
+        #endregion
+    }
+}

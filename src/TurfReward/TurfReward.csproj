@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
     <OutDir>$(SolutionDir)SubspaceServer\Zone\bin\modules\TurfReward</OutDir>
   </PropertyGroup>
 

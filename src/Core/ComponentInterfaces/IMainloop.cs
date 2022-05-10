@@ -47,5 +47,10 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="state">state to pass to the delegate</param>
         /// <returns>true if the the delegate was successfully queued to run; otherwise false</returns>
         bool QueueThreadPoolWorkItem<TState>(Action<TState> callback, TState state);
+
+        /// <summary>
+        /// Gets whether the current thread is the mainloop thread.
+        /// </summary>
+        bool IsMainloop { get; }
     }
 }
