@@ -25,7 +25,7 @@ namespace SS.Replay.FileFormat.Events
 
         public ShipChange(ServerTick ticks, short playerId, ShipType newShip, short newFreq)
         {
-            Header = new(ticks, EventType.FreqChange);
+            Header = new(ticks, EventType.ShipChange);
             this.playerId = LittleEndianConverter.Convert(playerId);
             this.newShip = LittleEndianConverter.Convert((short)newShip);
             this.newFreq = LittleEndianConverter.Convert(newFreq);

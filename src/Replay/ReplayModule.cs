@@ -139,10 +139,21 @@ namespace SS.Replay
 
         bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder errorMessage)
         {
-            if (errorMessage != null)
-                errorMessage.Append("Teams are locked for playback.");
+            Arena arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
 
-            return false;
+            if (ad.Settings.PlaybackLockTeams)
+            {
+                if (errorMessage != null)
+                    errorMessage.Append("Teams are locked for playback.");
+
+                return false;
+            }
+            else
+            {
+                return true;
+            }
         }
 
         #endregion
@@ -242,7 +253,10 @@ namespace SS.Replay
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (type == ChatMessageType.Arena || type == ChatMessageType.Pub || (type == ChatMessageType.Freq && freq == arena.SpecFreq))
+            if (   (type == ChatMessageType.Arena && ad.Settings.RecordArenaChat)
+                || (type == ChatMessageType.Pub && ad.Settings.RecordPublicChat)
+                || (type == ChatMessageType.PubMacro && ad.Settings.RecordPublicMacroChat)
+                || (type == ChatMessageType.Freq && (freq == arena.SpecFreq ? ad.Settings.RecordSpecChat : ad.Settings.RecordTeamChat)))
             {
                 int messageByteCount = StringUtils.DefaultEncoding.GetByteCount(message) + 1;
                 byte[] buffer = _recordBufferPool.Rent(Chat.Length + messageByteCount);
@@ -862,10 +876,16 @@ namespace SS.Replay
                         LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unsupported replay version.");
                         return;
                     }
-                    else if (ad.Settings.PlaybackMapCheckEnabled 
+                    else if (ad.Settings.PlaybackMapCheckEnabled
                         && fileHeader.MapChecksum != _mapData.GetChecksum(arena, MapChecksumKey))
                     {
                         LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The map in the arena does not match the replay's.");
+                        return;
+                    }
+                    else if (ad.Settings.PlaybackSpecFreqCheckEnabled
+                        && (short)fileHeader.SpecFreq != arena.SpecFreq)
+                    {
+                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The arena spec freq ({arena.SpecFreq}) does not match the replay's ({(short)fileHeader.SpecFreq}).");
                         return;
                     }
 
@@ -1231,7 +1251,7 @@ namespace SS.Replay
                             }
                             else
                             {
-                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Leave event for non-existent PlayerId {leave.PlayerId}");
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Leave event for non-existent PlayerId {leave.PlayerId}.");
                             }
                             break;
 
@@ -1244,7 +1264,7 @@ namespace SS.Replay
                             }
                             else
                             {
-                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"ShipChange event for non-existent PlayerId {shipChange.PlayerId}");
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"ShipChange event for non-existent PlayerId {shipChange.PlayerId}.");
                             }
                             break;
 
@@ -1257,7 +1277,7 @@ namespace SS.Replay
                             }
                             else
                             {
-                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"FreqChange event for non-existent PlayerId {freqChange.PlayerId}");
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"FreqChange event for non-existent PlayerId {freqChange.PlayerId}.");
                             }
                             break;
 
@@ -1266,11 +1286,11 @@ namespace SS.Replay
 
                             if (!ad.PlayerIdMap.TryGetValue(kill.Killer, out Player killer))
                             {
-                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Kill event for non-existent killer PlayerId {kill.Killer}");
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Kill event for non-existent killer PlayerId {kill.Killer}.");
                             }
                             else if (!ad.PlayerIdMap.TryGetValue(kill.Killed, out Player killed))
                             {
-                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Kill event for non-existent killed PlayerId {kill.Killed}");
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Kill event for non-existent killed PlayerId {kill.Killed}.");
                             }
                             else
                             {
@@ -1289,13 +1309,35 @@ namespace SS.Replay
                             if (StringUtils.DefaultEncoding.GetChars(messageBytes, messageChars) != numChars)
                                 return;
 
-                            if (chat.Type == ChatMessageType.Arena)
+                            if (chat.Type == ChatMessageType.Arena && ad.Settings.PlaybackArenaChat)
                             {
                                 _chat.SendArenaMessage(arena, chat.Sound, messageChars);
                             }
-                            else if (chat.Type == ChatMessageType.Pub || chat.Type == ChatMessageType.Freq)
+                            else
                             {
-                                // TODO:
+                                if (!ad.PlayerIdMap.TryGetValue(chat.PlayerId, out player))
+                                {
+                                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Chat event for non-existent PlayerId {chat.PlayerId}.");
+                                    return;
+                                }
+
+                                if (   (chat.Type == ChatMessageType.Pub && ad.Settings.PlaybackPublicChat)
+                                    || (chat.Type == ChatMessageType.PubMacro && ad.Settings.PlaybackPublicMacroChat)
+                                    || (chat.Type == ChatMessageType.Freq && (player.Freq == arena.SpecFreq ? ad.Settings.PlaybackSpecChat : ad.Settings.PlaybackTeamChat)))
+                                {
+                                    short? freq = chat.Type == ChatMessageType.Freq ? player.Freq : null;
+
+                                    HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                                    try
+                                    {
+                                        GetWatching(arena, players, freq);
+                                        _chat.SendAnyMessage(players, chat.Type, chat.Sound, player, messageChars);
+                                    }
+                                    finally
+                                    {
+                                        _objectPoolManager.PlayerSetPool.Return(players);
+                                    }
+                                }
                             }
                             break;
 
@@ -1449,7 +1491,7 @@ namespace SS.Replay
             }
         }
 
-        private void GetWatching(Arena arena, HashSet<Player> set)
+        private void GetWatching(Arena arena, HashSet<Player> set, short? freq = null)
         {
             if (arena == null || set == null)
                 return;
@@ -1462,7 +1504,8 @@ namespace SS.Replay
                 {
                     if (player.Status == PlayerState.Playing
                         && player.Arena == arena
-                        && player.Type != ClientType.Fake)
+                        && player.Type != ClientType.Fake
+                        && (freq == null || player.Freq == freq.Value))
                     {
                         set.Add(player);
                     }
@@ -1581,14 +1624,22 @@ namespace SS.Replay
             public readonly NotifyOption NotifyPlaybackError;
             public readonly NotifyOption NotifyRecording;
             public readonly NotifyOption NotifyRecordingError;
-            public readonly bool PlaybackMapCheckEnabled;
 
-            //public readonly bool RecordPublicChat; // TODO: an option to toggle recording of public chat
-            //public readonly bool RecordTeamChat; // TODO: an option to toggle recording of team chat
-            //public readonly bool RecordArenaChat; // TODO: an option to toggle recording of arena (green messages) chat
-            //public readonly bool PlaybackPublicChat; // TODO: an option to toggle playback of public chat (perhaps there's a recording where it's recorded, but you feel it contains inappropriate messages)
-            //public readonly bool PlaybackTeamChat; // TODO: an option to toggle playback of team chat (perhaps there's a recording where it's recorded, but you feel it contains inappropriate messages)
-            //public readonly bool PlaybackArenaChat; // TODO: an option to toggle playback of arena (green messages) chat
+            public readonly bool PlaybackMapCheckEnabled;
+            public readonly bool PlaybackSpecFreqCheckEnabled;
+            public readonly bool PlaybackLockTeams;
+
+            public readonly bool RecordPublicChat;
+            public readonly bool RecordPublicMacroChat;
+            public readonly bool RecordSpecChat;
+            public readonly bool RecordTeamChat;
+            public readonly bool RecordArenaChat;
+
+            public readonly bool PlaybackPublicChat;
+            public readonly bool PlaybackPublicMacroChat;
+            public readonly bool PlaybackSpecChat;
+            public readonly bool PlaybackTeamChat;
+            public readonly bool PlaybackArenaChat;
 
             private const string NotifyPlaybackHelpOptions = "None = no notifications, Player = the player that started the playback, Arena = players in the arena.";
             private const string NotifyRecordingHelpOptions = "None = no notifications, Player = the player that started the recording, Arena = players in the arena.";
@@ -1603,6 +1654,30 @@ namespace SS.Replay
                 Description = $"Who gets notifications about recording errors. {NotifyRecordingHelpOptions}")]
             [ConfigHelp("Replay", "PlaybackMapCheckEnabled", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
                 Description = $"Whether to check if the map in the current arena matches the recording's map when starting a playback.")]
+            [ConfigHelp("Replay", "PlaybackSpecFreqCheckEnabled", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether to check if the arena's spec freq matches the recording's.")]
+            [ConfigHelp("Replay", "PlaybackLockTeams", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+                Description = $"Whether teams are locked during a playback.")]
+            [ConfigHelp("Replay", "RecordPublicChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether public chat messages are recorded.")]
+            [ConfigHelp("Replay", "RecordPublicMacroChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether public macro chat messages are recorded.")]
+            [ConfigHelp("Replay", "RecordSpecChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether spectator chat messages are recorded.")]
+            [ConfigHelp("Replay", "RecordTeamChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether team chat messages are recorded.")]
+            [ConfigHelp("Replay", "RecordArenaChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether arena (green) chat messages are recorded.")]
+            [ConfigHelp("Replay", "PlaybackPublicChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether public chat messages are played back.")]
+            [ConfigHelp("Replay", "RecordPublicMacroChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether public macro chat messages are played back.")]
+            [ConfigHelp("Replay", "PlaybackSpecChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether spectator chat messages are played back.")]
+            [ConfigHelp("Replay", "PlaybackTeamChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether team chat messages are played back.")]
+            [ConfigHelp("Replay", "PlaybackArenaChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+                Description = $"Whether arena (green) chat messages are played back.")]
             public Settings(IConfigManager configManager, ConfigHandle ch) : this()
             {
                 if (configManager == null)
@@ -1611,11 +1686,30 @@ namespace SS.Replay
                 if (ch == null)
                     throw new ArgumentNullException(nameof(ch));
 
+                // notification settings
                 NotifyPlayback = configManager.GetEnum(ch, "Replay", "NotifyPlayback", NotifyOption.Arena);
                 NotifyPlaybackError = configManager.GetEnum(ch, "Replay", "NotifyPlaybackError", NotifyOption.Player);
                 NotifyRecording = configManager.GetEnum(ch, "Replay", "NotifyRecording", NotifyOption.Player);
                 NotifyRecordingError = configManager.GetEnum(ch, "Replay", "NotifyRecordingError", NotifyOption.Player);
+
+                // playback settings
                 PlaybackMapCheckEnabled = configManager.GetInt(ch, "Replay", "PlaybackMapCheckEnabled", 1) != 0;
+                PlaybackSpecFreqCheckEnabled = configManager.GetInt(ch, "Replay", "PlaybackSpecFreqCheckEnabled", 1) != 0;
+                PlaybackLockTeams = configManager.GetInt(ch, "Replay", "PlaybackLockTeams", 0) != 0;
+
+                // chat settings (recording)
+                RecordPublicChat = configManager.GetInt(ch, "Replay", "RecordPublicChat", 1) != 0;
+                RecordPublicMacroChat = configManager.GetInt(ch, "Replay", "RecordPublicMacroChat", 1) != 0;
+                RecordSpecChat = configManager.GetInt(ch, "Replay", "RecordSpecChat", 1) != 0;
+                RecordTeamChat = configManager.GetInt(ch, "Replay", "RecordTeamChat", 1) != 0;
+                RecordArenaChat = configManager.GetInt(ch, "Replay", "RecordArenaChat", 1) != 0;
+
+                // chat settings (playback)
+                PlaybackPublicChat = configManager.GetInt(ch, "Replay", "PlaybackPublicChat", 1) != 0;
+                PlaybackPublicMacroChat = configManager.GetInt(ch, "Replay", "PlaybackPublicMacroChat", 1) != 0;
+                PlaybackSpecChat = configManager.GetInt(ch, "Replay", "PlaybackSpecChat", 1) != 0;
+                PlaybackTeamChat = configManager.GetInt(ch, "Replay", "PlaybackTeamChat", 1) != 0;
+                PlaybackArenaChat = configManager.GetInt(ch, "Replay", "PlaybackArenaChat", 1) != 0;
             }
         }
 
