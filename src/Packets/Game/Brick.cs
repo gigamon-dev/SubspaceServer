@@ -61,12 +61,12 @@ namespace SS.Packets.Game
 
         public short X2
         {
-            get { return LittleEndianConverter.Convert(x1); }
+            get { return LittleEndianConverter.Convert(x2); }
         }
 
         public short Y2
         {
-            get { return LittleEndianConverter.Convert(y1); }
+            get { return LittleEndianConverter.Convert(y2); }
         }
 
         public short Freq

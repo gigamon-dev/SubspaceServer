@@ -63,9 +63,9 @@ namespace SS.Core.Modules
         private ArenaDataKey<ArenaBrickData> _adKey;
 
         /// <summary>
-        /// Pool of <see cref="List{T}"/>s for <see cref="Brick"/>.
+        /// Pool of <see cref="List{T}"/>s for <see cref="BrickLocation"/>.
         /// </summary>
-        private ObjectPool<List<Brick>> _brickListPool;
+        private ObjectPool<List<BrickLocation>> _brickLocationListPool;
         /// <summary>
         /// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
         /// </summary>
@@ -95,7 +95,7 @@ namespace SS.Core.Modules
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             DefaultObjectPoolProvider provider = new();
-            _brickListPool = provider.Create(new BrickListPooledObjectPolicy());
+            _brickLocationListPool = provider.Create(new BrickLocationListPooledObjectPolicy());
             _brickDataListPool = provider.Create(new BrickDataListPooledObjectPolicy());
 
             _adKey = _arenaManager.AllocateArenaData<ArenaBrickData>();
@@ -191,7 +191,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_DoBrickMode(Player p, BrickMode brickMode, short x, short y, int length, in ICollection<Brick> bricks)
+        private void Callback_DoBrickMode(Player p, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
         {
             if (p == null)
                 return;
@@ -307,7 +307,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                bricks.Add(new Brick(start.X, start.Y, end.X, end.Y));
+                bricks.Add(new BrickLocation(start.X, start.Y, end.X, end.Y));
             }
         }
 
@@ -343,12 +343,11 @@ namespace SS.Core.Modules
             {
                 lock (abd.Lock)
                 {
-                    List<Brick> brickList = _brickListPool.Get();
+                    List<BrickLocation> brickList = _brickLocationListPool.Get();
 
                     try
                     {
-                        ICollection<Brick> brickCollection = brickList;
-                        brickHandler.HandleBrick(p, c2sBrick.X, c2sBrick.Y, in brickCollection);
+                        brickHandler.HandleBrick(p, c2sBrick.X, c2sBrick.Y, brickList);
 
                         // TODO: AntiBrickWarpDistance logic
 
@@ -356,7 +355,7 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        _brickListPool.Return(brickList);
+                        _brickLocationListPool.Return(brickList);
                     }
                 }
             }
@@ -368,20 +367,20 @@ namespace SS.Core.Modules
 
         void IBrickManager.DropBrick(Arena arena, short freq, short x1, short y1, short x2, short y2)
         {
-            List<Brick> brickList = _brickListPool.Get();
+            List<BrickLocation> brickList = _brickLocationListPool.Get();
 
             try
             {
-                brickList.Add(new Brick(x1, y1, x2, y2));
+                brickList.Add(new BrickLocation(x1, y1, x2, y2));
                 DropBricks(arena, freq, brickList);
             }
             finally
             {
-                _brickListPool.Return(brickList);
+                _brickLocationListPool.Return(brickList);
             }
         }
 
-        private void DropBricks(Arena arena, short freq, List<Brick> bricks)
+        private void DropBricks(Arena arena, short freq, List<BrickLocation> bricks)
         {
             if (arena == null)
                 return;
@@ -409,7 +408,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (Brick request in bricks)
+                    foreach (BrickLocation request in bricks)
                     {
                         ServerTick startTime = ServerTick.Now;
 
@@ -431,6 +430,8 @@ namespace SS.Core.Modules
                     }
 
                     SendToPlayerOrArena(null, arena, brickDataList, abd.WallResendCount);
+
+                    BricksPlacedCallback.Fire(arena, arena, brickDataList);
                 }
                 finally
                 {
@@ -537,7 +538,7 @@ namespace SS.Core.Modules
         // NOTE: compared to ASSS, the callback passes Player instead of Arena.
         // This means more information about the player can be accessed (including rotation, velocity, etc.).
         // Of course, the arena can be accessed through the player too.
-        void IBrickHandler.HandleBrick(Player p, short x, short y, in ICollection<Brick> bricks)
+        void IBrickHandler.HandleBrick(Player p, short x, short y, IList<BrickLocation> bricks)
         {
             if (p == null)
                 return;
@@ -549,7 +550,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
-            DoBrickModeCallback.Fire(arena, p, abd.BrickMode, x, y, abd.BrickSpan, in bricks);
+            DoBrickModeCallback.Fire(arena, p, abd.BrickMode, x, y, abd.BrickSpan, bricks);
         }
 
         #region Helper types
@@ -617,16 +618,16 @@ namespace SS.Core.Modules
             Horizontal,
         }
 
-        private class BrickListPooledObjectPolicy : PooledObjectPolicy<List<Brick>>
+        private class BrickLocationListPooledObjectPolicy : PooledObjectPolicy<List<BrickLocation>>
         {
             public int InitialCapacity { get; set; } = 8;
 
-            public override List<Brick> Create()
+            public override List<BrickLocation> Create()
             {
-                return new List<Brick>(InitialCapacity);
+                return new List<BrickLocation>(InitialCapacity);
             }
 
-            public override bool Return(List<Brick> obj)
+            public override bool Return(List<BrickLocation> obj)
             {
                 if (obj == null)
                     return false;

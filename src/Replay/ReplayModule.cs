@@ -48,6 +48,7 @@ namespace SS.Replay
 
         private IArenaManager _arenaManager;
         private IBalls _balls;
+        private IBrickManager _brickManager;
         private IChat _chat;
         private IClientSettings _clientSettings;
         private ICommandManager _commandManager;
@@ -71,6 +72,7 @@ namespace SS.Replay
             ComponentBroker broker,
             IArenaManager arenaManager,
             IBalls balls,
+            IBrickManager brickManager,
             IChat chat,
             IClientSettings clientSettings,
             ICommandManager commandManager,
@@ -86,6 +88,7 @@ namespace SS.Replay
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _balls = balls ?? throw new ArgumentNullException(nameof(balls));
+            _brickManager = brickManager ?? throw new ArgumentNullException(nameof(brickManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -266,6 +269,26 @@ namespace SS.Replay
                 messageBytes.WriteNullTerminatedString(message);
 
                 ad.RecorderQueue.Add(new RecordBuffer(buffer, Chat.Length + messageByteCount));
+            }
+        }
+
+        private void Callback_BricksPlaced(Arena arena, IReadOnlyList<BrickData> bricks)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            // TODO: Add another type of brick event that supports multiple bricks
+            for (int i = 0; i < bricks.Count; i++) // use indexing, not enumerator (to avoid the boxing allocation)
+            {
+                BrickData brickData = bricks[i];
+
+                byte[] buffer = _recordBufferPool.Rent(Brick.Length);
+                ref Brick brick = ref MemoryMarshal.AsRef<Brick>(buffer);
+                brick = new(ServerTick.Now, in brickData);
+
+                ad.RecorderQueue.Add(new(buffer, Brick.Length));
             }
         }
 
@@ -472,6 +495,7 @@ namespace SS.Replay
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
                 KillCallback.Register(arena, Callback_Kill);
                 ChatMessageCallback.Register(arena, Callback_ChatMessage);
+                BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
 
                 ad.RecorderTask = Task.Factory.StartNew(() =>
                 {
@@ -540,6 +564,7 @@ namespace SS.Replay
                 ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
                 KillCallback.Unregister(arena, Callback_Kill);
                 ChatMessageCallback.Unregister(arena, Callback_ChatMessage);
+                BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -659,12 +684,17 @@ namespace SS.Replay
                         // Normalize events to start from 0.
                         eventHeader.Ticks = (ServerTick)(uint)(eventHeader.Ticks - started);
 
-                        // Keep track of the maximum playerId so that it can be written to the header when the recording is complete.
                         if (eventHeader.Type == EventType.Enter)
                         {
+                            // Keep track of the maximum playerId so that it can be written to the header when the recording is complete.
                             ref Enter enter = ref MemoryMarshal.AsRef<Enter>(eventBytes);
                             if (enter.PlayerId > maxPlayerId)
                                 maxPlayerId = enter.PlayerId;
+                        }
+                        else if (eventHeader.Type == EventType.Brick)
+                        {
+                            ref Brick brick = ref MemoryMarshal.AsRef<Brick>(eventBytes);
+                            brick.BrickData.StartTime = (uint)(brick.BrickData.StartTime - started);
                         }
 
                         // Write the event.
@@ -1116,6 +1146,13 @@ namespace SS.Replay
                                             break; // TODO:
 
                                         case EventType.Brick:
+                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Brick.Length])) != Brick.Length)
+                                            {
+                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Brick event.");
+                                                return;
+                                            }
+                                            break;
+
                                         case EventType.BallFire:
                                         case EventType.BallCatch:
                                         case EventType.BallPacket:
@@ -1363,6 +1400,8 @@ namespace SS.Replay
                             break;
 
                         case EventType.Brick:
+                            ref Brick brick = ref MemoryMarshal.AsRef<Brick>(buffer);
+                            _brickManager.DropBrick(arena, brick.BrickData.Freq, brick.BrickData.X1, brick.BrickData.Y1, brick.BrickData.X2, brick.BrickData.Y2);
                             break;
 
                         case EventType.BallFire:

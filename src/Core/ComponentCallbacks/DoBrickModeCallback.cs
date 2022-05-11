@@ -6,7 +6,16 @@ namespace SS.Core.ComponentCallbacks
 {
     public static class DoBrickModeCallback
     {
-        public delegate void DoBrickModeDelegate(Player player, BrickMode brickMode, short x, short y, int length, in ICollection<Brick> bricks);
+        /// <summary>
+        /// Delegate for deciding brick locations when a player requests a brick drop.
+        /// </summary>
+        /// <param name="player">The player that made the request.</param>
+        /// <param name="brickMode">The mode. An implementation should only add bricks to <paramref name="bricks"/> if the mode matches.</param>
+        /// <param name="x">The x-coordinate from the request.</param>
+        /// <param name="y">The y-coordinate from the request.</param>
+        /// <param name="length">The maximum # of tiles a brick should span.</param>
+        /// <param name="bricks">The collection to add brick locations to.</param>
+        public delegate void DoBrickModeDelegate(Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks);
 
         public static void Register(ComponentBroker broker, DoBrickModeDelegate handler)
         {
@@ -18,12 +27,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, BrickMode brickMode, short x, short y, int length, in ICollection<Brick> bricks)
+        public static void Fire(ComponentBroker broker, Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
         {
-            broker?.GetCallback<DoBrickModeDelegate>()?.Invoke(player, brickMode, x, y, length, in bricks);
+            broker?.GetCallback<DoBrickModeDelegate>()?.Invoke(player, brickMode, x, y, length, bricks);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, player, brickMode, x, y, length, in bricks);
+                Fire(broker.Parent, player, brickMode, x, y, length, bricks);
         }
     }
 }
