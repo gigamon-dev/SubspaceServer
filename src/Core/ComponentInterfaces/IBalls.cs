@@ -151,9 +151,9 @@ namespace SS.Core.ComponentInterfaces
         /// Sets the # of balls in an arena.
         /// </summary>
         /// <param name="arena">The arena to set the ball count for.</param>
-        /// <param name="ballCount">The # of balls the arena should have.</param>
+        /// <param name="ballCount">The # of balls the arena should have. <see langword="null"/> to use the value from the config.</param>
         /// <returns>True if the ball count was set.  False if an invalid ball count was specified.</returns>
-        bool TrySetBallCount(Arena arena, int ballCount);
+        bool TrySetBallCount(Arena arena, int? ballCount);
 
         /// <summary>
         /// Gets a copy of ball data for a specified ball in a specified arena.

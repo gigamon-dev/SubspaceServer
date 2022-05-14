@@ -292,6 +292,20 @@ namespace SS.Replay
             }
         }
 
+        private void Callback_BallPacketSent(Arena arena, in BallPacket ballPacket)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(BallPacketWrapper.Length);
+            ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(buffer);
+            ballPacketWrapper = new(ServerTick.Now, in ballPacket);
+
+            ad.RecorderQueue.Add(new(buffer, BallPacketWrapper.Length));
+        }
+
         #endregion
 
         private void Packet_Position(Player player, byte[] data, int length)
@@ -496,6 +510,7 @@ namespace SS.Replay
                 KillCallback.Register(arena, Callback_Kill);
                 ChatMessageCallback.Register(arena, Callback_ChatMessage);
                 BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
+                BallPacketSentCallback.Register(arena, Callback_BallPacketSent);
 
                 ad.RecorderTask = Task.Factory.StartNew(() =>
                 {
@@ -565,6 +580,7 @@ namespace SS.Replay
                 KillCallback.Unregister(arena, Callback_Kill);
                 ChatMessageCallback.Unregister(arena, Callback_ChatMessage);
                 BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
+                BallPacketSentCallback.Unregister(arena, Callback_BallPacketSent);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -696,6 +712,14 @@ namespace SS.Replay
                             ref Brick brick = ref MemoryMarshal.AsRef<Brick>(eventBytes);
                             brick.BrickData.StartTime = (uint)(brick.BrickData.StartTime - started);
                         }
+                        else if (eventHeader.Type == EventType.BallPacket)
+                        {
+                            ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(eventBytes);
+                            if (ballPacketWrapper.BallPacket.Time != 0)
+                            {
+                                ballPacketWrapper.BallPacket.Time = (uint)(ballPacketWrapper.BallPacket.Time - started);
+                            }
+                        }
 
                         // Write the event.
                         try
@@ -816,10 +840,16 @@ namespace SS.Replay
                 // make sure the queue is empty before we start
                 while (ad.PlaybackQueue.TryTake(out _)) { }
 
+                // Tell the Balls module to remove any balls.
+                // This prevents the Balls module from sending ball position update packets which would interfere with ball events in the replay.
+                _balls.TrySetBallCount(arena, 0);
+
                 ad.PlaybackTask = Task.Factory.StartNew(() =>
                 {
                     DoPlayback(arena, path);
-                }, TaskCreationOptions.LongRunning);
+                }, TaskCreationOptions.LongRunning).ContinueWith((_) =>
+                    _mainloop.QueueMainWorkItem(MainloopWorkitem_EndPlayback, arena)
+                );
 
                 return true;
             }
@@ -845,403 +875,407 @@ namespace SS.Replay
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+            else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
+                || path.Length <= ("recordings".Length + 1)
+                || (path["recordings".Length] != Path.DirectorySeparatorChar && path["recordings".Length] != Path.AltDirectorySeparatorChar))
+            {
+                path = Path.Combine("recordings", path);
+            }
+
+            // Try to open the file.
+            FileStream fileStream;
+
             try
             {
-                if (string.IsNullOrWhiteSpace(path))
+                fileStream = new(path, FileMode.Open, FileAccess.Read, FileShare.None);
+            }
+            catch (Exception ex)
+            {
+                LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to open replay file '{path}'.", ex);
+                return;
+            }
+
+            try
+            {
+                lock (ad.Lock)
                 {
-                    return;
-                }
-                else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
-                    || path.Length <= ("recordings".Length + 1)
-                    || (path["recordings".Length] != Path.DirectorySeparatorChar && path["recordings".Length] != Path.AltDirectorySeparatorChar))
-                {
-                    path = Path.Combine("recordings", path);
+                    ad.FileName = path;
                 }
 
-                // Try to open the file.
-                FileStream fileStream;
+                // Try to read the file header.
+                Span<byte> headerBytes = new byte[FileHeader.Length];
 
                 try
                 {
-                    fileStream = new(path, FileMode.Open, FileAccess.Read, FileShare.None);
-                }
-                catch (Exception ex)
-                {
-                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to open replay file '{path}'.", ex);
-                    return;
-                }
-
-                try
-                {
-                    lock (ad.Lock)
-                    {
-                        ad.FileName = path;
-                    }
-
-                    // Try to read the file header.
-                    Span<byte> headerBytes = new byte[FileHeader.Length];
-
-                    try
-                    {
-                        if (ReadFromStream(fileStream, headerBytes) != headerBytes.Length)
-                        {
-                            LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
-                            return;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to read file header.", ex);
-                        return;
-                    }
-
-                    ref FileHeader fileHeader = ref MemoryMarshal.AsRef<FileHeader>(headerBytes);
-                    if (!string.Equals(fileHeader.Header, "asssgame", StringComparison.Ordinal))
+                    if (ReadFromStream(fileStream, headerBytes) != headerBytes.Length)
                     {
                         LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
                         return;
                     }
-                    else if (fileHeader.Version != ReplayFileVersion)
-                    {
-                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unsupported replay version.");
-                        return;
-                    }
-                    else if (ad.Settings.PlaybackMapCheckEnabled
-                        && fileHeader.MapChecksum != _mapData.GetChecksum(arena, MapChecksumKey))
-                    {
-                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The map in the arena does not match the replay's.");
-                        return;
-                    }
-                    else if (ad.Settings.PlaybackSpecFreqCheckEnabled
-                        && (short)fileHeader.SpecFreq != arena.SpecFreq)
-                    {
-                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The arena spec freq ({arena.SpecFreq}) does not match the replay's ({(short)fileHeader.SpecFreq}).");
-                        return;
-                    }
+                }
+                catch (Exception ex)
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to read file header.", ex);
+                    return;
+                }
 
-                    // Move to where the events begin.
-                    try
-                    {
-                        fileStream.Seek(fileHeader.Offset, SeekOrigin.Begin);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to seek to the beginning of the events.", ex);
-                        return;
-                    }
+                ref FileHeader fileHeader = ref MemoryMarshal.AsRef<FileHeader>(headerBytes);
+                if (!string.Equals(fileHeader.Header, "asssgame", StringComparison.Ordinal))
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
+                    return;
+                }
+                else if (fileHeader.Version != ReplayFileVersion)
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unsupported replay version.");
+                    return;
+                }
+                else if (ad.Settings.PlaybackMapCheckEnabled
+                    && fileHeader.MapChecksum != _mapData.GetChecksum(arena, MapChecksumKey))
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The map in the arena does not match the replay's.");
+                    return;
+                }
+                else if (ad.Settings.PlaybackSpecFreqCheckEnabled
+                    && (short)fileHeader.SpecFreq != arena.SpecFreq)
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"The arena spec freq ({arena.SpecFreq}) does not match the replay's ({(short)fileHeader.SpecFreq}).");
+                    return;
+                }
 
-                    // The events are compressed with gzip. Initialize the stream to decompress and read from.
-                    GZipStream gzStream;
+                // Move to where the events begin.
+                try
+                {
+                    fileStream.Seek(fileHeader.Offset, SeekOrigin.Begin);
+                }
+                catch (Exception ex)
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unable to seek to the beginning of the events.", ex);
+                    return;
+                }
 
-                    try
-                    {
-                        gzStream = new(fileStream, CompressionMode.Decompress, true);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Error opening gzip stream.", ex);
-                        return;
-                    }
+                // The events are compressed with gzip. Initialize the stream to decompress and read from.
+                GZipStream gzStream;
 
-                    try
+                try
+                {
+                    gzStream = new(fileStream, CompressionMode.Decompress, true);
+                }
+                catch (Exception ex)
+                {
+                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Error opening gzip stream.", ex);
+                    return;
+                }
+
+                try
+                {
+                    // Notify the arena that playback is starting.
+                    if (ad.Settings.NotifyPlayback != NotifyOption.None)
                     {
-                        // Notify the arena that playback is starting.
-                        if (ad.Settings.NotifyPlayback != NotifyOption.None)
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                        try
                         {
-                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                            sb.Append($"Starting playback of '{path}' recorded ");
+
+                            if (!string.IsNullOrWhiteSpace(fileHeader.ArenaName))
+                                sb.Append($"in arena {fileHeader.ArenaName} ");
+
+                            if (!string.IsNullOrWhiteSpace(fileHeader.Recorder))
+                                sb.Append($"by {fileHeader.Recorder} ");
+
+                            sb.Append($"on {fileHeader.Recorded}");
+
+                            Notify(arena, ad.Settings.NotifyPlayback, sb);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
+                    }
+
+                    // Lock everyone watching to spectator mode.
+                    LockAllSpec(arena); // TODO: does this need to be done on the mainloop? If so, then we'll need to wait for it to complete too.
+
+                    Span<byte> buffer = stackalloc byte[MaxRecordBuffer]; // no event can be larger than this
+                    buffer.Clear();
+
+                    ref EventHeader head = ref MemoryMarshal.AsRef<EventHeader>(buffer);
+                    ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
+
+                    ServerTick started = ServerTick.Now;
+                    ServerTick? paused = null;
+
+                    int readLength = 0;
+
+                    while (true)
+                    {
+                        // Check if there is a command.
+                        if (ad.PlaybackQueue.TryTake(out PlaybackCommand command, paused == null ? 0 : -1))
+                        {
+                            if (command == PlaybackCommand.Stop)
+                            {
+                                break;
+                            }
+                            else if (command == PlaybackCommand.Pause)
+                            {
+                                bool changed = false;
+
+                                lock (ad.Lock)
+                                {
+                                    if (!ad.IsPlaybackPaused)
+                                    {
+                                        ad.IsPlaybackPaused = true;
+                                        changed = true;
+                                    }
+                                }
+
+                                if (changed)
+                                {
+                                    paused = ServerTick.Now;
+                                    Notify(arena, ad.Settings.NotifyPlayback, "Playback paused.");
+                                }
+
+                                continue;
+                            }
+                            else if (command == PlaybackCommand.Resume)
+                            {
+                                bool changed = false;
+
+                                lock (ad.Lock)
+                                {
+                                    if (ad.IsPlaybackPaused)
+                                    {
+                                        ad.IsPlaybackPaused = false;
+                                        changed = true;
+                                    }
+                                }
+
+                                if (changed)
+                                {
+                                    started += (uint)(ServerTick.Now - paused.Value);
+                                    paused = null;
+                                    Notify(arena, ad.Settings.NotifyPlayback, "Playback resumed.");
+                                }
+                            }
+                        }
+
+                        if (readLength == 0)
+                        {
+                            // Try to read the next event.
 
                             try
                             {
-                                sb.Append($"Starting playback of '{path}' recorded ");
-
-                                if (!string.IsNullOrWhiteSpace(fileHeader.ArenaName))
-                                    sb.Append($"in arena {fileHeader.ArenaName} ");
-
-                                if (!string.IsNullOrWhiteSpace(fileHeader.Recorder))
-                                    sb.Append($"by {fileHeader.Recorder} ");
-
-                                sb.Append($"on {fileHeader.Recorded}");
-
-                                Notify(arena, ad.Settings.NotifyPlayback, sb);
-                            }
-                            finally
-                            {
-                                _objectPoolManager.StringBuilderPool.Return(sb);
-                            }
-                        }
-
-                        // Lock everyone watching to spectator mode.
-                        LockAllSpec(arena); // TODO: does this need to be done on the mainloop? If so, then we'll need to wait for it to complete too.
-
-                        Span<byte> buffer = stackalloc byte[MaxRecordBuffer]; // no event can be larger than this
-                        buffer.Clear();
-
-                        ref EventHeader head = ref MemoryMarshal.AsRef<EventHeader>(buffer);
-                        ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
-
-                        ServerTick started = ServerTick.Now;
-                        ServerTick? paused = null;
-
-                        int readLength = 0;
-
-                        while (true)
-                        {
-                            // Check if there is a command.
-                            if (ad.PlaybackQueue.TryTake(out PlaybackCommand command, paused == null ? 0 : -1))
-                            {
-                                if (command == PlaybackCommand.Stop)
+                                // Read the event header.
+                                if ((readLength += ReadFromStream(gzStream, buffer[..EventHeader.Length])) != EventHeader.Length)
                                 {
-                                    break;
-                                }
-                                else if (command == PlaybackCommand.Pause)
-                                {
-                                    bool changed = false;
-
-                                    lock (ad.Lock)
-                                    {
-                                        if (!ad.IsPlaybackPaused)
-                                        {
-                                            ad.IsPlaybackPaused = true;
-                                            changed = true;
-                                        }
-                                    }
-
-                                    if (changed)
-                                    {
-                                        paused = ServerTick.Now;
-                                        Notify(arena, ad.Settings.NotifyPlayback, "Playback paused.");
-                                    }
-
-                                    continue;
-                                }
-                                else if (command == PlaybackCommand.Resume)
-                                {
-                                    bool changed = false;
-
-                                    lock (ad.Lock)
-                                    {
-                                        if (ad.IsPlaybackPaused)
-                                        {
-                                            ad.IsPlaybackPaused = false;
-                                            changed = true;
-                                        }
-                                    }
-
-                                    if (changed)
-                                    {
-                                        started += (uint)(ServerTick.Now - paused.Value);
-                                        paused = null;
-                                        Notify(arena, ad.Settings.NotifyPlayback, "Playback resumed.");
-                                    }
-                                }
-                            }
-
-                            if (readLength == 0)
-                            {
-                                // Try to read the next event.
-
-                                try
-                                {
-                                    // Read the event header.
-                                    if ((readLength += ReadFromStream(gzStream, buffer[..EventHeader.Length])) != EventHeader.Length)
-                                    {
-                                        // no more events
-                                        return;
-                                    }
-
-                                    // Read the rest of the event.
-                                    switch (head.Type)
-                                    {
-                                        case EventType.Null:
-                                            break;
-
-                                        case EventType.Enter:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Enter.Length])) != Enter.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for an Enter event.");
-                                                return;
-                                            }
-
-                                            break;
-
-                                        case EventType.Leave:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Leave.Length])) != Leave.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Leave event.");
-                                                return;
-                                            }
-                                            break;
-
-                                        case EventType.ShipChange:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..ShipChange.Length])) != ShipChange.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a ShipChange event.");
-                                                return;
-                                            }
-                                            break;
-
-                                        case EventType.FreqChange:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..FreqChange.Length])) != FreqChange.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a FreqChange event.");
-                                                return;
-                                            }
-                                            break;
-
-                                        case EventType.Kill:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Kill.Length])) != Kill.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Kill event.");
-                                                return;
-                                            }
-                                            break;
-
-                                        case EventType.Chat:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Chat.Length])) != Chat.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Chat event.");
-                                                return;
-                                            }
-
-                                            // The message comes next, but it is variable in length.
-                                            if (chat.MessageLength < 1 || chat.MessageLength >= 512)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Bad message length in Chat event.");
-                                                return;
-                                            }
-
-                                            if ((readLength += ReadFromStream(gzStream, buffer.Slice(Chat.Length, chat.MessageLength))) != Chat.Length + chat.MessageLength)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Chat event message.");
-                                                return;
-                                            }
-
-                                            break;
-
-                                        case EventType.Position:
-                                            // The position event is variable in length.
-                                            // The first byte after the EventHeader (the Type field) actually holds the length.
-                                            if ((readLength += ReadFromStream(gzStream, buffer.Slice(EventHeader.Length, 1))) != EventHeader.Length + 1)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Position event.");
-                                                return;
-                                            }
-
-                                            int length = buffer[EventHeader.Length];
-                                            if (length != 22 && length != 24 && length != 32)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Bad length in Position event.");
-                                                return;
-                                            }
-
-                                            if ((readLength += ReadFromStream(gzStream, buffer.Slice(EventHeader.Length + 1, length - 1))) != EventHeader.Length + length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Position event.");
-                                                return;
-                                            }
-
-                                            break;
-
-                                        case EventType.Packet:
-                                            break; // TODO:
-
-                                        case EventType.Brick:
-                                            if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Brick.Length])) != Brick.Length)
-                                            {
-                                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a Brick event.");
-                                                return;
-                                            }
-                                            break;
-
-                                        case EventType.BallFire:
-                                        case EventType.BallCatch:
-                                        case EventType.BallPacket:
-                                        case EventType.BallGoal:
-                                        case EventType.ArenaMessage: // investigate why this was created? instead of using the chat event?
-                                            break; // TODO:
-
-                                        default:
-                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
-                                            return;
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Unable to read event.", ex);
+                                    // no more events
                                     return;
                                 }
+
+                                // Read the rest of the event.
+                                switch (head.Type)
+                                {
+                                    case EventType.Null:
+                                        break;
+
+                                    case EventType.Enter:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Enter.Length])) != Enter.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for an {EventType.Enter} event.");
+                                            return;
+                                        }
+
+                                        break;
+
+                                    case EventType.Leave:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Leave.Length])) != Leave.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Leave} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.ShipChange:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..ShipChange.Length])) != ShipChange.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.ShipChange} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.FreqChange:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..FreqChange.Length])) != FreqChange.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.FreqChange} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.Kill:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Kill.Length])) != Kill.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Kill} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.Chat:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Chat.Length])) != Chat.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Chat} event.");
+                                            return;
+                                        }
+
+                                        // The message comes next, but it is variable in length.
+                                        if (chat.MessageLength < 1 || chat.MessageLength >= 512)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Bad message length in {EventType.Chat} event.");
+                                            return;
+                                        }
+
+                                        if ((readLength += ReadFromStream(gzStream, buffer.Slice(Chat.Length, chat.MessageLength))) != Chat.Length + chat.MessageLength)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Chat} event message.");
+                                            return;
+                                        }
+
+                                        break;
+
+                                    case EventType.Position:
+                                        // The position event is variable in length.
+                                        // The first byte after the EventHeader (the Type field) actually holds the length.
+                                        if ((readLength += ReadFromStream(gzStream, buffer.Slice(EventHeader.Length, 1))) != EventHeader.Length + 1)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Position} event.");
+                                            return;
+                                        }
+
+                                        int length = buffer[EventHeader.Length];
+                                        if (length != 22 && length != 24 && length != 32)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Bad length in {EventType.Position} event.");
+                                            return;
+                                        }
+
+                                        if ((readLength += ReadFromStream(gzStream, buffer.Slice(EventHeader.Length + 1, length - 1))) != EventHeader.Length + length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Position} event.");
+                                            return;
+                                        }
+
+                                        break;
+
+                                    case EventType.Packet:
+                                        break; // TODO:
+
+                                    case EventType.Brick:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..Brick.Length])) != Brick.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Brick} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.BallFire:
+                                    case EventType.BallCatch:
+                                        break;
+
+                                    case EventType.BallPacket:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..BallPacketWrapper.Length])) != BallPacketWrapper.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.BallPacket} event.");
+                                            return;
+                                        }
+
+                                        ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(buffer);
+                                        if (ballPacketWrapper.BallPacket.Time != 0)
+                                        {
+                                            // Convert the normalized time to be relative to the start time.
+                                            ballPacketWrapper.BallPacket.Time = started + ballPacketWrapper.BallPacket.Time;
+                                        }
+
+                                        break;
+
+                                    case EventType.BallGoal:
+                                    case EventType.ArenaMessage: // investigate why this was created? instead of using the chat event?
+                                        break; // TODO:
+
+                                    default:
+                                        _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
+                                        return;
+                                }
                             }
-
-                            // We have an event.
-                            ServerTick now = ServerTick.Now;
-
-                            lock (ad.Lock)
+                            catch (Exception ex)
                             {
-                                ad.PlaybackPosition = (now - started) / (double)fileHeader.EndTime;
+                                LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Unable to read event.", ex);
+                                return;
                             }
-
-                            // Check if it's time for the event to be processed.
-                            if (now - started < head.Ticks)
-                            {
-                                // Not yet time to process the event.
-                                // Normally, events will occur at a rate faster than the granularity of sleeping,
-                                // at least on Windows, which is approximately 15.625 ms (1000 ms / 64).
-                                // So, using a SpinWait since we expect to be doing lots of work pretty much continuously.
-                                int waitMs = (int)(head.Ticks - (now - started)) * 10;
-                                //_logManager.LogA(LogLevel.Drivel, nameof(ReplayModule), arena, $"ticks {head.Ticks} waiting for {waitMs} ms");
-                                SpinWait.SpinUntil(() => ad.PlaybackQueue.Count > 0, waitMs);
-                                continue;
-                            }
-
-                            // Queue up the event to be processed by the mainloop thread.
-                            byte[] playbackBytes = _recordBufferPool.Rent(MaxRecordBuffer); // TODO: make this more efficient?
-                            buffer[..readLength].CopyTo(playbackBytes);
-
-                            _mainloop.QueueMainWorkItem(
-                                ProcessPlaybackEvent, // TODO: does this allocate a delegate once or once per call? might need to cache the delegate to reduce allocations
-                                new PlaybackBuffer(arena, playbackBytes, readLength));
-
-                            // Signal to read the next event.
-                            readLength = 0;
                         }
-                    }
-                    finally
-                    {
-                        gzStream.Dispose();
-                        gzStream = null;
 
-                        _mainloop.WaitForMainWorkItemDrain();
+                        // We have an event.
+                        ServerTick now = ServerTick.Now;
 
-                        // Make sure all faked players leave.
-                        foreach (Player player in ad.PlayerIdMap.Values)
+                        lock (ad.Lock)
                         {
-                            _fake.EndFaked(player);
+                            ad.PlaybackPosition = (now - started) / (double)fileHeader.EndTime;
                         }
 
-                        ad.PlayerIdMap.Clear();
+                        // Check if it's time for the event to be processed.
+                        if (now - started < head.Ticks)
+                        {
+                            // Not yet time to process the event.
+                            // Normally, events will occur at a rate faster than the granularity of sleeping,
+                            // at least on Windows, which is approximately 15.625 ms (1000 ms / 64).
+                            // So, using a SpinWait since we expect to be doing lots of work pretty much continuously.
+                            int waitMs = (int)(head.Ticks - (now - started)) * 10;
+                            //_logManager.LogA(LogLevel.Drivel, nameof(ReplayModule), arena, $"ticks {head.Ticks} waiting for {waitMs} ms");
+                            SpinWait.SpinUntil(() => ad.PlaybackQueue.Count > 0, waitMs);
+                            continue;
+                        }
 
-                        // TODO: remove balls
+                        // Queue up the event to be processed by the mainloop thread.
+                        byte[] playbackBytes = _recordBufferPool.Rent(MaxRecordBuffer); // TODO: make this more efficient?
+                        buffer[..readLength].CopyTo(playbackBytes);
 
-                        Notify(arena, ad.Settings.NotifyPlayback, "Playback stopped.");
+                        _mainloop.QueueMainWorkItem(
+                            ProcessPlaybackEvent, // TODO: does this allocate a delegate once or once per call? might need to cache the delegate to reduce allocations
+                            new PlaybackBuffer(arena, playbackBytes, readLength));
 
-                        UnlockAllSpec(arena);
+                        // Signal to read the next event.
+                        readLength = 0;
                     }
                 }
                 finally
                 {
-                    fileStream.Dispose();
-                    fileStream = null;
+                    gzStream.Dispose();
+                    gzStream = null;
+
+                    _mainloop.WaitForMainWorkItemDrain();
+
+                    // Make sure all faked players leave.
+                    foreach (Player player in ad.PlayerIdMap.Values)
+                    {
+                        _fake.EndFaked(player);
+                    }
+
+                    ad.PlayerIdMap.Clear();
+
+                    // TODO: remove balls
+
+                    Notify(arena, ad.Settings.NotifyPlayback, "Playback stopped.");
+
+                    UnlockAllSpec(arena);
                 }
             }
             finally
             {
-                lock (ad.Lock)
-                {
-                    ad.State = ReplayState.None;
-                    ad.FileName = null;
-                    ad.StartedBy = null;
-                    ad.PlaybackTask = null;
-                }
+                fileStream.Dispose();
+                fileStream = null;
             }
 
             void ProcessPlaybackEvent(PlaybackBuffer playbackBuffer)
@@ -1411,8 +1445,32 @@ namespace SS.Replay
                             break;
 
                         case EventType.BallPacket:
-                            break;
+                            {
+                                ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(buffer);
 
+                                if (ballPacketWrapper.BallPacket.PlayerId != -1)
+                                {
+                                    if (!ad.PlayerIdMap.TryGetValue(ballPacketWrapper.BallPacket.PlayerId, out player))
+                                    {
+                                        _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{EventType.BallPacket} event for non-existent carrier, PlayerId {ballPacketWrapper.BallPacket.PlayerId}");
+                                        return;
+                                    }
+
+                                    ballPacketWrapper.BallPacket.PlayerId = (short)player.Id;
+                                }
+
+                                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                                try
+                                {
+                                    GetWatching(arena, players, null);
+                                    _network.SendToSet(players, ref ballPacketWrapper.BallPacket, NetSendFlags.Unreliable | NetSendFlags.PriorityP4);
+                                }
+                                finally
+                                {
+                                    _objectPoolManager.PlayerSetPool.Return(players);
+                                }
+                                break;
+                            }
                         case EventType.BallGoal:
                             break;
 
@@ -1441,6 +1499,22 @@ namespace SS.Replay
 
                 return totalRead;
             }
+        }
+
+        private void MainloopWorkitem_EndPlayback(Arena arena)
+        {
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            lock (ad.Lock)
+            {
+                ad.State = ReplayState.None;
+                ad.FileName = null;
+                ad.StartedBy = null;
+                ad.PlaybackTask = null;
+            }
+
+            _balls.TrySetBallCount(arena, null);
         }
 
         private void LogAndNotify(Arena arena, NotifyOption notifyOption, string message, Exception ex = null)

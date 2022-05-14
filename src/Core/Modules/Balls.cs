@@ -114,11 +114,12 @@ namespace SS.Core.Modules
             lock (ad.Lock)
             {
                 ballSettings = ad.Settings; // copy
+                ballSettings.BallCount = ad.BallCount;
                 return true;
             }
         }
 
-        bool IBalls.TrySetBallCount(Arena arena, int ballCount)
+        bool IBalls.TrySetBallCount(Arena arena, int? ballCount)
         {
             if (arena == null)
                 return false;
@@ -131,9 +132,16 @@ namespace SS.Core.Modules
 
             lock (ad.Lock)
             {
-                if (TryChangeBallCount(arena, ballCount))
+                bool isOverride = ballCount != null;
+
+                if (ballCount == null)
                 {
-                    ad.BallCountOverridden = true; // An outside module is changing the state.
+                    ballCount = ad.Settings.BallCount;
+                }
+
+                if (TryChangeBallCount(arena, ballCount.Value))
+                {
+                    ad.BallCountOverridden = isOverride;
                     return true;
                 }
 
@@ -256,11 +264,10 @@ namespace SS.Core.Modules
                 }
                 else if (action == ArenaAction.ConfChanged)
                 {
-                    int oldBallCount = ad.BallCount;
                     int newBallCount = LoadBallSettings(arena);
 
                     // If the ball count changed but it wasn't changed by a module or command, allow the new setting to change the ball count.
-                    if (newBallCount != oldBallCount && !ad.BallCountOverridden)
+                    if (newBallCount != ad.BallCount && !ad.BallCountOverridden)
                     {
                         TryChangeBallCount(arena, newBallCount);
                     }
@@ -670,13 +677,7 @@ namespace SS.Core.Modules
 
             lock (ad.Lock)
             {
-                int ballCount = _configManager.GetInt(arena.Cfg, "Soccer", "BallCount", 0);
-
-                if (ballCount < 0)
-                    ballCount = 0;
-                else if (ballCount > MaxBalls)
-                    ballCount = MaxBalls;
-
+                ad.Settings.BallCount = Math.Clamp(_configManager.GetInt(arena.Cfg, "Soccer", "BallCount", 0), 0, MaxBalls);
                 ad.Settings.Mode = _configManager.GetEnum(arena.Cfg, "Soccer", "Mode", SoccerMode.All);
 
                 Span<BallSpawn> spawns = stackalloc BallSpawn[MaxBalls];
@@ -731,7 +732,7 @@ namespace SS.Core.Modules
                 ad.Settings.DeathScoresGoal = _configManager.GetInt(arena.Cfg, "Soccer", "AllowGoalByDeath", 0) != 0;
                 ad.Settings.KillerIgnorePassDelay = _configManager.GetInt(arena.Cfg, "Soccer", "KillerIgnorePassDelay", 0);
 
-                return ballCount;
+                return ad.Settings.BallCount;
             }
         }
 
@@ -956,6 +957,8 @@ namespace SS.Core.Modules
                     bp.Time = extraInfo.KillerValidPickupTime;
                     _network.SendToOne(extraInfo.LastKiller, bpBytes, NetSendFlags.Unreliable | BallSendFlags);
                 }
+
+                BallPacketSentCallback.Fire(arena, arena, in bp);
             }
         }
 
@@ -1294,7 +1297,7 @@ namespace SS.Core.Modules
                         if (killer != null && ad.Settings.KillerIgnorePassDelay != 0)
                         {
                             extraInfo.LastKiller = killer;
-                            extraInfo.KillerValidPickupTime = (uint)b.Time - (uint)ad.Settings.KillerIgnorePassDelay; // TODO: verify this and move it to an overloaded operator in the ServerTime struct
+                            extraInfo.KillerValidPickupTime = b.Time - (uint)ad.Settings.KillerIgnorePassDelay;
                         }
                         else
                         {
@@ -1348,11 +1351,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// The # of balls currently in play. 0 if the arena has no ball game.
             /// </summary>
-            public int BallCount
-            {
-                get => Settings.BallCount;
-                set => Settings.BallCount = value;
-            }
+            public int BallCount;
 
             /// <summary>
             /// Array of ball states.
@@ -1387,8 +1386,8 @@ namespace SS.Core.Modules
             public BallSettings Settings;
 
             /// <summary>
-            /// If <see cref="SetBallCount"/> has been used, we don't want to override that if the settings change,
-            /// especially since the Soccer:BallCount setting might not have been the one that changed.
+            /// If <see cref="IBalls.TrySetBallCount"/> has been used to override with a value that differs from the Soccer:BallCount setting.
+            /// When overridden, the ball count will not be affected when there's a config change.
             /// </summary>
             public bool BallCountOverridden;
 

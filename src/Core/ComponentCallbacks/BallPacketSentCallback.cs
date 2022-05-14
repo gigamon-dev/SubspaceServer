@@ -1,0 +1,32 @@
+﻿using SS.Packets.Game;
+
+namespace SS.Core.ComponentCallbacks
+{
+    public static class BallPacketSentCallback
+    {
+        /// <summary>
+        /// Delegate for when a <see cref="S2CPacketType.Ball"/> packet is sent.
+        /// </summary>
+        /// <param name="arena">The arena.</param>
+        /// <param name="ballPacket">The packet.</param>
+        public delegate void BallPacketSentDelegate(Arena arena, in BallPacket ballPacket);
+
+        public static void Register(ComponentBroker broker, BallPacketSentDelegate handler)
+        {
+            broker?.RegisterCallback(handler);
+        }
+
+        public static void Unregister(ComponentBroker broker, BallPacketSentDelegate handler)
+        {
+            broker?.UnregisterCallback(handler);
+        }
+
+        public static void Fire(ComponentBroker broker, Arena arena, in BallPacket ballPacket)
+        {
+            broker?.GetCallback<BallPacketSentDelegate>()?.Invoke(arena, in ballPacket);
+
+            if (broker?.Parent != null)
+                Fire(broker.Parent, arena, in ballPacket);
+        }
+    }
+}

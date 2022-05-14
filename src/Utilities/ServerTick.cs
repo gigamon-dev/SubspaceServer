@@ -20,12 +20,12 @@ namespace SS.Utilities
     {
         private readonly uint tickcount;
 
-        public ServerTick(uint tickcount) => this.tickcount = tickcount;
+        public ServerTick(uint tickcount) => this.tickcount = tickcount & 0x7fffffff;
 
         /// <summary>
         /// Gets the current server time in ticks (1/100ths of a second).
         /// </summary>
-        public static ServerTick Now => new(MakeTick(Environment.TickCount / 10));
+        public static ServerTick Now => new((uint)Environment.TickCount / 10);
 
         public static bool operator >(ServerTick a, ServerTick b) => (a - b) > 0;
 
@@ -37,23 +37,21 @@ namespace SS.Utilities
 
         public static int operator -(ServerTick a, ServerTick b) => (int)(((a.tickcount) << 1) - ((b.tickcount) << 1)) >> 1;
 
-        public static ServerTick operator +(ServerTick a, uint b) => new(MakeTick(a.tickcount + b));
+        public static ServerTick operator +(ServerTick a, uint b) => new(a.tickcount + b);
+
+        public static ServerTick operator -(ServerTick a, uint b) => new(a.tickcount - b);
 
         public static bool operator ==(ServerTick a, ServerTick b) => a.Equals(b);
 
         public static bool operator !=(ServerTick a, ServerTick b) => !(a == b);
 
-        public static ServerTick operator ++(ServerTick a) => new(a.tickcount + 1);
+        public static ServerTick operator ++(ServerTick a) => a + 1;
 
-        public static ServerTick operator --(ServerTick a) => new(a.tickcount - 1);
+        public static ServerTick operator --(ServerTick a) => a - (uint)1;
 
         public static implicit operator uint(ServerTick a) => a.tickcount;
 
         public static implicit operator ServerTick(uint tickcount) => new(tickcount);
-
-        private static uint MakeTick(int a) => (uint)((a) & 0x7fffffff);
-
-        private static uint MakeTick(uint a) => a & 0x7fffffff;
 
         public override bool Equals(object obj) => obj is ServerTick tick && Equals(tick);
 

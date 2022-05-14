@@ -21,9 +21,9 @@ namespace SS.Replay.FileFormat.Events
         public EventHeader Header;
         public BallPacket BallPacket;
 
-        public BallPacketWrapper(ServerTick ticks, BallPacket ballPacket)
+        public BallPacketWrapper(ServerTick ticks, in BallPacket ballPacket)
         {
-            Header = new EventHeader(ticks, EventType.Leave);
+            Header = new EventHeader(ticks, EventType.BallPacket);
             BallPacket = ballPacket;
         }
     }
