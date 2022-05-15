@@ -26,11 +26,49 @@ The other form is for modules in separate plug-in assemblies. In other words, th
 ```
 Notice that it doesn't include the assembly name in the *type* attribute. Rather, it has a *path* attribute which contains the path of the assembly to load.  Also notice the path is within "bin/modules". That is where you put your own plug-in assemblies containing your custom modules.
 
-> **Fun fact:** You can get a list of loaded modules in-game using the `?lsmod` command.
+> **Fun fact:** A list of loaded modules can be listed in-game using the `?lsmod` command.
+
+### How to create a plugin project for a module
+
+> **Tip:** For those new to .NET plugins, it is recommended you read the [.NET documentation](https://docs.microsoft.com/en-us/dotnet/core/tutorials/creating-app-with-plugin-support) about it.
+
+> For an example of a plugin project, see [TurfReward](../src/TurfReward/TurfReward.csproj).
+
+First, create a new class library project and add a reference the [Core](../src/Core/Core.csproj) asssembly
+
+Modify the .csproj file to tell the build process to build it in such a way that it can be used a plugin. Here's what you'll be changing:
+
+1. Enable dynamic loading
+2. (optional but recommended) Change the OutDir to place built files into the modules folder.
+3. Edit references to prevent dependencies from being copied to the output folder.
+
+Most imporantly, enable dynamic loading by adding the `<EnableDynamicLoading>true</EnableDynamicLoading>` element to the `<PropertyGroup>`.
+
+Next, it's recommended to change the output directory so that built files get placed under the Zone's bin\modules folder. To do this, add the `<OutDir>` element with a path under the modules folder.
+
+Edit the reference to the Core assembly to tell the build process to not copy the SS.Core.dll or any libraries it depends on to the output directory. Add the `<Private>false</Private>` and `<ExcludeAssets>all</ExcludeAssets>` elements to the `<ProjectReference>`. These changes are very imporant! If SS.Core.dll was copied, a second copy of SS.Core.dll would get loaded and the server would fail to find the dependencies for your module.
+
+Here's what it should like:
+```XML
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <OutDir>$(SolutionDir)SubspaceServer\Zone\bin\modules\Example</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj">
+	  <Private>false</Private>
+	  <ExcludeAssets>all</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>
+```
 
 ### How to create a module
-
-First, add a reference the `SS.Core` asssembly.
 
 To create a module, simply create a class and have it implement the `SS.Core.IModule` interface. The `IModule` interface has one method, `Unload`. Create an identical method named `Load`. Here's what it should look like:
 
@@ -662,7 +700,7 @@ Object pooling is a technique in which objects can be reused. The basic idea beh
 ### Microsoft.Extensions.ObjectPool
 The Microsoft.Extensions.ObjectPool NuGet package provides a very useful implementation of object pooling. It is used extensively in the server. However, keep in mind, the pools that Microsoft.Extensions.ObjectPool provides is not ideal for every use case. The pooling functionality Microsoft.Extensions.ObjectPool contains is geared toward short-term object use. That is, for scenarios where an object is used for a very short time, and then returned back to the pool. 
 
-Out of the box, the pools Microsoft.Extensions.ObjectPool provides is not a good match for use cases where objects may be held for extended periods of time, such as a producer-consumer queue where hundreds or thousands of objects may be held up waiting to be procesed, and eventually to be released. To cover this scenario, the `SS.Utilities` assembly contains an implementation, `NonTransientObjectPool<T>`. It is a very simple implementation which uses a `System.Collection.Concurrent.ConcurrentBag<T>`. This implementation may not be the best solution possible, but it gets the job done.
+Out of the box, the pools Microsoft.Extensions.ObjectPool provides are not a good match for use cases where objects may be held for extended periods of time, such as a producer-consumer queue where hundreds or thousands of objects may be held up waiting to be processed, and eventually to be released. To cover this scenario, the `SS.Utilities` assembly contains an implementation, `NonTransientObjectPool<T>`. It is a very simple implementation which uses a `System.Collection.Concurrent.ConcurrentBag<T>`. This implementation may not be the best solution possible, but it gets the job done.
 
 ### Objects aware of their pool
 In certain scenarios, it makes sense that an object itself keeps track of the pool it originated from, and have the ability to return itself to that pool. For this type of scenario, the `SS.Utilities` assembly contains the `PooledObject` class and associated `Pool` class. `PooledObject` implements the `IDisposable` interface. When disposed, the object returns itself to its originating pool.
