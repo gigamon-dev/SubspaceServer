@@ -257,7 +257,7 @@ namespace SS.Core.Modules
         {
             try
             {
-                ((IChat)this).SendMessage(p, handler.StringBuilder);
+                ((IChat)this).SendMessage(p, ChatSound.None, handler.StringBuilder);
             }
             finally
             {
@@ -267,17 +267,17 @@ namespace SS.Core.Modules
 
         void IChat.SendMessage(Player p, ReadOnlySpan<char> message)
         {
-            SendMessage(p, message);
+            ((IChat)this).SendMessage(p, ChatSound.None, message);
         }
 
         void IChat.SendMessage(Player p, string message)
         {
-            ((IChat)this).SendMessage(p, message.AsSpan());
+            ((IChat)this).SendMessage(p, ChatSound.None, message.AsSpan());
         }
 
         void IChat.SendMessage(Player p, StringBuilder message)
         {
-            SendMessage(p, message);
+            ((IChat)this).SendMessage(p, ChatSound.None, message);
         }
 
         void IChat.SendMessage(Player p, ChatSound sound, ref ChatSendMessageInterpolatedStringHandler handler)
@@ -294,7 +294,17 @@ namespace SS.Core.Modules
 
         void IChat.SendMessage(Player p, ChatSound sound, ReadOnlySpan<char> message)
         {
-            SendMessage(p, ChatMessageType.Arena, sound, null, message);
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                set.Add(p);
+                SendMessage(set, ChatMessageType.Arena, sound, null, message);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
         }
 
         void IChat.SendMessage(Player p, ChatSound sound, string message)
@@ -306,14 +316,14 @@ namespace SS.Core.Modules
         {
             Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
             message.CopyTo(0, text, text.Length);
-            SendMessage(p, ChatMessageType.Arena, sound, null, text);
+            ((IChat)this).SendMessage(p, sound, text);
         }
 
         void IChat.SendSetMessage(HashSet<Player> set, ref ChatSendMessageInterpolatedStringHandler handler)
         {
             try
             {
-                ((IChat)this).SendSetMessage(set, handler.StringBuilder);
+                ((IChat)this).SendSetMessage(set, ChatSound.None, handler.StringBuilder);
             }
             finally
             {
@@ -323,19 +333,17 @@ namespace SS.Core.Modules
 
         void IChat.SendSetMessage(HashSet<Player> set, ReadOnlySpan<char> message)
         {
-            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, message);
+            ((IChat)this).SendSetMessage(set, ChatSound.None, message);
         }
 
         void IChat.SendSetMessage(HashSet<Player> set, string message)
         {
-            ((IChat)this).SendSetMessage(set, message.AsSpan());
+            ((IChat)this).SendSetMessage(set, ChatSound.None, message.AsSpan());
         }
 
         void IChat.SendSetMessage(HashSet<Player> set, StringBuilder message)
         {
-            Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
-            message.CopyTo(0, text, text.Length);
-            SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, text);
+            ((IChat)this).SendSetMessage(set, ChatSound.None, message);
         }
 
         void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, ref ChatSendMessageInterpolatedStringHandler handler)
@@ -364,14 +372,14 @@ namespace SS.Core.Modules
         {
             Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
             message.CopyTo(0, text, text.Length);
-            SendMessage(set, ChatMessageType.Arena, sound, null, text);
+            ((IChat)this).SendSetMessage(set, sound, text);
         }
 
         void IChat.SendArenaMessage(Arena arena, ref ChatSendMessageInterpolatedStringHandler handler)
-        {
+        {            
             try
             {
-                ((IChat)this).SendArenaMessage(arena, handler.StringBuilder);
+                ((IChat)this).SendArenaMessage(arena, ChatSound.None, handler.StringBuilder);
             }
             finally
             {
@@ -381,45 +389,17 @@ namespace SS.Core.Modules
 
         void IChat.SendArenaMessage(Arena arena, ReadOnlySpan<char> message)
         {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
-            {
-                GetArenaSet(set, arena, null);
-
-                if (set.Count > 0)
-                    SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, message);
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(set);
-            }
+            ((IChat)this).SendArenaMessage(arena, ChatSound.None, message);
         }
 
         void IChat.SendArenaMessage(Arena arena, string message)
         {
-            ((IChat)this).SendArenaMessage(arena, message.AsSpan());
+            ((IChat)this).SendArenaMessage(arena, ChatSound.None, message.AsSpan());
         }
 
         void IChat.SendArenaMessage(Arena arena, StringBuilder message)
         {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
-            {
-                GetArenaSet(set, arena, null);
-
-                if (set.Count > 0)
-                {
-                    Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
-                    message.CopyTo(0, text, text.Length);
-                    SendMessage(set, ChatMessageType.Arena, ChatSound.None, null, text);
-                }
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(set);
-            }
+            ((IChat)this).SendArenaMessage(arena, ChatSound.None, message);
         }
 
         void IChat.SendArenaMessage(Arena arena, ChatSound sound, ref ChatSendMessageInterpolatedStringHandler handler)
@@ -443,7 +423,11 @@ namespace SS.Core.Modules
                 GetArenaSet(set, arena, null);
 
                 if (set.Count > 0)
+                {
                     SendMessage(set, ChatMessageType.Arena, sound, null, message);
+                }
+
+                FireChatMessageCallback(arena, null, ChatMessageType.Arena, sound, null, -1, message);
             }
             finally
             {
@@ -458,23 +442,10 @@ namespace SS.Core.Modules
 
         void IChat.SendArenaMessage(Arena arena, ChatSound sound, StringBuilder message)
         {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+            Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
+            message.CopyTo(0, text, text.Length);
 
-            try
-            {
-                GetArenaSet(set, arena, null);
-
-                if (set.Count > 0)
-                {
-                    Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
-                    message.CopyTo(0, text, text.Length);
-                    SendMessage(set, ChatMessageType.Arena, sound, null, text);
-                }
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(set);
-            }
+            ((IChat)this).SendArenaMessage(arena, sound, text);
         }
 
         void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ref ChatSendMessageInterpolatedStringHandler handler)
@@ -719,7 +690,7 @@ namespace SS.Core.Modules
                     sb.Append("  ");
                     sb.Append(line);
 
-                    SendMessage(p, sb);
+                    ((IChat)this).SendMessage(p, sb);
                 }
             }
             finally
@@ -746,7 +717,7 @@ namespace SS.Core.Modules
                     tempBuilder.Append("  ");
                     tempBuilder.Append(line);
 
-                    SendMessage(p, tempBuilder);
+                    ((IChat)this).SendMessage(p, tempBuilder);
                 }
             }
             finally
@@ -1039,36 +1010,9 @@ namespace SS.Core.Modules
                     pd.Mask.SetRestricted(ChatMessageType.ModChat);
                     pd.Mask.SetRestricted(ChatMessageType.BillerCommand);
 
-                    SendMessage(p, $"You have been shut up for {_cfg.FloodShutup} seconds for flooding.");
+                    ((IChat)this).SendMessage(p, $"You have been shut up for {_cfg.FloodShutup} seconds for flooding.");
                     _logManager.LogP(LogLevel.Info, nameof(Chat), p, $"Flooded chat, shut up for {_cfg.FloodShutup} seconds.");
                 }
-            }
-        }
-
-        private void SendMessage(Player p, ReadOnlySpan<char> message)
-        {
-            SendMessage(p, ChatMessageType.Arena, ChatSound.None, null, message);
-        }
-
-        private void SendMessage(Player p, StringBuilder message)
-        {
-            Span<char> messageSpan = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, message.Length)];
-            message.CopyTo(0, messageSpan, messageSpan.Length);
-            SendMessage(p, ChatMessageType.Arena, ChatSound.None, null, messageSpan);
-        }
-
-        private void SendMessage(Player p, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
-        {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
-            {
-                set.Add(p);
-                SendMessage(set, type, sound, from, message);
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(set);
             }
         }
 
@@ -1240,9 +1184,9 @@ namespace SS.Core.Modules
         {
             // if we have an arena, then call the arena's callbacks, otherwise do the global ones
             if (arena != null)
-                ChatMessageCallback.Fire(arena, playerFrom, type, sound, playerTo, freq, message);
+                ChatMessageCallback.Fire(arena, arena, playerFrom, type, sound, playerTo, freq, message);
             else
-                ChatMessageCallback.Fire(_broker, playerFrom, type, sound, playerTo, freq, message);
+                ChatMessageCallback.Fire(_broker, arena, playerFrom, type, sound, playerTo, freq, message);
         }
 
         private void HandleFreq(Player p, short freq, Span<char> text, ChatSound sound)
@@ -1317,7 +1261,7 @@ namespace SS.Core.Modules
         {
             if (_capabilityManager == null)
             {
-                SendMessage(p, "Staff chat is currently disabled");
+                ((IChat)this).SendMessage(p, "Staff chat is currently disabled.");
                 return;
             }
 
@@ -1352,7 +1296,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                SendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
+                ((IChat)this).SendMessage(p, "You aren't allowed to use the staff chat. If you need to send a message to the zone staff, use ?cheater.");
 
                 _logManager.LogP(LogLevel.Drivel, nameof(Chat), p, $"Attempted mod chat (missing cap or shutup): {message}");
             }

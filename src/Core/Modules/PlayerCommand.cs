@@ -1140,21 +1140,24 @@ namespace SS.Core.Modules
             Description = "Displays the text as an arena (green) message to the targets.")]
         private void Command_a(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
+            if (target.TryGetArenaTarget(out Arena arena))
             {
-                _playerData.TargetToSet(target, set);
-                sb.Append(parameters);
-                sb.Append(" -");
-                sb.Append(p.Name);
-                _chat.SendSetMessage(set, sound, sb);
+                // For arena, using SendArenaMessage instead of SendSetMessage so that the ChatMessageCallback can be fired.
+                _chat.SendArenaMessage(arena, sound, $"{parameters} -{p.Name}");
             }
-            finally
+            else
             {
-                _objectPoolManager.PlayerSetPool.Return(set);
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+                try
+                {
+                    _playerData.TargetToSet(target, set);
+                    _chat.SendSetMessage(set, sound, $"{parameters} -{p.Name}");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(set);
+                }
             }
         }
 
@@ -1164,16 +1167,24 @@ namespace SS.Core.Modules
             Description = "Displays the text as an anonymous arena (green) message to the targets.")]
         private void Command_aa(string command, string parameters, Player p, ITarget target, ChatSound sound)
         {
-            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-
-            try
+            if (target.TryGetArenaTarget(out Arena arena))
             {
-                _playerData.TargetToSet(target, set);
-                _chat.SendSetMessage(set, sound, parameters);
+                // For arena, using SendArenaMessage instead of SendSetMessage so that the ChatMessageCallback can be fired.
+                _chat.SendArenaMessage(arena, sound, parameters);
             }
-            finally
+            else
             {
-                _objectPoolManager.PlayerSetPool.Return(set);
+                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+                try
+                {
+                    _playerData.TargetToSet(target, set);
+                    _chat.SendSetMessage(set, sound, parameters);
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(set);
+                }
             }
         }
 

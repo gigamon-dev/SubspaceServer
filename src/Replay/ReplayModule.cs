@@ -248,11 +248,10 @@ namespace SS.Replay
             ad.RecorderQueue.Add(new RecordBuffer(buffer, Kill.Length));
         }
 
-        private void Callback_ChatMessage(Player playerFrom, ChatMessageType type, ChatSound sound, Player playerTo, short freq, ReadOnlySpan<char> message)
+        private void Callback_ChatMessage(Arena arena, Player player, ChatMessageType type, ChatSound sound, Player toPlayer, short freq, ReadOnlySpan<char> message)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
-            Arena arena = playerFrom.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
@@ -264,7 +263,8 @@ namespace SS.Replay
                 int messageByteCount = StringUtils.DefaultEncoding.GetByteCount(message) + 1;
                 byte[] buffer = _recordBufferPool.Rent(Chat.Length + messageByteCount);
                 ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
-                chat = new(ServerTick.Now, (short)playerFrom.Id, type, sound, (ushort)messageByteCount);
+                short fromPlayerId = (short)(player != null ? player.Id : -1);
+                chat = new(ServerTick.Now, fromPlayerId, type, sound, (ushort)messageByteCount);
                 Span<byte> messageBytes = buffer.AsSpan(Chat.Length, messageByteCount);
                 messageBytes.WriteNullTerminatedString(message);
 

@@ -573,12 +573,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_ChatMessage(Player p, ChatMessageType type, ChatSound sound, Player playerTo, short freq, ReadOnlySpan<char> message)
+        private void Callback_ChatMessage(Arena arena, Player player, ChatMessageType type, ChatSound sound, Player toPlayer, short freq, ReadOnlySpan<char> message)
         {
             if (message.Length < 1)
                 return;
 
-            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -586,7 +586,7 @@ namespace SS.Core.Modules
 
             if (type == ChatMessageType.Chat)
             {
-                S2B_UserChannelChat packet = new(p.Id);
+                S2B_UserChannelChat packet = new(player.Id);
                 ReadOnlySpan<char> text = message;
                 ReadOnlySpan<char> channel = text.GetToken(';', out ReadOnlySpan<char> remaining);
 
@@ -615,7 +615,7 @@ namespace SS.Core.Modules
                         NetSendFlags.Reliable);
                 }
             }
-            else if (type == ChatMessageType.RemotePrivate && playerTo == null) // remote private message to a player not on the server
+            else if (type == ChatMessageType.RemotePrivate && toPlayer == null) // remote private message to a player not on the server
             {
                 S2B_UserPrivateChat packet = new(
                     -1, // for some odd reason ConnectionID >= 0 indicates global broadcast message
@@ -627,7 +627,7 @@ namespace SS.Core.Modules
                 ReadOnlySpan<char> toName = text.GetToken(':', out ReadOnlySpan<char> remaining);
                 if (toName.IsEmpty || remaining.Length < 1)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), p, "Malformed remote private message");
+                    _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), player, "Malformed remote private message");
                 }
                 else
                 {
@@ -636,7 +636,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        sb.Append($":{toName}:({p.Name})>{remaining[1..]}");
+                        sb.Append($":{toName}:({player.Name})>{remaining[1..]}");
 
                         Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserPrivateChat.MaxTextChars, sb.Length)];
                         sb.CopyTo(0, textBuffer, textBuffer.Length);
