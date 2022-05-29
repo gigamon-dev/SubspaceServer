@@ -53,6 +53,7 @@ namespace SS.Replay
         private IClientSettings _clientSettings;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
+        private ICrowns _crowns;
         private IFake _fake;
         private IGame _game;
         private ILogManager _logManager;
@@ -77,6 +78,7 @@ namespace SS.Replay
             IClientSettings clientSettings,
             ICommandManager commandManager,
             IConfigManager configManager,
+            ICrowns crowns,
             IFake fake,
             IGame game,
             ILogManager logManager,
@@ -93,6 +95,7 @@ namespace SS.Replay
             _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _crowns = crowns ?? throw new ArgumentNullException(nameof(crowns));
             _fake = fake ?? throw new ArgumentNullException(nameof(fake));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -306,6 +309,21 @@ namespace SS.Replay
             ad.RecorderQueue.Add(new(buffer, BallPacketWrapper.Length));
         }
 
+        private void Callback_CrownToggled(Player player, bool on)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Arena arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(CrownToggle.Length);
+            ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer);
+            crownToggle = new(ServerTick.Now, on, (short)player.Id);
+
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, CrownToggle.Length));
+        }
+
         #endregion
 
         private void Packet_Position(Player player, byte[] data, int length)
@@ -511,6 +529,7 @@ namespace SS.Replay
                 ChatMessageCallback.Register(arena, Callback_ChatMessage);
                 BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
                 BallPacketSentCallback.Register(arena, Callback_BallPacketSent);
+                CrownToggledCallback.Register(arena, Callback_CrownToggled);
 
                 ad.RecorderTask = Task.Factory.StartNew(() =>
                 {
@@ -581,6 +600,7 @@ namespace SS.Replay
                 ChatMessageCallback.Unregister(arena, Callback_ChatMessage);
                 BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
                 BallPacketSentCallback.Unregister(arena, Callback_BallPacketSent);
+                CrownToggledCallback.Unregister(arena, Callback_CrownToggled);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -1205,6 +1225,15 @@ namespace SS.Replay
                                     case EventType.ArenaMessage: // investigate why this was created? instead of using the chat event?
                                         break; // TODO:
 
+                                    case EventType.CrownToggleOn:
+                                    case EventType.CrownToggleOff:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..CrownToggle.Length])) != CrownToggle.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
                                     default:
                                         _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
                                         return;
@@ -1475,6 +1504,26 @@ namespace SS.Replay
                             break;
 
                         case EventType.ArenaMessage:
+                            break;
+
+                        case EventType.CrownToggleOn:
+                        case EventType.CrownToggleOff:
+                            {
+                                bool on = head.Type == EventType.CrownToggleOn;
+                                ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer);
+
+                                if (ad.PlayerIdMap.TryGetValue(crownToggle.PlayerId, out player))
+                                {
+                                    if (head.Type == EventType.CrownToggleOn)
+                                        _crowns.ToggleOn(player, TimeSpan.Zero);
+                                    else
+                                        _crowns.ToggleOff(player);
+                                }
+                                else
+                                {
+                                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {crownToggle.PlayerId}.");
+                                }
+                            }
                             break;
 
                         default:
