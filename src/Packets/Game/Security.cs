@@ -130,6 +130,8 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_Security
     {
+        #region Static Members
+
         /// <summary>
         /// Number of bytes in a packet.
         /// </summary>
@@ -140,14 +142,30 @@ namespace SS.Packets.Game
             Length = Marshal.SizeOf<S2C_Security>();
         }
 
+        #endregion
+
         /// <summary>
         /// 0x18
         /// </summary>
-        public byte Type;
+        public byte Type = (byte)S2CPacketType.Security;
         private uint greenSeed;
         private uint doorSeed;
         private uint timestamp;
         private uint key;
+
+        public S2C_Security() : this(0, 0, 0, 0)
+        {
+        }
+
+        public S2C_Security(uint greenSeed, uint doorSeed, uint timestamp, uint key)
+        {
+            this.greenSeed = LittleEndianConverter.Convert(greenSeed);
+            this.doorSeed = LittleEndianConverter.Convert(doorSeed);
+            this.timestamp = LittleEndianConverter.Convert(timestamp);
+            this.key = LittleEndianConverter.Convert(key);
+        }
+
+        #region Helper Properties
 
         /// <summary>
         /// Seed for greens.
@@ -190,5 +208,7 @@ namespace SS.Packets.Game
             get { return LittleEndianConverter.Convert(key); }
             set { key = LittleEndianConverter.Convert(value); }
         }
+
+        #endregion
     }
 }

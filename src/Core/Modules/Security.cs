@@ -34,8 +34,9 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Security : IModule
+    public class Security : IModule, ISecuritySeedSync
     {
+        private ComponentBroker broker;
         private IArenaManager arenaManager;
         private ICapabilityManager capabilityManager;
         private IClientSettings clientSettings;
@@ -47,6 +48,8 @@ namespace SS.Core.Modules
         private INetwork network;
         private IPlayerData playerData;
         private IPrng prng;
+
+        private InterfaceRegistrationToken<ISecuritySeedSync> iSecuritySeedSyncRegisrationToken;
 
         /// <summary>
         /// Arena data key for accessing <see cref="ArenaData"/>.
@@ -81,7 +84,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// The packet to send to players.
         /// </summary>
-        private S2C_Security packet;
+        private S2C_Security packet = new();
 
         /// <summary>
         /// The continuum exe checksum from <see cref="scrty"/>.
@@ -102,11 +105,6 @@ namespace SS.Core.Modules
             Description = "Whether to kick players off of the server for violating security checks.")]
         private bool cfg_SecurityKickoff;
 
-        public Security()
-        {
-            packet.Type = (byte)S2CPacketType.Security;
-        }
-
         public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
@@ -121,6 +119,7 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             IPrng prng)
         {
+            this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
             this.arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             this.capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             this.clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
@@ -148,11 +147,16 @@ namespace SS.Core.Modules
 
             network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
 
+            iSecuritySeedSyncRegisrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
+
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
+            if (broker.UnregisterInterface(ref iSecuritySeedSyncRegisrationToken) != 0)
+                return false;
+
             network.RemovePacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
             mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
             mainloopTimer.ClearTimer(MainloopTimer_Check, null);
@@ -162,6 +166,53 @@ namespace SS.Core.Modules
 
             return true;
         }
+
+        #region ISecuritySeedSync
+
+        void ISecuritySeedSync.GetCurrentSeedInfo(out uint greenSeed, out uint doorSeed, out uint timestamp)
+        {
+            greenSeed = packet.GreenSeed;
+            doorSeed = packet.DoorSeed;
+            timestamp = packet.Timestamp;
+        }
+
+        void ISecuritySeedSync.OverrideArenaSeedInfo(Arena arena, uint greenSeed, uint doorSeed, uint timestamp)
+        {
+            if (arena == null || !arena.TryGetExtraData(adKey, out ArenaData ad))
+                return;
+
+            S2C_Security overridePacket = new(greenSeed, doorSeed, timestamp, 0);
+            ad.OverridePacket = overridePacket;
+
+            // Send the packet without a key (just syncing the client, not requesting the client to respond).
+            network.SendToArena(arena, null, ref overridePacket, NetSendFlags.Reliable);
+
+            logManager.LogA(LogLevel.Drivel, nameof(Security), arena,
+                $"Sent seeds (override): green={overridePacket.GreenSeed:X}, door={overridePacket.DoorSeed:X}, timestamp={overridePacket.Timestamp:X}.");
+        }
+
+        bool ISecuritySeedSync.RemoveArenaOverride(Arena arena)
+        {
+            if (arena == null || !arena.TryGetExtraData(adKey, out ArenaData ad))
+                return false;
+
+            if (ad.OverridePacket == null)
+                return false;
+
+            ad.OverridePacket = null;
+
+            // Send the packet without a key (just syncing the client, not requesting the client to respond).
+            S2C_Security securityPacket = packet;
+            securityPacket.Key = 0;
+            network.SendToArena(arena, null, ref securityPacket, NetSendFlags.Reliable);
+
+            logManager.LogA(LogLevel.Drivel, nameof(Security), arena,
+                $"Sent seeds (de-override): green={securityPacket.GreenSeed:X}, door={securityPacket.DoorSeed:X}, timestamp={securityPacket.Timestamp:X}.");
+
+            return true;
+        }
+
+        #endregion
 
         private void LoadScrty()
         {
@@ -228,6 +279,8 @@ namespace SS.Core.Modules
             }
 
             vieExeChecksum = GetVieExeChecksum(packet.Key);
+
+            SecuritySeedChangedCallback.Fire(broker, packet.GreenSeed, packet.DoorSeed, packet.Timestamp);
         }
 
         // straight from ASSS, dont know what's going on with all the magic numbers
@@ -342,16 +395,18 @@ namespace SS.Core.Modules
             {
                 if (action == PlayerAction.EnterArena)
                 {
+                    if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+                        return;
+
+                    bool isOverride = ad.OverridePacket != null;
+                    S2C_Security toSend = isOverride ? ad.OverridePacket.Value : packet;
+                    toSend.Key = 0; // no key
+
                     logManager.LogP(LogLevel.Drivel, nameof(Security), p,
-                        $"Send seeds: green={packet.GreenSeed:X}, door={packet.DoorSeed:X}, timestamp={packet.Timestamp:X}.");
-                    
-                    uint key = packet.Key;
-                    packet.Key = 0;
+                        $"Sent seeds{(isOverride ? " (override)" : "")}: green={toSend.GreenSeed:X}, door={toSend.DoorSeed:X}, timestamp={toSend.Timestamp:X}.");
 
                     // Send the packet without a key (just syncing the client, not requesting the client to respond).
-                    network.SendToOne(p, ref packet, NetSendFlags.Reliable);
-
-                    packet.Key = key;
+                    network.SendToOne(p, ref toSend, NetSendFlags.Reliable);
                 }
                 else if (action == PlayerAction.LeaveArena)
                 {
@@ -387,6 +442,10 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in playerData.Players)
                     {
+                        // TODO: could check, but would need to send the overriden seeds along with the key
+                        if (p.Arena == null || !p.Arena.TryGetExtraData(adKey, out ArenaData ad) || ad.OverridePacket != null) // don't do a check for arenas that have an override
+                            continue;
+
                         if (!p.TryGetExtraData(pdKey, out PlayerData pd))
                             continue;
 
@@ -631,6 +690,8 @@ namespace SS.Core.Modules
             /// Shared checksums
             /// </summary>
             public uint MapChecksum;
+
+            public S2C_Security? OverridePacket;
         }
 
         /// <summary>

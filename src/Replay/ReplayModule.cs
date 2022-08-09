@@ -73,6 +73,7 @@ namespace SS.Replay
         private INetwork _network;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
+        private ISecuritySeedSync _securitySeedSync;
 
         private ArenaDataKey<ArenaData> _adKey;
 
@@ -97,7 +98,8 @@ namespace SS.Replay
             IMapData mapData,
             INetwork network,
             IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
+            IPlayerData playerData,
+            ISecuritySeedSync securitySeedSync)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _balls = balls ?? throw new ArgumentNullException(nameof(balls));
@@ -115,6 +117,7 @@ namespace SS.Replay
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _securitySeedSync = securitySeedSync ?? throw new ArgumentNullException(nameof(securitySeedSync));
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
@@ -123,7 +126,9 @@ namespace SS.Replay
             _commandManager.AddCommand("rec", Command_replay);
 
             _network.AddPacket(C2SPacketType.Position, Packet_Position);
+
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
+            SecuritySeedChangedCallback.Register(broker, Callback_SecuritySeedChanged);
 
             return true;
         }
@@ -131,6 +136,8 @@ namespace SS.Replay
         public bool Unload(ComponentBroker broker)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
+            SecuritySeedChangedCallback.Unregister(broker, Callback_SecuritySeedChanged);
+
             _network.RemovePacket(C2SPacketType.Position, Packet_Position);
 
             _commandManager.RemoveCommand("replay", Command_replay);
@@ -333,6 +340,35 @@ namespace SS.Replay
             crownToggle = new(ServerTick.Now, on, (short)player.Id);
 
             ad.RecorderQueue.Add(new RecordBuffer(buffer, CrownToggle.Length));
+        }
+
+        private void Callback_SecuritySeedChanged(uint greenSeed, uint doorSeed, uint timestamp)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            _arenaManager.Lock();
+
+            try
+            {
+                foreach (Arena arena in _arenaManager.Arenas)
+                {
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                        return;
+
+                    if (ad.State == ReplayState.Recording && ad.RecorderQueue != null && !ad.RecorderQueue.IsAddingCompleted)
+                    {
+                        byte[] buffer = _recordBufferPool.Rent(SecuritySeedChange.Length);
+                        ref SecuritySeedChange seedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
+                        seedChange = new(ServerTick.Now, greenSeed, doorSeed, timestamp);
+
+                        ad.RecorderQueue.Add(new RecordBuffer(buffer, SecuritySeedChange.Length));
+                    }
+                }
+            }
+            finally
+            {
+                _arenaManager.Unlock();
+            }
         }
 
         private void Callback_FlagGameReset(Arena arena, short winnerFreq, int points)
@@ -601,7 +637,7 @@ namespace SS.Replay
                 //
 
                 // - security info (door/green seeds, and timestamp)
-                //QueueSecurityInfo(arena, ad);
+                QueueSecurityInfo(ad);
 
                 // - players in the arena (enter events)
                 QueuePlayers(arena, ad);
@@ -642,12 +678,15 @@ namespace SS.Replay
                 return true;
             }
 
-            void QueueSecurityInfo(Arena arena, ArenaData ad)
+            void QueueSecurityInfo(ArenaData ad)
             {
-                // TODO: this will require changes to the Security module
-                // - to get the current seeds & timestamp
-                // - a callback to record when it changes
-                // - and a way to override it for an arena --> for playback
+                _securitySeedSync.GetCurrentSeedInfo(out uint greenSeed, out uint doorSeed, out uint timestamp);
+
+                byte[] buffer = _recordBufferPool.Rent(SecuritySeedChange.Length);
+                ref SecuritySeedChange change = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
+                change = new(ServerTick.Now, greenSeed, doorSeed, timestamp);
+
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, SecuritySeedChange.Length));
             }
 
             void QueuePlayers(Arena arena, ArenaData ad)
@@ -1541,6 +1580,14 @@ namespace SS.Replay
                                         }
                                         break;
 
+                                    case EventType.SecuritySeedChange:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..SecuritySeedChange.Length])) != SecuritySeedChange.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
                                     default:
                                         _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
                                         return;
@@ -1600,6 +1647,8 @@ namespace SS.Replay
                     }
 
                     ad.PlayerIdMap.Clear();
+
+                    _securitySeedSync.RemoveArenaOverride(arena);
 
                     // TODO: remove balls
 
@@ -1939,6 +1988,13 @@ namespace SS.Replay
                             {
                                 _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {carryFlagDrop.PlayerId}.");
                             }
+                            break;
+
+                        case EventType.SecuritySeedChange:
+                            ref SecuritySeedChange securitySeedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
+                            //securitySeedChange.Header.Ticks
+                            //_securitySeedSync.OverrideArenaSeedInfo(arena, securitySeedChange.GreenSeed, securitySeedChange.DoorSeed, securitySeedChange.Timestamp);
+                            _securitySeedSync.OverrideArenaSeedInfo(arena, securitySeedChange.GreenSeed, securitySeedChange.DoorSeed, ServerTick.Now);
                             break;
 
                         default:

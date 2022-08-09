@@ -47,6 +47,8 @@
         CarryFlagPickup = 122,
         CarryFlagDrop = 123,
 
+        SecuritySeedChange = 130,
+
         // TODO: bricks (allow multiple, allow specifying a time to allow for placing initial bricks)
     }
 }
