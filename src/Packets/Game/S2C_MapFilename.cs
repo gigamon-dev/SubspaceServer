@@ -18,7 +18,7 @@ namespace SS.Packets.Game
         private fixed byte filesBytes[FileBytesLength];
         private Span<File> Files => MemoryMarshal.Cast<byte, File>(MemoryMarshal.CreateSpan(ref filesBytes[0], FileBytesLength));
 
-        public void Initialize()
+        public S2C_MapFilename()
         {
             Type = (byte)S2CPacketType.MapFilename;
         }

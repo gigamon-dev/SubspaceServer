@@ -17,7 +17,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
     /// </summary>
     [CoreModuleInfo]
-    public class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
+    public sealed class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
     {
         private ComponentBroker _broker;
         private IPlayerData _playerData;
@@ -50,7 +50,7 @@ namespace SS.Core.Modules
         /// </summary>
         private NewsManager _newsManager;
 
-        #region IModule Members
+        #region Module Members
 
         [ConfigHelp("General", "NewsFile", ConfigScope.Global, typeof(string), DefaultValue = "news.txt",
             Description = "The filename of the news file.")]
@@ -85,7 +85,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(newsFilename))
                 newsFilename = "news.txt";
 
-            _newsManager = new NewsManager(newsFilename);
+            _newsManager = new NewsManager(this, newsFilename);
 
             _iMapNewsDownloadToken = broker.RegisterInterface<IMapNewsDownload>(this);
             return true;
@@ -113,7 +113,7 @@ namespace SS.Core.Modules
 
         #region IMapNewsDownload Members
 
-        public void SendMapFilename(Player p)
+        void IMapNewsDownload.SendMapFilename(Player p)
         {
             if (p == null)
                 return;
@@ -131,8 +131,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            S2C_MapFilename mf = new S2C_MapFilename();
-            mf.Initialize();
+            S2C_MapFilename mf = new();
 
             int len = 0;
 
@@ -161,11 +160,11 @@ namespace SS.Core.Modules
 
             _net.SendToOne(
                 p, 
-                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref mf, 1)).Slice(0, len), 
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref mf, 1))[..len], 
                 NetSendFlags.Reliable);
         }
 
-        public uint GetNewsChecksum() => _newsManager.TryGetNews(out _, out uint checksum) ? checksum : 0;
+        uint IMapNewsDownload.GetNewsChecksum() => _newsManager.TryGetNews(out _, out uint checksum) ? checksum : 0;
 
         #endregion
 
@@ -221,7 +220,7 @@ namespace SS.Core.Modules
                 dls.AddLast(data);
 
                 // now look for lvzs
-                foreach(LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
+                foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
                 {
                     data = CompressMap(lvzInfo.Filename, false);
 
@@ -245,11 +244,11 @@ namespace SS.Core.Modules
 
             try
             {
-                MapDownloadData mdd = new MapDownloadData();
+                MapDownloadData mdd = new();
 
                 string mapname = Path.GetFileName(filename);
                 if (mapname.Length > 20)
-                    mapname = mapname.Substring(0, 20); // TODO: ASSS uses 20 as the max in MapDownloadData, but MapFilenamePacket has a limit of 16? Perhaps ".lvl" does not need to be included in the packet?
+                    mapname = mapname[..20]; // TODO: ASSS uses 20 as the max in MapDownloadData, but MapFilenamePacket has a limit of 16? Perhaps ".lvl" does not need to be included in the packet?
 
                 mdd.filename = mapname;
 
@@ -260,7 +259,7 @@ namespace SS.Core.Modules
                     mdd.uncmplen = (uint)inputStream.Length;
 
                     // calculate CRC
-                    Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
+                    Ionic.Crc.CRC32 crc32 = new();
                     mdd.checksum = (uint)crc32.GetCrc32(inputStream);
 
                     inputStream.Position = 0;
@@ -268,8 +267,8 @@ namespace SS.Core.Modules
                     if (docomp)
                     {
                         // compress using zlib
-                        using MemoryStream compressedStream = new MemoryStream();
-                        using (ZlibStream zlibStream = new ZlibStream(
+                        using MemoryStream compressedStream = new();
+                        using (ZlibStream zlibStream = new(
                             compressedStream,
                             CompressionMode.Compress,
                             CompressionLevel.Default))
@@ -282,7 +281,7 @@ namespace SS.Core.Modules
                     else
                     {
                         // read data into a byte array
-                        using MemoryStream ms = new MemoryStream((int)inputStream.Length);
+                        using MemoryStream ms = new((int)inputStream.Length);
                         inputStream.CopyTo(ms);
                         mapData = ms.ToArray();
                     }
@@ -533,14 +532,17 @@ namespace SS.Core.Modules
 
         private sealed class NewsManager : IDisposable
         {
+            private readonly MapNewsDownload _parent;
             private readonly string _newsFilename;
             private byte[] _compressedNewsData; // includes packet header
-            private uint _newsChecksum;
+            private uint? _newsChecksum;
             private FileSystemWatcher _fileWatcher;
-            private readonly ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim();
+            private readonly ReaderWriterLockSlim _rwLock = new();
 
-            public NewsManager(string filename)
+            public NewsManager(MapNewsDownload parent, string filename)
             {
+                _parent = parent ?? throw new ArgumentNullException(nameof(parent));
+
                 if (string.IsNullOrWhiteSpace(filename))
                     throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
 
@@ -561,54 +563,106 @@ namespace SS.Core.Modules
 
             private void ProcessNewsFile()
             {
-                uint checksum;
-                byte[] compressedData;
+                _rwLock.EnterUpgradeableReadLock();
 
                 try
                 {
-                    using (FileStream newsStream = File.OpenRead(_newsFilename))
+                    uint checksum;
+                    byte[] compressedData;
+
+                    try
                     {
-                        // calculate the checksum
-                        Ionic.Crc.CRC32 crc32 = new Ionic.Crc.CRC32();
-                        checksum = (uint)crc32.GetCrc32(newsStream);
+                        FileStream newsStream = null;
+                        int tries = 0;
 
-                        newsStream.Position = 0;
-
-                        // compress using zlib
-                        using MemoryStream compressedStream = new MemoryStream();
-                        using (ZlibStream zlibStream = new ZlibStream(
-                            compressedStream,
-                            CompressionMode.Compress,
-                            CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                        do
                         {
-                            newsStream.CopyTo(zlibStream);
+                            try
+                            {
+                                newsStream = File.OpenRead(_newsFilename);
+                            }
+                            catch (IOException ex)
+                            {
+                                // Note: This retry logic is to workaround the "The process cannot access the file because it is being used by another process." race condition.
+                                if (++tries >= 30)
+                                {
+                                    _parent._logManager.LogM(LogLevel.Error, nameof(MapNewsDownload), $"Error opening '{_newsFilename}' ({tries} tries). {ex.Message}");
+                                    return;
+                                }
+
+                                _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error opening '{_newsFilename}' ({tries} tries). {ex.Message}");
+
+                                Thread.Sleep(100);
+                            }
+                            catch (Exception ex)
+                            {
+                                _parent._logManager.LogM(LogLevel.Error, nameof(MapNewsDownload), $"Error opening '{_newsFilename}'. {ex.Message}");
+                                return;
+                            }
                         }
+                        while (newsStream == null);
 
-                        compressedData = compressedStream.ToArray();
+                        try
+                        {
+                            // calculate the checksum
+                            Ionic.Crc.CRC32 crc32 = new();
+                            checksum = (uint)crc32.GetCrc32(newsStream);
+
+                            if (_newsChecksum != null && _newsChecksum.Value == checksum)
+                            {
+                                _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Checked '{_newsFilename}', but there was no change (checksum {checksum:X}).");
+                                return; // same checksum, no change
+                            }
+
+                            newsStream.Position = 0;
+
+                            // compress using zlib
+                            using MemoryStream compressedStream = new();
+                            using (ZlibStream zlibStream = new(
+                                compressedStream,
+                                CompressionMode.Compress,
+                                CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                            {
+                                newsStream.CopyTo(zlibStream);
+                            }
+
+                            compressedData = compressedStream.ToArray();
+                        }
+                        finally
+                        {
+                            newsStream.Dispose();
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    return;
-                }
+                    catch (Exception ex)
+                    {
+                        _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error loading '{_newsFilename}'. {ex.Message}");
+                        return;
+                    }
 
-                // prepare the file packet
-                byte[] fileData = new byte[17 + compressedData.Length]; // 17 is the size of the header
-                fileData[0] = (byte)S2CPacketType.IncomingFile;
-                // intentionally leaving 16 bytes of 0 for the name
-                Array.Copy(compressedData, 0, fileData, 17, compressedData.Length);
+                    // prepare the file packet
+                    byte[] fileData = new byte[17 + compressedData.Length]; // 17 is the size of the header
+                    fileData[0] = (byte)S2CPacketType.IncomingFile;
+                    // intentionally leaving 16 bytes of 0 for the name
+                    Array.Copy(compressedData, 0, fileData, 17, compressedData.Length);
 
-                // update the data members
-                _rwLock.EnterWriteLock();
+                    // update the data members
+                    _rwLock.EnterWriteLock();
 
-                try
-                {
-                    _compressedNewsData = fileData;
-                    _newsChecksum = checksum;
+                    try
+                    {
+                        _compressedNewsData = fileData;
+                        _newsChecksum = checksum;
+                    }
+                    finally
+                    {
+                        _rwLock.ExitWriteLock();
+                    }
+
+                    _parent._logManager.LogM(LogLevel.Info, nameof(MapNewsDownload), $"Loaded news.txt (checksum {checksum:X}), compressed as {compressedData.Length} bytes.");
                 }
                 finally
                 {
-                    _rwLock.ExitWriteLock();
+                    _rwLock.ExitUpgradeableReadLock();
                 }
             }
 
@@ -618,10 +672,10 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_compressedNewsData != null)
+                    if (_compressedNewsData != null && _newsChecksum != null)
                     {
                         data = _compressedNewsData;
-                        checksum = _newsChecksum;
+                        checksum = _newsChecksum.Value;
                         return true;
                     }
                 }
@@ -646,6 +700,8 @@ namespace SS.Core.Modules
                     _fileWatcher.Dispose();
                     _fileWatcher = null;
                 }
+
+                _rwLock.Dispose();
             }
 
             #endregion
