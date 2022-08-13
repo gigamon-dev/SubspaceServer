@@ -118,8 +118,8 @@ namespace SS.Core.Modules
                     },
                     Commands = new[]
                     {
-                        //new CommandInfo("setfreq", Command_setfreq),
-                        //new CommandInfo("setship", Command_setship),
+                        new CommandInfo("setfreq", Command_setfreq),
+                        new CommandInfo("setship", Command_setship),
                         new CommandInfo("specall", Command_specall),
                         new CommandInfo("warpto", Command_warpto),
                         new CommandInfo("shipreset", Command_shipreset),
@@ -1561,6 +1561,181 @@ namespace SS.Core.Modules
                 arena,
                 parameters.Contains("-n"),
                 parameters.Contains("-a"));
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "[{-f}] <freq number>",
+            Description = "Moves the targets to the specified freq.\n" +
+            "If -f is specified, this command ignores the arena freqman.")]
+        private void Command_setfreq(string command, string parameters, Player p, ITarget target)
+        {
+            bool useFreqManager = true;
+            short? freq = null;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
+            {
+                if (token.Equals("-f", StringComparison.Ordinal))
+                {
+                    useFreqManager = false;
+                }
+                else if (freq == null && short.TryParse(token, out short freqNumber))
+                {
+                    if (freqNumber < 0 || freqNumber > 9999)
+                    {
+                        _chat.SendMessage(p, $"Invalid freq number.");
+                        return;
+                    }
+
+                    freq = freqNumber;
+                }
+            }
+
+            if (freq == null)
+            {
+                _chat.SendMessage(p, $"You must specify a freq number.");
+                return;
+            }
+
+            if (useFreqManager && _capabilityManager.HasCapability(p, Constants.Capabilities.ForceShipFreqChange))
+            {
+                useFreqManager = false;
+            }
+
+            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.TargetToSet(target, players);
+
+                foreach (Player player in players)
+                {
+                    if (useFreqManager)
+                    {
+                        IFreqManager freqManager = p.Arena.GetInterface<IFreqManager>();
+                        if (freqManager != null)
+                        {
+                            try
+                            {
+                                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                                try
+                                {
+                                    freqManager.FreqChange(p, freq.Value, sb);
+
+                                    if (sb.Length > 0)
+                                    {
+                                        _chat.SendMessage(p, $"{p.Name}: {sb}");
+                                    }
+                                }
+                                finally
+                                {
+                                    _objectPoolManager.StringBuilderPool.Return(sb);
+                                }
+                            }
+                            finally
+                            {
+                                p.Arena.ReleaseInterface(ref freqManager);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _game.SetFreq(p, freq.Value);
+                    }
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(players);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "[{-f}] <ship number>",
+            Description = "Sets the targets to the specified ship. The argument must be a\n" +
+            "number from 1 (Warbird) to 8 (Shark), or 9 (Spec).\n" +
+            "If -f is specified, this command ignores the arena freqman.\n")]
+        private void Command_setship(string command, string parameters, Player p, ITarget target)
+        {
+            bool useFreqManager = true;
+            ShipType? ship = null;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
+            {
+                if (token.Equals("-f", StringComparison.Ordinal))
+                {
+                    useFreqManager = false;
+                }
+                else if (ship == null && int.TryParse(token, out int shipNumber))
+                {
+                    ship = (ShipType)((shipNumber - 1) % (((int)ShipType.Spec) + 1));
+                }
+            }
+
+            if (ship == null)
+            {
+                _chat.SendMessage(p, $"You must specify a ship number from 1 (Warbird) to 8 (Shark), or 9 (Spec).");
+                return;
+            }
+
+            if (useFreqManager && _capabilityManager.HasCapability(p, Constants.Capabilities.ForceShipFreqChange))
+            {
+                useFreqManager = false;
+            }
+
+            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.TargetToSet(target, players);
+
+                foreach (Player player in players)
+                {
+                    if (useFreqManager)
+                    {
+                        IFreqManager freqManager = p.Arena.GetInterface<IFreqManager>();
+                        if (freqManager != null)
+                        {
+                            try
+                            {
+                                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                                try
+                                {
+                                    freqManager.ShipChange(p, ship.Value, sb);
+
+                                    if (sb.Length > 0)
+                                    {
+                                        _chat.SendMessage(p, $"{p.Name}: {sb}");
+                                    }
+                                }
+                                finally
+                                {
+                                    _objectPoolManager.StringBuilderPool.Return(sb);
+                                }
+                            }
+                            finally
+                            {
+                                p.Arena.ReleaseInterface(ref freqManager);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _game.SetShip(p, ship.Value);
+                    }
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(players);
+            }
         }
 
         [CommandHelp(
