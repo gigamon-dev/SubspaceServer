@@ -58,6 +58,27 @@ namespace SS.Core.Modules
             Brick = 4, 
         }
 
+        [Flags]
+        private enum CheckFastBombing
+        {
+            None = 0,
+
+            /// <summary>
+            /// Send sysop alert when fastbombing is detected
+            /// </summary>
+            Alert = 1,
+
+            /// <summary>
+            /// Filter out fastbombs
+            /// </summary>
+            Filter = 2,
+
+            /// <summary>
+            /// Kick fastbombing player off
+            /// </summary>
+            Kick = 4,
+        }
+
         private class PlayerData
         {
             public C2S_PositionPacket pos = new();
@@ -134,6 +155,12 @@ namespace SS.Core.Modules
             public IImmutableSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
 
             public ShipType? PlayerPostitionPacket_LastShip;
+
+            /// <summary>
+            /// When the player last shot a bomb, mine, or thor.
+            /// Used to check for fast bombing.
+            /// </summary>
+            public ServerTick? LastBomb;
         }
 
         private class ArenaData
@@ -165,6 +192,11 @@ namespace SS.Core.Modules
             public TimeSpan RegionCheckTime;
             public bool NoSafeAntiwarp;
             public int WarpThresholdDelta;
+
+            public CheckFastBombing CheckFastBombing;
+            public short FastBombingThreshold;
+            public short[] ShipBombDelay = new short[8];
+
             public int cfg_pospix;
             public int cfg_sendanti;
             public int cfg_AntiwarpRange;
@@ -692,6 +724,10 @@ namespace SS.Core.Modules
             Description = "Disables antiwarp on players in safe zones.")]
         [ConfigHelp("Misc", "WarpTresholdDelta", ConfigScope.Arena, typeof(int), DefaultValue = "320", 
             Description = "The amount of change in a players position (in pixels) that is considered a warp (only while he is flashing).")]
+        [ConfigHelp("Misc", "CheckFastBombing", ConfigScope.Arena, typeof(CheckFastBombing), DefaultValue = "0",
+            Description = "Fast bombing detection, can be a combination (sum) of the following:  1 - Send sysop alert when fastbombing is detected, 2 - Filter out fastbombs, 4 - Kick fastbombing player off.")]
+        [ConfigHelp("Misc", "FastBombingThreshold", ConfigScope.Arena, typeof(int), DefaultValue = "30",
+            Description = "Tuning for fast bomb detection. A bomb/mine is considered to be fast bombing if delay between 2 bombs/mines is less than <ship>:BombFireDelay - Misc:FastBombingThreshold.")]
         [ConfigHelp("Prize", "DontShareThor", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
             Description = "Whether Thor greens don't go to the whole team.")]
         [ConfigHelp("Prize", "DontShareBurst", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
@@ -734,6 +770,15 @@ namespace SS.Core.Modules
 
                 ad.WarpThresholdDelta = _configManager.GetInt(arena.Cfg, "Misc", "WarpTresholdDelta", 320);
                 ad.WarpThresholdDelta *= ad.WarpThresholdDelta; // TODO: figure out why it's the value squared
+
+                ad.CheckFastBombing = _configManager.GetEnum(arena.Cfg, "Misc", "CheckFastBombing", CheckFastBombing.None);
+                ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(arena.Cfg, "Misc", "FastBombingThreshold", 30));
+
+                string[] shipNames = System.Enum.GetNames<ShipType>();
+                for (int i = 0; i < 8; i++)
+                {
+                    ad.ShipBombDelay[i] = (short)_configManager.GetInt(arena.Cfg, shipNames[i], "BombFireDelay", 0);
+                }
 
                 PersonalGreen pg = PersonalGreen.None;
 
@@ -1133,6 +1178,43 @@ namespace SS.Core.Modules
                 {
                     p.Flags.SentWeaponPacket = true;
                     pd.deathWithoutFiring = 0;
+                }
+
+                // Fast bombing check
+                if (pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb || pos.Weapon.Type == WeaponCodes.Thor) // fired a bomb, mine, or thor
+                {
+                    if (ad.CheckFastBombing != CheckFastBombing.None
+                        && pd.LastBomb != null)
+                    {
+                        int bombDiff = pos.Time - pd.LastBomb.Value;
+                        int minAllowedDiff = ad.ShipBombDelay[(int)p.Ship] - ad.FastBombingThreshold;
+
+                        if (bombDiff < minAllowedDiff)
+                        {
+                            // Detected a fast bomb
+                            bool filter = (ad.CheckFastBombing & CheckFastBombing.Filter) != 0;
+                            bool kick = (ad.CheckFastBombing & CheckFastBombing.Kick) != 0;
+
+                            _logManager.LogP(LogLevel.Info, nameof(Game), p, $"Detected fast bombing (diff:{bombDiff} minAllowedDiff:{minAllowedDiff} filter:{filter}, kick:{kick}).");
+
+                            if ((ad.CheckFastBombing & CheckFastBombing.Alert) != 0)
+                            {
+                                _chat.SendModMessage($"Detected fast bombing by {p.Name} (diff:{bombDiff} minAllowedDiff:{minAllowedDiff} filter:{filter}, kick:{kick}).");
+                            }
+
+                            if (filter)
+                            {
+                                pos.Weapon.Type = WeaponCodes.Null;
+                            }
+
+                            if (kick)
+                            {
+                                _playerData.KickPlayer(p);
+                            }
+                        }
+                    }
+
+                    pd.LastBomb = pos.Time;
                 }
 
                 // this is the weapons ignore hook.
