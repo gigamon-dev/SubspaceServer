@@ -94,7 +94,7 @@ namespace SS.Core.Modules
             /// </summary>
             [ConfigHelp("Chat", "FilterMode", ConfigScope.Global, typeof(bool), DefaultValue = "1",
                 Description = "If true, replace obscene words with garbage characters, otherwise suppress whole line.")]
-            public readonly bool FilterSendGarbageText;
+            public readonly bool ObsceneFilterSendGarbageText;
 
             public Config(IConfigManager configManager)
             {
@@ -102,7 +102,7 @@ namespace SS.Core.Modules
                 FloodLimit = configManager.GetInt(configManager.Global, "Chat", "FloodLimit", 10);
                 FloodShutup = configManager.GetInt(configManager.Global, "Chat", "FloodShutup", 60);
                 CommandLimit = configManager.GetInt(configManager.Global, "Chat", "CommandLimit", 5);
-                FilterSendGarbageText = configManager.GetInt(configManager.Global, "Chat", "FilterMode", 1) != 0;
+                ObsceneFilterSendGarbageText = configManager.GetInt(configManager.Global, "Chat", "FilterMode", 1) != 0;
             }
         }
 
@@ -1125,7 +1125,7 @@ namespace SS.Core.Modules
                     try
                     {
                         set.Add(d);
-                        SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, messageToSend, p.Name.Length + 3);
+                        SendReply(set, ChatMessageType.RemotePrivate, sound, p, -1, messageToSend, p.Name.Length + 4);
                     }
                     finally
                     {
@@ -1417,54 +1417,47 @@ namespace SS.Core.Modules
             to.PlayerId = (short)fromPid;
             int length = ChatPacket.LengthWithoutMessage + to.SetMessage(msg); // This will truncate the msg if it's too long.
 
-            // TODO: add obscenity filtering
-            // Keep in mind using LINQ would incur allocations which need to be garbage collected.
-            // Maybe consider pooling of player collections?
+            HashSet<Player> filteredSet = _objectPoolManager.PlayerSetPool.Get();
 
-            //LinkedList<Player> filteredSet = null;
-            //if (_obscene != null)
-            //    filteredSet = ObsceneFilter(set);
+            try
+            {
+                if (_obscene != null)
+                {
+                    foreach (Player player in set)
+                    {
+                        if (player.Flags.ObscenityFilter)
+                            filteredSet.Add(player);
+                    }
+
+                    set.ExceptWith(filteredSet);
+                }
 
 
-            ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1)).Slice(0, length);
-            _network?.SendToSet(set, bytes, flags);
+                ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1))[..length];
+                _network?.SendToSet(set, bytes, flags);
+                //_chatNet?.SendToSet(set, $"MSG:{ctype}:{p.Name}:{msg[chatNetOffset..]}");
 
-            //if(_chatNet != null)
+                if (filteredSet.Count > 0)
+                {
+                    bool replaced = _obscene.Filter(msg);
+                    if (replaced && _cfg.ObsceneFilterSendGarbageText)
+                    {
+                        length = ChatPacket.LengthWithoutMessage + to.SetMessage(msg);
+                        bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1))[..length];
+                    }
 
-            //if (filteredSet != null &&
-            //    _obscene != null)//&&
-            //                     //!_obscene.Filter(msg) ||
-            //{
-            //    if (_net != null)
-            //        _net.SendToSet(filteredSet, bytes, flags);
-
-            //    //if(_chatNet != null)
-            //}
+                    if (!replaced || (replaced && _cfg.ObsceneFilterSendGarbageText))
+                    {
+                        _network?.SendToSet(filteredSet, bytes, flags);
+                        //_chatNet?.SendToSet(filteredSet, $"MSG:{ctype}:{p.Name}:{msg[chatNetOffset..]}");
+                    }
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(filteredSet);
+            }
         }
-
-        //private LinkedList<Player> ObsceneFilter(LinkedList<Player> set)
-        //{
-        //    LinkedList<Player> filteredSet = null;
-        //    LinkedListNode<Player> node;
-        //    LinkedListNode<Player> nextNode = set.First;
-
-        //    while ((node = nextNode) != null)
-        //    {
-        //        nextNode = node.Next;
-
-        //        if(node.Value.Flags.ObscenityFilter)
-        //        {
-        //            set.Remove(node);
-
-        //            if (filteredSet == null)
-        //                filteredSet = new LinkedList<Player>();
-
-        //            filteredSet.AddLast(node);
-        //        }
-        //    }
-
-        //    return filteredSet;
-        //}
 
         private static string GetChatType(ChatMessageType type) => type switch
         {

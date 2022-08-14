@@ -71,7 +71,7 @@ This document provides an overview of the various server parts and their relatio
 | net | SS.Core.Modules.Network | |
 | notify | | TODO |
 | objects | SS.Core.Modules.LvzObjects | TODO: currently toggle functionality only |
-| obscene | | TODO: low priority |
+| obscene | SS.Core.Modules.Obscene | |
 | peer | | TODO: very low priority |
 | scoring:periodic | SS.Core.Modules.Scoring.PeriodicReward | |
 | persist | SS.Core.Modules.Persist | |

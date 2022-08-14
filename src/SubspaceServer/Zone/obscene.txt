@@ -1,0 +1,1 @@
+# Place obscene words in this file. One per line. Lines starting with # are ignored.

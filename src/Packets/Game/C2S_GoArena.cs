@@ -18,8 +18,8 @@ namespace SS.Packets.Game
 
         public readonly byte Type;
         public readonly byte ShipType;
-        public readonly sbyte ObscenityFilter;
         public readonly sbyte WavMsg;
+        public readonly sbyte ObscenityFilter;
         private readonly short xRes;
         private readonly short yRes;
         private readonly short arenaType;
