@@ -69,7 +69,7 @@ This document provides an overview of the various server parts and their relatio
 | messages | | TODO |
 | mysql | - | No plans to add it. |
 | net | SS.Core.Modules.Network | |
-| notify | | TODO |
+| notify | SS.Core.Module.Notify | |
 | objects | SS.Core.Modules.LvzObjects | TODO: currently toggle functionality only |
 | obscene | SS.Core.Modules.Obscene | |
 | peer | | TODO: very low priority |
@@ -147,7 +147,7 @@ This document provides an overview of the various server parts and their relatio
 | Inet_client | SS.Core.ComponentInterfaces.INetworkClient | |
 | Inet | SS.Core.ComponentInterfaces.INetwork<br>SS.Core.ComponentInterfaces.INetworkEncryption | |
 | Iobjects | SS.Core.ComponentInterfaces.ILvzObjects | |
-| Iobscene | SS.Core.ComponentInterfaces.IObscene | TODO: Not implemented |
+| Iobscene | SS.Core.ComponentInterfaces.IObscene | |
 | Ioptparser | n/a | Python specific |
 | Ipeer | - | |
 | - | SS.Core.ComponentInterfaces.IPeriodicReward | |
