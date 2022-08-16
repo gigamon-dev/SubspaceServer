@@ -1517,8 +1517,22 @@ namespace SS.Core.Modules
 
             if (p.Type == ClientType.Continuum)
             {
-                // TODO: ability to redirect to another server/zone
-                //IRedirect
+                // TODO: peer redirects
+
+                // General redirects
+                IRedirect redirect = Broker.GetInterface<IRedirect>();
+                if (redirect != null)
+                {
+                    try
+                    {
+                        if (redirect.ArenaRequest(p, name))
+                            return;
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref redirect);
+                    }
+                }
             }
 
             CompleteGo(

@@ -85,7 +85,7 @@ This document provides an overview of the various server parts and their relatio
 | pymod | n/a | Use IronPython? |
 | quickfix | SS.Core.Modules.Quickfix | |
 | funky:record | SS.Replay.ReplayModule | TODO: Enhance beyond ASSS functionality. Add: bricks, balls, flags, crowns, green/door sync. |
-| redirect | | TODO: very low priority |
+| redirect | SS.Core.Modules.Redirect | |
 | security | SS.Core.Modules.Security | |
 | sendfile | - | No plans to add it. |
 | funky:sgcompat | - | No plans to add it. |
@@ -158,7 +158,7 @@ This document provides an overview of the various server parts and their relatio
 | Iplayerdata | SS.Core.ComponentInterfaces.IPlayerData | |
 | - | SS.Core.ComponentInterfaces.IObjectPoolManager | |
 | Iprng | SS.Core.ComponentInterfaces.IPrng | |
-| Iredirect | | |
+| Iredirect | SS.Core.ComponentInterfaces.IRedirect | |
 | Ireldb | - | No plans to convert it. |
 | Istats | SS.Core.ComponentInterfaces.IGlobalPlayerStats<br>SS.Core.ComponentInterfaces.IArenaPlayerStats<br>SS.Core.ComponentInterfaces.IAllPlayerStats<br>SS.Core.ComponentInterfaces.IScoreStats | ASSS only tracks per-arena stats. This server tracks both global (zone-wide) stats and per-arena stats. As such, there are separate interfaces for each and one to affect both simultaneously, IAllPlayerStats.  The IArenaPlayerStats interface is the closest match to Istats in ASSS since that affects per-arena stats. |
 | Iwatchdamage | SS.Core.ComponentInterfaces.IWatchDamage | |
