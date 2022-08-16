@@ -66,7 +66,7 @@ This document provides an overview of the various server parts and their relatio
 | mapdata | SS.Core.Modules.MapData | |
 | mapnewsdl | SS.Core.Modules.MapNewsDownload | |
 | contrib:mark | - | No plans to add it. |
-| messages | | TODO |
+| messages | SS.Core.Modules.Messages | |
 | mysql | - | No plans to add it. |
 | net | SS.Core.Modules.Network | |
 | notify | SS.Core.Module.Notify | |
