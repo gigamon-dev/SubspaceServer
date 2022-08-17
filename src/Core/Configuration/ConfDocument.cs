@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace SS.Core.Configuration
@@ -26,17 +27,17 @@ namespace SS.Core.Configuration
         /// <summary>
         /// All of the files that the document consists of.
         /// </summary>
-        private readonly HashSet<ConfFile> files = new HashSet<ConfFile>();
+        private readonly HashSet<ConfFile> files = new();
 
         /// <summary>
         /// Active lines
         /// </summary>
-        private readonly List<LineReference> lines = new List<LineReference>();
+        private readonly List<LineReference> lines = new();
 
         /// <summary>
         /// Active Properties
         /// </summary>
-        private readonly Dictionary<string, PropertyInfo> propertyDictionary = new Dictionary<string, PropertyInfo>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<PropertyKey, PropertyInfo> propertyDictionary = new();
 
         /// <summary>
         /// The file currently being updated.
@@ -112,7 +113,7 @@ namespace SS.Core.Configuration
 
             AddFile(baseFile);
 
-            using (PreprocessorReader reader = new PreprocessorReader(fileProvider, baseFile, logger))
+            using (PreprocessorReader reader = new(fileProvider, baseFile, logger))
             {
                 LineReference lineReference;
                 while ((lineReference = reader.ReadLine()) != null)
@@ -169,11 +170,9 @@ namespace SS.Core.Configuration
             file.Changed += File_Changed;
         }
 
-        private static string CreatePropertyDictionaryKey(string section, string key)
+        private static PropertyKey CreatePropertyDictionaryKey(string section, string key)
         {
-            return (section != null)
-                ? section + ':' + key
-                : key;
+            return new PropertyKey(section, key);
         }
 
         private void File_Changed(object sender, EventArgs e)
@@ -258,7 +257,7 @@ namespace SS.Core.Configuration
                         updatingFile = null;
 
                         // add it to the lines we consider active
-                        LineReference lineReference = new LineReference
+                        LineReference lineReference = new()
                         {
                             Line = propertyToInsert,
                             File = file,
@@ -298,7 +297,7 @@ namespace SS.Core.Configuration
                 
                 updatingFile = null;
 
-                LineReference lineRef = new LineReference
+                LineReference lineRef = new()
                 {
                     Line = propertyToAdd,
                     File = baseFile,
@@ -324,21 +323,7 @@ namespace SS.Core.Configuration
         /// <returns><see langword="true"/> if the property was found; otherwise, <see langword="false"/>.</returns>
         public bool TryGetValue(string section, string key, out string value)
         {
-            string keyString;
-
-            if (section != null && key != null)
-                keyString = section + ':' + key;
-            else if (section != null)
-                keyString = section;
-            else if (key != null)
-                keyString = key;
-            else
-            {
-                value = default;
-                return false;
-            }
-
-            if (!propertyDictionary.TryGetValue(keyString, out PropertyInfo propertyInfo))
+            if (!propertyDictionary.TryGetValue(CreatePropertyDictionaryKey(section, key), out PropertyInfo propertyInfo))
             {
                 value = default;
                 return false;
@@ -359,18 +344,7 @@ namespace SS.Core.Configuration
         /// <returns>True if the property was found and updated.  Otherwise, false.</returns>
         public bool TryUpdateProperty(string section, string key, string value, bool permanent, string comment = null)
         {
-            string keyString;
-
-            if (section != null && key != null)
-                keyString = section + ':' + key;
-            else if (section != null)
-                keyString = section;
-            else if (key != null)
-                keyString = key;
-            else
-                return false;
-
-            if (!propertyDictionary.TryGetValue(keyString, out PropertyInfo propertyInfo))
+            if (!propertyDictionary.TryGetValue(CreatePropertyDictionaryKey(section, key), out PropertyInfo propertyInfo))
             {
                 return false;
             }
@@ -387,7 +361,7 @@ namespace SS.Core.Configuration
                 if (fileIndex != -1 && docIndex != -1)
                 {
                     RawProperty old = (RawProperty)propertyInfo.PropertyReference.Line;
-                    RawProperty replacement = new RawProperty(
+                    RawProperty replacement = new(
                         sectionOverride: old.SectionOverride,
                         key: old.Key,
                         value: value,
@@ -395,7 +369,7 @@ namespace SS.Core.Configuration
 
                     updatingFile.Lines[fileIndex] = replacement;
 
-                    LineReference lineReference = new LineReference
+                    LineReference lineReference = new()
                     {
                         File = updatingFile,
                         Line = replacement,
@@ -441,6 +415,34 @@ namespace SS.Core.Configuration
             public string Value { get; set; }
 
             public LineReference PropertyReference { get; set; }
+        }
+
+        private struct PropertyKey : IEquatable<PropertyKey>
+        {
+            public readonly string Section;
+            public readonly string Key;
+
+            public PropertyKey(string section, string key)
+            {
+                Section = section ?? "";
+                Key = key ?? "";
+            }
+
+            public override int GetHashCode()
+            {
+                return Section.GetHashCode(StringComparison.OrdinalIgnoreCase) ^ Key.GetHashCode(StringComparison.OrdinalIgnoreCase);
+            }
+
+            public override bool Equals([NotNullWhen(true)] object obj)
+            {
+                return (obj is PropertyKey other) && Equals(other);
+            }
+
+            public bool Equals(PropertyKey other)
+            {
+                return string.Equals(Key, other.Key, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(Section, other.Section, StringComparison.OrdinalIgnoreCase);
+            }
         }
     }
 }

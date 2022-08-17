@@ -1010,18 +1010,26 @@ namespace SS.Core.Modules
             "spaces around the colon.")]
         private void Command_getX(string command, string parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token = remaining.GetToken(':', out remaining).Trim();
+            if (token.IsWhiteSpace() || (remaining = remaining.TrimStart(':').Trim()).IsWhiteSpace())
+            {
+                _chat.SendMessage(p, $"Usage: ?{command} <section>:<key>");
                 return;
+            }
+
+            string section = token.ToString();
+            string key = remaining.ToString();
 
             ConfigHandle ch = string.Equals(command, "geta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
-            string result = _configManager.GetStr(ch, parameters, null);
+            string result = _configManager.GetStr(ch, section, key);
             if (result != null)
             {
-                _chat.SendMessage(p, $"{parameters}={result}");
+                _chat.SendMessage(p, $"{section}:{key} = {result}");
             }
             else
             {
-                _chat.SendMessage(p, $"{parameters} not found.");
+                _chat.SendMessage(p, $"{section}:{key} not found.");
             }
         }
 
