@@ -1186,20 +1186,21 @@ namespace SS.Core.Modules
                     if (ad.CheckFastBombing != CheckFastBombing.None
                         && pd.LastBomb != null)
                     {
-                        int bombDiff = pos.Time - pd.LastBomb.Value;
-                        int minAllowedDiff = ad.ShipBombDelay[(int)p.Ship] - ad.FastBombingThreshold;
+                        int bombDiff = Math.Abs(pos.Time - pd.LastBomb.Value);
+                        int minDiff = ad.ShipBombDelay[(int)p.Ship] - ad.FastBombingThreshold;
 
-                        if (bombDiff < minAllowedDiff)
+                        if (bombDiff < minDiff)
                         {
                             // Detected a fast bomb
+                            bool alert = (ad.CheckFastBombing & CheckFastBombing.Alert) != 0;
                             bool filter = (ad.CheckFastBombing & CheckFastBombing.Filter) != 0;
                             bool kick = (ad.CheckFastBombing & CheckFastBombing.Kick) != 0;
 
-                            _logManager.LogP(LogLevel.Info, nameof(Game), p, $"Detected fast bombing (diff:{bombDiff} minAllowedDiff:{minAllowedDiff} filter:{filter}, kick:{kick}).");
+                            _logManager.LogP(LogLevel.Info, nameof(Game), p, $"Detected fast bombing (diff:{bombDiff}, min:{minDiff}, alert:{alert}, filter:{filter}, kick:{kick}).");
 
-                            if ((ad.CheckFastBombing & CheckFastBombing.Alert) != 0)
+                            if (alert)
                             {
-                                _chat.SendModMessage($"Detected fast bombing by {p.Name} (diff:{bombDiff} minAllowedDiff:{minAllowedDiff} filter:{filter}, kick:{kick}).");
+                                _chat.SendModMessage($"Detected fast bombing by {p.Name} (diff:{bombDiff}, min:{minDiff}, filter:{filter}, kick:{kick}).");
                             }
 
                             if (filter)
@@ -1214,7 +1215,10 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    pd.LastBomb = pos.Time;
+                    if (pd.LastBomb == null || pos.Time > pd.LastBomb)
+                    {
+                        pd.LastBomb = pos.Time;
+                    }
                 }
 
                 // this is the weapons ignore hook.
