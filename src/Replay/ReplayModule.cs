@@ -512,15 +512,25 @@ namespace SS.Replay
 
                 ServerTick started = ServerTick.Now;
 
-                // TODO: queue up starting info
-                // - players in the arena (enter events)
-                QueuePlayers(arena, ad);
+                //
+                // queue up starting info
+                //
+
                 // - security info (door/green seeds, and timestamp)
                 //QueueSecurityInfo(arena, ad);
+
+                // - players in the arena (enter events)
+                QueuePlayers(arena, ad);
+
+                // - crown state (which players have a crown)
+                QueueCrownInfo(arena, ad);
+
                 // - active bricks
                 //QueueBricks(arena, ad);
+
                 // - ball info, flag info, crown info
                 //QueueBallInfo(arena, ad);
+
                 //QueueFlagInfo(arena, ad);
 
                 PlayerActionCallback.Register(arena, Callback_PlayerAction);
@@ -540,6 +550,14 @@ namespace SS.Replay
                 });
 
                 return true;
+            }
+
+            void QueueSecurityInfo(Arena arena, ArenaData ad)
+            {
+                // TODO: this will require changes to the Security module
+                // - to get the current seeds & timestamp
+                // - a callback to record when it changes
+                // - and a way to override it for an arena --> for playback
             }
 
             void QueuePlayers(Arena arena, ArenaData ad)
@@ -567,12 +585,30 @@ namespace SS.Replay
                 }
             }
 
-            void QueueSecurityInfo(Arena arena, ArenaData ad)
+            void QueueCrownInfo(Arena arena, ArenaData ad)
             {
-                // TODO: this will require changes to the Security module
-                // - to get the current seeds & timestamp
-                // - a callback to record when it changes
-                // - and a way to override it for an arena --> for playback
+                _playerData.Lock();
+
+                try
+                {
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.Arena == arena
+                            && player.Status == PlayerState.Playing
+                            && player.Packet.HasCrown)
+                        {
+                            byte[] buffer = _recordBufferPool.Rent(CrownToggle.Length);
+                            ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer);
+                            crownToggle = new(ServerTick.Now, true, (short)player.Id);
+
+                            ad.RecorderQueue.Add(new RecordBuffer(buffer, CrownToggle.Length));
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
             }
 
             void QueueBricks(Arena arena, ArenaData ad)
