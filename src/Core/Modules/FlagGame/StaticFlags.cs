@@ -3,6 +3,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Persist.Protobuf;
 using SS.Packets.Game;
+using SS.Utilities;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -123,7 +124,7 @@ namespace SS.Core.Modules.FlagGame
             FlagGameResetCallback.Fire(arena, arena, -1, 0);
         }
 
-        int IFlagGame.GetFlagCount(Arena arena)
+        short IFlagGame.GetFlagCount(Arena arena)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
@@ -131,10 +132,10 @@ namespace SS.Core.Modules.FlagGame
             if (ad.Flags == null)
                 return 0;
 
-            return ad.Flags.Length;
+            return (short)ad.Flags.Length;
         }
 
-        int IFlagGame.GetFlagCount(Arena arena, int freq)
+        short IFlagGame.GetFlagCount(Arena arena, short freq)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return 0;
@@ -142,7 +143,7 @@ namespace SS.Core.Modules.FlagGame
             if (ad.Flags == null)
                 return 0;
 
-            int count = 0;
+            short count = 0;
             for (int i = 0; i < ad.Flags.Length; i++)
                 if (ad.Flags[i].OwnerFreq == freq)
                     count++;
@@ -191,7 +192,49 @@ namespace SS.Core.Modules.FlagGame
 
             return true;
         }
+        
+        bool IStaticFlagGame.TryGetFlagOwner(Arena arena, int flagId, out short owner)
+        {
+            if (arena == null 
+                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || ad.Flags == null
+                || flagId < 0 
+                || flagId >= ad.Flags.Length)
+            {
+                owner = default;
+                return false;
+            }
 
+            owner = ad.Flags[flagId].OwnerFreq;
+            return true;
+        }
+
+        bool IStaticFlagGame.FakeTouchFlag(Player player, short flagId)
+        {
+            if (player == null
+                || player.Status != PlayerState.Playing
+                || player.Ship == ShipType.Spec)
+            {
+                return false;
+            }
+
+            Arena arena = player.Arena;
+            if (arena == null
+                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || ad.Flags == null
+                || flagId < 0
+                || flagId >= ad.Flags.Length)
+            {
+                return false;
+            }
+
+            ref FlagData flagData = ref ad.Flags[flagId];
+            flagData.OwnerFreq = player.Freq;
+            flagData.DirtyPlayer = player;
+            TrySendSingleFlagUpdateToArena(arena, ad, flagId, ref flagData, DateTime.UtcNow);
+            return true;
+        }
+        
         #endregion
 
         #region Packet handlers
@@ -490,7 +533,7 @@ namespace SS.Core.Modules.FlagGame
 
             Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(packet[1..]);
             for (int i = 0; i < ad.Flags.Length; i++)
-                flagOwners[i] = ad.Flags[i].OwnerFreq;
+                flagOwners[i] = LittleEndianConverter.Convert(ad.Flags[i].OwnerFreq);
 
             _network.SendToOne(player, packet, NetSendFlags.Reliable);
         }
@@ -511,7 +554,7 @@ namespace SS.Core.Modules.FlagGame
 
             Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(packet[1..]);
             for (int i = 0; i < ad.Flags.Length; i++)
-                flagOwners[i] = ad.Flags[i].OwnerFreq;
+                flagOwners[i] = LittleEndianConverter.Convert(ad.Flags[i].OwnerFreq);
 
             _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
         }

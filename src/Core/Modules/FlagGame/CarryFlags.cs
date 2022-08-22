@@ -98,7 +98,7 @@ namespace SS.Core.Modules.FlagGame
             ((ICarryFlagGame)this).ResetGame(arena, -1, 0);
         }
 
-        int IFlagGame.GetFlagCount(Arena arena)
+        short IFlagGame.GetFlagCount(Arena arena)
         {
             if (arena == null)
                 return 0;
@@ -109,10 +109,10 @@ namespace SS.Core.Modules.FlagGame
             if (ad.GameState != GameState.Running)
                 return 0;
 
-            return ad.Flags.Count;
+            return (short)ad.Flags.Count;
         }
 
-        int IFlagGame.GetFlagCount(Arena arena, int freq)
+        short IFlagGame.GetFlagCount(Arena arena, short freq)
         {
             if (arena == null)
                 return 0;
@@ -123,7 +123,7 @@ namespace SS.Core.Modules.FlagGame
             if (ad.GameState != GameState.Running)
                 return 0;
 
-            int count = 0;
+            short count = 0;
             foreach (FlagInfo flagInfo in ad.Flags)
             {
                 if (flagInfo.Freq == freq)

@@ -31,9 +31,22 @@
         // The following are specific to this server.
         //
 
+        // Crown
         CrownToggleOn = 100,
         CrownToggleOff = 101,
-        // TODO: flag events?
+        //CrownToggleOnArena = 102,
+        //CrownToggleOffArena = 103,
+
+        // Static flags
+        StaticFlagFullUpdate = 110,
+        StaticFlagClaimed = 111,
+
+        // Carry flags
+        //CarryFlagGameReset = 120,
+        //CarryFlagOnMap = 121,
+        //CarryFlagTouched = 122,
+        //CarryFlagDropped = 123,
+
         // TODO: bricks (allow multiple, allow specifying a time to allow for placing initial bricks)
     }
 }

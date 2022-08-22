@@ -324,6 +324,36 @@ namespace SS.Replay
             ad.RecorderQueue.Add(new RecordBuffer(buffer, CrownToggle.Length));
         }
 
+        private void Callback_FlagGameReset(Arena arena, short winnerFreq, int points)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            if (QueueStaticFlagFullUpdate(arena, ad))
+                return;
+
+            // TODO: carry flags logic
+            //if (QueueCarryFlagGameReset(arena, ad))
+                //return;
+
+            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, "Flag game reset in the arena, but was unable record the event.");
+        }
+
+        private void Callback_StaticFlagClaimed(Arena arena, Player player, byte flagId, short oldFreq, short newFreq)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(StaticFlagClaimed.Length);
+            ref StaticFlagClaimed claimed = ref MemoryMarshal.AsRef<StaticFlagClaimed>(buffer);
+            claimed = new(ServerTick.Now, flagId, (short)player.Id);
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, StaticFlagClaimed.Length));
+        }
+
         #endregion
 
         private void Packet_Position(Player player, byte[] data, int length)
@@ -531,7 +561,8 @@ namespace SS.Replay
                 // - ball info, flag info, crown info
                 //QueueBallInfo(arena, ad);
 
-                //QueueFlagInfo(arena, ad);
+                // - flags
+                QueueFlagInfo(arena, ad);
 
                 PlayerActionCallback.Register(arena, Callback_PlayerAction);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
@@ -540,6 +571,8 @@ namespace SS.Replay
                 BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
                 BallPacketSentCallback.Register(arena, Callback_BallPacketSent);
                 CrownToggledCallback.Register(arena, Callback_CrownToggled);
+                FlagGameResetCallback.Register(arena, Callback_FlagGameReset);
+                StaticFlagClaimedCallback.Register(arena, Callback_StaticFlagClaimed);
 
                 ad.RecorderTask = Task.Factory.StartNew(() =>
                 {
@@ -618,6 +651,79 @@ namespace SS.Replay
                 // - a callback to record when brick(s) are placed
                 // - a way to set bricks (with earlier timestamps) --> playback
             }
+
+            void QueueFlagInfo(Arena arena, ArenaData ad)
+            {
+                if (QueueStaticFlagFullUpdate(arena, ad))
+                    return;
+
+                ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+                if (carryFlagGame != null)
+                {
+                    try
+                    {
+                        short flagCount = carryFlagGame.GetFlagCount(arena);
+                        if (flagCount <= 0)
+                            return;
+
+                        for (short flagId = 0; flagId < flagCount; flagId++)
+                        {
+                            if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                                continue;
+
+                            // TODO: record flag info
+
+                            // flagCount
+                            //flagInfo.State
+                            //flagInfo.Carrier
+                            //flagInfo.Freq // dont think we need to record this
+                            //flagInfo.Location
+                        }
+                    }
+                    finally
+                    {
+                        arena.ReleaseInterface(ref carryFlagGame);
+                    }
+                }
+            }
+        }
+
+        private bool QueueStaticFlagFullUpdate(Arena arena, ArenaData ad)
+        {
+            IStaticFlagGame staticFlagGame = arena.GetInterface<IStaticFlagGame>();
+            if (staticFlagGame == null)
+                return false;
+
+            try
+            {
+                short flagCount = staticFlagGame.GetFlagCount(arena);
+                if (flagCount > 0)
+                {
+                    Span<short> owners = stackalloc short[flagCount];
+                    if (staticFlagGame.TryGetFlagOwners(arena, owners))
+                    {
+                        int ownersLength = flagCount * 2; // freq is an Int16
+                        int eventLength = StaticFlagFullUpdate.Length + ownersLength;
+                        byte[] buffer = _recordBufferPool.Rent(eventLength);
+                        ref StaticFlagFullUpdate fullUpdate = ref MemoryMarshal.AsRef<StaticFlagFullUpdate>(buffer);
+                        fullUpdate = new(ServerTick.Now, flagCount);
+                        Span<short> fullUpdateOwners = MemoryMarshal.Cast<byte, short>(buffer.AsSpan(StaticFlagFullUpdate.Length, ownersLength));
+                        for (int i = 0; i < flagCount; i++)
+                        {
+                            fullUpdateOwners[i] = LittleEndianConverter.Convert(owners[i]);
+                        }
+
+                        ad.RecorderQueue.Add(new RecordBuffer(buffer, eventLength));
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            finally
+            {
+                arena.ReleaseInterface(ref staticFlagGame);
+            }
         }
 
         private bool StopRecording(Arena arena)
@@ -637,6 +743,8 @@ namespace SS.Replay
                 BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
                 BallPacketSentCallback.Unregister(arena, Callback_BallPacketSent);
                 CrownToggledCallback.Unregister(arena, Callback_CrownToggled);
+                FlagGameResetCallback.Unregister(arena, Callback_FlagGameReset);
+                StaticFlagClaimedCallback.Unregister(arena, Callback_StaticFlagClaimed);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -1061,7 +1169,10 @@ namespace SS.Replay
                     buffer.Clear();
 
                     ref EventHeader head = ref MemoryMarshal.AsRef<EventHeader>(buffer);
+
+                    // for reading variable length events
                     ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
+                    ref StaticFlagFullUpdate staticFlagFullUpdate = ref MemoryMarshal.AsRef<StaticFlagFullUpdate>(buffer);
 
                     ServerTick started = ServerTick.Now;
                     ServerTick? paused = null;
@@ -1270,6 +1381,31 @@ namespace SS.Replay
                                         }
                                         break;
 
+                                    case EventType.StaticFlagFullUpdate:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..StaticFlagFullUpdate.Length])) != StaticFlagFullUpdate.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+
+                                        short flagCount = staticFlagFullUpdate.FlagCount;
+                                        int flagOwnerByteLength = flagCount * 2;
+                                        if ((readLength += ReadFromStream(gzStream, buffer.Slice(StaticFlagFullUpdate.Length, flagOwnerByteLength))) != StaticFlagFullUpdate.Length + flagOwnerByteLength)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.StaticFlagFullUpdate} event with {flagCount} flags.");
+                                            return;
+                                        }
+
+                                        break;
+
+                                    case EventType.StaticFlagClaimed:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..StaticFlagClaimed.Length])) != StaticFlagClaimed.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
                                     default:
                                         _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
                                         return;
@@ -1351,7 +1487,7 @@ namespace SS.Replay
                     if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                         return;
 
-                    Span<byte> buffer = playbackBuffer.Buffer;
+                    Span<byte> buffer = playbackBuffer.Buffer.AsSpan(0, playbackBuffer.Length);
                     ref EventHeader head = ref MemoryMarshal.AsRef<EventHeader>(buffer);
                     ServerTick now = ServerTick.Now;
                     Player player;
@@ -1558,6 +1694,76 @@ namespace SS.Replay
                                 else
                                 {
                                     _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {crownToggle.PlayerId}.");
+                                }
+                            }
+                            break;
+
+                        case EventType.StaticFlagFullUpdate:
+                            {
+                                ref StaticFlagFullUpdate fullUpdate = ref MemoryMarshal.AsRef<StaticFlagFullUpdate>(buffer);
+                                short flagCount = fullUpdate.FlagCount;
+                                Span<byte> flagOwnerBytes = buffer[StaticFlagFullUpdate.Length..];
+                                Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(flagOwnerBytes);
+                                if (flagOwners.Length != flagCount)
+                                {
+                                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to playback the {EventType.StaticFlagFullUpdate} because the event's data is not the right length for the flag count it specifies.");
+                                    return;
+                                }
+
+                                if (!BitConverter.IsLittleEndian)
+                                {
+                                    for (int i = 0; i < flagCount; i++)
+                                    {
+                                        flagOwners[i] = LittleEndianConverter.Convert(flagOwners[i]);
+                                    }
+                                }
+
+                                IStaticFlagGame staticFlagGame = arena.GetInterface<IStaticFlagGame>();
+                                if (staticFlagGame != null)
+                                {
+                                    try
+                                    {
+                                        if (!staticFlagGame.SetFlagOwners(arena, flagOwners))
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{EventType.StaticFlagFullUpdate} event, but setting flag owners failed.");
+                                        }
+                                    }
+                                    finally
+                                    {
+                                        arena.ReleaseInterface(ref staticFlagGame);
+                                    }
+                                }
+                                else
+                                {
+                                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to playback the {EventType.StaticFlagFullUpdate} because {nameof(IStaticFlagGame)} was not found.");
+                                }
+                            }
+                            break;
+
+                        case EventType.StaticFlagClaimed:
+                            {
+                                ref StaticFlagClaimed claimed = ref MemoryMarshal.AsRef<StaticFlagClaimed>(buffer);
+                                if (!ad.PlayerIdMap.TryGetValue(claimed.PlayerId, out player))
+                                {
+                                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {claimed.PlayerId}.");
+                                    return;
+                                }
+
+                                IStaticFlagGame staticFlagGame = arena.GetInterface<IStaticFlagGame>();
+                                if (staticFlagGame != null)
+                                {
+                                    try
+                                    {
+                                        staticFlagGame.FakeTouchFlag(player, claimed.FlagId);
+                                    }
+                                    finally
+                                    {
+                                        arena.ReleaseInterface(ref staticFlagGame);
+                                    }
+                                }
+                                else
+                                {
+                                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to playback the {EventType.StaticFlagFullUpdate} because {nameof(IStaticFlagGame)} was not found.");
                                 }
                             }
                             break;

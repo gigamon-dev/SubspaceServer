@@ -33,19 +33,19 @@ namespace SS.Core.ComponentInterfaces
         void ResetGame(Arena arena);
 
         /// <summary>
-        /// Gets the # of flags.
+        /// Gets the # of flags in an arena.
         /// </summary>
         /// <param name="arena">The arena to get the flag count for.</param>
-        /// <returns></returns>
-        int GetFlagCount(Arena arena);
+        /// <returns>The # of flags.</returns>
+        short GetFlagCount(Arena arena);
 
         /// <summary>
         /// Gets the # of flags owned by a team.
         /// </summary>
         /// <param name="arena">The arena to get the flag count for.</param>
         /// <param name="freq">The team to get the flag count for.</param>
-        /// <returns></returns>
-        int GetFlagCount(Arena arena, int freq);
+        /// <returns>The # of flags.</returns>
+        short GetFlagCount(Arena arena, short freq);
     }
 
     public interface IStaticFlagGame : IFlagGame
@@ -65,6 +65,23 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flagOwners">The owner freq of each flag.</param>
         /// <returns><see langword="true"/> if the flag data was updated. <see langword="false"/> if there was an error.</returns>
         bool SetFlagOwners(Arena arena, ReadOnlySpan<short> flagOwners);
+
+        /// <summary>
+        /// Gets the owner team of a single flag in an arena.
+        /// </summary>
+        /// <param name="arena">The arena to get the flag owner in.</param>
+        /// <param name="flagId">The flag to get data for.</param>
+        /// <param name="owner">The freq that owns the flag.</param>
+        /// <returns>True if the flag owner was retrieved. Otherwise, false.</returns>
+        bool TryGetFlagOwner(Arena arena, int flagId, out short owner);
+
+        /// <summary>
+        /// Fakes a player touching (claiming) a flag.
+        /// </summary>
+        /// <param name="player">The player to fake touching the flag.</param>
+        /// <param name="flagId">The flag to set data for.</param>
+        /// <returns>True if the flag was updated. Otherwise, false.</returns>
+        bool FakeTouchFlag(Player player, short flagId);
     }
 
     public enum FlagState
