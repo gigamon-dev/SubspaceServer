@@ -42,10 +42,10 @@
         StaticFlagClaimed = 111,
 
         // Carry flags
-        //CarryFlagGameReset = 120,
-        //CarryFlagOnMap = 121,
-        //CarryFlagTouched = 122,
-        //CarryFlagDropped = 123,
+        CarryFlagGameReset = 120,
+        CarryFlagOnMap = 121,
+        CarryFlagPickup = 122,
+        CarryFlagDrop = 123,
 
         // TODO: bricks (allow multiple, allow specifying a time to allow for placing initial bricks)
     }

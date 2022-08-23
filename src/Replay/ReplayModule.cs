@@ -2,6 +2,7 @@
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Map;
 using SS.Packets.Game;
 using SS.Replay.FileFormat;
 using SS.Replay.FileFormat.Events;
@@ -16,25 +17,35 @@ using System.Text;
 namespace SS.Replay
 {
     /// <summary>
-    /// A module that provides functionality to record and playback in-game replays, based on the ASSS 'record' module.
+    /// A module that provides functionality to record and playback in-game replays.
     /// </summary>
     /// <remarks>
-    /// Do all file operations (including opening of streams) on a worker thread.
-    /// Playback thread to queue mainloop workitems.
+    /// This is based on the ASSS 'record' module.
+    /// It uses the same file format (with additions), and intends to stay compatible with replays recorded by ASSS.
     /// 
-    /// ASSS's record module doesn't support:
-    /// - balls
-    /// - flags
+    /// The implementation of this differs from ASSS in that it:
+    /// - Does all file operations (including opening of streams) on a worker thread.
+    /// - The playback thread queues up mainloop workitems.
+    /// 
+    /// This implementation adds the following functionality which is not included in ASSS:
+    /// - balls (based on the PowerBall Zone fork of the 'record' module)
+    /// - bricks (based on the PowerBall Zone fork of the 'record' module)
+    /// - flags (both static flags and carryable flags)
     /// - crowns
-    /// - bricks (remember to include bricks that were active at the start of the recording)
     ///
-    /// Chat messages
-    /// - Maybe allow players to switch freqs (as a spectator) and play team messages as if the the player was there on team?
-    /// - Same with enemy freq messages?
+    /// Chat message functionality is also enhanced beyond that of ASSS.
+    /// This module provides the ability to record and playback: public chat, public macro chat, spectator chat, team chat, and arena chat.
+    /// There are config settings to enable the recording and playback of each.
     /// 
-    /// Thoughts about syncing doors/greens:
-    /// - could probably do some faking of the security packet (would require changes to the Security module, perhaps an arena-level override + skip/disable verifications and all)
+    /// TODO:
+    /// - Record existing bricks when a recording starts. Unfortunately, there is no way to clear bricks on a client though.
+    ///   Add an event type to record multiple bricks (to correspond to a brick packet containing multiple bricks, rather than just one).
+    /// - Syncing doors/greens: Do faking of the security packet 
+    ///   (would require changes to the Security module, perhaps an arena-level override + skip/disable verifications and all)
+    ///   NOTE: Tried and ran into issues, likely due to timestamp in the security packet not matching with timestamp in 0x00 0x05/6 (time sync request/response)?
+    ///   More investigation, info needed to proceed further.
     /// 
+    /// Other info (to keep in mind):
     /// ASSS does not record the Position packet "time" field. It actually stores playerId in it.
     /// When it plays back a recording, the packet will be processed based on the event header ticks, and it uses the current tick count as "time".
     /// This doesn't seem accurate. Is there a better way? 
@@ -331,12 +342,22 @@ namespace SS.Replay
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
+            // static flags
             if (QueueStaticFlagFullUpdate(arena, ad))
                 return;
 
-            // TODO: carry flags logic
-            //if (QueueCarryFlagGameReset(arena, ad))
-                //return;
+            // carry flags
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame != null)
+            {
+                arena.ReleaseInterface(ref carryFlagGame);
+
+                byte[] buffer = _recordBufferPool.Rent(CarryFlagGameReset.Length);
+                ref CarryFlagGameReset gameReset = ref MemoryMarshal.AsRef<CarryFlagGameReset>(buffer);
+                gameReset = new(ServerTick.Now, winnerFreq, points);
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, CarryFlagGameReset.Length));
+                return;
+            }
 
             _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, "Flag game reset in the arena, but was unable record the event.");
         }
@@ -352,6 +373,39 @@ namespace SS.Replay
             ref StaticFlagClaimed claimed = ref MemoryMarshal.AsRef<StaticFlagClaimed>(buffer);
             claimed = new(ServerTick.Now, flagId, (short)player.Id);
             ad.RecorderQueue.Add(new RecordBuffer(buffer, StaticFlagClaimed.Length));
+        }
+
+        private void Callback_CarryFlagOnMap(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            QueueCarryFlagOnMap(arena, ad, flagId, mapCoordinate, freq);
+        }
+
+        private void Callback_CarryFlagPickup(Arena arena, Player player, short flagId, FlagPickupReason reason)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            QueueCarryFlagPickup(arena, ad, flagId, player);
+        }
+
+        private void Callback_CarryFlagDrop(Arena arena, Player player, short flagId, FlagLostReason reason)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(CarryFlagDrop.Length);
+            ref CarryFlagDrop drop = ref MemoryMarshal.AsRef<CarryFlagDrop>(buffer);
+            drop = new(ServerTick.Now, (short)player.Id);
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, CarryFlagDrop.Length));
         }
 
         #endregion
@@ -558,7 +612,7 @@ namespace SS.Replay
                 // - active bricks
                 //QueueBricks(arena, ad);
 
-                // - ball info, flag info, crown info
+                // - ball info
                 //QueueBallInfo(arena, ad);
 
                 // - flags
@@ -573,6 +627,9 @@ namespace SS.Replay
                 CrownToggledCallback.Register(arena, Callback_CrownToggled);
                 FlagGameResetCallback.Register(arena, Callback_FlagGameReset);
                 StaticFlagClaimedCallback.Register(arena, Callback_StaticFlagClaimed);
+                FlagOnMapCallback.Register(arena, Callback_CarryFlagOnMap);
+                FlagGainCallback.Register(arena, Callback_CarryFlagPickup);
+                FlagLostCallback.Register(arena, Callback_CarryFlagDrop);
 
                 ad.RecorderTask = Task.Factory.StartNew(() =>
                 {
@@ -654,9 +711,11 @@ namespace SS.Replay
 
             void QueueFlagInfo(Arena arena, ArenaData ad)
             {
+                // static flags
                 if (QueueStaticFlagFullUpdate(arena, ad))
                     return;
 
+                // carry flags
                 ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
                 if (carryFlagGame != null)
                 {
@@ -671,13 +730,16 @@ namespace SS.Replay
                             if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
                                 continue;
 
-                            // TODO: record flag info
+                            switch (flagInfo.State)
+                            {
+                                case FlagState.OnMap:
+                                    QueueCarryFlagOnMap(arena, ad, flagId, flagInfo.Location.Value, flagInfo.Freq);
+                                    break;
 
-                            // flagCount
-                            //flagInfo.State
-                            //flagInfo.Carrier
-                            //flagInfo.Freq // dont think we need to record this
-                            //flagInfo.Location
+                                case FlagState.Carried:
+                                    QueueCarryFlagPickup(arena, ad, flagId, flagInfo.Carrier);
+                                    break;
+                            }
                         }
                     }
                     finally
@@ -726,6 +788,22 @@ namespace SS.Replay
             }
         }
 
+        private void QueueCarryFlagOnMap(Arena arena, ArenaData ad, short flagId, MapCoordinate location, short freq)
+        {
+            byte[] buffer = _recordBufferPool.Rent(CarryFlagOnMap.Length);
+            ref CarryFlagOnMap onMap = ref MemoryMarshal.AsRef<CarryFlagOnMap>(buffer);
+            onMap = new(ServerTick.Now, flagId, location.X, location.Y, freq);
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, CarryFlagOnMap.Length));
+        }
+
+        private void QueueCarryFlagPickup(Arena arena, ArenaData ad, short flagId, Player player)
+        {
+            byte[] buffer = _recordBufferPool.Rent(CarryFlagPickup.Length);
+            ref CarryFlagPickup pickup = ref MemoryMarshal.AsRef<CarryFlagPickup>(buffer);
+            pickup = new(ServerTick.Now, flagId, (short)player.Id);
+            ad.RecorderQueue.Add(new RecordBuffer(buffer, CarryFlagPickup.Length));
+        }
+
         private bool StopRecording(Arena arena)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -745,6 +823,9 @@ namespace SS.Replay
                 CrownToggledCallback.Unregister(arena, Callback_CrownToggled);
                 FlagGameResetCallback.Unregister(arena, Callback_FlagGameReset);
                 StaticFlagClaimedCallback.Unregister(arena, Callback_StaticFlagClaimed);
+                FlagOnMapCallback.Unregister(arena, Callback_CarryFlagOnMap);
+                FlagGainCallback.Unregister(arena, Callback_CarryFlagPickup);
+                FlagLostCallback.Unregister(arena, Callback_CarryFlagDrop);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -1007,6 +1088,20 @@ namespace SS.Replay
                 // Tell the Balls module to remove any balls.
                 // This prevents the Balls module from sending ball position update packets which would interfere with ball events in the replay.
                 _balls.TrySetBallCount(arena, 0);
+
+                ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+                if (carryFlagGame != null)
+                {
+                    try
+                    {
+                        // Stop any existing carry flag game and DON'T allow it to automatically restart.
+                        carryFlagGame.ResetGame(arena, -1, 0, false);
+                    }
+                    finally
+                    {
+                        arena.ReleaseInterface(ref carryFlagGame);
+                    }
+                }
 
                 ad.PlaybackTask = Task.Factory.StartNew(() =>
                 {
@@ -1335,6 +1430,14 @@ namespace SS.Replay
                                             return;
                                         }
 
+                                        // Always send a buffer big enough to for a full length Position. This will make it easier to read.
+                                        if (readLength < Position.Length)
+                                        {
+                                            int extra = Position.Length - readLength;
+                                            buffer.Slice(EventHeader.Length + length, extra).Clear(); // zero the extra bytes to be nice
+                                            readLength += extra;
+                                        }
+
                                         break;
 
                                     case EventType.Packet:
@@ -1400,6 +1503,38 @@ namespace SS.Replay
 
                                     case EventType.StaticFlagClaimed:
                                         if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..StaticFlagClaimed.Length])) != StaticFlagClaimed.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.CarryFlagGameReset:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..CarryFlagGameReset.Length])) != CarryFlagGameReset.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.CarryFlagOnMap:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..CarryFlagOnMap.Length])) != CarryFlagOnMap.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.CarryFlagPickup:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..CarryFlagPickup.Length])) != CarryFlagPickup.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.CarryFlagDrop:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..CarryFlagDrop.Length])) != CarryFlagDrop.Length)
                                         {
                                             _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
                                             return;
@@ -1768,6 +1903,44 @@ namespace SS.Replay
                             }
                             break;
 
+                        case EventType.CarryFlagGameReset:
+                            ref CarryFlagGameReset carryFlagGameReset = ref MemoryMarshal.AsRef<CarryFlagGameReset>(buffer);
+                            S2C_FlagReset flagResetPacket = new(carryFlagGameReset.Freq, carryFlagGameReset.Points);
+                            _network.SendToArena(arena, null, ref flagResetPacket, NetSendFlags.Reliable);
+                            break;
+
+                        case EventType.CarryFlagOnMap:
+                            ref CarryFlagOnMap carryFlagOnMap = ref MemoryMarshal.AsRef<CarryFlagOnMap>(buffer);
+                            S2C_FlagLocation flagLocationPacket = new(carryFlagOnMap.FlagId, carryFlagOnMap.X, carryFlagOnMap.Y, carryFlagOnMap.Freq);
+                            _network.SendToArena(arena, null, ref flagLocationPacket, NetSendFlags.Reliable);
+                            break;
+
+                        case EventType.CarryFlagPickup:
+                            ref CarryFlagPickup carryFlagPickup = ref MemoryMarshal.AsRef<CarryFlagPickup>(buffer);
+                            if (ad.PlayerIdMap.TryGetValue(carryFlagPickup.PlayerId, out player))
+                            {
+                                S2C_FlagPickup flagPickupPacket = new(carryFlagPickup.FlagId, (short)player.Id);
+                                _network.SendToArena(arena, null, ref flagPickupPacket, NetSendFlags.Reliable);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {carryFlagPickup.PlayerId}.");
+                            }
+                            break;
+
+                        case EventType.CarryFlagDrop:
+                            ref CarryFlagDrop carryFlagDrop = ref MemoryMarshal.AsRef<CarryFlagDrop>(buffer);
+                            if (ad.PlayerIdMap.TryGetValue(carryFlagDrop.PlayerId, out player))
+                            {
+                                S2C_FlagDrop flagDropPacket = new((short)player.Id);
+                                _network.SendToArena(arena, null, ref flagDropPacket, NetSendFlags.Reliable);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {carryFlagDrop.PlayerId}.");
+                            }
+                            break;
+
                         default:
                             break;
                     }
@@ -1806,6 +1979,20 @@ namespace SS.Replay
             }
 
             _balls.TrySetBallCount(arena, null);
+
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame != null)
+            {
+                try
+                {
+                    // Reset the carry flag game and allow it to automatically restart.
+                    carryFlagGame.ResetGame(arena, -1, 0, true);
+                }
+                finally
+                {
+                    arena.ReleaseInterface(ref carryFlagGame);
+                }
+            }
         }
 
         private void LogAndNotify(Arena arena, NotifyOption notifyOption, string message, Exception ex = null)

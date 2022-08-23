@@ -27,8 +27,6 @@ namespace SS.Core.Modules.FlagGame
         private INetwork _network;
         private IPrng _prng;
 
-        private InterfaceRegistrationToken<ICarryFlagGame> _carryFlagGameRegistrationToken;
-
         private static readonly NonTransientObjectPool<FlagInfo> _flagInfoPool = new(new FlagInfoPooledObjectPolicy());
 
         private ArenaDataKey<ArenaData> _adKey;
@@ -67,15 +65,11 @@ namespace SS.Core.Modules.FlagGame
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             ShipFreqChangeCallback.Register(broker, Callback_ShipFreqChange);
 
-            _carryFlagGameRegistrationToken = broker.RegisterInterface<ICarryFlagGame>(this);
-
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
-            broker.UnregisterInterface(ref _carryFlagGameRegistrationToken);
-
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
@@ -95,7 +89,7 @@ namespace SS.Core.Modules.FlagGame
 
         void IFlagGame.ResetGame(Arena arena)
         {
-            ((ICarryFlagGame)this).ResetGame(arena, -1, 0);
+            ((ICarryFlagGame)this).ResetGame(arena, -1, 0, true);
         }
 
         short IFlagGame.GetFlagCount(Arena arena)
@@ -159,9 +153,9 @@ namespace SS.Core.Modules.FlagGame
             return false;
         }
 
-        bool ICarryFlagGame.ResetGame(Arena arena, short winnerFreq, int points)
+        bool ICarryFlagGame.ResetGame(Arena arena, short winnerFreq, int points, bool allowAutoStart)
         {
-            return ResetGame(arena, winnerFreq, points, true);
+            return ResetGame(arena, winnerFreq, points, allowAutoStart);
         }
 
         int ICarryFlagGame.GetFlagCount(Player player)
@@ -583,6 +577,9 @@ namespace SS.Core.Modules.FlagGame
 
                     if (ad.FlagGameRegistrationToken == null)
                         ad.FlagGameRegistrationToken = arena.RegisterInterface<IFlagGame>(this);
+
+                    if (ad.CarryFlagGameRegistrationToken == null)
+                        ad.CarryFlagGameRegistrationToken = arena.RegisterInterface<ICarryFlagGame>(this);
                 }
                 else
                 {
@@ -591,12 +588,15 @@ namespace SS.Core.Modules.FlagGame
                         ResetGame(arena, -1, 0, false);
                     }
 
-                    ClearCarryFlagBehavior(arena, ad);
-
                     _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SpawnFlagTimer, arena);
+
+                    ClearCarryFlagBehavior(arena, ad);
 
                     if (ad.FlagGameRegistrationToken != null)
                         arena.UnregisterInterface(ref ad.FlagGameRegistrationToken);
+
+                    if (ad.CarryFlagGameRegistrationToken != null)
+                        arena.UnregisterInterface(ref ad.CarryFlagGameRegistrationToken);
                 }
             }
             else if (action == ArenaAction.Destroy)
@@ -607,6 +607,9 @@ namespace SS.Core.Modules.FlagGame
 
                 if (ad.FlagGameRegistrationToken != null)
                     arena.UnregisterInterface(ref ad.FlagGameRegistrationToken);
+
+                if (ad.CarryFlagGameRegistrationToken != null)
+                    arena.UnregisterInterface(ref ad.CarryFlagGameRegistrationToken);
             }
 
             void ClearCarryFlagBehavior(Arena arena, ArenaData ad)
@@ -703,7 +706,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        bool ResetGame(Arena arena, short winnerFreq, int points, bool allowAutoStart)
+        private bool ResetGame(Arena arena, short winnerFreq, int points, bool allowAutoStart)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
@@ -923,6 +926,7 @@ namespace SS.Core.Modules.FlagGame
         private class ArenaData
         {
             public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
+            public InterfaceRegistrationToken<ICarryFlagGame> CarryFlagGameRegistrationToken;
 
             public Settings Settings;
             public ICarryFlagBehavior CarryFlagBehavior;

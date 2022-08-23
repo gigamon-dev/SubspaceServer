@@ -10,7 +10,6 @@ namespace SS.Core.Modules.Scoring
     public class FlagGamePoints : IModule, IArenaAttachableModule
     {
         private IArenaManager _arenaManager;
-        private ICarryFlagGame _carryFlagGame;
         private IChat _chat;
         private IConfigManager _configManager;
         private IPlayerData _playerData;
@@ -22,13 +21,11 @@ namespace SS.Core.Modules.Scoring
         public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
-            ICarryFlagGame carryFlagGame,
             IChat chat,
             IConfigManager configManager,
             IPlayerData playerData)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _carryFlagGame = carryFlagGame ?? throw new ArgumentNullException(nameof(carryFlagGame));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -92,34 +89,46 @@ namespace SS.Core.Modules.Scoring
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (ad.FlagMode == FlagMode.CarryAll)
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame == null)
+                return;
+
+            try
             {
-                bool isWin = true;
-                for (short i = 0; i < _carryFlagGame.GetFlagCount(arena); i++)
+                if (ad.FlagMode == FlagMode.CarryAll)
                 {
-                    if (!_carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
-                        || flagInfo.State != FlagState.Carried
-                        || flagInfo.Freq != player.Freq)
+                    short flagCount = carryFlagGame.GetFlagCount(arena);
+                    bool isWin = true;
+                    for (short i = 0; i < flagCount; i++)
                     {
-                        isWin = false;
-                        break;
+                        if (!carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
+                            || flagInfo.State != FlagState.Carried
+                            || flagInfo.Freq != player.Freq)
+                        {
+                            isWin = false;
+                            break;
+                        }
+                    }
+
+                    if (isWin)
+                    {
+                        DoFlagWin(arena, ad, player.Freq);
                     }
                 }
-
-                if (isWin)
+                else if (ad.FlagMode == FlagMode.OwnAllDropped)
                 {
-                    DoFlagWin(arena, ad, player.Freq);
+                    if (ad.IsVictoryMusicEnabled
+                        && carryFlagGame.GetFlagCount(arena, player.Freq) == carryFlagGame.GetFlagCount(arena))
+                    {
+                        // start music
+                        ad.IsMusicPlaying = true;
+                        _chat.SendArenaMessage(arena, ChatSound.MusicLoop, "");
+                    }
                 }
             }
-            else if (ad.FlagMode == FlagMode.OwnAllDropped)
+            finally
             {
-                if (ad.IsVictoryMusicEnabled
-                    && _carryFlagGame.GetFlagCount(arena, player.Freq) == _carryFlagGame.GetFlagCount(arena))
-                {
-                    // start music
-                    ad.IsMusicPlaying = true;
-                    _chat.SendArenaMessage(arena, ChatSound.MusicLoop, "");
-                }
+                arena.ReleaseInterface(ref carryFlagGame);
             }
         }
 
@@ -146,17 +155,31 @@ namespace SS.Core.Modules.Scoring
             if (freq == -1)
                 return; // unowned
 
-            // Check that all flags are dropped and that one team owns them all.
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame == null)
+                return;
+
+            short flagCount;
             bool isWin = true;
-            for (short i = 0; i < _carryFlagGame.GetFlagCount(arena); i++)
+
+            try
             {
-                if (!_carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
-                    || flagInfo.State != FlagState.OnMap
-                    || flagInfo.Freq != freq)
+                // Check that all flags are dropped and that one team owns them all.
+                flagCount = carryFlagGame.GetFlagCount(arena);
+                for (short i = 0; i < flagCount; i++)
                 {
-                    isWin = false;
-                    break;
+                    if (!carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
+                        || flagInfo.State != FlagState.OnMap
+                        || flagInfo.Freq != freq)
+                    {
+                        isWin = false;
+                        break;
+                    }
                 }
+            }
+            finally
+            {
+                arena.ReleaseInterface(ref carryFlagGame);
             }
 
             if (isWin)
@@ -218,7 +241,18 @@ namespace SS.Core.Modules.Scoring
             }
 
             // Reset the game with a win.
-            _carryFlagGame.ResetGame(arena, freq, points);
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame != null)
+            {
+                try
+                {
+                    carryFlagGame.ResetGame(arena, freq, points, true);
+                }
+                finally
+                {
+                    arena.ReleaseInterface(ref carryFlagGame);
+                }
+            }
 
             // End the 'game' interval for the arena.
             IPersistExecutor persistExecutor = arena.GetInterface<IPersistExecutor>();

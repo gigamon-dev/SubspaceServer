@@ -149,7 +149,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="winnerFreq">The team that won. -1 for no winner.</param>
         /// <param name="points">The # of points awarded. 0 for no points.</param>
         /// <returns><see langword="true"/> if the flag game was automatically restarted. <see langword="false"/> if the flag game needs to be manually started.</returns>
-        bool ResetGame(Arena arena, short winnerFreq, int points);
+        bool ResetGame(Arena arena, short winnerFreq, int points, bool allowAutoStart);
 
         /// <summary>
         /// Gets the # of flags a player is carrying.
@@ -170,6 +170,12 @@ namespace SS.Core.ComponentInterfaces
         /// </returns>
         short TransferFlagsForPlayerKill(Arena arena, Player killed, Player killer); // TODO: maybe move this to a different interface, only meant for the Game module to call.
 
+        /// <summary>
+        /// Adds a flag to an arena.
+        /// </summary>
+        /// <param name="arena">The arena to add a flag to.</param>
+        /// <param name="flagId">The flag added. 0 if no flag was added.</param>
+        /// <returns>True if a flag was added. Otherwise, false.</returns>
         bool TryAddFlag(Arena arena, out short flagId);
 
         bool TryGetFlagInfo(Arena arena, short flagId, out IFlagInfo flagInfo);
@@ -229,9 +235,9 @@ namespace SS.Core.ComponentInterfaces
         /// An implementation should determine what should happen to any flags the <paramref name="killed"/> player was carrying.
         /// Note: this happens prior to the <see cref="ComponentCallbacks.KillCallback"/>.
         /// </remarks>
-        /// <param name="arena"></param>
-        /// <param name="killed"></param>
-        /// <param name="killer"></param>
+        /// <param name="arena">The arena.</param>
+        /// <param name="killed">The player that was killed.</param>
+        /// <param name="killer">The player that made the kill.</param>
         /// <returns>The # of flags transferred. This is the value to be sent in the <see cref="Packets.Game.S2C_Kill"/> packet.</returns>
         short PlayerKill(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds);
 
@@ -241,11 +247,11 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// An implementation should determine what happens to the flag. 
         /// The flag can be allowed to be picked up by calling <see cref="ICarryFlagGame.TrySetFlagCarried(Arena, short, Player)"/> 
-        /// or the implementation can choose do something else.
+        /// or the implementation can choose to do something else.
         /// </remarks>
-        /// <param name="arena"></param>
-        /// <param name="player"></param>
-        /// <param name="flagId"></param>
+        /// <param name="arena">The arena.</param>
+        /// <param name="player">The player that touched the flag.</param>
+        /// <param name="flagId">The flag that was touched.</param>
         void TouchFlag(Arena arena, Player player, short flagId);
 
         /// <summary>
@@ -261,11 +267,11 @@ namespace SS.Core.ComponentInterfaces
         /// <item>When a player carrying flags leaves the arena or logs off.</item>
         /// </list>
         /// </remarks>
-        /// <param name="arena"></param>
-        /// <param name="flagIds"></param>
-        /// <param name="reason"></param>
-        /// <param name="oldCarrier"></param>
-        /// <param name="oldFreq"></param>
+        /// <param name="arena">The arena.</param>
+        /// <param name="flagIds">The flag(s) to adjust.</param>
+        /// <param name="reason">The reason for the adjustment.</param>
+        /// <param name="oldCarrier">The player that was carrying the flag(s).</param>
+        /// <param name="oldFreq">The freq that owned the flag(s).</param>
         void AdjustFlags(Arena arena, ReadOnlySpan<short> flagIds, AdjustFlagReason reason, Player oldCarrier, short oldFreq);
     }
 }
