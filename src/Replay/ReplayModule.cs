@@ -382,7 +382,7 @@ namespace SS.Replay
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            QueueCarryFlagOnMap(arena, ad, flagId, mapCoordinate, freq);
+            QueueCarryFlagOnMap(ad, flagId, mapCoordinate, freq);
         }
 
         private void Callback_CarryFlagPickup(Arena arena, Player player, short flagId, FlagPickupReason reason)
@@ -392,7 +392,7 @@ namespace SS.Replay
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            QueueCarryFlagPickup(arena, ad, flagId, player);
+            QueueCarryFlagPickup(ad, flagId, player);
         }
 
         private void Callback_CarryFlagDrop(Arena arena, Player player, short flagId, FlagLostReason reason)
@@ -733,11 +733,11 @@ namespace SS.Replay
                             switch (flagInfo.State)
                             {
                                 case FlagState.OnMap:
-                                    QueueCarryFlagOnMap(arena, ad, flagId, flagInfo.Location.Value, flagInfo.Freq);
+                                    QueueCarryFlagOnMap(ad, flagId, flagInfo.Location.Value, flagInfo.Freq);
                                     break;
 
                                 case FlagState.Carried:
-                                    QueueCarryFlagPickup(arena, ad, flagId, flagInfo.Carrier);
+                                    QueueCarryFlagPickup(ad, flagId, flagInfo.Carrier);
                                     break;
                             }
                         }
@@ -788,7 +788,7 @@ namespace SS.Replay
             }
         }
 
-        private void QueueCarryFlagOnMap(Arena arena, ArenaData ad, short flagId, MapCoordinate location, short freq)
+        private static void QueueCarryFlagOnMap(ArenaData ad, short flagId, MapCoordinate location, short freq)
         {
             byte[] buffer = _recordBufferPool.Rent(CarryFlagOnMap.Length);
             ref CarryFlagOnMap onMap = ref MemoryMarshal.AsRef<CarryFlagOnMap>(buffer);
@@ -796,7 +796,7 @@ namespace SS.Replay
             ad.RecorderQueue.Add(new RecordBuffer(buffer, CarryFlagOnMap.Length));
         }
 
-        private void QueueCarryFlagPickup(Arena arena, ArenaData ad, short flagId, Player player)
+        private static void QueueCarryFlagPickup(ArenaData ad, short flagId, Player player)
         {
             byte[] buffer = _recordBufferPool.Rent(CarryFlagPickup.Length);
             ref CarryFlagPickup pickup = ref MemoryMarshal.AsRef<CarryFlagPickup>(buffer);
@@ -1575,7 +1575,7 @@ namespace SS.Replay
                         }
 
                         // Queue up the event to be processed by the mainloop thread.
-                        byte[] playbackBytes = _recordBufferPool.Rent(MaxRecordBuffer); // TODO: make this more efficient?
+                        byte[] playbackBytes = _recordBufferPool.Rent(readLength);
                         buffer[..readLength].CopyTo(playbackBytes);
 
                         _mainloop.QueueMainWorkItem(
@@ -2044,12 +2044,10 @@ namespace SS.Replay
                     return;
                 }
 
-                // TODO: does this need to be on the mainloop thread?
                 _chat.SendMessage(player, $"Replay: {message}");
             }
             else if (notifyOption == NotifyOption.Arena)
             {
-                // TODO: does this need to be on the mainloop thread?
                 _chat.SendArenaMessage(arena, $"Replay: {message}");
             }
         }
@@ -2072,12 +2070,10 @@ namespace SS.Replay
                     return;
                 }
 
-                // TODO: does this need to be on the mainloop thread?
                 _chat.SendMessage(player, $"Replay: {message}");
             }
             else if (notifyOption == NotifyOption.Arena)
             {
-                // TODO: does this need to be on the mainloop thread?
                 _chat.SendArenaMessage(arena, $"Replay: {message}");
             }
         }
