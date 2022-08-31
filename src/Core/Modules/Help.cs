@@ -11,12 +11,13 @@ namespace SS.Core.Modules
     /// Module that provides the help commaand, which by default is ?man.
     /// This allows users to get information about a command or config file setting.
     /// </summary>
-    public class Help : IModule, IModuleLoaderAware, IConfigHelp
+    public class Help : IModule, IModuleLoaderAware, IHelp, IConfigHelp
     {
         private IChat _chat;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private IObjectPoolManager _objectPoolManager;
+        private InterfaceRegistrationToken<IHelp> _iHelpToken;
         private InterfaceRegistrationToken<IConfigHelp> _iConfigHelpToken;
 
         private string _helpCommandName;
@@ -43,6 +44,7 @@ namespace SS.Core.Modules
 
             _commandManager.AddCommand(_helpCommandName, Command_help);
 
+            _iHelpToken = broker.RegisterInterface<IHelp>(this);
             _iConfigHelpToken = broker.RegisterInterface<IConfigHelp>(this);
 
             return true;
@@ -50,6 +52,9 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            if (broker.UnregisterInterface(ref _iHelpToken) != 0)
+                return false;
+
             if (broker.UnregisterInterface(ref _iConfigHelpToken) != 0)
                 return false;
 
@@ -68,6 +73,8 @@ namespace SS.Core.Modules
         {
             return true;
         }
+
+        string IHelp.HelpCommand => _helpCommandName;
 
         private void LoadConfigHelp()
         {
