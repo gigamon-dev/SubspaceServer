@@ -228,6 +228,8 @@ namespace SS.Core.Modules
 
         Player IPlayerData.FindPlayer(ReadOnlySpan<char> name)
         {
+            name = name.Trim();
+
             _globalPlayerDataRwLock.EnterReadLock();
 
             try
