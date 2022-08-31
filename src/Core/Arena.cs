@@ -3,6 +3,7 @@ using SS.Core.Modules;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 
 namespace SS.Core
 {
@@ -150,6 +151,12 @@ namespace SS.Core
         public readonly string BaseName;
 
         /// <summary>
+        /// The number part of the arena name. 0 when there is no number.
+        /// For public arenas, the entire name is the number.
+        /// </summary>
+        public readonly int Number;
+
+        /// <summary>
         /// A handle to the main config file for this arena.
         /// </summary>
         public ConfigHandle Cfg { get; internal set; }
@@ -202,6 +209,20 @@ namespace SS.Core
             {
                 BaseName = Constants.ArenaGroup_Public;
                 IsPublic = true;
+                Number = int.Parse(name);
+            }
+            else
+            {
+                string numberStr = Name[BaseName.Length..];
+                if (string.IsNullOrWhiteSpace(numberStr)
+                    || !int.TryParse(numberStr, out int number))
+                {
+                    Number = 0;
+                }
+                else
+                {
+                    Number = number;
+                }
             }
 
             IsPrivate = Name[0] == '#';
@@ -355,6 +376,20 @@ namespace SS.Core
         public override string ToString()
         {
             return Name;
+        }
+
+        /// <summary>
+        /// Constructs an arena name from a base name and number.
+        /// </summary>
+        /// <param name="baseName">The base name of the arena.</param>
+        /// <param name="number">The number of the arena.</param>
+        /// <returns>The arena name.</returns>
+        public static string CreateArenaName(string baseName, int number)
+        {
+            if (string.IsNullOrWhiteSpace(baseName) || string.Equals(baseName, Constants.ArenaGroup_Public, StringComparison.OrdinalIgnoreCase))
+                return number.ToString(CultureInfo.InvariantCulture);
+
+            return (number == 0) ? baseName : $"{baseName}{number}";
         }
     }
 }
