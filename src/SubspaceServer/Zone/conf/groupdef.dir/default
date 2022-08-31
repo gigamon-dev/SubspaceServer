@@ -83,3 +83,8 @@ cmd_find
 cmd_speedstats
 cmd_best
 privcmd_best
+
+; Matchmaking (PlayerGroups and MatchmakingQueues modules)
+cmd_group
+privcmd_group
+cmd_next

@@ -98,3 +98,5 @@ cmd_setcm
 privcmd_getcm
 privcmd_setcm
 
+; Matchmaking (PlayerGroups module)
+seeplayergroupdetails
