@@ -88,3 +88,4 @@ privcmd_best
 cmd_group
 privcmd_group
 cmd_next
+cmd_cancel

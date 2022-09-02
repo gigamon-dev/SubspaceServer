@@ -41,6 +41,7 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<string, IMatchmakingQueue> _queues = new(16, StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<IPlayerGroup, UsageData> _groupUsageDictionary = new(128);
         private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new QueueUsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
+        private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new IMatchmakingQueueListPooledObjectPolicy());
 
         private const string NextCommandName = "next";
         private const string CancelCommandName = "cancel";
@@ -175,6 +176,85 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
+        void IMatchmakingQueues.SetPlaying(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups)
+        {
+            if (soloPlayers != null)
+            {
+                foreach (Player player in soloPlayers)
+                {
+                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+                        continue;
+
+                    foreach (IMatchmakingQueue queue in usageData.Queues)
+                    {
+                        queue.Remove(player);
+                    }
+
+                    usageData.SetPlaying();
+                }
+            }
+
+            if (groups != null)
+            {
+                // TODO:
+            }
+        }
+
+        void IMatchmakingQueues.UnsetPlaying(List<PlayerOrGroup> toUnset)
+        {
+            if (toUnset == null)
+                return;
+
+            foreach (PlayerOrGroup pog in toUnset)
+            {
+                if (pog.Player != null)
+                {
+                    Player player = pog.Player;
+                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+                        continue;
+
+                    usageData.UnsetPlaying();
+
+                    if (usageData.AutoRequeue && usageData.AutoQueues.Count > 0)
+                    {
+                        // TODO: Set timer to re-queue.
+                        List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
+                        try
+                        {
+                            foreach (IMatchmakingQueue queue in usageData.AutoQueues)
+                            {
+                                if (usageData.AddQueue(queue))
+                                {
+                                    if (queue.Add(player))
+                                    {
+                                        addedQueues.Add(queue);
+                                    }
+                                    else
+                                    {
+                                        usageData.RemoveQueue(queue);
+                                        _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                                    }
+                                }
+                            }
+
+                            usageData.ClearAutoQueues();
+
+                            NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
+                        }
+                        finally
+                        {
+                            _iMatchmakingQueueListPool.Return(addedQueues);
+                        }
+
+                    }
+                }
+                else if (pog.Group != null)
+                {
+                    // TODO: 
+                }
+            }
+        }
+
         #endregion
 
         #region IPlayerGroupAdvisor
@@ -282,7 +362,7 @@ namespace SS.Matchmaking.Modules
         // ?next pb3h,pbmini
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[<none> | <queue name>[, <queue name>[, ...]]]",
+            Args = "<none> | <queue name>[, <queue name>[, ...]]] | -list | -listall | -auto",
             Description = 
             "Starts a matchmaking search.\n" +
             "An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.")]
@@ -310,13 +390,13 @@ namespace SS.Matchmaking.Modules
                     return;
             }
 
-            if (string.Equals(parameters, "-list"))
+            if (string.Equals(parameters, "-list", StringComparison.OrdinalIgnoreCase))
             {
                 // Print usage details.
                 switch (usageData.State)
                 {
                     case QueueState.None:
-                        _chat.SendMessage(player, $"{(group == null ? "You are" : "Your group is")} not searching for a game yet.");
+                        _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} not searching for a game yet.");
                         break;
 
                     case QueueState.Queued:
@@ -331,7 +411,7 @@ namespace SS.Matchmaking.Modules
                                 sb.Append(queue.Name);
                             }
 
-                            _chat.SendMessage(player, $"{(group == null ? "You are" : "Your group is")} searching for a game on the following queues: {sb}");
+                            _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} searching for a game on the following queues: {sb}");
                         }
                         finally
                         {
@@ -340,13 +420,32 @@ namespace SS.Matchmaking.Modules
                         break;
 
                     case QueueState.Playing:
-                        _chat.SendMessage(player, $"{(group == null ? "You are" : "Your group is")} currently playing in match.");
+                        _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} currently playing in match.");
                         break;
 
                     default:
                         break;
                 }
 
+                return;
+            }
+            else if (string.Equals(parameters, "-listall", StringComparison.OrdinalIgnoreCase))
+            {
+                // TOOD: include stats of how many players and groups are in each queeue
+                foreach (var queue in _queues.Values)
+                {
+                    if (!string.IsNullOrWhiteSpace(queue.Description))
+                        _chat.SendMessage(player, $"{NextCommandName}: {queue.Name} - {queue.Description}");
+                    else
+                        _chat.SendMessage(player, $"{NextCommandName}: {queue.Name}");
+                }
+
+                return;
+            }
+            else if (string.Equals(parameters, "-auto", StringComparison.OrdinalIgnoreCase))
+            {
+                _chat.SendMessage(player, $"{NextCommandName}: Automatic re-queuing {(usageData.AutoRequeue ? "disabled" : "enabled")}.");
+                usageData.AutoRequeue = !usageData.AutoRequeue;
                 return;
             }
 
@@ -364,42 +463,51 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            string queueName = null;
-
             if (string.IsNullOrWhiteSpace(parameters))
             {
                 // No queue name(s) were specified. Check if there is a default queue for the arena.
                 var advisors = _broker.GetAdvisors<IMatchmakingQueueAdvisor>();
                 foreach (var advisor in advisors)
                 {
-                    queueName = advisor.GetDefaultQueue(player.Arena);
-                    if (queueName != null)
+                    parameters = advisor.GetDefaultQueue(player.Arena);
+                    if (!string.IsNullOrWhiteSpace(parameters))
                     {
                         break;
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(queueName))
+                if (string.IsNullOrWhiteSpace(parameters))
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: You must specify which queue(s) to search on.");
                     return;
                 }
-
-                AddToQueue(player, group, usageData, queueName);
             }
-            else
+
+            List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
+
+            try
             {
                 ReadOnlySpan<char> remaining = parameters;
                 ReadOnlySpan<char> token;
                 while ((token = remaining.GetToken(", ", out remaining)).Length > 0)
                 {
-                    queueName = token.ToString(); // FIXME: string allocation needed to search dictionary
+                    string queueName = token.ToString(); // FIXME: string allocation needed to search dictionary
 
-                    AddToQueue(player, group, usageData, queueName);
+                    IMatchmakingQueue queue = AddToQueue(player, group, usageData, queueName);
+                    if (queue != null)
+                    {
+                        addedQueues.Add(queue);
+                    }
                 }
+
+                NotifyQueuedAndInvokeChangeCallbacks(player, group, addedQueues);
+            }
+            finally
+            {
+                _iMatchmakingQueueListPool.Return(addedQueues);
             }
 
-            void AddToQueue(Player player, IPlayerGroup group, UsageData usageData, string queueName)
+            IMatchmakingQueue AddToQueue(Player player, IPlayerGroup group, UsageData usageData, string queueName)
             {
                 Arena arena = player.Arena;
                 IMatchmakingQueue queue = null;
@@ -423,7 +531,7 @@ namespace SS.Matchmaking.Modules
                 if (queue == null)
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' not found.");
-                    return;
+                    return null;
                 }
 
                 //
@@ -435,53 +543,117 @@ namespace SS.Matchmaking.Modules
                     // group search
                     if (!queue.Options.AllowGroups)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' does not allow premade groups.");
-                        return;
+                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow premade groups.");
+                        return null;
                     }
 
                     if (group.Members.Count < queue.Options.MinGroupSize
                         || group.Members.Count > queue.Options.MaxGroupSize)
                     {
                         if (queue.Options.MinGroupSize == queue.Options.MaxGroupSize)
-                            _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' allows groups with exactly {queue.Options.MinGroupSize} players, but your group has {group.Members.Count} players.");
+                            _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups with exactly {queue.Options.MinGroupSize} players, but your group has {group.Members.Count} players.");
                         else
-                            _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' allows groups sized from {queue.Options.MinGroupSize} to {queue.Options.MaxGroupSize} players, but your group has {group.Members.Count} players.");
+                            _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups sized from {queue.Options.MinGroupSize} to {queue.Options.MaxGroupSize} players, but your group has {group.Members.Count} players.");
 
-                        return;
+                        return null;
                     }
 
-                    queue.Add(group);
-                    usageData.AddQueue(queue);
-
-                    // Notify the group members that a search has started.
-                    HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
-                    try
+                    if (!usageData.AddQueue(queue))
                     {
-                        members.UnionWith(group.Members);
-                        _chat.SendSetMessage(members, $"{NextCommandName}: Started searching for a game on queue '{queueName}'.");
+                        _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
+                        return null;
                     }
-                    finally
+                    else if (!queue.Add(group))
                     {
-                        _objectPoolManager.PlayerSetPool.Return(members);
+                        usageData.RemoveQueue(queue);
+                        _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                        return null;
                     }
 
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add, QueueItemType.Group);
+                    return queue;
                 }
                 else
                 {
                     // solo search
                     if (!queue.Options.AllowSolo)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' does not allow solo play. Create or join a group first.");
-                        return;
+                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow solo play. Create or join a group first.");
+                        return null;
                     }
 
-                    queue.Add(player);
-                    usageData.AddQueue(queue);
+                    if (!usageData.AddQueue(queue))
+                    {
+                        _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
+                        return null;
+                    }
+                    else if (!queue.Add(player))
+                    {
+                        usageData.RemoveQueue(queue);
+                        _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                        return null;
+                    }
 
+                    return queue;
+                }
+            }
+        }
+
+        private void NotifyQueuedAndInvokeChangeCallbacks(Player player, IPlayerGroup group, List<IMatchmakingQueue> addedQueues)
+        {
+            if (addedQueues == null || addedQueues.Count <= 0)
+                return;
+
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                foreach (IMatchmakingQueue queue in addedQueues)
+                {
+                    if (sb.Length > 0)
+                        sb.Append(", ");
+
+                    sb.Append(queue.Name);
+                }
+
+                if (group != null)
+                {
+                    // Notify the group members that a search has started.
+                    HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
+                    try
+                    {
+                        members.UnionWith(group.Members);
+
+                        _chat.SendSetMessage(members, $"{NextCommandName}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(members);
+                    }
+                }
+                else if (player != null)
+                {
                     // Notify the player that a search has started.
-                    _chat.SendMessage(player, $"{NextCommandName}: Started searching for a game on queue '{queueName}'.");
+                    _chat.SendMessage(player, $"{NextCommandName}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
 
+            // Fire the callbacks in the order that the queues were added. This will cause matchmaking module to attempt matches on the queues in that order.
+            // Note: Firing the callbacks is purposely done after adding to all requested queues so that in case there is a match, we can keep track of any queues that allow automatic requeuing.
+            // Also, we want the above notifications to be sent before any other matching notifications.
+            if (group != null)
+            {
+                foreach (IMatchmakingQueue queue in addedQueues)
+                {
+                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add, QueueItemType.Group);
+                }
+            }
+            else
+            {
+                foreach (IMatchmakingQueue queue in addedQueues)
+                {
                     MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add, QueueItemType.Player);
                 }
             }
@@ -504,7 +676,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (player != group.Leader)
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Only the group leader can cancel a search.");
+                    _chat.SendMessage(player, $"{CancelCommandName}: Only the group leader can cancel a search.");
                     return;
                 }
 
@@ -522,6 +694,19 @@ namespace SS.Matchmaking.Modules
 
             if (string.IsNullOrWhiteSpace(parameters))
             {
+                if (usageData.State == QueueState.Playing && usageData.AutoRequeue)
+                {
+                    usageData.AutoRequeue = false;
+                    _chat.SendMessage(player, $"{CancelCommandName}: Automatic re-queue disabled.");
+                    return;
+                }
+
+                if (usageData.Queues.Count == 0)
+                {
+                    _chat.SendMessage(player, $"{CancelCommandName}: There are no active searches to cancel.");
+                    return;
+                }
+
                 // Remove from all queues.
                 foreach (var queue in usageData.Queues)
                 {
@@ -543,7 +728,7 @@ namespace SS.Matchmaking.Modules
                     try
                     {
                         members.UnionWith(group.Members);
-                        _chat.SendSetMessage(members, $"{NextCommandName}: Search stopped.");
+                        _chat.SendSetMessage(members, $"{CancelCommandName}: Search stopped.");
                     }
                     finally
                     {
@@ -552,7 +737,7 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Search stopped.");
+                    _chat.SendMessage(player, $"{CancelCommandName}: Search stopped.");
                 }
 
                 return;
@@ -587,16 +772,22 @@ namespace SS.Matchmaking.Modules
 
                     if (queue == null)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' not found.");
+                        _chat.SendMessage(player, $"{CancelCommandName}: Queue '{queueName}' not found.");
                         continue;
                     }
 
-                    if (group != null)
-                        queue.Remove(group);
+                    if (!usageData.RemoveQueue(queue))
+                    {
+                        _chat.SendMessage(player, $"{CancelCommandName}: There is no active search to cancel on queue '{queue.Name}'.");
+                        return;
+                    }
                     else
-                        queue.Remove(player);
-
-                    usageData.RemoveQueue(queue);
+                    {
+                        if (group != null)
+                            queue.Remove(group);
+                        else
+                            queue.Remove(player);
+                    }
 
                     // Notify
                     if (group != null)
@@ -605,7 +796,7 @@ namespace SS.Matchmaking.Modules
                         try
                         {
                             members.UnionWith(group.Members);
-                            _chat.SendSetMessage(members, $"{NextCommandName}: Search stopped on queue: {queue.Name}.");
+                            _chat.SendSetMessage(members, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
                         }
                         finally
                         {
@@ -614,7 +805,7 @@ namespace SS.Matchmaking.Modules
                     }
                     else
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Search stopped on queue: {queue.Name}.");
+                        _chat.SendMessage(player, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
                     }
 
                     MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group != null ? QueueItemType.Group : QueueItemType.Player);
@@ -656,7 +847,7 @@ namespace SS.Matchmaking.Modules
             Queued,
 
             /// <summary>
-            /// Playing in a match.
+            /// Playing in a match. No searching allowed on queues.
             /// </summary>
             Playing,
         }
@@ -664,10 +855,13 @@ namespace SS.Matchmaking.Modules
         private class UsageData
         {
             public QueueState State { get; private set; }
-            public bool AutoRequeue;
+            public bool AutoRequeue = false;
 
             private readonly HashSet<IMatchmakingQueue> _queues = new();
             public IReadOnlySet<IMatchmakingQueue> Queues => _queues;
+
+            private readonly HashSet<IMatchmakingQueue> _autoQueues = new();
+            public IReadOnlySet<IMatchmakingQueue> AutoQueues => _autoQueues;
 
             public bool AddQueue(IMatchmakingQueue queue)
             {
@@ -704,6 +898,35 @@ namespace SS.Matchmaking.Modules
                 return true;
             }
 
+            public void SetPlaying()
+            {
+                State = QueueState.Playing;
+
+                _autoQueues.Clear();
+
+                if (AutoRequeue)
+                {
+                    foreach (var queue in _queues)
+                    {
+                        if (queue.Options.AllowAutoRequeue)
+                            _autoQueues.Add(queue);
+                    }
+                }
+
+                _queues.Clear();
+            }
+
+            public void UnsetPlaying()
+            {
+                if (State == QueueState.Playing)
+                    State = QueueState.None;
+            }
+
+            public void ClearAutoQueues()
+            {
+                _autoQueues.Clear();
+            }
+
             public void Reset()
             {
                 State = QueueState.None;
@@ -726,6 +949,23 @@ namespace SS.Matchmaking.Modules
 
                 obj.Reset();
 
+                return true;
+            }
+        }
+
+        private class IMatchmakingQueueListPooledObjectPolicy : IPooledObjectPolicy<List<IMatchmakingQueue>>
+        {
+            public List<IMatchmakingQueue> Create()
+            {
+                return new List<IMatchmakingQueue>();
+            }
+
+            public bool Return(List<IMatchmakingQueue> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
                 return true;
             }
         }

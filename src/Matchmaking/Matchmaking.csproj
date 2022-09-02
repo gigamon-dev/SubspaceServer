@@ -21,6 +21,10 @@
 	  <Private>false</Private>
 	  <ExcludeAssets>all</ExcludeAssets>
     </ProjectReference>
+	<ProjectReference Include="..\Packets\Packets.csproj">
+		<Private>false</Private>
+		<ExcludeAssets>all</ExcludeAssets>
+	</ProjectReference>
     <ProjectReference Include="..\Utilities\Utilities.csproj">
       <Private>false</Private>
       <ExcludeAssets>all</ExcludeAssets>

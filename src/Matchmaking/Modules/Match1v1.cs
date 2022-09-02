@@ -1,4 +1,5 @@
-﻿using SS.Core;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
@@ -21,19 +22,21 @@ namespace SS.Matchmaking.Modules
         private IConfigManager _configManager;
         private IGame _game;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
+        private IMainloopTimer _mainloopTimer;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IMatchmakingQueues _playerQueues;
 
-        //private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor> _iMatchmakingQueueAdvisorToken;
 
         private string _arenaBaseName;
-        private List<string> _arenaNames = new(10); // for reducing string allocations
+        private int _maxArenas;
+        private readonly List<string> _arenaNames = new(10); // for reducing string allocations
         private Dictionary<string, OneVersusOneQueue> _queueDictionary;
         private BoxConfiguration[] _boxes;
-        private Dictionary<int, ArenaData> _arenaDataDictionary = new(); // Note: can't use per-arena data since this needs contain data for arenas that aren't yet created
+        private readonly Dictionary<int, ArenaData> _arenaDataDictionary = new(); // Not using per-arena data since it will have data for arenas that aren't created yet.
 
         #region Module members
 
@@ -44,6 +47,8 @@ namespace SS.Matchmaking.Modules
             IConfigManager configManager,
             IGame game,
             ILogManager logManager,
+            IMainloop mainloop,
+            IMainloopTimer mainloopTimer,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IMatchmakingQueues playerQueues)
@@ -53,6 +58,8 @@ namespace SS.Matchmaking.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _playerQueues = playerQueues ?? throw new ArgumentNullException(nameof(playerQueues));
@@ -66,8 +73,7 @@ namespace SS.Matchmaking.Modules
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Register(broker, Callback_MatchmakingQueueChanged);
 
-            //_adKey = _arenaManager.AllocateArenaData<ArenaData>();
-            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
+            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
 
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
             return true;
@@ -77,7 +83,6 @@ namespace SS.Matchmaking.Modules
         {
             broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken);
 
-            //_arenaManager.FreeArenaData(_adKey);
             _playerData.FreePlayerData(_pdKey);
 
             foreach (var queue in _queueDictionary.Values)
@@ -134,22 +139,20 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            
+            if (action == ArenaAction.Create)
+            {
+                KillCallback.Register(arena, Callback_Kill);
+                ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
+            }
+            else if (action == ArenaAction.Destroy)
+            {
+                KillCallback.Unregister(arena, Callback_Kill);
+                ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+            }
         }
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (action == PlayerAction.LeaveArena)
-            {
-                if (arena == null || !string.Equals(arena.BaseName, _arenaBaseName))
-                    return;
-
-                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                    return;
-
-                playerData.HasEnteredArena = false;
-            }
-
             if (action == PlayerAction.EnterGame)
             {
                 if (arena == null
@@ -161,28 +164,79 @@ namespace SS.Matchmaking.Modules
 
                 playerData.HasEnteredArena = true;
 
-                if (playerData.MatchArenaNumber == arena.Number
-                    && playerData.MatchBox != null)
+                if (playerData.MatchIdentifier != null
+                    && playerData.MatchIdentifier.ArenaNumber == arena.Number)
                 {
                     if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
                         return;
 
-                    BoxState boxState = arenaData.Boxes[playerData.MatchBox.Value];
+                    BoxState boxState = arenaData.Boxes[playerData.MatchIdentifier.BoxId];
 
                     if (boxState.Status == BoxStatus.Starting)
                     {
                         if (boxState.Player1 == player && boxState.Player1State == PlayerMatchmakingState.SwitchingArena)
                         {
                             boxState.Player1State = PlayerMatchmakingState.Waiting;
+                            QueueMatchInitialzation(boxState.MatchIdentifier);
                         }
-
-                        if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.SwitchingArena)
+                        else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.SwitchingArena)
                         {
                             boxState.Player2State = PlayerMatchmakingState.Waiting;
+                            QueueMatchInitialzation(boxState.MatchIdentifier);
                         }
-
-                        DoMatchInitialization(arenaData, playerData.MatchBox.Value);
                     }
+                }
+            }
+            else if (action == PlayerAction.LeaveArena)
+            {
+                if (arena == null || !string.Equals(arena.BaseName, _arenaBaseName))
+                    return;
+
+                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                    return;
+
+                playerData.HasEnteredArena = false;
+
+                if (playerData.MatchIdentifier != null
+                    && arena.Number == playerData.MatchIdentifier.ArenaNumber)
+                {
+                    if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
+                        return;
+
+                    BoxState boxState = arenaData.Boxes[playerData.MatchIdentifier.BoxId];
+                    if (boxState.Status == BoxStatus.Playing)
+                    {
+                        if (boxState.Player1 == player)
+                            boxState.Player1State = PlayerMatchmakingState.GaveUp;
+                        else if (boxState.Player2 == player)
+                            boxState.Player2State = PlayerMatchmakingState.GaveUp;
+
+                        QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                    }
+                }
+            }
+            else if (action == PlayerAction.Disconnect)
+            {
+                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                    return;
+
+                if (playerData.MatchIdentifier != null)
+                {
+                    if (!_arenaDataDictionary.TryGetValue(playerData.MatchIdentifier.ArenaNumber, out ArenaData arenaData))
+                        return;
+
+                    // Get rid of references to the player.
+                    BoxState boxState = arenaData.Boxes[playerData.MatchIdentifier.BoxId];
+                    if (boxState.Player1 == player)
+                    {
+                        boxState.Player1 = null;
+                    }
+                    else if (boxState.Player2 == player)
+                    {
+                        boxState.Player2 = null;
+                    }
+
+                    // Note: Don't need to queue a workitem check for match completion since it would have already been done for PlayerAction.LeaveArena
                 }
             }
         }
@@ -199,6 +253,83 @@ namespace SS.Matchmaking.Modules
             DoMatching(found);
         }
 
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Packets.Game.Prize green)
+        {
+            if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerPlayerData) || killerPlayerData.MatchIdentifier == null)
+                return;
+
+            if (!killed.TryGetExtraData(_pdKey, out PlayerData killedPlayerData) || killedPlayerData.MatchIdentifier == null || killerPlayerData.MatchIdentifier != killedPlayerData.MatchIdentifier)
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
+                return;
+
+            BoxState boxState = arenaData.Boxes[killedPlayerData.MatchIdentifier.BoxId];
+            if (boxState.Status == BoxStatus.Playing)
+            {
+                if (boxState.Player1 == killer && boxState.Player2 == killed)
+                {
+                    boxState.Player2State = PlayerMatchmakingState.KnockedOut;
+                    QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                }
+                else if (boxState.Player2 == killer && boxState.Player1 == killed)
+                {
+                    boxState.Player1State = PlayerMatchmakingState.KnockedOut;
+                    QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                }
+            }
+        }
+
+        private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        {
+            Arena arena = player.Arena;
+            if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData) || playerData.MatchIdentifier == null)
+                return;
+
+            int boxId = playerData.MatchIdentifier.BoxId;
+            BoxState boxState = arenaData.Boxes[boxId];
+            if (boxState.Status == BoxStatus.Playing)
+            {
+                BoxConfiguration boxConfig = _boxes[boxId];
+
+                if (newShip == ShipType.Spec)
+                {
+                    if (boxState.Player1 == player && boxState.Player1State == PlayerMatchmakingState.Playing)
+                    {
+                        boxState.Player1State = PlayerMatchmakingState.GaveUp;
+                        QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                    }
+                    else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.Playing)
+                    {
+                        boxState.Player2State = PlayerMatchmakingState.GaveUp;
+                        QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                    }
+                }
+                else
+                {
+                    if (boxState.Player1 == player)
+                    {
+                        _game.WarpTo(player, boxConfig.StartLocation1.X, boxConfig.StartLocation1.Y);
+                    }
+                    else if (boxState.Player2 == player)
+                    {
+                        _game.WarpTo(player, boxConfig.StartLocation2.X, boxConfig.StartLocation2.Y);
+                    }
+
+                    playerData.LastShip = newShip;
+                }
+            }
+        }
+
         #endregion
 
         private bool LoadConfiguration()
@@ -213,6 +344,9 @@ namespace SS.Matchmaking.Modules
             try
             {
                 _arenaBaseName = _configManager.GetStr(ch, "Matchmaking", "ArenaBaseName");
+                _maxArenas = _configManager.GetInt(ch, "Matchmaking", "MaxArenas", 10);
+                if (_maxArenas < 1)
+                    _maxArenas = 1;
 
                 int boxCount = _configManager.GetInt(ch, "Matchmaking", "Boxes", 0);
                 _boxes = new BoxConfiguration[boxCount];
@@ -246,6 +380,7 @@ namespace SS.Matchmaking.Modules
                     if (!_queueDictionary.TryGetValue(queueName, out OneVersusOneQueue queue))
                     {
                         string description = _configManager.GetStr(ch, $"Queue-{queueName}", "Description");
+                        bool allowAutoRequeue = _configManager.GetInt(ch, $"Queue-{queueName}", "AllowAutoRequeue", 0) != 0;
 
                         queue = new OneVersusOneQueue(
                             queueName,
@@ -283,7 +418,7 @@ namespace SS.Matchmaking.Modules
             if (queue == null)
                 return;
 
-            // check if there are 2 players available
+            // Check if there are 2 players available.
             if (!queue.GetNext(out Player player1, out Player player2))
                 return;
 
@@ -293,50 +428,38 @@ namespace SS.Matchmaking.Modules
             if (!player2.TryGetExtraData(_pdKey, out PlayerData player2Data))
                 return;
 
-            // find an available arena and box
-            string arenaName;
-            ArenaData arenaData;
-            int boxId;
-
-            int arenaNumber = 0;
-            do
+            // Find an available place for them to play.
+            if (!TryGetAvailableArenaAndBox(queue, out int arenaNumber, out int boxId, out ArenaData arenaData))
             {
-                if (arenaNumber < _arenaNames.Count)
-                {
-                    arenaName = _arenaNames[arenaNumber];
-                }
-                else
-                {
-                    arenaName = Arena.CreateArenaName(_arenaBaseName, arenaNumber);
-                    _arenaNames.Add(arenaName);
-                }
-
-                if (!_arenaDataDictionary.TryGetValue(arenaNumber, out arenaData))
-                {
-                    arenaData = new ArenaData(_boxes.Length);
-                    _arenaDataDictionary.Add(arenaNumber, arenaData);
-                }
-
-                if (TryGetAvailableBox(arenaData, queue, out boxId))
-                {
-                    break;
-                }
-
-                arenaNumber++;
+                return;
             }
-            while (true);
 
-            // got an arena and box
-            player1Data.MatchArenaNumber = player2Data.MatchArenaNumber = arenaNumber;
-            player1Data.MatchBox = player2Data.MatchBox = boxId;
-
+            // Reserve the spot for the match.
             BoxState boxState = arenaData.Boxes[boxId];
-            boxState.Status = BoxStatus.Starting;
-            boxState.Player1 = player1;
-            boxState.Player2 = player2;
+            boxState.Reserve(player1, player2);
+            player1Data.MatchIdentifier = player2Data.MatchIdentifier = boxState.MatchIdentifier;
 
-            // get the players in the correct arena
-            if (string.Equals(player1.Arena.Name, arenaName, StringComparison.OrdinalIgnoreCase))
+            // Tell the MatchmakingQueues module that the players are playing, so that they are removed from any other queues and prevented from queuing up while playing.
+            // Mark the players as 'Playing'.
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+            try
+            {
+                set.Add(player1);
+                set.Add(player2);
+
+                _playerQueues.SetPlaying(set, null);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+
+            // Get the players into the correct arena if they aren't already there.
+            // TODO: If the player is not in spec, then notify them of the match and which arena to go to and give them 30 seconds to get there.
+            string arenaName = GetArenaName(arenaNumber);
+            Arena arena = _arenaManager.FindArena(arenaName); // This will only find the arena if it already exists and is running.
+
+            if (arena != null && player1.Arena == arena)
             {
                 boxState.Player1State = PlayerMatchmakingState.Waiting;
             }
@@ -346,7 +469,7 @@ namespace SS.Matchmaking.Modules
                 _arenaManager.SendToArena(player1, arenaName, 0, 0);
             }
 
-            if (string.Equals(player2.Arena.Name, arenaName, StringComparison.OrdinalIgnoreCase))
+            if (arena != null && player2.Arena == arena)
             {
                 boxState.Player2State = PlayerMatchmakingState.Waiting;
             }
@@ -356,9 +479,39 @@ namespace SS.Matchmaking.Modules
                 _arenaManager.SendToArena(player2, arenaName, 0, 0);
             }
 
-            DoMatchInitialization(arenaData, boxId);
+            QueueMatchInitialzation(boxState.MatchIdentifier);
 
-            bool TryGetAvailableBox(ArenaData arenaData, OneVersusOneQueue queue, out int boxId)
+            bool TryGetAvailableArenaAndBox(OneVersusOneQueue queue, out int arenaNumber, out int boxId, out ArenaData arenaData)
+            {
+                arenaNumber = 0;
+
+                do
+                {
+                    // arena data
+                    if (!_arenaDataDictionary.TryGetValue(arenaNumber, out arenaData))
+                    {
+                        arenaData = new ArenaData(arenaNumber, _boxes.Length);
+                        _arenaDataDictionary.Add(arenaNumber, arenaData);
+                    }
+
+                    // box
+                    if (TryGetAvailableBox(arenaData, queue, out boxId))
+                    {
+                        return true;
+                    }
+
+                    arenaNumber++;
+                }
+                while (arenaNumber < _maxArenas);
+
+                // no availablity
+                arenaNumber = 0;
+                arenaData = null;
+                boxId = 0;
+                return false;
+            }
+
+            static bool TryGetAvailableBox(ArenaData arenaData, OneVersusOneQueue queue, out int boxId)
             {
                 foreach (int id in queue.BoxIds)
                 {
@@ -372,53 +525,189 @@ namespace SS.Matchmaking.Modules
                 boxId = default;
                 return false;
             }
-        }
 
-        private void DoMatchInitialization(ArenaData arenaData, int boxId)
-        {
-            BoxState boxState = arenaData.Boxes[boxId];
-
-            if (boxState.Status == BoxStatus.Starting)
+            string GetArenaName(int arenaNumber)
             {
-                Player player1 = boxState.Player1;
-                if (!player1.TryGetExtraData(_pdKey, out PlayerData player1Data))
-                    return;
-
-                Player player2 = boxState.Player2;
-                if (!player2.TryGetExtraData(_pdKey, out PlayerData player2Data))
-                    return;
-
-                if (boxState.Player1State == PlayerMatchmakingState.Waiting
-                    && player1Data.HasEnteredArena
-                    && boxState.Player2State == PlayerMatchmakingState.Waiting
-                    && player2Data.HasEnteredArena)
+                if (arenaNumber < _arenaNames.Count)
                 {
-                    // The players are in the correct arena.
-                    // set freq/ship and warp to the proper box starting location
-
-                    // TOOD: freqs
-                    short freq1 = 0;
-                    short freq2 = 1;
-
-                    SetShipAndFreq(player1, player1Data, freq1);
-                    SetShipAndFreq(player2, player2Data, freq2);
-                    _game.WarpTo(player1, _boxes[boxId].StartLocation1.X, _boxes[boxId].StartLocation1.Y);
-                    _game.WarpTo(player2, _boxes[boxId].StartLocation2.X, _boxes[boxId].StartLocation2.Y);
-
-                    boxState.Status = BoxStatus.Playing;
-                    boxState.Player1State = boxState.Player2State = PlayerMatchmakingState.Playing;
+                    return _arenaNames[arenaNumber];
+                }
+                else
+                {
+                    string arenaName = Arena.CreateArenaName(_arenaBaseName, arenaNumber);
+                    _arenaNames.Add(arenaName);
+                    return arenaName;
                 }
             }
+        }
 
-            void SetShipAndFreq(Player player, PlayerData playerData, short freq)
+        private void QueueMatchInitialzation(MatchIdentifier matchIdentifier)
+        {
+            _mainloop.QueueMainWorkItem(DoMatchInitialization, matchIdentifier);
+
+            void DoMatchInitialization(MatchIdentifier matchWorkItem)
             {
-                ShipType ship;
-                if (playerData.LastShip != null)
-                    ship = playerData.LastShip.Value;
-                else
-                    playerData.LastShip = ship = ShipType.Warbird;
+                if (!_arenaDataDictionary.TryGetValue(matchWorkItem.ArenaNumber, out ArenaData arenaData))
+                    return;
 
-                _game.SetShipAndFreq(player, ship, freq);
+                int boxId = matchWorkItem.BoxId;
+                BoxState boxState = arenaData.Boxes[boxId];
+
+                if (boxState.Status == BoxStatus.Starting)
+                {
+                    Player player1 = boxState.Player1;
+                    if (!player1.TryGetExtraData(_pdKey, out PlayerData player1Data))
+                        return;
+
+                    Player player2 = boxState.Player2;
+                    if (!player2.TryGetExtraData(_pdKey, out PlayerData player2Data))
+                        return;
+
+                    if (boxState.Player1State == PlayerMatchmakingState.Waiting
+                        && player1Data.HasEnteredArena
+                        && boxState.Player2State == PlayerMatchmakingState.Waiting
+                        && player2Data.HasEnteredArena)
+                    {
+                        // The players are in the correct arena. Start the match.
+                        short freq1 = (short)(boxId * 2);
+                        short freq2 = (short)(boxId * 2 + 1);
+
+                        // Spawn the players (this is automatically in the center).
+                        SetShipAndFreq(player1, player1Data, freq1);
+                        SetShipAndFreq(player2, player2Data, freq2);
+
+                        // Warp the players to their starting locations.
+                        _game.WarpTo(player1, _boxes[boxId].StartLocation1.X, _boxes[boxId].StartLocation1.Y);
+                        _game.WarpTo(player2, _boxes[boxId].StartLocation2.X, _boxes[boxId].StartLocation2.Y);
+
+                        // Reset their ships.
+                        _game.ShipReset(player1);
+                        _game.ShipReset(player2);
+
+                        boxState.Status = BoxStatus.Playing;
+                        boxState.Player1State = boxState.Player2State = PlayerMatchmakingState.Playing;
+                    }
+                }
+
+                void SetShipAndFreq(Player player, PlayerData playerData, short freq)
+                {
+                    ShipType ship;
+                    if (playerData.LastShip != null)
+                        ship = playerData.LastShip.Value;
+                    else
+                        playerData.LastShip = ship = ShipType.Warbird;
+
+                    _game.SetShipAndFreq(player, ship, freq);
+                }
+            }
+        }
+
+        private void QueueMatchCompletionCheck(MatchIdentifier matchIdentifier)
+        {
+            _mainloopTimer.SetTimer(CheckMatchCompletion, 2000, Timeout.Infinite, matchIdentifier, matchIdentifier);
+
+            bool CheckMatchCompletion(MatchIdentifier matchIdentifier)
+            {
+                Arena arena = _arenaManager.FindArena(_arenaNames[matchIdentifier.ArenaNumber]);
+                if (arena == null)
+                    return false;
+
+                if (!_arenaDataDictionary.TryGetValue(matchIdentifier.ArenaNumber, out ArenaData arenaData))
+                    return false;
+
+                BoxState boxState = arenaData.Boxes[matchIdentifier.BoxId];
+                if (boxState.Status != BoxStatus.Playing)
+                    return false;
+
+                if (boxState.Player1State == PlayerMatchmakingState.KnockedOut
+                    && boxState.Player2State == PlayerMatchmakingState.Playing)
+                {
+                    // Player 2 Wins!
+                    _chat.SendArenaMessage(arena, $"{boxState.Player2.Name} defeated {boxState.Player1.Name}");
+                    // TODO: stats
+                    EndMatch(arena, boxState);
+                }
+                else if (boxState.Player1State == PlayerMatchmakingState.Playing
+                    && boxState.Player2State == PlayerMatchmakingState.KnockedOut)
+                {
+                    // Player 1 Wins!
+                    _chat.SendArenaMessage(arena, $"{boxState.Player1.Name} defeated {boxState.Player2.Name}");
+                    // TODO: stats
+                    EndMatch(arena, boxState);
+                }
+                else if (boxState.Player1State == PlayerMatchmakingState.KnockedOut
+                    || boxState.Player2State == PlayerMatchmakingState.KnockedOut)
+                {
+                    // Double knockout, draw --> restart match?
+                    _chat.SendMessage(boxState.Player1, "Draw! (Double knockout)");
+                    _chat.SendMessage(boxState.Player2, "Draw! (Double knockout)");
+
+                    // TODO: restart match instead
+                    EndMatch(arena, boxState);
+                }
+                else if (boxState.Player1State == PlayerMatchmakingState.GaveUp || boxState.Player2State == PlayerMatchmakingState.GaveUp)
+                {
+                    // Abort the game
+                    // NOTE: If the player disconnected, then the player is null. Therefore, all these null checks.
+                    if (boxState.Player1State == PlayerMatchmakingState.GaveUp)
+                    {
+                        if (boxState.Player1 != null)
+                            _chat.SendMessage(boxState.Player1, "You left the match.");
+
+                        if (boxState.Player2 != null)
+                            _chat.SendMessage(boxState.Player2, "Your opponent left the match.");
+                    }
+
+                    if (boxState.Player2State == PlayerMatchmakingState.GaveUp)
+                    {
+                        if (boxState.Player2 != null)
+                            _chat.SendMessage(boxState.Player2, "You left the match.");
+
+                        if (boxState.Player1 != null)
+                            _chat.SendMessage(boxState.Player1, "Your opponent left the match.");
+                    }
+
+                    EndMatch(arena, boxState);
+                }
+
+                return false;
+
+                void EndMatch(Arena arena, BoxState boxState)
+                {
+                    List<PlayerOrGroup> players = new(2); // TODO: object pooling
+
+                    try
+                    {
+                        if (boxState.Player1 != null)
+                            players.Add(new PlayerOrGroup(boxState.Player1)); // TODO: object pooling
+
+                        if (boxState.Player2 != null)
+                            players.Add(new PlayerOrGroup(boxState.Player2)); // TOOD: object pooling
+
+                        // Clear match info.
+                        boxState.Reset();
+
+                        foreach (PlayerOrGroup pog in players)
+                        {
+                            Player player = pog.Player;
+                            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                                continue;
+
+                            playerData.MatchIdentifier = null;
+
+                            // Change to spectator mode.
+                            if (player.Ship != ShipType.Spec)
+                                _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                        }
+
+                        // Remove the players' 'Playing' state.
+                        _playerQueues.UnsetPlaying(players);
+                    }
+                    finally
+                    {
+                        // TODO: object pooling
+                    }
+                }
             }
         }
 
@@ -429,7 +718,7 @@ namespace SS.Matchmaking.Modules
             public readonly LinkedList<Player> SoloQueue; // TODO: pooling of LinkListNode<Player> objects
             //public readonly LinkedList<IPlayerGroup> GroupQueue; // insert in order of group size
 
-            private List<int> _boxIds = new();
+            private readonly List<int> _boxIds = new();
 
             public OneVersusOneQueue(
                 string queueName,
@@ -559,6 +848,8 @@ namespace SS.Matchmaking.Modules
         {
             /// <summary>
             /// Not currently in use.
+            /// In this state, the box can be reserved. 
+            /// In all other states, the box is reserved and in use.
             /// </summary>
             None,
 
@@ -571,12 +862,6 @@ namespace SS.Matchmaking.Modules
             /// Match in progress.
             /// </summary>
             Playing,
-
-            /// <summary>
-            /// Short delay after a game ends.
-            /// Transitions to <see cref="None"/>.
-            /// </summary>
-            Ending,
         }
 
         private enum PlayerMatchmakingState
@@ -589,7 +874,7 @@ namespace SS.Matchmaking.Modules
             SwitchingArena,
 
             /// <summary>
-            /// The player is in the assigned arena, waiting for the opponent to enter.
+            /// The player is in the assigned arena, but has not yet been placed on a freq or ship.
             /// </summary>
             Waiting,
 
@@ -597,6 +882,16 @@ namespace SS.Matchmaking.Modules
             /// The player is on the assigned freq and in a ship.
             /// </summary>
             Playing,
+
+            /// <summary>
+            /// The player was defeated.
+            /// </summary>
+            KnockedOut,
+
+            /// <summary>
+            /// The player left or changed to spectator mode, possibly due to lag.
+            /// </summary>
+            GaveUp,
         }
 
         private class BoxState
@@ -608,28 +903,61 @@ namespace SS.Matchmaking.Modules
 
             public Player Player2;
             public PlayerMatchmakingState Player2State;
+
+            public BoxState(int arenaNumber, int boxId)
+            {
+                MatchIdentifier = new(arenaNumber, boxId);
+            }
+
+            public MatchIdentifier MatchIdentifier { get; }
+
+            public bool Reserve(Player player1, Player player2)
+            {
+                if (Status != BoxStatus.None)
+                    return false;
+
+                Status = BoxStatus.Starting;
+                Player1 = player1 ?? throw new ArgumentNullException(nameof(player1));
+                Player2 = player2 ?? throw new ArgumentNullException(nameof(player2));
+                Player1State = Player2State = PlayerMatchmakingState.None;
+                return true;
+            }
+
+            public void Reset()
+            {
+                Status = BoxStatus.None;
+                
+                Player1 = Player2 = null;
+                Player1State = Player2State = PlayerMatchmakingState.None;
+            }
         }
 
         private class ArenaData
         {
             public readonly BoxState[] Boxes;
 
-            public ArenaData(int boxCount)
+            public ArenaData(int arenaNumber, int boxCount)
             {
                 Boxes = new BoxState[boxCount];
 
-                for (int i = 0; i < Boxes.Length; i++)
+                for (int boxId = 0; boxId < Boxes.Length; boxId++)
                 {
-                    Boxes[i] = new BoxState();
+                    Boxes[boxId] = new BoxState(arenaNumber, boxId);
                 }
             }
         }
 
         private class PlayerData
         {
-            public int? MatchArenaNumber = null;
-            public int? MatchBox = null;
+            /// <summary>
+            /// Identifies the match the player is in. <see langword="null"/> if not in a match.
+            /// </summary>
+            public MatchIdentifier MatchIdentifier;
 
+            /// <summary>
+            /// The last ship the player used.
+            /// This is used for spawning the player in the same ship in their next match.
+            /// </summary>
             public ShipType? LastShip = null;
 
             /// <summary>
@@ -638,5 +966,27 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public bool HasEnteredArena = false;
         }
+
+        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
+        {
+            public PlayerData Create()
+            {
+                return new PlayerData();
+            }
+
+            public bool Return(PlayerData obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.MatchIdentifier = null;
+                obj.LastShip = null;
+                obj.HasEnteredArena = false;
+
+                return true;
+            }
+        }
+
+        private record MatchIdentifier(int ArenaNumber, int BoxId); // immutable, value equality
     }
 }

@@ -23,7 +23,38 @@ namespace SS.Matchmaking.Interfaces
         /// <returns></returns>
         bool UnregisterQueue(IMatchmakingQueue queue);
 
-        //void SetMatchStarted(Player player); // TODO: The player has been assigned a game to play in. Stops any searches. Set the player's queue state to 'Playing'.
-        //void SetMatchComplete(Player player); // TODO: The player has completed their game. Set the player's queue state to 'None'. Allow to search for another match.
+        /// <summary>
+        /// Marks the players state as 'Playing'.
+        /// For those marked as 'Playing', searches will disabled, and any ongoing ones are stopped.
+        /// </summary>
+        /// <param name="soloPlayers"></param>
+        /// <param name="groups"></param>
+        void SetPlaying(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
+
+        /// <summary>
+        /// Removes the 'Playing' state of the players/groups.
+        /// This allows the player or groups to queue up again.
+        /// If a player or group has automatic requeue enabled, that player or group will be requeued.
+        /// </summary>
+        /// <param name="toUnset">A list of the players and groups to unset. They will be reset in the order provided.</param>
+        void UnsetPlaying(List<PlayerOrGroup> toUnset);
+    }
+
+    public class PlayerOrGroup
+    {
+        public PlayerOrGroup(Player player)
+        {
+            Player = player;
+            Group = null;
+        }
+
+        public PlayerOrGroup(IPlayerGroup group)
+        {
+            Player = null;
+            Group = group;
+        }
+
+        public Player Player { get; }
+        public IPlayerGroup Group { get; }
     }
 }

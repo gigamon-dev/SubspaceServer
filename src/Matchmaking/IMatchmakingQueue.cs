@@ -65,6 +65,35 @@ namespace SS.Matchmaking
         /// <param name="soloPlayers">A set to populate with the solo players that are in the queue.</param>
         /// <param name="groups">A set to populate with the groups that are in the queue.</param>
         void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
+
+        #region Statistics
+
+        /// <summary>
+        /// The # of matches made.
+        /// </summary>
+        //int MatchesMade { get; }
+
+        /// <summary>
+        /// The # of players currently playing in a match.
+        /// </summary>
+        //int Playing { get; }
+
+        /// <summary>
+        /// The # of players queued.
+        /// </summary>
+        //int PlayersQueued { get; }
+
+        /// <summary>
+        /// The # of solo players currently queued.
+        /// </summary>
+        //int SoloPlayersQueued { get; }
+
+        /// <summary>
+        /// The # of groups queued.
+        /// </summary>
+        //int GroupsQueued { get; }
+
+        #endregion
     }
 
     public struct QueueOptions
