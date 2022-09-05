@@ -35,15 +35,11 @@ namespace SS.Replay
     ///
     /// Chat message functionality is also enhanced beyond that of ASSS.
     /// This module provides the ability to record and playback: public chat, public macro chat, spectator chat, team chat, and arena chat.
-    /// There are config settings to enable the recording and playback of each.
+    /// There are config settings to toggle the recording and playback of each.
     /// 
     /// TODO:
     /// - Record existing bricks when a recording starts. Unfortunately, there is no way to clear bricks on a client though.
     ///   Add an event type to record multiple bricks (to correspond to a brick packet containing multiple bricks, rather than just one).
-    /// - Syncing doors/greens: Do faking of the security packet 
-    ///   (would require changes to the Security module, perhaps an arena-level override + skip/disable verifications and all)
-    ///   NOTE: Tried and ran into issues, likely due to timestamp in the security packet not matching with timestamp in 0x00 0x05/6 (time sync request/response)?
-    ///   More investigation, info needed to proceed further.
     /// 
     /// Other info (to keep in mind):
     /// ASSS does not record the Position packet "time" field. It actually stores playerId in it.
@@ -359,7 +355,7 @@ namespace SS.Replay
                     {
                         byte[] buffer = _recordBufferPool.Rent(SecuritySeedChange.Length);
                         ref SecuritySeedChange seedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
-                        seedChange = new(ServerTick.Now, greenSeed, doorSeed, timestamp);
+                        seedChange = new(timestamp, greenSeed, doorSeed, 0);
 
                         ad.RecorderQueue.Add(new RecordBuffer(buffer, SecuritySeedChange.Length));
                     }
@@ -681,10 +677,10 @@ namespace SS.Replay
             void QueueSecurityInfo(ArenaData ad)
             {
                 _securitySeedSync.GetCurrentSeedInfo(out uint greenSeed, out uint doorSeed, out uint timestamp);
-
                 byte[] buffer = _recordBufferPool.Rent(SecuritySeedChange.Length);
                 ref SecuritySeedChange change = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
-                change = new(ServerTick.Now, greenSeed, doorSeed, timestamp);
+                ServerTick now = ServerTick.Now;
+                change = new(now, greenSeed, doorSeed, (uint)(now - (ServerTick)timestamp));
 
                 ad.RecorderQueue.Add(new RecordBuffer(buffer, SecuritySeedChange.Length));
             }
@@ -740,13 +736,13 @@ namespace SS.Replay
                 }
             }
 
-            void QueueBricks(Arena arena, ArenaData ad)
-            {
+            //void QueueBricks(Arena arena, ArenaData ad)
+            //{
                 // TODO: this will require changes to the Bricks module:
                 // - a way to get the current bricks
                 // - a callback to record when brick(s) are placed
                 // - a way to set bricks (with earlier timestamps) --> playback
-            }
+            //}
 
             void QueueFlagInfo(Arena arena, ArenaData ad)
             {
@@ -1992,9 +1988,7 @@ namespace SS.Replay
 
                         case EventType.SecuritySeedChange:
                             ref SecuritySeedChange securitySeedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
-                            //securitySeedChange.Header.Ticks
-                            //_securitySeedSync.OverrideArenaSeedInfo(arena, securitySeedChange.GreenSeed, securitySeedChange.DoorSeed, securitySeedChange.Timestamp);
-                            _securitySeedSync.OverrideArenaSeedInfo(arena, securitySeedChange.GreenSeed, securitySeedChange.DoorSeed, ServerTick.Now);
+                            _securitySeedSync.OverrideArenaSeedInfo(arena, securitySeedChange.GreenSeed, securitySeedChange.DoorSeed, ServerTick.Now - securitySeedChange.TimeDelta);
                             break;
 
                         default:

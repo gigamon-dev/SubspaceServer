@@ -20,14 +20,14 @@ namespace SS.Replay.FileFormat.Events
         public EventHeader Header;
         private uint greenSeed;
         private uint doorSeed;
-        private uint timestamp;
+        private uint timeDelta;
 
-        public SecuritySeedChange(ServerTick ticks, uint greenSeed, uint doorSeed, uint timestamp)
+        public SecuritySeedChange(ServerTick ticks, uint greenSeed, uint doorSeed, uint timeDelta)
         {
             Header = new(ticks, EventType.SecuritySeedChange);
             this.greenSeed = LittleEndianConverter.Convert(greenSeed);
             this.doorSeed = LittleEndianConverter.Convert(doorSeed);
-            this.timestamp = LittleEndianConverter.Convert(timestamp);
+            this.timeDelta = LittleEndianConverter.Convert(timeDelta);
         }
 
         #region Helper properties
@@ -44,10 +44,13 @@ namespace SS.Replay.FileFormat.Events
             set => doorSeed = LittleEndianConverter.Convert(value);
         }
 
-        public uint Timestamp
+        /// <summary>
+        /// How long ago (in ticks) were the seeds changed, relative to the event time.
+        /// </summary>
+        public uint TimeDelta
         {
-            get => LittleEndianConverter.Convert(timestamp);
-            set => timestamp = LittleEndianConverter.Convert(value);
+            get => LittleEndianConverter.Convert(timeDelta);
+            set => timeDelta = LittleEndianConverter.Convert(value);
         }
 
         #endregion
