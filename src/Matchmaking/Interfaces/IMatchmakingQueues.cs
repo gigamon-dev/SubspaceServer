@@ -1,4 +1,5 @@
-﻿using SS.Core;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core;
 
 namespace SS.Matchmaking.Interfaces
 {
@@ -25,13 +26,16 @@ namespace SS.Matchmaking.Interfaces
         /// Marks the players state as 'Playing'.
         /// For those marked as 'Playing', searches will disabled, and any ongoing ones are stopped.
         /// </summary>
-        /// <param name="soloPlayers"></param>
-        /// <param name="groups"></param>
+        /// <param name="soloPlayers">Players that were queued as solo that are to be marked as 'Playing'.</param>
+        /// <param name="groups">Groups that were queued that are to marked as 'Playing'.</param>
         void SetPlaying(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
 
         /// <summary>
         /// Removes the 'Playing' state of the players/groups and if automatic requeuing was enabled for those players/groups, they will be requeued in the order provided.
         /// </summary>
+        /// <remarks>
+        /// Use the <see cref="PlayerOrGroupListPool"/> to reduce allocations.
+        /// </remarks>
         /// <param name="toUnset">A list of the players and groups to unset.</param>
         void UnsetPlaying(List<PlayerOrGroup> toUnset);
 
@@ -48,20 +52,28 @@ namespace SS.Matchmaking.Interfaces
         /// </summary>
         /// <param name="group">The group to unset from the 'Playing' state.</param>
         void UnsetPlayingWithoutRequeue(IPlayerGroup group);
+
+        /// <summary>
+        /// Object pool for <see cref="List{T}"/>s of <see cref="PlayerOrGroup"/>. For use with <see cref="UnsetPlaying(List{PlayerOrGroup})"/>.
+        /// </summary>
+        ObjectPool<List<PlayerOrGroup>> PlayerOrGroupListPool { get; }
     }
 
-    public class PlayerOrGroup
+    /// <summary>
+    /// A type that wraps either a <see cref="Core.Player"/> or <see cref="IPlayerGroup"/>.
+    /// </summary>
+    public struct PlayerOrGroup
     {
         public PlayerOrGroup(Player player)
         {
-            Player = player;
+            Player = player ?? throw new ArgumentNullException(nameof(player));
             Group = null;
         }
 
         public PlayerOrGroup(IPlayerGroup group)
         {
             Player = null;
-            Group = group;
+            Group = group ?? throw new ArgumentNullException(nameof(group));
         }
 
         public Player Player { get; }

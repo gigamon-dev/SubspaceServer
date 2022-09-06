@@ -42,6 +42,7 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<IPlayerGroup, UsageData> _groupUsageDictionary = new(128);
         private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new QueueUsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
         private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new IMatchmakingQueueListPooledObjectPolicy());
+        private readonly ObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new DefaultObjectPool<List<PlayerOrGroup>>(new PlayerOrGroupListPooledObjectPolicy());
 
         private const string NextCommandName = "next";
         private const string CancelCommandName = "cancel";
@@ -239,6 +240,8 @@ namespace SS.Matchmaking.Modules
             UnsetPlaying(group, false);
         }
 
+        ObjectPool<List<PlayerOrGroup>> IMatchmakingQueues.PlayerOrGroupListPool => _playerOrGroupListPool;
+
         private void UnsetPlaying(Player player, bool allowRequeue)
         {
             if (player == null)
@@ -253,7 +256,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (allowRequeue && usageData.AutoRequeue)
                 {
-                    // TODO: Set timer to re-queue.
+                    // TODO: Set timer to requeue.
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
@@ -261,7 +264,11 @@ namespace SS.Matchmaking.Modules
                         {
                             if (Enqueue(player, null, usageData, queue))
                                 addedQueues.Add(queue);
+                            else
+                                _logManager.LogP(LogLevel.Drivel, nameof(MatchmakingQueues), player, $"Failed to enqueue to: {queue.Name}.");
                         }
+
+                        usageData.ClearAutoQueues();
 
                         NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
                     }
@@ -270,8 +277,10 @@ namespace SS.Matchmaking.Modules
                         _iMatchmakingQueueListPool.Return(addedQueues);
                     }
                 }
-
-                usageData.ClearAutoQueues();
+                else
+                {
+                    usageData.ClearAutoQueues();
+                }
             }
         }
 
@@ -289,7 +298,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (allowRequeue && usageData.AutoRequeue)
                 {
-                    // TODO: Set timer to re-queue.
+                    // TODO: Set timer to requeue.
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
@@ -299,6 +308,8 @@ namespace SS.Matchmaking.Modules
                                 addedQueues.Add(queue);
                         }
 
+                        usageData.ClearAutoQueues();
+
                         NotifyQueuedAndInvokeChangeCallbacks(null, group, addedQueues);
                     }
                     finally
@@ -306,8 +317,10 @@ namespace SS.Matchmaking.Modules
                         _iMatchmakingQueueListPool.Return(addedQueues);
                     }
                 }
-
-                usageData.ClearAutoQueues();
+                else
+                {
+                    usageData.ClearAutoQueues();
+                }
             }
         }
 
@@ -477,6 +490,34 @@ namespace SS.Matchmaking.Modules
 
                     case QueueState.Playing:
                         _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} currently playing in match.");
+
+                        if (usageData.AutoRequeue)
+                        {
+                            if (usageData.AutoQueues.Count > 0)
+                            {
+                                sb = _objectPoolManager.StringBuilderPool.Get();
+                                try
+                                {
+                                    foreach (var queue in usageData.AutoQueues)
+                                    {
+                                        if (sb.Length > 0)
+                                            sb.Append(", ");
+
+                                        sb.Append(queue.Name);
+                                    }
+
+                                    _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} set to automatically requeue to: {sb}");
+                                }
+                                finally
+                                {
+                                    _objectPoolManager.StringBuilderPool.Return(sb);
+                                }
+                            }
+                            else
+                            {
+                                _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} set to automatically requeue.");
+                            }
+                        }
                         break;
 
                     default:
@@ -500,7 +541,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (string.Equals(parameters, "-auto", StringComparison.OrdinalIgnoreCase))
             {
-                _chat.SendMessage(player, $"{NextCommandName}: Automatic re-queuing {(usageData.AutoRequeue ? "disabled" : "enabled")}.");
+                _chat.SendMessage(player, $"{NextCommandName}: Automatic requeuing {(usageData.AutoRequeue ? "disabled" : "enabled")}.");
                 usageData.AutoRequeue = !usageData.AutoRequeue;
                 return;
             }
@@ -756,7 +797,7 @@ namespace SS.Matchmaking.Modules
                 if (usageData.State == QueueState.Playing && usageData.AutoRequeue)
                 {
                     usageData.AutoRequeue = false;
-                    _chat.SendMessage(player, $"{CancelCommandName}: Automatic re-queue disabled.");
+                    _chat.SendMessage(player, $"{CancelCommandName}: Automatic requeuing disabled.");
                     return;
                 }
 
@@ -987,6 +1028,7 @@ namespace SS.Matchmaking.Modules
             {
                 State = QueueState.None;
                 _queues.Clear();
+                _autoQueues.Clear();
                 AutoRequeue = false;
             }
         }
@@ -1017,6 +1059,23 @@ namespace SS.Matchmaking.Modules
             }
 
             public bool Return(List<IMatchmakingQueue> obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class PlayerOrGroupListPooledObjectPolicy : IPooledObjectPolicy<List<PlayerOrGroup>>
+        {
+            public List<PlayerOrGroup> Create()
+            {
+                return new List<PlayerOrGroup>();
+            }
+
+            public bool Return(List<PlayerOrGroup> obj)
             {
                 if (obj == null)
                     return false;

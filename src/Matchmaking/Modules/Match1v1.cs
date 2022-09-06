@@ -256,7 +256,8 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            DoMatching(found);
+            // Match until no more matches can be made.
+            while (DoMatching(found)) { }
         }
 
         private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Packets.Game.Prize green)
@@ -421,25 +422,26 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        private void DoMatching(OneVersusOneQueue queue)
+        private bool DoMatching(OneVersusOneQueue queue)
         {
             if (queue == null)
-                return;
+                return false;
+
+            // Find an available spot for the match..
+            if (!TryGetAvailableArenaAndBox(queue, out int arenaNumber, out int boxId, out ArenaData arenaData))
+            {
+                return false;
+            }
 
             // Check if there are 2 players available.
             if (!queue.GetNext(out Player player1, out Player player2))
-                return;
+                return false;
 
-            if (!player1.TryGetExtraData(_pdKey, out PlayerData player1Data))
-                return;
-
-            if (!player2.TryGetExtraData(_pdKey, out PlayerData player2Data))
-                return;
-
-            // Find an available place for them to play.
-            if (!TryGetAvailableArenaAndBox(queue, out int arenaNumber, out int boxId, out ArenaData arenaData))
+            if (!player1.TryGetExtraData(_pdKey, out PlayerData player1Data)
+                || !player2.TryGetExtraData(_pdKey, out PlayerData player2Data))
             {
-                return;
+                queue.UndoNext(player1, player2);
+                return false;
             }
 
             // Reserve the spot for the match.
@@ -488,6 +490,7 @@ namespace SS.Matchmaking.Modules
             }
 
             QueueMatchInitialzation(boxState.MatchIdentifier);
+            return true;
 
             bool TryGetAvailableArenaAndBox(OneVersusOneQueue queue, out int arenaNumber, out int boxId, out ArenaData arenaData)
             {
@@ -682,38 +685,60 @@ namespace SS.Matchmaking.Modules
 
                 void EndMatch(Arena arena, BoxState boxState)
                 {
-                    List<PlayerOrGroup> players = new(2); // TODO: object pooling
+                    List<PlayerOrGroup> players = _playerQueues.PlayerOrGroupListPool.Get();
+                    bool queuedMainloopWork = false;
 
                     try
                     {
                         if (boxState.Player1 != null)
-                            players.Add(new PlayerOrGroup(boxState.Player1)); // TODO: object pooling
+                            players.Add(new PlayerOrGroup(boxState.Player1));
 
                         if (boxState.Player2 != null)
-                            players.Add(new PlayerOrGroup(boxState.Player2)); // TOOD: object pooling
+                            players.Add(new PlayerOrGroup(boxState.Player2));
 
                         // Clear match info.
                         boxState.Reset();
 
-                        foreach (PlayerOrGroup pog in players)
+                        if (players.Count > 0)
                         {
-                            Player player = pog.Player;
-                            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                                continue;
+                            foreach (PlayerOrGroup pog in players)
+                            {
+                                Player player = pog.Player;
+                                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                                    continue;
 
-                            playerData.MatchIdentifier = null;
+                                playerData.MatchIdentifier = null;
 
-                            // Change to spectator mode.
-                            if (player.Ship != ShipType.Spec)
-                                _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                                // Change to spectator mode.
+                                // NOTE: The ShipFreqChangeCallback gets called asynchronously as a mainloop workitem.
+                                if (player.Ship != ShipType.Spec)
+                                    _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                            }
+
+                            // Remove the players' 'Playing' state with allowed requeuing.
+                            // Since this can requeue, it will fire the MatchmakingQueueChangedCallback for any that are requeued.
+                            // However, this must definitely happen after the ShipFreqChangeCallback(s).
+                            // So, queue this as a mainloop workitem too, which will happen after the ShipFreqChangeCallback(s) occur.
+                            _mainloop.QueueMainWorkItem(DoUnsetPlaying, players);
+                            queuedMainloopWork = true;
                         }
-
-                        // Remove the players' 'Playing' state.
-                        _playerQueues.UnsetPlaying(players);
                     }
                     finally
                     {
-                        // TODO: object pooling
+                        if (!queuedMainloopWork)
+                            _playerQueues.PlayerOrGroupListPool.Return(players);
+                    }
+
+                    void DoUnsetPlaying(List<PlayerOrGroup> players)
+                    {
+                        try
+                        {
+                            _playerQueues.UnsetPlaying(players);
+                        }
+                        finally
+                        {
+                            _playerQueues.PlayerOrGroupListPool.Return(players);
+                        }
                     }
                 }
             }
@@ -824,6 +849,15 @@ namespace SS.Matchmaking.Modules
                 SoloQueue.Remove(node);
 
                 return true;
+            }
+
+            public void UndoNext(Player player1, Player player2)
+            {
+                if (player2 != null)
+                    SoloQueue.AddFirst(player2);
+
+                if (player1 != null)
+                    SoloQueue.AddFirst(player1);
             }
 
             //public bool GetNext(int count, HashSet<Player> soloPlayers, HashSet<IPlayerGroup> playerGroups)
