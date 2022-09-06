@@ -20,19 +20,5 @@ namespace SS.Matchmaking.Advisors
         /// <param name="alias">The alias to check.</param>
         /// <returns>The queue name if one was found. Otherwise, null.</returns>
         string GetQueueNameByAlias(Arena arena, string alias) => null;
-
-        /// <summary>
-        /// Determines whether a player is allowed to get added to a queue.
-        /// 
-        /// Possible uses:
-        /// - a matchmaking module would keep track of the players currently in a match and disallow
-        /// - a matchmaking module might only allow permitted players to queue into its queue (e.g. only registered league players for a 4v4squad match)
-        /// </summary>
-        /// <remarks>
-        /// A player will not be allowed to search for a match if any advisor says to not allow.
-        /// </remarks>
-        /// <param name="player"></param>
-        /// <returns></returns>
-        bool AllowNext(Player player, string queueName) => true;
     }
 }

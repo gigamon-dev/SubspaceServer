@@ -10,16 +10,14 @@ namespace SS.Matchmaking.Interfaces
         /// <summary>
         /// Register's a queue, making it available to the ?next command.
         /// </summary>
-        /// <param name="queueName"></param>
-        /// <param name="options"></param>
-        /// <param name="description"></param>
+        /// <param name="queue">The queue to register.</param>
         /// <returns></returns>
         bool RegisterQueue(IMatchmakingQueue queue);
 
         /// <summary>
         /// Removes a previously registered queue.
         /// </summary>
-        /// <param name="queueName"></param>
+        /// <param name="queue">The queue to unregister.</param>
         /// <returns></returns>
         bool UnregisterQueue(IMatchmakingQueue queue);
 
@@ -32,12 +30,24 @@ namespace SS.Matchmaking.Interfaces
         void SetPlaying(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
 
         /// <summary>
-        /// Removes the 'Playing' state of the players/groups.
-        /// This allows the player or groups to queue up again.
-        /// If a player or group has automatic requeue enabled, that player or group will be requeued.
+        /// Removes the 'Playing' state of the players/groups and if automatic requeuing was enabled for those players/groups, they will be requeued in the order provided.
         /// </summary>
-        /// <param name="toUnset">A list of the players and groups to unset. They will be reset in the order provided.</param>
+        /// <param name="toUnset">A list of the players and groups to unset.</param>
         void UnsetPlaying(List<PlayerOrGroup> toUnset);
+
+        /// <summary>
+        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player}, HashSet{IPlayerGroup})"/>
+        /// without allowing automatic re-queuing.
+        /// </summary>
+        /// <param name="player">The player to unset from the 'Playing' state.</param>
+        void UnsetPlayingWithoutRequeue(Player player);
+
+        /// <summary>
+        /// Removes the 'Playing' state of a group that was previously marked with <see cref="SetPlaying(HashSet{Player}, HashSet{IPlayerGroup})"/>
+        /// without allowing automatic re-queuing.
+        /// </summary>
+        /// <param name="group">The group to unset from the 'Playing' state.</param>
+        void UnsetPlayingWithoutRequeue(IPlayerGroup group);
     }
 
     public class PlayerOrGroup

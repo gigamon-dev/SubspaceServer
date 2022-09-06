@@ -72,7 +72,7 @@ namespace SS.Matchmaking.Modules
             _pdKey = _playerData.AllocatePlayerData(new QueueUsageDataPooledObjectPolicy());
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
-            PlayerGroupMemberLeavingCallback.Register(broker, Callback_PlayerGroupMemberLeaving);
+            PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Register(broker, Callback_PlayerGroupDisbanded);
 
             _commandManager.AddCommand(NextCommandName, Command_next);
@@ -90,7 +90,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand(CancelCommandName, Command_cancel);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            PlayerGroupMemberLeavingCallback.Unregister(broker, Callback_PlayerGroupMemberLeaving);
+            PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
 
             _playerData.FreePlayerData(_pdKey);
@@ -196,7 +196,18 @@ namespace SS.Matchmaking.Modules
 
             if (groups != null)
             {
-                // TODO:
+                foreach (IPlayerGroup group in groups)
+                {
+                    if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
+                        continue;
+
+                    foreach (IMatchmakingQueue queue in usageData.Queues)
+                    {
+                        queue.Remove(group);
+                    }
+
+                    usageData.SetPlaying();
+                }
             }
         }
 
@@ -209,49 +220,94 @@ namespace SS.Matchmaking.Modules
             {
                 if (pog.Player != null)
                 {
-                    Player player = pog.Player;
-                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
-                        continue;
-
-                    usageData.UnsetPlaying();
-
-                    if (usageData.AutoRequeue && usageData.AutoQueues.Count > 0)
-                    {
-                        // TODO: Set timer to re-queue.
-                        List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
-                        try
-                        {
-                            foreach (IMatchmakingQueue queue in usageData.AutoQueues)
-                            {
-                                if (usageData.AddQueue(queue))
-                                {
-                                    if (queue.Add(player))
-                                    {
-                                        addedQueues.Add(queue);
-                                    }
-                                    else
-                                    {
-                                        usageData.RemoveQueue(queue);
-                                        _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
-                                    }
-                                }
-                            }
-
-                            usageData.ClearAutoQueues();
-
-                            NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
-                        }
-                        finally
-                        {
-                            _iMatchmakingQueueListPool.Return(addedQueues);
-                        }
-
-                    }
+                    UnsetPlaying(pog.Player, true);
                 }
                 else if (pog.Group != null)
                 {
-                    // TODO: 
+                    UnsetPlaying(pog.Group, true);
                 }
+            }
+        }
+
+        void IMatchmakingQueues.UnsetPlayingWithoutRequeue(Player player)
+        {
+            UnsetPlaying(player, false);
+        }
+
+        void IMatchmakingQueues.UnsetPlayingWithoutRequeue(IPlayerGroup group)
+        {
+            UnsetPlaying(group, false);
+        }
+
+        private void UnsetPlaying(Player player, bool allowRequeue)
+        {
+            if (player == null)
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+                return;
+
+            usageData.UnsetPlaying();
+
+            if (usageData.AutoQueues.Count > 0)
+            {
+                if (allowRequeue && usageData.AutoRequeue)
+                {
+                    // TODO: Set timer to re-queue.
+                    List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
+                    try
+                    {
+                        foreach (IMatchmakingQueue queue in usageData.AutoQueues)
+                        {
+                            if (Enqueue(player, null, usageData, queue))
+                                addedQueues.Add(queue);
+                        }
+
+                        NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
+                    }
+                    finally
+                    {
+                        _iMatchmakingQueueListPool.Return(addedQueues);
+                    }
+                }
+
+                usageData.ClearAutoQueues();
+            }
+        }
+
+        private void UnsetPlaying(IPlayerGroup group, bool allowRequeue)
+        {
+            if (group == null)
+                return;
+
+            if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
+                return;
+
+            usageData.UnsetPlaying();
+
+            if (usageData.AutoQueues.Count > 0)
+            {
+                if (allowRequeue && usageData.AutoRequeue)
+                {
+                    // TODO: Set timer to re-queue.
+                    List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
+                    try
+                    {
+                        foreach (IMatchmakingQueue queue in usageData.AutoQueues)
+                        {
+                            if (Enqueue(group.Leader, group, usageData, queue))
+                                addedQueues.Add(queue);
+                        }
+
+                        NotifyQueuedAndInvokeChangeCallbacks(null, group, addedQueues);
+                    }
+                    finally
+                    {
+                        _iMatchmakingQueueListPool.Return(addedQueues);
+                    }
+                }
+
+                usageData.ClearAutoQueues();
             }
         }
 
@@ -315,7 +371,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_PlayerGroupMemberLeaving(IPlayerGroup group, Player player)
+        private void Callback_PlayerGroupMemberRemoved(IPlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason)
         {
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
                 return;
@@ -534,67 +590,71 @@ namespace SS.Matchmaking.Modules
                     return null;
                 }
 
-                //
-                // Add to queue
-                //
+                if (!Enqueue(player, group, usageData, queue))
+                    return null;
 
-                if (group != null)
+                return queue;
+            }
+        }
+
+        private bool Enqueue(Player player, IPlayerGroup group, UsageData usageData, IMatchmakingQueue queue)
+        {
+            if (group != null)
+            {
+                // group search
+                if (!queue.Options.AllowGroups)
                 {
-                    // group search
-                    if (!queue.Options.AllowGroups)
-                    {
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow premade groups.");
-                        return null;
-                    }
-
-                    if (group.Members.Count < queue.Options.MinGroupSize
-                        || group.Members.Count > queue.Options.MaxGroupSize)
-                    {
-                        if (queue.Options.MinGroupSize == queue.Options.MaxGroupSize)
-                            _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups with exactly {queue.Options.MinGroupSize} players, but your group has {group.Members.Count} players.");
-                        else
-                            _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups sized from {queue.Options.MinGroupSize} to {queue.Options.MaxGroupSize} players, but your group has {group.Members.Count} players.");
-
-                        return null;
-                    }
-
-                    if (!usageData.AddQueue(queue))
-                    {
-                        _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
-                        return null;
-                    }
-                    else if (!queue.Add(group))
-                    {
-                        usageData.RemoveQueue(queue);
-                        _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
-                        return null;
-                    }
-
-                    return queue;
+                    _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow premade groups.");
+                    return false;
                 }
-                else
+
+                if (group.Members.Count < queue.Options.MinGroupSize
+                    || group.Members.Count > queue.Options.MaxGroupSize)
                 {
-                    // solo search
-                    if (!queue.Options.AllowSolo)
-                    {
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow solo play. Create or join a group first.");
-                        return null;
-                    }
+                    if (queue.Options.MinGroupSize == queue.Options.MaxGroupSize)
+                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups with exactly {queue.Options.MinGroupSize} players, but your group has {group.Members.Count} players.");
+                    else
+                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups sized from {queue.Options.MinGroupSize} to {queue.Options.MaxGroupSize} players, but your group has {group.Members.Count} players.");
 
-                    if (!usageData.AddQueue(queue))
-                    {
-                        _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
-                        return null;
-                    }
-                    else if (!queue.Add(player))
-                    {
-                        usageData.RemoveQueue(queue);
-                        _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
-                        return null;
-                    }
-
-                    return queue;
+                    return false;
                 }
+
+                if (!usageData.AddQueue(queue))
+                {
+                    _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
+                    return false;
+                }
+                else if (!queue.Add(group))
+                {
+                    usageData.RemoveQueue(queue);
+                    _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                    return false;
+                }
+
+                return true;
+            }
+            else
+            {
+                // solo search
+                if (!queue.Options.AllowSolo)
+                {
+                    _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow solo play. Create or join a group first.");
+                    return false;
+                }
+
+                if (!usageData.AddQueue(queue))
+                {
+                    _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
+                    return false;
+                }
+                else if (!queue.Add(player))
+                {
+                    usageData.RemoveQueue(queue);
+                    _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                    return false;
+                }
+
+                return true;
             }
         }
 
@@ -663,8 +723,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = "<none> | [<queue name>[, <queue name>[, ...]]]",
             Description = "Cancels a matchmaking search.\n" +
-            "Use the command without specifying a <queue name> to remove from all matchmaking queues.\n" +
-            "An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.")]
+            "Use the command without specifying a <queue name> to remove from all matchmaking queues.")]
         private void Command_cancel(string commandName, string parameters, Player player, ITarget target)
         {
             // Check if the player is in a group.
@@ -904,13 +963,10 @@ namespace SS.Matchmaking.Modules
 
                 _autoQueues.Clear();
 
-                if (AutoRequeue)
+                foreach (var queue in _queues)
                 {
-                    foreach (var queue in _queues)
-                    {
-                        if (queue.Options.AllowAutoRequeue)
-                            _autoQueues.Add(queue);
-                    }
+                    if (queue.Options.AllowAutoRequeue)
+                        _autoQueues.Add(queue);
                 }
 
                 _queues.Clear();

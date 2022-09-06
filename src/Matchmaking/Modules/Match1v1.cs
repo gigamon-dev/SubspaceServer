@@ -207,11 +207,17 @@ namespace SS.Matchmaking.Modules
                     if (boxState.Status == BoxStatus.Playing)
                     {
                         if (boxState.Player1 == player)
+                        {
                             boxState.Player1State = PlayerMatchmakingState.GaveUp;
+                            QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                            _playerQueues.UnsetPlayingWithoutRequeue(player);
+                        }
                         else if (boxState.Player2 == player)
+                        {
                             boxState.Player2State = PlayerMatchmakingState.GaveUp;
-
-                        QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                            QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                            _playerQueues.UnsetPlayingWithoutRequeue(player);
+                        }
                     }
                 }
             }
@@ -307,11 +313,13 @@ namespace SS.Matchmaking.Modules
                     {
                         boxState.Player1State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                        _playerQueues.UnsetPlayingWithoutRequeue(player);
                     }
                     else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.Playing)
                     {
                         boxState.Player2State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                        _playerQueues.UnsetPlayingWithoutRequeue(player);
                     }
                 }
                 else

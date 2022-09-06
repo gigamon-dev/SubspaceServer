@@ -104,26 +104,20 @@ namespace SS.Matchmaking.Modules
         {
             if (action == PlayerAction.Disconnect)
             {
-                // Remove the player from queues or groups.
-                // If the player was in a group that is currently queued, make sure that group gets dequeued.
                 if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                     return;
 
-                //if (pd.State == PlayerQueueState.Queued)
+                if (pd.Group != null)
                 {
-                    if (pd.Group != null)
-                    {
-                        // TODO: Remove the group from the queue(s).
-                        //pd.Group.Queues
+                    // The player is in a group. Remove the player from the group.
+                    RemoveMember(pd.Group, player, PlayerGroupMemberRemovedReason.Disconnect);
+                }
 
-                        // Remove the player from the group.
-                        RemoveMember(pd.Group, player);
-                    }
-                    else
-                    {
-                        // TODO: Remove the player from the queue(s).
-                        //pd.Queues
-                    }
+                // Remove any pending groups invites.
+                while (pd.PendingGroups.Count > 0)
+                {
+                    PlayerGroup group = pd.PendingGroups.First(); // TODO: Do this without using LINQ, possible allocation here.
+                    RemovePending(group, player, PlayerGroupPendingRemovedReason.Disconnect);
                 }
             }
         }
@@ -268,23 +262,39 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
+                if (!targetPlayer.IsStandard)
+                {
+                    _chat.SendMessage(player, $"{GroupCommandName}: {targetPlayer.Name} cannot be invited (non-playable client).");
+                    return;
+                }
+
                 if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
                     return;
 
                 if (targetPlayerData.Group != null)
                 {
-                    if (targetPlayerData.Group == playerData.Group)
-                    {
-                        _chat.SendMessage(
-                            player,
-                            $"{GroupCommandName}: {targetPlayer.Name} is already in {(targetPlayerData.Group == playerData.Group ? "your" : "another")} group.");
-                    }
+                    _chat.SendMessage(
+                        player,
+                        $"{GroupCommandName}: {targetPlayer.Name} is already in {(targetPlayerData.Group == playerData.Group ? "your" : "another")} group.");
 
                     return;
                 }
 
+                //if (targetPlayerData.PendingGroups.Count > 10) // TODO: max pending invites?
+                //{
+                //    _chat.SendMessage(
+                //        player,
+                //        $"{GroupCommandName}: {targetPlayer.Name} can't be invited. The player has too many pending invites .");
+                //}
+
                 if (group == null)
                 {
+                    // Decline all pending invites.
+                    while (playerData.PendingGroups.Count > 0)
+                    {
+                        RemovePending(playerData.PendingGroups.First(), player, PlayerGroupPendingRemovedReason.Decline);
+                    }
+
                     // Create a group.
                     group = playerData.Group = _playerGroupPool.Get();
                     group.Leader = player;
@@ -293,7 +303,6 @@ namespace SS.Matchmaking.Modules
                 }
 
                 group.PendingMembers.Add(targetPlayer);
-                group.State = PlayerGroupState.InvitePending;
                 targetPlayerData.PendingGroups.Add(group);
 
                 _chat.SendMessage(targetPlayer, $"{player.Name} has invited you to a group. To accept: ?group accept {player.Name}. To decline: ?group decline {player.Name}");
@@ -330,15 +339,11 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (!RemovePending(group, targetPlayer, true))
+                if (!RemovePending(group, targetPlayer, PlayerGroupPendingRemovedReason.InviterCancel))
                 {
-                    _chat.SendMessage(player, $"{GroupCommandName}: Your group does not have a pending invite for {targetPlayer.Name}.");
+                    _chat.SendMessage(player, $"{GroupCommandName}: There is no pending invite to {targetPlayer.Name}.");
                     return;
                 }
-
-                _chat.SendMessage(player, $"{GroupCommandName}: The group invite to {targetPlayer.Name} has been canceled.");
-
-                DisbandIfEmpty(group);
             }
             else if (MemoryExtensions.Equals(token, "accept", StringComparison.OrdinalIgnoreCase))
             {
@@ -414,14 +419,13 @@ namespace SS.Matchmaking.Modules
                 playerData.Group = group;
                 playerData.PendingGroups.Remove(group);
 
-                // any other invites are automatically declined
-                foreach (PlayerGroup otherGroup in playerData.PendingGroups)
+                // Decline all other invites.
+                while (playerData.PendingGroups.Count > 0)
                 {
-                    otherGroup.RemovePending(player);
-                    _chat.SendMessage(otherGroup.Leader, $"{GroupCommandName}: {player.Name} has declined your group invite.");
+                    RemovePending(playerData.PendingGroups.First(), player, PlayerGroupPendingRemovedReason.Decline);
                 }
-                playerData.PendingGroups.Clear();
 
+                // Message team members that the player joined the group.
                 foreach (Player member in group.Members)
                 {
                     if (member != player)
@@ -430,6 +434,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
+                // Message the player about the group that was joined.
                 _chat.SendMessage(player, $"{GroupCommandName}: Joined group:");
                 PrintDetailedGroupInfo(player, group);
             }
@@ -475,16 +480,11 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                if (!RemovePending(group, player, false))
+                if (!RemovePending(group, player, PlayerGroupPendingRemovedReason.Decline))
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: There is no pending invite from {group.Leader.Name}.");
                     return;
                 }
-
-                _chat.SendMessage(player, $"{GroupCommandName}: You have declined the group invite from {group.Leader.Name}.");
-                _chat.SendMessage(group.Leader, $"{GroupCommandName}: {player.Name} has declined your group invite.");
-
-                DisbandIfEmpty(group);
             }
             else if (MemoryExtensions.Equals(token, "leave", StringComparison.OrdinalIgnoreCase))
             {
@@ -495,37 +495,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                PlayerGroupMemberLeavingCallback.Fire(_broker, group, player);
-
-                bool wasLeader = group.Leader == player;
-
-                if (wasLeader && group.PendingMembers.Count > 0)
-                {
-                    // Remove any pending invites.
-                    RemovePendingInvites(group);
-                }
-
-                group.RemoveMember(player);
-                playerData.Group = null;
-                _chat.SendMessage(player, $"{GroupCommandName}: You have left the group.");
-
-                if (!DisbandIfEmpty(group))
-                {
-                    HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
-                    try
-                    {
-                        set.UnionWith(group.Members);
-
-                        if (wasLeader)
-                            _chat.SendSetMessage(set, $"{GroupCommandName}: {player.Name} left the group. {group.Leader.Name} is now the group leader.");
-                        else
-                            _chat.SendSetMessage(set, $"{GroupCommandName}: {player.Name} left the group.");
-                    }
-                    finally
-                    {
-                        _objectPoolManager.PlayerSetPool.Return(set);
-                    }
-                }
+                RemoveMember(group, player, PlayerGroupMemberRemovedReason.Leave);
             }
             else if (MemoryExtensions.Equals(token, "kick", StringComparison.OrdinalIgnoreCase))
             {
@@ -560,20 +530,15 @@ namespace SS.Matchmaking.Modules
 
                 if (targetPlayer == player)
                 {
-                    _chat.SendMessage(player, $"{GroupCommandName}: To remove yourself from the team use: ?{GroupCommandName} leave");
+                    _chat.SendMessage(player, $"{GroupCommandName}: To remove yourself from the group use: ?{GroupCommandName} leave");
                     return;
                 }
 
-                if (!RemoveMember(group, targetPlayer))
+                if (!RemoveMember(group, targetPlayer, PlayerGroupMemberRemovedReason.Kick))
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: {targetPlayer.Name} is not in the group and therefore cannot be kicked.");
                     return;
                 }
-
-                _chat.SendMessage(player, $"{GroupCommandName}: {targetPlayer.Name} has been kicked.");
-                _chat.SendMessage(targetPlayer, $"{GroupCommandName}: You have been kicked from the group.");
-
-                DisbandIfEmpty(group);
             }
             else if (MemoryExtensions.Equals(token, "leader", StringComparison.OrdinalIgnoreCase))
             {
@@ -606,11 +571,20 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (!group.Members.Contains(targetPlayer))
+                int index = group.Members.IndexOf(targetPlayer);
+                if (index == -1)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: {targetPlayer.Name} is not in the group and therefore cannot be made the leader.");
                     return;
                 }
+
+                // Move the player to the beginning of the list.
+                while (index > 0)
+                {
+                    group.Members[index] = group.Members[index - 1];
+                    index--;
+                }
+                group.Members[0] = targetPlayer;
 
                 group.Leader = targetPlayer;
 
@@ -672,7 +646,7 @@ namespace SS.Matchmaking.Modules
                         if (sb.Length > 0)
                             sb.Append(", ");
 
-                        sb.Append("[pending invite] ");
+                        sb.Append("[invited] ");
                         sb.Append(invitee.Name);
                     }
 
@@ -685,7 +659,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private bool RemovePending(PlayerGroup group, Player player, bool canceled)
+        private bool RemovePending(PlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
         {
             if (group == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return false;
@@ -695,32 +669,145 @@ namespace SS.Matchmaking.Modules
 
             playerData.PendingGroups.Remove(group);
 
-            if (canceled && group.Leader != null)
+            // Message the invitee.
+            if (reason == PlayerGroupPendingRemovedReason.Decline)
             {
-                _chat.SendMessage(player, $"{GroupCommandName}: The group invite from {group.Leader.Name} has been canceled.");
+                _chat.SendMessage(player, $"{GroupCommandName}: You have declined the group invite from {group.Leader.Name}.");
+            }
+            else if (reason != PlayerGroupPendingRemovedReason.Disconnect)
+            {
+                _chat.SendMessage(player, $"{GroupCommandName}: The group invite from {group.Leader.Name} was canceled.");
+            }
+
+            // Message the inviter.
+            if (reason == PlayerGroupPendingRemovedReason.Decline)
+            {
+                _chat.SendMessage(group.Leader, $"{GroupCommandName}: {player.Name} declined your group invite.");
+            }
+            else if (reason != PlayerGroupPendingRemovedReason.InviterDisconnect && reason != PlayerGroupPendingRemovedReason.Disband)
+            {
+                _chat.SendMessage(group.Leader, $"{GroupCommandName}: The group invite to {player.Name} was canceled.");
+            }
+
+            PlayerGroupPendingRemovedCallback.Fire(_broker, group, player, reason);
+
+            // Check if the group should be disbanded.
+            if (reason != PlayerGroupPendingRemovedReason.Disband)
+            {
+                DisbandIfEmpty(group);
             }
 
             return true;
         }
 
-        private bool RemoveMember(PlayerGroup group, Player player)
+        private bool RemoveMember(PlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason)
         {
             if (group == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return false;
 
+            bool wasLeader = player == group.Leader;
+
+            // Remove any pending invites.
+            if (wasLeader && group.PendingMembers.Count > 0)
+            {
+                PlayerGroupPendingRemovedReason pendingRemovedReason = reason switch {
+                    PlayerGroupMemberRemovedReason.Disconnect => PlayerGroupPendingRemovedReason.InviterDisconnect,
+                    PlayerGroupMemberRemovedReason.Disband => PlayerGroupPendingRemovedReason.Disband,
+                    PlayerGroupMemberRemovedReason.Leave or PlayerGroupMemberRemovedReason.Kick or _ => PlayerGroupPendingRemovedReason.InviterCancel,
+                };
+
+                RemoveAllPending(group, pendingRemovedReason);
+            }
+
+            // Try to do the removal. Note: the leader may change.
             if (!group.RemoveMember(player))
-                return false;
+                return false; // The player was not a member of the team.
 
             playerData.Group = null;
+
+            // Message to the player that was removed.
+            switch (reason)
+            {
+                case PlayerGroupMemberRemovedReason.Disconnect:
+                    // no message, the player is already gone
+                    break;
+
+                case PlayerGroupMemberRemovedReason.Leave:
+                    _chat.SendMessage(player, $"{GroupCommandName}: You have left the group.");
+                    break;
+
+                case PlayerGroupMemberRemovedReason.Kick:
+                    _chat.SendMessage(player, $"{GroupCommandName}: You were kicked from the group.");
+                    break;
+
+                case PlayerGroupMemberRemovedReason.Disband:
+                    _chat.SendMessage(player, $"{GroupCommandName}: Your group disbanded.");
+                    break;
+            }
+
+            // Message to the team members.
+            if (group.Members.Count > 0
+                && (reason == PlayerGroupMemberRemovedReason.Disconnect || reason == PlayerGroupMemberRemovedReason.Leave || reason == PlayerGroupMemberRemovedReason.Kick))
+            {
+                HashSet<Player> remainingMembers = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    remainingMembers.UnionWith(group.Members);
+
+                    if (reason == PlayerGroupMemberRemovedReason.Disconnect)
+                    {
+                        _chat.SendSetMessage(remainingMembers, $"{GroupCommandName}: {player.Name} left the group. (Disconnected)");
+                    }
+                    else if (reason == PlayerGroupMemberRemovedReason.Leave)
+                    {
+                        _chat.SendSetMessage(remainingMembers, $"{GroupCommandName}: {player.Name} left the group.");
+                    }
+                    else if (reason == PlayerGroupMemberRemovedReason.Kick)
+                    {
+                        _chat.SendSetMessage(remainingMembers, $"{GroupCommandName}: {player.Name} was kicked from the group.");
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(remainingMembers);
+                }
+            }
+
+            // Fire the callback so that other modules know that a member was removed from the group.
+            PlayerGroupMemberRemovedCallback.Fire(_broker, group, player, reason);
+
+            // Check if the team should be disbanded.
+            bool isDisbanded = reason == PlayerGroupMemberRemovedReason.Disband;
+            if (!isDisbanded)
+            {
+                isDisbanded = DisbandIfEmpty(group);
+            }
+
+            // Check if the team needs to be assigned a new leader.
+            if (!isDisbanded && wasLeader && group.Leader != null)
+            {
+                // Notify the team member that there is a new leader.
+                HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    members.UnionWith(group.Members);
+
+                    _chat.SendSetMessage(members, $"{GroupCommandName}: {group.Leader.Name} is now the group leader.");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(members);
+                }
+            }
+
             return true;
         }
 
-        private void RemovePendingInvites(PlayerGroup group)
+        private void RemoveAllPending(PlayerGroup group, PlayerGroupPendingRemovedReason reason)
         {
             if (group == null)
                 return;
 
-            // Remove any pending invites.
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
             try
             {
@@ -728,7 +815,7 @@ namespace SS.Matchmaking.Modules
 
                 foreach (Player player in set)
                 {
-                    RemovePending(group, player, true);
+                    RemovePending(group, player, reason);
                 }
             }
             finally
@@ -742,14 +829,13 @@ namespace SS.Matchmaking.Modules
             if (group == null)
                 return;
 
-            RemovePendingInvites(group);
+            RemoveAllPending(group, PlayerGroupPendingRemovedReason.Disband);
 
             // Remove the remaining members.
             while (group.Members.Count > 0)
             {
                 Player player = group.Members[^1];
-                RemoveMember(group, player);
-                _chat.SendMessage(player, $"{GroupCommandName}: Your group has disbanded.");
+                RemoveMember(group, player, PlayerGroupMemberRemovedReason.Disband);
             }
 
             _groups.Remove(group);
@@ -758,35 +844,33 @@ namespace SS.Matchmaking.Modules
             PlayerGroupDisbandedCallback.Fire(_broker, group);
         }
 
+        /// <summary>
+        /// Disbands a group if it is empty.
+        /// </summary>
+        /// <param name="group"></param>
+        /// <returns><see langword="true"/> if the group was disbanded. Otherwise, <see langword="false"/>.</returns>
         private bool DisbandIfEmpty(PlayerGroup group)
         {
             if (group == null)
                 return false;
 
-            if ((group.Members.Count + group.PendingMembers.Count) <= 1)
+            if (group.Members.Count > 0
+                && (group.Members.Count + group.PendingMembers.Count) > 1)
             {
-                Disband(group);
-                return true;
+                return false;
             }
 
-            return false;
+            Disband(group);
+            return true;
         }
 
         #endregion
-
-        private enum PlayerGroupState
-        {
-            None,
-            InvitePending,
-        }
 
         private class PlayerGroup : IPlayerGroup
         {
             public Player Leader;
             public readonly List<Player> Members = new(10); // ordered such that if the leader leaves, the first player will become leader
             public readonly HashSet<Player> PendingMembers = new(10);
-
-            public PlayerGroupState State;
 
             #region IPlayerGroup
 
@@ -822,11 +906,7 @@ namespace SS.Matchmaking.Modules
 
             public bool RemovePending(Player player)
             {
-                bool removed = PendingMembers.Remove(player);
-                if (PendingMembers.Count == 0)
-                    State = PlayerGroupState.None;
-
-                return removed;
+                return PendingMembers.Remove(player);
             }
 
             public void Reset()
@@ -834,14 +914,20 @@ namespace SS.Matchmaking.Modules
                 Leader = null;
                 Members.Clear();
                 PendingMembers.Clear();
-                State = PlayerGroupState.None;
             }
         }
 
         private class PlayerData
         {
+            /// <summary>
+            /// The player's current group. <see langword="null"/> when not in a group.
+            /// </summary>
             public PlayerGroup Group;
-            public readonly HashSet<PlayerGroup> PendingGroups = new(); // groups invited to, if we should allow multiple invites simulaneously. accepting one will decline the rest
+
+            /// <summary>
+            /// Groups that the player has a pending invite to.
+            /// </summary>
+            public readonly HashSet<PlayerGroup> PendingGroups = new();
         }
 
         private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
