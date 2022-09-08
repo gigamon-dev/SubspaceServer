@@ -536,19 +536,19 @@ namespace SS.Matchmaking.Modules
                 boxId = default;
                 return false;
             }
+        }
 
-            string GetArenaName(int arenaNumber)
+        private string GetArenaName(int arenaNumber)
+        {
+            if (arenaNumber < _arenaNames.Count)
             {
-                if (arenaNumber < _arenaNames.Count)
-                {
-                    return _arenaNames[arenaNumber];
-                }
-                else
-                {
-                    string arenaName = Arena.CreateArenaName(_arenaBaseName, arenaNumber);
-                    _arenaNames.Add(arenaName);
-                    return arenaName;
-                }
+                return _arenaNames[arenaNumber];
+            }
+            else
+            {
+                string arenaName = Arena.CreateArenaName(_arenaBaseName, arenaNumber);
+                _arenaNames.Add(arenaName);
+                return arenaName;
             }
         }
 
@@ -558,6 +558,11 @@ namespace SS.Matchmaking.Modules
 
             void DoMatchInitialization(MatchIdentifier matchWorkItem)
             {
+                string arenaName = GetArenaName(matchIdentifier.ArenaNumber);
+                Arena arena = _arenaManager.FindArena(arenaName);
+                if (arena == null)
+                    return;
+
                 if (!_arenaDataDictionary.TryGetValue(matchWorkItem.ArenaNumber, out ArenaData arenaData))
                     return;
 
@@ -597,6 +602,8 @@ namespace SS.Matchmaking.Modules
 
                         boxState.Status = BoxStatus.Playing;
                         boxState.Player1State = boxState.Player2State = PlayerMatchmakingState.Playing;
+
+                        OneVersusOneMatchStartedCallback.Fire(arena, arena, matchIdentifier.BoxId, player1, player2);
                     }
                 }
 
@@ -634,31 +641,24 @@ namespace SS.Matchmaking.Modules
                     && boxState.Player2State == PlayerMatchmakingState.Playing)
                 {
                     // Player 2 Wins!
-                    _chat.SendArenaMessage(arena, $"{boxState.Player2.Name} defeated {boxState.Player1.Name}");
-                    // TODO: stats
-                    EndMatch(arena, boxState);
+                    EndMatch(arena, matchIdentifier.BoxId, boxState, OneVersusOneMatchEndReason.Decided, 2);
                 }
                 else if (boxState.Player1State == PlayerMatchmakingState.Playing
                     && boxState.Player2State == PlayerMatchmakingState.KnockedOut)
                 {
                     // Player 1 Wins!
-                    _chat.SendArenaMessage(arena, $"{boxState.Player1.Name} defeated {boxState.Player2.Name}");
-                    // TODO: stats
-                    EndMatch(arena, boxState);
+                    EndMatch(arena, matchIdentifier.BoxId, boxState, OneVersusOneMatchEndReason.Decided, 1);
                 }
                 else if (boxState.Player1State == PlayerMatchmakingState.KnockedOut
                     || boxState.Player2State == PlayerMatchmakingState.KnockedOut)
                 {
-                    // Double knockout, draw --> restart match?
-                    _chat.SendMessage(boxState.Player1, "Draw! (Double knockout)");
-                    _chat.SendMessage(boxState.Player2, "Draw! (Double knockout)");
-
+                    // Double knockout, draw
                     // TODO: restart match instead
-                    EndMatch(arena, boxState);
+                    EndMatch(arena, matchIdentifier.BoxId, boxState, OneVersusOneMatchEndReason.Draw, null);
                 }
                 else if (boxState.Player1State == PlayerMatchmakingState.GaveUp || boxState.Player2State == PlayerMatchmakingState.GaveUp)
                 {
-                    // Abort the game
+                    // Abort the match
                     // NOTE: If the player disconnected, then the player is null. Therefore, all these null checks.
                     if (boxState.Player1State == PlayerMatchmakingState.GaveUp)
                     {
@@ -678,13 +678,22 @@ namespace SS.Matchmaking.Modules
                             _chat.SendMessage(boxState.Player1, "Your opponent left the match.");
                     }
 
-                    EndMatch(arena, boxState);
+                    EndMatch(arena, matchIdentifier.BoxId, boxState, OneVersusOneMatchEndReason.Aborted, null);
                 }
 
                 return false;
 
-                void EndMatch(Arena arena, BoxState boxState)
+                void EndMatch(Arena arena, int boxId, BoxState boxState, OneVersusOneMatchEndReason reason, int? winner)
                 {
+                    string winnerPlayerName = winner switch
+                    {
+                        1 => boxState.Player1Name,
+                        2 => boxState.Player2Name,
+                        _ => null
+                    };
+
+                    OneVersusOneMatchEndedCallback.Fire(arena, arena, boxId, reason, winnerPlayerName);
+
                     List<PlayerOrGroup> players = _playerQueues.PlayerOrGroupListPool.Get();
                     bool queuedMainloopWork = false;
 
@@ -940,9 +949,11 @@ namespace SS.Matchmaking.Modules
         {
             public BoxStatus Status = BoxStatus.None;
 
+            public string Player1Name;
             public Player Player1;
             public PlayerMatchmakingState Player1State;
 
+            public string Player2Name;
             public Player Player2;
             public PlayerMatchmakingState Player2State;
 
@@ -961,6 +972,8 @@ namespace SS.Matchmaking.Modules
                 Status = BoxStatus.Starting;
                 Player1 = player1 ?? throw new ArgumentNullException(nameof(player1));
                 Player2 = player2 ?? throw new ArgumentNullException(nameof(player2));
+                Player1Name = player1.Name;
+                Player2Name = player2.Name;
                 Player1State = Player2State = PlayerMatchmakingState.None;
                 return true;
             }
@@ -968,7 +981,8 @@ namespace SS.Matchmaking.Modules
             public void Reset()
             {
                 Status = BoxStatus.None;
-                
+
+                Player1Name = Player2Name = null;
                 Player1 = Player2 = null;
                 Player1State = Player2State = PlayerMatchmakingState.None;
             }

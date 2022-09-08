@@ -452,7 +452,7 @@ namespace SS.Core
             /// <summary>
             /// current energy
             /// </summary>
-            public int Energy { get; internal set; }
+            public short Energy { get; internal set; }
 
             /// <summary>
             /// time of last position packet
