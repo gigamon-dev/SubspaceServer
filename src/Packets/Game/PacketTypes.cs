@@ -95,7 +95,7 @@ namespace SS.Packets.Game
         Redirect = 0x3B, 
     }
 
-    public enum C2SPacketType : byte
+    public enum C2SPacketType
     {
         GotoArena = 0x01, 
         LeaveArena = 0x02, 
