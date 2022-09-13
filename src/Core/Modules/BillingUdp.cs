@@ -51,7 +51,7 @@ namespace SS.Core.Modules
         private BillingState _state;
         private ClientConnection _cc;
         private DateTime _lastEvent;
-        private byte[] _identity = new byte[256];
+        private byte[] _identity = null;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
         private DateTime? _bannerLastSendTime;
         private readonly object _lockObj = new();
