@@ -7,7 +7,9 @@ using SS.Packets.Game;
 using SS.Replay.FileFormat;
 using SS.Replay.FileFormat.Events;
 using SS.Utilities;
+using SS.Utilities.Binary;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -804,10 +806,10 @@ namespace SS.Replay
                         byte[] buffer = _recordBufferPool.Rent(eventLength);
                         ref StaticFlagFullUpdate fullUpdate = ref MemoryMarshal.AsRef<StaticFlagFullUpdate>(buffer);
                         fullUpdate = new(ServerTick.Now, flagCount);
-                        Span<short> fullUpdateOwners = MemoryMarshal.Cast<byte, short>(buffer.AsSpan(StaticFlagFullUpdate.Length, ownersLength));
+                        Span<Int16LittleEndian> fullUpdateOwners = MemoryMarshal.Cast<byte, Int16LittleEndian>(buffer.AsSpan(StaticFlagFullUpdate.Length, ownersLength));
                         for (int i = 0; i < flagCount; i++)
                         {
-                            fullUpdateOwners[i] = LittleEndianConverter.Convert(owners[i]);
+                            fullUpdateOwners[i] = owners[i];
                         }
 
                         ad.RecorderQueue.Add(new RecordBuffer(buffer, eventLength));
@@ -1894,7 +1896,7 @@ namespace SS.Replay
                                 {
                                     for (int i = 0; i < flagCount; i++)
                                     {
-                                        flagOwners[i] = LittleEndianConverter.Convert(flagOwners[i]);
+                                        flagOwners[i] = BinaryPrimitives.ReverseEndianness(flagOwners[i]);
                                     }
                                 }
 

@@ -3,7 +3,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Persist.Protobuf;
 using SS.Packets.Game;
-using SS.Utilities;
+using SS.Utilities.Binary;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -531,9 +531,9 @@ namespace SS.Core.Modules.FlagGame
             Span<byte> packet = stackalloc byte[1 + (ad.Flags.Length * 2)];
             packet[0] = (byte)S2CPacketType.TurfFlags;
 
-            Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(packet[1..]);
+            Span<Int16LittleEndian> flagOwners = MemoryMarshal.Cast<byte, Int16LittleEndian>(packet[1..]);
             for (int i = 0; i < ad.Flags.Length; i++)
-                flagOwners[i] = LittleEndianConverter.Convert(ad.Flags[i].OwnerFreq);
+                flagOwners[i] = ad.Flags[i].OwnerFreq;
 
             _network.SendToOne(player, packet, NetSendFlags.Reliable);
         }
@@ -552,9 +552,9 @@ namespace SS.Core.Modules.FlagGame
             Span<byte> packet = stackalloc byte[1 + (ad.Flags.Length * 2)];
             packet[0] = (byte)S2CPacketType.TurfFlags;
 
-            Span<short> flagOwners = MemoryMarshal.Cast<byte, short>(packet[1..]);
+            Span<Int16LittleEndian> flagOwners = MemoryMarshal.Cast<byte, Int16LittleEndian>(packet[1..]);
             for (int i = 0; i < ad.Flags.Length; i++)
-                flagOwners[i] = LittleEndianConverter.Convert(ad.Flags[i].OwnerFreq);
+                flagOwners[i] = ad.Flags[i].OwnerFreq;
 
             _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
         }

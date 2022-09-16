@@ -1,5 +1,6 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Packets;
+using SS.Utilities.Binary;
 using System;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -233,7 +234,7 @@ namespace SS.Core.Modules
                     if (key == 0)
                         return; // no encryption
 
-                    Span<short> myTable = MemoryMarshal.Cast<byte, short>(_table);
+                    Span<Int16LittleEndian> myTable = MemoryMarshal.Cast<byte, Int16LittleEndian>(_table);
 
                     for (int loop = 0; loop < 0x104; loop++)
                     {
@@ -276,8 +277,8 @@ namespace SS.Core.Modules
                         until = (len - 1) / 4 + 1;
                     }
 
-                    Span<int> myTable = MemoryMarshal.Cast<byte, int>(_table);
-                    Span<int> myData = MemoryMarshal.Cast<byte, int>(data);
+                    ReadOnlySpan<Int32LittleEndian> myTable = MemoryMarshal.Cast<byte, Int32LittleEndian>(_table);
+                    Span<Int32LittleEndian> myData = MemoryMarshal.Cast<byte, Int32LittleEndian>(data);
 
                     for (int loop = 0; loop < until; loop++)
                     {
@@ -319,8 +320,8 @@ namespace SS.Core.Modules
                         until = (len - 1) / 4 + 1;
                     }
 
-                    Span<int> myTable = MemoryMarshal.Cast<byte, int>(_table);
-                    Span<int> myData = MemoryMarshal.Cast<byte, int>(data);
+                    ReadOnlySpan<Int32LittleEndian> myTable = MemoryMarshal.Cast<byte, Int32LittleEndian>(_table);
+                    Span<Int32LittleEndian> myData = MemoryMarshal.Cast<byte, Int32LittleEndian>(data);
 
                     for (int loop = 0; loop < until; loop++)
                     {

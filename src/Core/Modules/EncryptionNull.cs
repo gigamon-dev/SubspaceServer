@@ -97,8 +97,7 @@ namespace SS.Core.Modules
 
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
             ConnectionInitResponsePacket response = new(packet.Key);
-            Span<byte> packetSpan = MemoryMarshal.Cast<ConnectionInitResponsePacket, byte>(MemoryMarshal.CreateSpan(ref response, 1));
-            _networkEncryption.ReallyRawSend(remoteEndpoint, packetSpan, ld);
+            _networkEncryption.ReallyRawSend(remoteEndpoint, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
 
             return true;
         }
