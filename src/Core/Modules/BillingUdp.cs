@@ -461,6 +461,8 @@ namespace SS.Core.Modules
                         {
                             _state = BillingState.Retry;
                         }
+
+                        _lastEvent = DateTime.UtcNow;
                     }
                 }
                 else if (_state == BillingState.Connecting)
