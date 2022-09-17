@@ -1,8 +1,9 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets;
-using SS.Packets.Game;
 using SS.Packets.Billing;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -34,9 +35,9 @@ namespace SS.Core.Modules
         private INetworkClient _networkClient;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
-        // TODO: private IStats _stats;
 
         // optional dependencies
+        private IArenaPlayerStats _arenaPlayerStats;
         private IBillingFallback _billingFallback;
 
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
@@ -44,6 +45,8 @@ namespace SS.Core.Modules
 
         private PlayerDataKey<PlayerData> _pdKey;
 
+        private bool _loadPublicPlayerScores;
+        private bool _savePublicPlayerScores;
         private TimeSpan _retryTimeSpan;
         private int _pendingAuths;
         private int _interruptedAuths;
@@ -60,6 +63,10 @@ namespace SS.Core.Modules
 
         [ConfigHelp("Billing", "RetryInterval", ConfigScope.Global, typeof(int), DefaultValue = "180",
             Description = "How many seconds to wait between tries to connect to the user database server.")]
+        [ConfigHelp("Billing", "LoadPublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+            Description = "Whether player scores (for the public arena) should be loaded from the biller. Not recommended, so off by default.")]
+        [ConfigHelp("Billing", "SavePublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "1",
+            Description = "Whether player scores (for the public arena) should be saved to the biller.")]
         public bool Load(
             ComponentBroker broker,
             ICapabilityManager capabilityManager,
@@ -71,9 +78,7 @@ namespace SS.Core.Modules
             INetwork network,
             INetworkClient networkClient,
             IObjectPoolManager objectPoolManager,
-            IPlayerData playerData
-            // TODO: IStats stats
-            )
+            IPlayerData playerData)
         {
             _broker = broker;
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
@@ -87,12 +92,15 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
             _billingFallback = broker.GetInterface<IBillingFallback>();
 
-            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
+            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
 
             _network.AddPacket(C2SPacketType.RegData, Packet_RegData);
 
+            _loadPublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "LoadPublicPlayerScores", 0) != 0;
+            _savePublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "SavePublicPlayerScores", 1) != 0;
             _retryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", 180));
 
             _mainloopTimer.SetTimer(MainloopTimer_DoWork, 100, 100, null);
@@ -138,6 +146,7 @@ namespace SS.Core.Modules
 
             _playerData.FreePlayerData(_pdKey);
 
+            broker.ReleaseInterface(ref _arenaPlayerStats);
             broker.ReleaseInterface(ref _billingFallback);
 
             return true;
@@ -556,21 +565,56 @@ namespace SS.Core.Modules
 
                         ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
 
-                        // TODO: score
-                        //if (UpdateScore(p, ref pd.SavedScore))
-                        //{
-                        //    packet.Score = p.SavedScore;
-                        //}
-                        //else
+                        if (_savePublicPlayerScores && pd.SavedScore != null)
                         {
-                            packetBytes = packetBytes.Slice(0, S2B_UserLogoff.LengthWithoutScore);
+                            packet.Score = pd.SavedScore.Value;
                             _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
+                        }
+                        else
+                        {
+                            _networkClient.SendPacket(_cc, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
                         }
                     }
                 }
-                else if (action == PlayerAction.LeaveArena && arena.IsPublic)
+                else if (action == PlayerAction.EnterArena && arena.IsPublic)
                 {
-                    // TODO: score stats
+                    if (pd.LoadedScore != null)
+                    {
+                        if (_loadPublicPlayerScores && _arenaPlayerStats != null)
+                        {
+                            _arenaPlayerStats.SetStat(p, StatCodes.KillPoints, PersistInterval.Reset, pd.LoadedScore.Value.Points);
+                            _arenaPlayerStats.SetStat(p, StatCodes.FlagPoints, PersistInterval.Reset, pd.LoadedScore.Value.FlagPoints);
+                            _arenaPlayerStats.SetStat(p, StatCodes.Kills, PersistInterval.Reset, pd.LoadedScore.Value.Kills);
+                            _arenaPlayerStats.SetStat(p, StatCodes.Deaths, PersistInterval.Reset, pd.LoadedScore.Value.Deaths);
+                            _arenaPlayerStats.SetStat(p, StatCodes.FlagPickups, PersistInterval.Reset, pd.LoadedScore.Value.Flags);
+                        }
+
+                        pd.LoadedScore = null;
+                    }
+                }
+                else if (action == PlayerAction.LeaveArena && arena.IsPublic && _savePublicPlayerScores && _arenaPlayerStats != null)
+                {
+                    if (!_arenaPlayerStats.TryGetStat(p, StatCodes.KillPoints, PersistInterval.Reset, out ulong killPoints))
+                        killPoints = 0;
+
+                    if (!_arenaPlayerStats.TryGetStat(p, StatCodes.FlagPoints, PersistInterval.Reset, out ulong flagPoints))
+                        flagPoints = 0;
+
+                    if (!_arenaPlayerStats.TryGetStat(p, StatCodes.Kills, PersistInterval.Reset, out ulong kills))
+                        kills = 0;
+
+                    if (!_arenaPlayerStats.TryGetStat(p, StatCodes.Deaths, PersistInterval.Reset, out ulong deaths))
+                        deaths = 0;
+
+                    if (!_arenaPlayerStats.TryGetStat(p, StatCodes.FlagPickups, PersistInterval.Reset, out ulong flagPickups))
+                        flagPickups = 0;
+
+                    pd.SavedScore = new PlayerScore(
+                        (ushort)kills,
+                        (ushort)deaths,
+                        (ushort)flagPickups,
+                        (uint)killPoints,
+                        (uint)flagPoints);
                 }
             }
         }
@@ -1063,13 +1107,15 @@ namespace SS.Core.Modules
                 pd.Usage = packet.Usage;
                 pd.BillingUserId = packet.UserId;
 
-                // TODO: Stats - Note: ASSS has this commented out
-                //if (len >= B2S_UserLogin.LengthWithScore)
-                //{
-                //    pd.SavedScore = packet.Score;
-                //    pd.SetPublicScore = true;
-                //}
-                pd.SavedScore = default;
+                // Note: ASSS has this commented out, but here we provide a config setting.
+                if (_loadPublicPlayerScores && len >= B2S_UserLogin.LengthWithScore)
+                {
+                    pd.LoadedScore = packet.Score;
+                }
+                else
+                {
+                    pd.LoadedScore = null;
+                }
 
                 authData.DemoData = packet.Result == B2SUserLoginResult.AskDemographics || packet.Result == B2SUserLoginResult.DemoVersion;
                 authData.Code = authData.DemoData ? AuthCode.AskDemographics : AuthCode.OK;
@@ -1549,7 +1595,8 @@ namespace SS.Core.Modules
             public bool HasDemographics;
             public LoginData? LoginData;
             public DateTime? FirstLogin;
-            public PlayerScore SavedScore;
+            public PlayerScore? LoadedScore;
+            public PlayerScore? SavedScore;
 
             public void RemoveLoginData()
             {
@@ -1558,6 +1605,36 @@ namespace SS.Core.Modules
                     LoginData.Value.Clear();
                     LoginData = null;
                 }
+            }
+
+            public void Reset()
+            {
+                BillingUserId = 0;
+                Usage = TimeSpan.Zero;
+                IsKnownToBiller = false;
+                HasDemographics = false;
+                LoginData = null;
+                FirstLogin = null;
+                LoadedScore = null;
+                SavedScore = null;
+            }
+        }
+
+        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
+        {
+            public PlayerData Create()
+            {
+                return new PlayerData();
+            }
+
+            public bool Return(PlayerData obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.Reset();
+
+                return true;
             }
         }
 
