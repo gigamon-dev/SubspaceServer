@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="AttachDelegate"/> callback.
@@ -13,9 +8,9 @@ namespace SS.Core.ComponentCallbacks
         /// <summary>
         /// Delegate for a callback that is invoked when a <see cref="Player"/> attaches or detaches.
         /// </summary>
-        /// <param name="p">The player that is attaching or detaching.</param>
+        /// <param name="player">The player that is attaching or detaching.</param>
         /// <param name="to">The player being attached to, or <see langword="null"/> when detaching.</param>
-        public delegate void AttachDelegate(Player p, Player to);
+        public delegate void AttachDelegate(Player player, Player to);
 
         public static void Register(ComponentBroker broker, AttachDelegate handler)
         {
@@ -27,12 +22,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, Player to)
+        public static void Fire(ComponentBroker broker, Player player, Player to)
         {
-            broker?.GetCallback<AttachDelegate>()?.Invoke(p, to);
+            broker?.GetCallback<AttachDelegate>()?.Invoke(player, to);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, to);
+                Fire(broker.Parent, player, to);
         }
     }
 }

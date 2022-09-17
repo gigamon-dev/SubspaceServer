@@ -8,11 +8,11 @@
         /// <summary>
         /// Delegate for a callback that is invoked when a <see cref="Player"/> enters or exits a safe zone.
         /// </summary>
-        /// <param name="p">The player that entered or exited a safe zone.</param>
+        /// <param name="player">The player that entered or exited a safe zone.</param>
         /// <param name="x">The x-coordinate of the player.</param>
         /// <param name="y">The y-coordinate of the player.</param>
         /// <param name="entering">True if the player is entering a safe zone.  False if the player is exiting a safe zone.</param>
-        public delegate void SafeZoneDelegate(Player p, int x, int y, bool entering);
+        public delegate void SafeZoneDelegate(Player player, int x, int y, bool entering);
 
         public static void Register(ComponentBroker broker, SafeZoneDelegate handler)
         {
@@ -24,12 +24,12 @@
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, int x, int y, bool entering)
+        public static void Fire(ComponentBroker broker, Player player, int x, int y, bool entering)
         {
-            broker?.GetCallback<SafeZoneDelegate>()?.Invoke(p, x, y, entering);
+            broker?.GetCallback<SafeZoneDelegate>()?.Invoke(player, x, y, entering);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, x, y, entering);
+                Fire(broker.Parent, player, x, y, entering);
         }
     }
 }

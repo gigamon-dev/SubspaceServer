@@ -2,7 +2,7 @@
 {
     public static class BallPickupCallback
     {
-        public delegate void BallPickupDelegate(Arena arena, Player p, byte ballId);
+        public delegate void BallPickupDelegate(Arena arena, Player player, byte ballId);
 
         public static void Register(ComponentBroker broker, BallPickupDelegate handler)
         {
@@ -14,12 +14,12 @@
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player p, byte ballId)
+        public static void Fire(ComponentBroker broker, Arena arena, Player player, byte ballId)
         {
-            broker?.GetCallback<BallPickupDelegate>()?.Invoke(arena, p, ballId);
+            broker?.GetCallback<BallPickupDelegate>()?.Invoke(arena, player, ballId);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, arena, p, ballId);
+                Fire(broker.Parent, arena, player, ballId);
         }
     }
 }

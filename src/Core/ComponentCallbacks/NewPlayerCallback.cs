@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="NewPlayerDelegate"/> callback.
@@ -15,9 +10,9 @@ namespace SS.Core.ComponentCallbacks
         /// In general you probably want to use the <see cref="PlayerActionCallback.PlayerActionDelegate"/> 
         /// callback instead of this for general initialization tasks.
         /// </summary>
-        /// <param name="p">The player being allocated or deallocated.</param>
+        /// <param name="player">The player being allocated or deallocated.</param>
         /// <param name="isNew">True if being allocated, false if being deallocated.</param>
-        public delegate void NewPlayerDelegate(Player p, bool isNew);
+        public delegate void NewPlayerDelegate(Player player, bool isNew);
 
         public static void Register(ComponentBroker broker, NewPlayerDelegate handler)
         {
@@ -29,12 +24,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, bool isNew)
+        public static void Fire(ComponentBroker broker, Player player, bool isNew)
         {
-            broker?.GetCallback<NewPlayerDelegate>()?.Invoke(p, isNew);
+            broker?.GetCallback<NewPlayerDelegate>()?.Invoke(player, isNew);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, isNew);
+                Fire(broker.Parent, player, isNew);
         }
     }
 }

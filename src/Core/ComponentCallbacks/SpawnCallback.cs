@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -44,12 +42,12 @@ namespace SS.Core.ComponentCallbacks
         /// <summary>
         /// Delegate for a callback that is called when a player spawns.
         /// </summary>
-        /// <param name="p">The player that spawned.</param>
+        /// <param name="player">The player that spawned.</param>
         /// <param name="reason">
         /// The reason(s) for the spawn.
         /// There can be multiple reasons at the same time, use the bitwise & operator to determine which flags are set.
         /// </param>
-        public delegate void SpawnDelegate(Player p, SpawnReason reason);
+        public delegate void SpawnDelegate(Player player, SpawnReason reason);
 
         public static void Register(ComponentBroker broker, SpawnDelegate handler)
         {
@@ -61,12 +59,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, SpawnReason reason)
+        public static void Fire(ComponentBroker broker, Player player, SpawnReason reason)
         {
-            broker?.GetCallback<SpawnDelegate>()?.Invoke(p, reason);
+            broker?.GetCallback<SpawnDelegate>()?.Invoke(player, reason);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, reason);
+                Fire(broker.Parent, player, reason);
         }
     }
 }

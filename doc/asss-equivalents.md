@@ -189,7 +189,7 @@ This document provides an overview of the various server parts and their relatio
 | CB_KOTH_PLAYER_WIN_END | n/a | Use KothWonCallback instead. |
 | CB_KOTH_START | SS.Core.ComponentCallbacks.KothStartedCallback | |
 | CB_LOGFUNC | SS.Core.ComponentCallbacks.LogCallback | |
-| CB_MAINLOOP | n/a | Other options exist depending on what you need: IMainloopTimer, IServerTimer, use IMainloop to queue a workitem, do your own waiting on a worker thread (e.g. LagAction module). |
+| CB_MAINLOOP | SS.Core.ComponentCallbacks.MainloopCallback | The mainloop is implemented differently than in ASSS. Better options exist depending on what you need: IMainloopTimer, IServerTimer, use IMainloop to queue a workitem, do your own waiting on a worker thread (e.g. LagAction module). |
 | CB_NEWPLAYER | SS.Core.ComponentCallbacks.NewPlayerCallback | |
 | CB_PLAYERACTION | SS.Core.ComponentCallbacks.PlayerActionCallback | |
 | CB_PLAYERDAMAGE | SS.Core.ComponentCallbacks.PlayerDamageCallback | |

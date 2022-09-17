@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="PreShipFreqChangeCallback"/> callback.
@@ -13,14 +8,14 @@ namespace SS.Core.ComponentCallbacks
         /// <summary>
         /// Delegate for a callback that is invoked when a player's ship or freq (team) is changed.
         /// Intended for internal or core use only. 
-        /// No recursive shipchanges should happen as a result of this callback.
+        /// No recursive ship changes should happen as a result of this callback.
         /// </summary>
-        /// <param name="p">The player whose ship was changed.</param>
+        /// <param name="player">The player whose ship was changed.</param>
         /// <param name="newShip">The type of ship that the player changed to.</param>
         /// <param name="oldShip">The type of ship that the player changed from.</param>
         /// <param name="newFreq">The the player's new team.</param>
         /// <param name="oldFreq">The the player's old team.</param>
-        public delegate void PreShipFreqChangeDelegate(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq);
+        public delegate void PreShipFreqChangeDelegate(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq);
 
         public static void Register(ComponentBroker broker, PreShipFreqChangeDelegate handler)
         {
@@ -32,12 +27,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        public static void Fire(ComponentBroker broker, Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            broker?.GetCallback<PreShipFreqChangeDelegate>()?.Invoke(p, newShip, oldShip, newFreq, oldFreq);
+            broker?.GetCallback<PreShipFreqChangeDelegate>()?.Invoke(player, newShip, oldShip, newFreq, oldFreq);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, newShip, oldShip, newFreq, oldFreq);
+                Fire(broker.Parent, player, newShip, oldShip, newFreq, oldFreq);
         }
     }
 
@@ -49,12 +44,12 @@ namespace SS.Core.ComponentCallbacks
         /// <summary>
         /// Delegate for a callback that is invoked when a player's ship or freq (team) is changed.
         /// </summary>
-        /// <param name="p">The player whose ship was changed.</param>
+        /// <param name="player">The player whose ship was changed.</param>
         /// <param name="newShip">The type of ship that the player changed to.</param>
         /// <param name="oldShip">The type of ship that the player changed from.</param>
         /// <param name="newFreq">The the player's new team.</param>
         /// <param name="oldFreq">The the player's old team.</param>
-        public delegate void ShipFreqChangeDelegate(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq);
+        public delegate void ShipFreqChangeDelegate(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq);
 
         public static void Register(ComponentBroker broker, ShipFreqChangeDelegate handler)
         {
@@ -66,12 +61,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        public static void Fire(ComponentBroker broker, Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            broker?.GetCallback<ShipFreqChangeDelegate>()?.Invoke(p, newShip, oldShip, newFreq, oldFreq);
+            broker?.GetCallback<ShipFreqChangeDelegate>()?.Invoke(player, newShip, oldShip, newFreq, oldFreq);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, newShip, oldShip, newFreq, oldFreq);
+                Fire(broker.Parent, player, newShip, oldShip, newFreq, oldFreq);
         }
     }
 }

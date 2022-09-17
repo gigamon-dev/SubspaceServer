@@ -1,12 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     public static class WarpCallback
     {
-        public delegate void WarpDelegate(Player p, int oldX, int oldY, int newX, int newY);
+        public delegate void WarpDelegate(Player player, int oldX, int oldY, int newX, int newY);
 
         public static void Register(ComponentBroker broker, WarpDelegate handler)
         {
@@ -18,12 +14,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player p, int oldX, int oldY, int newX, int newY)
+        public static void Fire(ComponentBroker broker, Player player, int oldX, int oldY, int newX, int newY)
         {
-            broker?.GetCallback<WarpDelegate>()?.Invoke(p, oldX, oldY, newX, newY);
+            broker?.GetCallback<WarpDelegate>()?.Invoke(player, oldX, oldY, newX, newY);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, p, oldX, oldY, newX, newY);
+                Fire(broker.Parent, player, oldX, oldY, newX, newY);
         }
     }
 }

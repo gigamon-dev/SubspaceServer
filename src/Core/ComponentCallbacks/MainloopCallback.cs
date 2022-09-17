@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="MainloopDelegate"/> callback.
@@ -10,7 +6,7 @@ namespace SS.Core.ComponentCallbacks
     public static class MainloopCallback
     {
         /// <summary>
-        /// Delegate for a callback that is invoked once per iteration  of the main loop.
+        /// Delegate for a callback that is invoked once per iteration of the main loop.
         /// </summary>
         public delegate void MainloopDelegate();
 

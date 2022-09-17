@@ -1,4 +1,5 @@
 ﻿using Google.Protobuf;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -11,7 +12,7 @@ using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules.Scoring
 {
-    public class Stats : IModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats
+    public class Stats : IModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
     {
         private ComponentBroker _broker;
         private IChat _chat;
@@ -21,6 +22,8 @@ namespace SS.Core.Modules.Scoring
         private INetwork _network;
         private IPersist _persist;
         private IPlayerData _playerData;
+
+        private AdvisorRegistrationToken<IStatsAdvisor> _iStatsAdvisorToken;
 
         private InterfaceRegistrationToken<IGlobalPlayerStats> _iGlobalPlayerStatsToken;
         private InterfaceRegistrationToken<IArenaPlayerStats> _iArenaPlayerStatsToken;
@@ -97,8 +100,8 @@ namespace SS.Core.Modules.Scoring
 
             PersistIntervalEndedCallback.Register(broker, Callback_PersistIntervalEnded);
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
-            GetStatNameCallback.Register(broker, Callback_GetStatName); // TODO: this might be nicer on an advisor interface (change this when IAdvisor is added to the ComponentBroker)
 
+            _iStatsAdvisorToken = broker.RegisterAdvisor<IStatsAdvisor>(this);
 
             _iGlobalPlayerStatsToken = broker.RegisterInterface<IGlobalPlayerStats>(this);
             _iArenaPlayerStatsToken = broker.RegisterInterface<IArenaPlayerStats>(this);
@@ -121,9 +124,10 @@ namespace SS.Core.Modules.Scoring
             if (broker.UnregisterInterface(ref _iScoreStatsToken) != 0)
                 return false;
 
+            broker.UnregisterAdvisor(ref _iStatsAdvisorToken);
+
             PersistIntervalEndedCallback.Unregister(broker, Callback_PersistIntervalEnded);
             NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
-            GetStatNameCallback.Unregister(broker, Callback_GetStatName);
 
             foreach (var registration in _persistRegisteredList)
             {
@@ -365,6 +369,60 @@ namespace SS.Core.Modules.Scoring
                     statInfo.IsDirty = true;
                 }
             }
+        }
+
+        #endregion
+
+        #region IStatsAdvisor
+
+        string IStatsAdvisor.GetStatName(int statId)
+        {
+            StatId statCode = (StatId)statId;
+            if (!Enum.IsDefined(statCode))
+                return null;
+
+            return statCode switch
+            {
+                StatId.KillPoints => "kill points",
+                StatId.FlagPoints => "flag points",
+                StatId.Kills => "kills",
+                StatId.Deaths => "deaths",
+                StatId.Assists => "assists",
+                StatId.TeamKills => "team kills",
+                StatId.TeamDeaths => "team deaths",
+                StatId.ArenaTotalTime => "total time",
+                StatId.ArenaSpecTime => "spec time",
+                StatId.DamageTaken => "damage taken",
+                StatId.DamageDealt => "damage dealt",
+                StatId.FlagPickups => "flag pickups",
+                StatId.FlagCarryTime => "flag time",
+                StatId.FlagDrops => "flag drops",
+                StatId.FlagNeutDrops => "flag neutral drops",
+                StatId.FlagKills => "flag kills",
+                StatId.FlagDeaths => "flag deaths",
+                StatId.FlagGamesWon => "flag games won",
+                StatId.FlagGamesLost => "flag games lost",
+                StatId.TurfTags => "turf flag tags",
+                StatId.BallCarries => "ball carries",
+                StatId.BallCarryTime => "ball time",
+                StatId.BallGoals => "goals",
+                StatId.BallGamesWon => "ball games won",
+                StatId.BallGamesLost => "ball games lost",
+                StatId.KothGamesWon => "koth games won",
+                StatId.SpeedGamesWon => "speed games won",
+                StatId.SpeedPersonalBest => "speed personal best",
+                StatId.BallAssists => "assists",
+                StatId.BallSteals => "steals",
+                StatId.BallDelayedSteals => "delayed steals",
+                StatId.BallTurnovers => "turnovers",
+                StatId.BallDelayedTurnovers => "delayed turnovers",
+                StatId.BallSaves => "saves",
+                StatId.BallChokes => "chokes",
+                StatId.BallKills => "kills",
+                StatId.BallTeamKills => "team kills",
+                StatId.BallSpawns => "ball spawns",
+                _ => null,
+            };
         }
 
         #endregion
@@ -1005,7 +1063,14 @@ namespace SS.Core.Modules.Scoring
                 foreach ((int statId, BaseStatInfo baseStatinfo) in stats)
                 {
                     string statName = null;
-                    GetStatNameCallback.Fire(_broker, statId, ref statName);
+                    var advisors = _broker.GetAdvisors<IStatsAdvisor>();
+                    foreach (IStatsAdvisor advisor in advisors)
+                    {
+                        statName = advisor.GetStatName(statId);
+                        if (!string.IsNullOrWhiteSpace(statName))
+                            break;
+                    }
+
                     if (string.IsNullOrWhiteSpace(statName))
                         statName = statId.ToString(CultureInfo.InvariantCulture);
 
@@ -1076,59 +1141,6 @@ namespace SS.Core.Modules.Scoring
                     pd.CurrentArenaStats.Clear();
                 }
             }
-        }
-
-        private void Callback_GetStatName(int statId, ref string statName)
-        {
-            if (!string.IsNullOrWhiteSpace(statName))
-                return;
-
-            StatId statCode = (StatId)statId;
-            if (!Enum.IsDefined(statCode))
-                return;
-
-            statName = statCode switch
-            {
-                StatId.KillPoints => "kill points",
-                StatId.FlagPoints => "flag points",
-                StatId.Kills => "kills",
-                StatId.Deaths => "deaths",
-                StatId.Assists => "assists",
-                StatId.TeamKills => "team kills",
-                StatId.TeamDeaths => "team deaths",
-                StatId.ArenaTotalTime => "total time",
-                StatId.ArenaSpecTime => "spec time",
-                StatId.DamageTaken => "damage taken",
-                StatId.DamageDealt => "damage dealt",
-                StatId.FlagPickups => "flag pickups",
-                StatId.FlagCarryTime => "flag time",
-                StatId.FlagDrops => "flag drops",
-                StatId.FlagNeutDrops => "flag neutral drops",
-                StatId.FlagKills => "flag kills",
-                StatId.FlagDeaths => "flag deaths",
-                StatId.FlagGamesWon => "flag games won",
-                StatId.FlagGamesLost => "flag games lost",
-                StatId.TurfTags => "turf flag tags",
-                StatId.BallCarries => "ball carries",
-                StatId.BallCarryTime => "ball time",
-                StatId.BallGoals => "goals",
-                StatId.BallGamesWon => "ball games won",
-                StatId.BallGamesLost => "ball games lost",
-                StatId.KothGamesWon => "koth games won",
-                StatId.BallAssists => "assists",
-                StatId.BallSteals => "steals",
-                StatId.BallDelayedSteals => "delayed steals",
-                StatId.BallTurnovers => "turnovers",
-                StatId.BallDelayedTurnovers => "delayed turnovers",
-                StatId.BallSaves => "saves",
-                StatId.BallChokes => "chokes",
-                StatId.BallKills => "kills",
-                StatId.BallTeamKills => "team kills",
-                StatId.BallSpawns => "ball spawns",
-                StatId.SpeedGamesWon => "speed games won",
-                StatId.SpeedPersonalBest => "speed personal best",
-                _ => null,
-            };
         }
 
         private static SortedDictionary<int, BaseStatInfo> GetArenaStatsByInterval(PlayerData pd, PersistInterval interval)
