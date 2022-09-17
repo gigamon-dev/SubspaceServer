@@ -39,7 +39,7 @@ namespace SS.Core.Modules.Scoring
         public bool Unload(ComponentBroker broker)
         {
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            KillCallback.Register(broker, Callback_Kill);
+            KillCallback.Unregister(broker, Callback_Kill);
 
             FlagGameResetCallback.Unregister(broker, Callback_FlagGameReset);
             FlagGainCallback.Unregister(broker, Callback_FlagGain);

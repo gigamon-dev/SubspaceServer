@@ -62,7 +62,7 @@ namespace SS.Core.Modules.Scoring
                 broker.ReleaseInterface(ref _persist);
             }
 
-            ArenaActionCallback.Register(broker, Callback_ArenaAction);
+            ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             KillCallback.Unregister(broker, Callback_Kill);
 
             _arenaManager.FreeArenaData(_adKey);
