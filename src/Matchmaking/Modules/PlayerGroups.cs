@@ -870,13 +870,19 @@ namespace SS.Matchmaking.Modules
         {
             public Player Leader;
             public readonly List<Player> Members = new(10); // ordered such that if the leader leaves, the first player will become leader
+            private readonly ReadOnlyCollection<Player> _readOnlyMembers;
             public readonly HashSet<Player> PendingMembers = new(10);
+
+            public PlayerGroup()
+            {
+                _readOnlyMembers = Members.AsReadOnly();
+            }
 
             #region IPlayerGroup
 
             Player IPlayerGroup.Leader => Leader;
 
-            ReadOnlyCollection<Player> IPlayerGroup.Members => Members.AsReadOnly();
+            ReadOnlyCollection<Player> IPlayerGroup.Members => _readOnlyMembers;
 
             IReadOnlySet<Player> IPlayerGroup.PendingMembers => PendingMembers;
 

@@ -360,26 +360,15 @@ namespace SS.Matchmaking.Modules
         {
             if (action == PlayerAction.Disconnect)
             {
-                // Remove the player from queues or groups.
-                // If the player was in a group that is currently queued, make sure that group gets dequeued.
+                // Remove the player from all queues.
+                // Note: If the player was in a group that was queued, the group will remove the player and fire the PlayerGroupMemberRemovedCallback.
                 if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
                     return;
 
-                if (usageData.State == QueueState.Queued)
+                if (usageData.Queues.Count > 0)
                 {
-                    //if (pd.Group != null)
-                    {
-                        // TODO: Remove the group from the queue(s).
-                        //pd.Group.Queues
-
-                        // Remove the player from the group.
-                        //RemoveMember(pd.Group, player);
-                    }
-                    //else
-                    {
-                        // TODO: Remove the player from the queue(s).
-                        //pd.Queues
-                    }
+                    // The player is searching for a match, stop the search.
+                    RemoveFromAllQueues(player, null, usageData, false);
                 }
             }
         }
@@ -392,17 +381,7 @@ namespace SS.Matchmaking.Modules
             if (usageData.Queues.Count > 0)
             {
                 // The group is searching for a match, stop the search.
-                foreach (var queue in usageData.Queues)
-                {
-                    queue.Remove(group);
-                }
-                usageData.RemoveAllQueues();
-
-                // Notify the members.
-                foreach (Player member in group.Members)
-                {
-                    _chat.SendMessage(member, $"{NextCommandName}: Search stopped.");
-                }
+                RemoveFromAllQueues(null, group, usageData, true);
             }
         }
 
@@ -410,6 +389,12 @@ namespace SS.Matchmaking.Modules
         {
             if (_groupUsageDictionary.Remove(group, out UsageData usageData))
             {
+                if (usageData.Queues.Count > 0)
+                {
+                    // The group is searching for a match, stop the search.
+                    RemoveFromAllQueues(null, group, usageData, false);
+                }
+
                 _usageDataPool.Return(usageData);
             }
         }
@@ -807,38 +792,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                // Remove from all queues.
-                foreach (var queue in usageData.Queues)
-                {
-                    if (group != null)
-                        queue.Remove(group);
-                    else
-                        queue.Remove(player);
-
-                    // TODO: use a temporary collection so that the callback can be fired this at the end instead
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group != null ? QueueItemType.Group : QueueItemType.Player);
-                }
-
-                usageData.RemoveAllQueues();
-
-                // Notify
-                if (group != null)
-                {
-                    HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
-                    try
-                    {
-                        members.UnionWith(group.Members);
-                        _chat.SendSetMessage(members, $"{CancelCommandName}: Search stopped.");
-                    }
-                    finally
-                    {
-                        _objectPoolManager.PlayerSetPool.Return(members);
-                    }
-                }
-                else
-                {
-                    _chat.SendMessage(player, $"{CancelCommandName}: Search stopped.");
-                }
+                RemoveFromAllQueues(player, group, usageData, true);
 
                 return;
             }
@@ -915,26 +869,72 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private void RemoveFromQueue(IMatchmakingQueue queue, Player player)
+        private void RemoveFromAllQueues(Player player, IPlayerGroup group, UsageData usageData, bool notify)
         {
-            if (!queue.Remove(player))
+            if (player == null && group == null)
+                return; // must have a player, a group, or both
+
+            if (usageData == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
-                return;
+            if (usageData.Queues.Count == 0)
+                return; // not searching
 
-            usageData.RemoveQueue(queue);
-        }
+            List<IMatchmakingQueue> removedFrom = _iMatchmakingQueueListPool.Get();
+            try
+            {
+                // Do the actual removal.
+                foreach (var queue in usageData.Queues)
+                {
+                    bool removed = false;
 
-        private void RemoveFromQueue(IMatchmakingQueue queue, IPlayerGroup group)
-        {
-            if (!queue.Remove(group))
-                return;
+                    if (group != null)
+                        removed = queue.Remove(group);
+                    else if (player != null)
+                        removed = queue.Remove(player);
 
-            if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
-                return;
+                    if (removed)
+                    {
+                        removedFrom.Add(queue);
+                    }
+                }
 
-            usageData.RemoveQueue(queue);
+                usageData.RemoveAllQueues();
+
+                // Notify the player(s).
+                if (notify)
+                {
+                    if (group != null)
+                    {
+                        HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
+                        try
+                        {
+                            foreach (Player member in group.Members)
+                                members.Add(member);
+
+                            _chat.SendSetMessage(members, $"{CancelCommandName}: Search stopped.");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.PlayerSetPool.Return(members);
+                        }
+                    }
+                    else
+                    {
+                        _chat.SendMessage(player, $"{CancelCommandName}: Search stopped.");
+                    }
+                }
+
+                // Fire the callback.
+                foreach (var queue in removedFrom)
+                {
+                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group != null ? QueueItemType.Group : QueueItemType.Player);
+                }
+            }
+            finally
+            {
+                _iMatchmakingQueueListPool.Return(removedFrom);
+            }
         }
 
         private enum QueueState
@@ -956,16 +956,12 @@ namespace SS.Matchmaking.Modules
         {
             public QueueState State { get; private set; }
             public bool AutoRequeue = false;
-
-            private readonly HashSet<IMatchmakingQueue> _queues = new();
-            public IReadOnlySet<IMatchmakingQueue> Queues => _queues;
-
-            private readonly HashSet<IMatchmakingQueue> _autoQueues = new();
-            public IReadOnlySet<IMatchmakingQueue> AutoQueues => _autoQueues;
+            public readonly HashSet<IMatchmakingQueue> Queues = new();
+            public readonly HashSet<IMatchmakingQueue> AutoQueues = new();
 
             public bool AddQueue(IMatchmakingQueue queue)
             {
-                if (!_queues.Add(queue))
+                if (!Queues.Add(queue))
                     return false;
 
                 if (State == QueueState.None)
@@ -976,10 +972,10 @@ namespace SS.Matchmaking.Modules
 
             public bool RemoveQueue(IMatchmakingQueue queue)
             {
-                if (!_queues.Remove(queue))
+                if (!Queues.Remove(queue))
                     return false;
 
-                if (State == QueueState.Queued && _queues.Count == 0)
+                if (State == QueueState.Queued && Queues.Count == 0)
                     State = QueueState.None;
 
                 return true;
@@ -987,10 +983,10 @@ namespace SS.Matchmaking.Modules
 
             public bool RemoveAllQueues()
             {
-                if (_queues.Count == 0)
+                if (Queues.Count == 0)
                     return false;
 
-                _queues.Clear();
+                Queues.Clear();
 
                 if (State == QueueState.Queued)
                     State = QueueState.None;
@@ -1002,15 +998,15 @@ namespace SS.Matchmaking.Modules
             {
                 State = QueueState.Playing;
 
-                _autoQueues.Clear();
+                AutoQueues.Clear();
 
-                foreach (var queue in _queues)
+                foreach (var queue in Queues)
                 {
                     if (queue.Options.AllowAutoRequeue)
-                        _autoQueues.Add(queue);
+                        AutoQueues.Add(queue);
                 }
 
-                _queues.Clear();
+                Queues.Clear();
             }
 
             public void UnsetPlaying()
@@ -1021,14 +1017,14 @@ namespace SS.Matchmaking.Modules
 
             public void ClearAutoQueues()
             {
-                _autoQueues.Clear();
+                AutoQueues.Clear();
             }
 
             public void Reset()
             {
                 State = QueueState.None;
-                _queues.Clear();
-                _autoQueues.Clear();
+                Queues.Clear();
+                AutoQueues.Clear();
                 AutoRequeue = false;
             }
         }
