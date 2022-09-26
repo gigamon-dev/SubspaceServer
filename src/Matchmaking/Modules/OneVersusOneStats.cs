@@ -93,6 +93,8 @@ namespace SS.Matchmaking.Modules
                         playerData.CurrentMatchStats.PlayerStats1.Player = null;
                     else if (playerData.CurrentMatchStats.PlayerStats2.Player == player)
                         playerData.CurrentMatchStats.PlayerStats2.Player = null;
+
+                    playerData.CurrentMatchStats = null;
                 }
 
                 if (playerData.CurrentPlayerStats != null)
@@ -153,6 +155,10 @@ namespace SS.Matchmaking.Modules
                 {
                     RemoveDamageWatching(matchStats.PlayerStats2.Player, player2Data);
                 }
+
+                //
+                // Output stats
+                //
 
                 if (reason != OneVersusOneMatchEndReason.Aborted)
                 {
@@ -266,10 +272,33 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // TODO: Save stats to a database?
+
+                //
+                // Clear current match
+                //
+
+                if (matchStats.PlayerStats1.Player != null)
+                {
+                    ClearCurrentMatchFromPlayerData(matchStats.PlayerStats1.Player);
+                }
+
+                if (matchStats.PlayerStats2.Player != null)
+                {
+                    ClearCurrentMatchFromPlayerData(matchStats.PlayerStats2.Player);
+                }
             }
             finally
             {
                 _matchStatsObjectPool.Return(matchStats);
+            }
+
+            void ClearCurrentMatchFromPlayerData(Player player)
+            {
+                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                    return;
+
+                playerData.CurrentMatchStats = null;
+                playerData.CurrentPlayerStats = null;
             }
         }
 
