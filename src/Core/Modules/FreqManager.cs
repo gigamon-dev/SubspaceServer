@@ -661,20 +661,23 @@ namespace SS.Core.Modules
                 if (oldFreqNum != arena.SpecFreq)
                 {
                     Freq freq = GetFreq(arena, oldFreqNum);
-                    Debug.Assert(freq == pd.Freq);
-                    
-                    // Remove player from freq.
-                    freq.Players.Remove(player);
-                    pd.Freq = null;
-
-                    // Possibly disband the freq altogether, if it's not required.
-                    if (!freq.IsRemembered && freq.Players.Count == 0)
+                    if (freq != null)
                     {
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                            return;
+                        Debug.Assert(freq == pd.Freq);
 
-                        ad.Freqs.Remove(freq);
-                        _freqPool.Return(freq);
+                        // Remove player from freq.
+                        freq.Players.Remove(player);
+                        pd.Freq = null;
+
+                        // Possibly disband the freq altogether, if it's not required.
+                        if (!freq.IsRemembered && freq.Players.Count == 0)
+                        {
+                            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                                return;
+
+                            ad.Freqs.Remove(freq);
+                            _freqPool.Return(freq);
+                        }
                     }
                 }
 
