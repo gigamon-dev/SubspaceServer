@@ -1,4 +1,5 @@
-﻿using SS.Core;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
@@ -53,6 +54,8 @@ namespace SS.Matchmaking.Modules
 
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor> _iMatchmakingQueueAdvisorToken;
 
+        private PlayerDataKey<PlayerData> _pdKey;
+
         /// <summary>
         /// Dictionary of queues.
         /// </summary>
@@ -75,7 +78,7 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<MatchIdentifier, MatchData> _matchDataDictionary = new();
 
         /// <summary>
-        /// Dictionary for looking up what match a player is in.
+        /// Dictionary for looking up what slot in a match a player is assigned.
         /// <para>
         /// A player is in a match until subbed out or the match ends. 
         /// A player that leaves is still considered to be in the match and can ?return to it if they have not yet been subbed.
@@ -84,7 +87,7 @@ namespace SS.Matchmaking.Modules
         /// <remarks>
         /// key: player name
         /// </remarks>
-        private readonly Dictionary<string, MatchIdentifier> _playerMatchDictionary = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, PlayerSlot> _playerSlotDictionary = new(StringComparer.OrdinalIgnoreCase);
 
         #region Module members
 
@@ -121,6 +124,8 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
+            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Register(broker, Callback_MatchmakingQueueChanged);
@@ -136,6 +141,8 @@ namespace SS.Matchmaking.Modules
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Unregister(broker, Callback_MatchmakingQueueChanged);
+
+            _playerData.FreePlayerData(_pdKey);
 
             return true;
         }
@@ -579,14 +586,28 @@ namespace SS.Matchmaking.Modules
                 // Start the game
                 //
 
+                // Reserve the match.
                 matchData.State = MatchState.Initializing;
+
+                // Try to find the arena
+                Arena arena = _arenaManager.FindArena(matchData.ArenaName); // This will only find the arena if it already exists and is running.
 
                 foreach (PlayerSlot playerSlot in matchData.TeamPlayerSlots)
                 {
-                    playerSlot.Status = PlayerSlotStatus.None;
-                    playerSlot.PlayerName = playerSlot.Player.Name;
-                }
+                    Player player = playerSlot.Player;
 
+                    AssignSlot(playerSlot, player);
+
+                    if (arena != null && player.Arena == arena)
+                    {
+                        playerSlot.Status = PlayerSlotStatus.Waiting;
+                    }
+                    else
+                    {
+                        playerSlot.Status = PlayerSlotStatus.SwitchingArena;
+                        _arenaManager.SendToArena(player, matchData.ArenaName, 0, 0);
+                    }
+                }
 
                 return true;
             }
@@ -617,6 +638,35 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void UnassignSlot(PlayerSlot slot)
+        {
+            if (!string.IsNullOrWhiteSpace(slot.PlayerName))
+            {
+                _playerSlotDictionary.Remove(slot.PlayerName);
+                
+                if (slot.Player != null
+                    && slot.Player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                {
+                    playerData.PlayerSlot = null;
+                    slot.Player = null;
+                }
+            }
+        }
+
+        private void AssignSlot(PlayerSlot slot, Player player)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            UnassignSlot(slot);
+
+            slot.PlayerName = player.Name;
+            slot.Player = player;
+
+            playerData.PlayerSlot = slot;
+            _playerSlotDictionary[player.Name] = slot;
+        }
+
         private class MatchConfiguration
         {
             public string MatchType;
@@ -630,6 +680,9 @@ namespace SS.Matchmaking.Modules
             public TimeSpan? TimeLimit;
             public TimeSpan? OverTimeLimit;
             public TimeSpan WinConditionDelay;
+
+            public int MaxLagOuts = 3;
+            public TimeSpan AllowSubAfter = TimeSpan.FromSeconds(30);
 
             public MatchBoxConfiguration[] Boxes;
         }
@@ -690,12 +743,21 @@ namespace SS.Matchmaking.Modules
             {
                 MatchIdentifier = matchIdentifier;
                 Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+                ArenaName = Arena.CreateArenaName(Configuration.ArenaBaseName, MatchIdentifier.ArenaNumber);
                 State = MatchState.None;
                 TeamPlayerSlots = new PlayerSlot[Configuration.NumTeams, Configuration.PlayersPerTeam];
+                for (int teamIdx = 0; teamIdx < Configuration.NumTeams; teamIdx++)
+                {
+                    for (int slotIdx = 0; slotIdx < Configuration.PlayersPerTeam; slotIdx++)
+                    {
+                        TeamPlayerSlots[teamIdx, slotIdx] = new PlayerSlot(this, new PlayerSlotIdentifier(teamIdx, slotIdx));
+                    }
+                }
             }
 
             public readonly MatchIdentifier MatchIdentifier;
             public readonly MatchConfiguration Configuration;
+            public readonly string ArenaName;
             public MatchState State;
             public readonly PlayerSlot[,] TeamPlayerSlots;
         }
@@ -732,6 +794,9 @@ namespace SS.Matchmaking.Modules
 
         private class PlayerSlot
         {
+            public readonly MatchData MatchData;
+            public readonly PlayerSlotIdentifier Identifier;
+
             public PlayerSlotStatus Status;
 
             /// <summary>
@@ -746,17 +811,36 @@ namespace SS.Matchmaking.Modules
             public Player Player;
 
             /// <summary>
-            /// The time the previous player left.
+            /// The time the player left.
             /// This will allow us to figure out when the slot can be given to a substibute player.
             /// </summary>
-            public DateTime? PreviousPlayerLeftTimestamp;
+            public DateTime? PlayerLeftTimestamp;
+
+            /// <summary>
+            /// Whether the player has requested to be subbed out.
+            /// </summary>
+            public bool IsSubRequested;
+
+            /// <summary>
+            /// The # of times the player has left play.
+            /// </summary>
+            public int LagOuts;
+
+            /// <summary>
+            /// Whether another player can be subbed in to the slot.
+            /// </summary>
+            public bool CanBeSubbed =>
+                IsSubRequested
+                || LagOuts >= MatchData.Configuration.MaxLagOuts
+                || (PlayerLeftTimestamp != null
+                    && (DateTime.UtcNow - PlayerLeftTimestamp.Value) >= MatchData.Configuration.AllowSubAfter);
 
             /// <summary>
             /// The # of lives remaining.
             /// </summary>
             public int Lives;
 
-            // Info about the current ship/items, so that a sub can be given the amount.
+            // Info about the current ship/items, so that a sub can be given the same.
             public ShipType Ship;
             public byte Bursts;
             public byte Repels;
@@ -765,17 +849,45 @@ namespace SS.Matchmaking.Modules
             public byte Decoys;
             public byte Rockets;
             public byte Portals;
+
+            public PlayerSlot(MatchData matchData, PlayerSlotIdentifier identifier)
+            {
+                MatchData = matchData;
+                Identifier = identifier;
+            }
         }
+
+        private readonly record struct PlayerSlotIdentifier(int TeamIdx, int SlotIdx);
 
         private class PlayerData
         {
             /// <summary>
-            /// Identifies the match the player is in. <see langword="null"/> if not in a match.
+            /// The slot the player is assigned.
+            /// <para>
+            /// This can be used to determine which match the player is in,
+            /// which team the player is assigned,
+            /// and which slot of the team the player is assigned.
+            /// </para>
             /// </summary>
-            public MatchIdentifier? MatchIdentifier;
-
-
             public PlayerSlot PlayerSlot;
+        }
+
+        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
+        {
+            public PlayerData Create()
+            {
+                return new PlayerData();
+            }
+
+            public bool Return(PlayerData obj)
+            {
+                if (obj == null)
+                    return false;
+
+                obj.PlayerSlot = null;
+
+                return true;
+            }
         }
 
         private class TeamVersusMatchmakingQueue : IMatchmakingQueue
