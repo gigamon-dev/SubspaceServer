@@ -24,9 +24,9 @@ namespace SS.Matchmaking.Modules
         private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
+        private IMatchmakingQueues _matchmakingQueues;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
-        private IMatchmakingQueues _playerQueues;
 
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor> _iMatchmakingQueueAdvisorToken;
@@ -49,9 +49,9 @@ namespace SS.Matchmaking.Modules
             ILogManager logManager,
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
+            IMatchmakingQueues matchmakingQueues,
             IObjectPoolManager objectPoolManager,
-            IPlayerData playerData,
-            IMatchmakingQueues playerQueues)
+            IPlayerData playerData)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -60,9 +60,9 @@ namespace SS.Matchmaking.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+            _matchmakingQueues = matchmakingQueues ?? throw new ArgumentNullException(nameof(matchmakingQueues));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _playerQueues = playerQueues ?? throw new ArgumentNullException(nameof(playerQueues));
 
             if (!LoadConfiguration())
             {
@@ -87,7 +87,7 @@ namespace SS.Matchmaking.Modules
 
             foreach (var queue in _queueDictionary.Values)
             {
-                _playerQueues.UnregisterQueue(queue);
+                _matchmakingQueues.UnregisterQueue(queue);
             }
             _queueDictionary.Clear();
 
@@ -210,13 +210,13 @@ namespace SS.Matchmaking.Modules
                         {
                             boxState.Player1State = PlayerMatchmakingState.GaveUp;
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                            _playerQueues.UnsetPlayingWithoutRequeue(player);
+                            _matchmakingQueues.UnsetPlaying(player, false);
                         }
                         else if (boxState.Player2 == player)
                         {
                             boxState.Player2State = PlayerMatchmakingState.GaveUp;
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                            _playerQueues.UnsetPlayingWithoutRequeue(player);
+                            _matchmakingQueues.UnsetPlaying(player, false);
                         }
                     }
                 }
@@ -314,13 +314,13 @@ namespace SS.Matchmaking.Modules
                     {
                         boxState.Player1State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                        _playerQueues.UnsetPlayingWithoutRequeue(player);
+                        _matchmakingQueues.UnsetPlaying(player, false);
                     }
                     else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.Playing)
                     {
                         boxState.Player2State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                        _playerQueues.UnsetPlayingWithoutRequeue(player);
+                        _matchmakingQueues.UnsetPlaying(player, false);
                     }
                 }
                 else
@@ -401,7 +401,7 @@ namespace SS.Matchmaking.Modules
                             },
                             description);
 
-                        if (!_playerQueues.RegisterQueue(queue))
+                        if (!_matchmakingQueues.RegisterQueue(queue))
                         {
                             _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Failed to register queue '{queueName}' (used by Box{box}).");
                             return false;
@@ -457,7 +457,7 @@ namespace SS.Matchmaking.Modules
                 set.Add(player1);
                 set.Add(player2);
 
-                _playerQueues.SetPlaying(set, null);
+                _matchmakingQueues.SetPlaying(set);
             }
             finally
             {
@@ -694,60 +694,44 @@ namespace SS.Matchmaking.Modules
 
                     OneVersusOneMatchEndedCallback.Fire(arena, arena, boxId, reason, winnerPlayerName);
 
-                    List<PlayerOrGroup> players = _playerQueues.PlayerOrGroupListPool.Get();
-                    bool queuedMainloopWork = false;
+                    Player player1 = boxState.Player1;
+                    Player player2 = boxState.Player2;
 
-                    try
+                    // Clear match info.
+                    boxState.Reset();
+
+                    if (player1 != null)
                     {
-                        if (boxState.Player1 != null)
-                            players.Add(new PlayerOrGroup(boxState.Player1));
-
-                        if (boxState.Player2 != null)
-                            players.Add(new PlayerOrGroup(boxState.Player2));
-
-                        // Clear match info.
-                        boxState.Reset();
-
-                        if (players.Count > 0)
-                        {
-                            foreach (PlayerOrGroup pog in players)
-                            {
-                                Player player = pog.Player;
-                                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                                    continue;
-
-                                playerData.MatchIdentifier = null;
-
-                                // Change to spectator mode.
-                                // NOTE: The ShipFreqChangeCallback gets called asynchronously as a mainloop workitem.
-                                if (player.Ship != ShipType.Spec)
-                                    _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
-                            }
-
-                            // Remove the players' 'Playing' state with allowed requeuing.
-                            // Since this can requeue, it will fire the MatchmakingQueueChangedCallback for any that are requeued.
-                            // However, this must definitely happen after the ShipFreqChangeCallback(s).
-                            // So, queue this as a mainloop workitem too, which will happen after the ShipFreqChangeCallback(s) occur.
-                            _mainloop.QueueMainWorkItem(DoUnsetPlaying, players);
-                            queuedMainloopWork = true;
-                        }
-                    }
-                    finally
-                    {
-                        if (!queuedMainloopWork)
-                            _playerQueues.PlayerOrGroupListPool.Return(players);
+                        RemoveFromPlay(player1);
                     }
 
-                    void DoUnsetPlaying(List<PlayerOrGroup> players)
+                    if (player2 != null)
                     {
-                        try
-                        {
-                            _playerQueues.UnsetPlaying(players);
-                        }
-                        finally
-                        {
-                            _playerQueues.PlayerOrGroupListPool.Return(players);
-                        }
+                        RemoveFromPlay(player2);
+                    }
+
+                    void RemoveFromPlay(Player player)
+                    {
+                        if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                            return;
+
+                        playerData.MatchIdentifier = null;
+
+                        // Change to spectator mode.
+                        // NOTE: The ShipFreqChangeCallback gets called asynchronously as a mainloop workitem.
+                        if (player.Ship != ShipType.Spec)
+                            _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+
+                        // Remove the players' 'Playing' state with allowed requeuing.
+                        // Since this can requeue, it will fire the MatchmakingQueueChangedCallback for any that are requeued.
+                        // However, this must definitely happen after the ShipFreqChangeCallback(s).
+                        // So, queue this as a mainloop workitem too, which will happen after the ShipFreqChangeCallback(s) occur.
+                        _mainloop.QueueMainWorkItem(DoUnsetPlaying, player);
+                    }
+
+                    void DoUnsetPlaying(Player player)
+                    {
+                        _matchmakingQueues.UnsetPlaying(player, true);
                     }
                 }
             }

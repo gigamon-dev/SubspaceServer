@@ -40,7 +40,9 @@ namespace SS.Matchmaking.Modules
 
         private readonly Dictionary<string, IMatchmakingQueue> _queues = new(16, StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<IPlayerGroup, UsageData> _groupUsageDictionary = new(128);
-        private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new QueueUsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
+        private readonly HashSet<string> _playersPlaying = new(256, StringComparer.OrdinalIgnoreCase); // player names (can't use Player objects since it needs to exist even if the player disconnects)
+
+        private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new UsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
         private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new IMatchmakingQueueListPooledObjectPolicy());
         private readonly ObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new DefaultObjectPool<List<PlayerOrGroup>>(new PlayerOrGroupListPooledObjectPolicy());
 
@@ -70,7 +72,7 @@ namespace SS.Matchmaking.Modules
 
             _help = broker.GetInterface<IHelp>();
 
-            _pdKey = _playerData.AllocatePlayerData(new QueueUsageDataPooledObjectPolicy());
+            _pdKey = _playerData.AllocatePlayerData(new UsageDataPooledObjectPolicy());
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
@@ -177,15 +179,16 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        void IMatchmakingQueues.SetPlaying(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups)
+        void IMatchmakingQueues.SetPlaying(HashSet<Player> players)
         {
-            if (soloPlayers != null)
-            {
-                foreach (Player player in soloPlayers)
-                {
-                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
-                        continue;
+            if (players == null)
+                return;
 
+            foreach (Player player in players)
+            {
+                // Individual
+                if (player.TryGetExtraData(_pdKey, out UsageData usageData))
+                {
                     foreach (IMatchmakingQueue queue in usageData.Queues)
                     {
                         queue.Remove(player);
@@ -193,15 +196,11 @@ namespace SS.Matchmaking.Modules
 
                     usageData.SetPlaying();
                 }
-            }
 
-            if (groups != null)
-            {
-                foreach (IPlayerGroup group in groups)
+                // Group
+                IPlayerGroup group = _playerGroups.GetGroup(player);
+                if (group != null && _groupUsageDictionary.TryGetValue(group, out usageData))
                 {
-                    if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
-                        continue;
-
                     foreach (IMatchmakingQueue queue in usageData.Queues)
                     {
                         queue.Remove(group);
@@ -212,35 +211,18 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlaying(List<PlayerOrGroup> toUnset)
+        void IMatchmakingQueues.UnsetPlaying<T>(T players, bool allowRequeue)
         {
-            if (toUnset == null)
-                return;
-
-            foreach (PlayerOrGroup pog in toUnset)
+            foreach (Player player in players)
             {
-                if (pog.Player != null)
-                {
-                    UnsetPlaying(pog.Player, true);
-                }
-                else if (pog.Group != null)
-                {
-                    UnsetPlaying(pog.Group, true);
-                }
+                UnsetPlaying(player, allowRequeue);
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingWithoutRequeue(Player player)
+        void IMatchmakingQueues.UnsetPlaying(Player player, bool allowRequeue)
         {
-            UnsetPlaying(player, false);
+            UnsetPlaying(player, allowRequeue);
         }
-
-        void IMatchmakingQueues.UnsetPlayingWithoutRequeue(IPlayerGroup group)
-        {
-            UnsetPlaying(group, false);
-        }
-
-        ObjectPool<List<PlayerOrGroup>> IMatchmakingQueues.PlayerOrGroupListPool => _playerOrGroupListPool;
 
         private void UnsetPlaying(Player player, bool allowRequeue)
         {
@@ -282,12 +264,27 @@ namespace SS.Matchmaking.Modules
                     usageData.ClearAutoQueues();
                 }
             }
+
+            IPlayerGroup group = _playerGroups.GetGroup(player);
+            if (group != null)
+            {
+                UnsetPlaying(group, allowRequeue);
+            }
         }
 
         private void UnsetPlaying(IPlayerGroup group, bool allowRequeue)
         {
             if (group == null)
                 return;
+
+            foreach (Player member in group.Members)
+            {
+                if (!member.TryGetExtraData(_pdKey, out UsageData memberUsageData))
+                    continue;
+
+                if (memberUsageData.State == QueueState.Playing)
+                    return; // consider the group to still be playing if at least one member is playing
+            }
 
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
                 return;
@@ -333,11 +330,20 @@ namespace SS.Matchmaking.Modules
             if (group == null || !_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
                 return true;
 
-            if (usageData.Queues.Count == 0)
-                return true; // Can invite if not searching for a match.
-
-            message?.Append("Cannot invite while searching for a match. To invite, stop the search first.");
-            return false;
+            if (usageData.State == QueueState.Queued)
+            {
+                message?.Append("Cannot invite while searching for a match. To invite, stop the search first.");
+                return false;
+            }
+            else if (usageData.State == QueueState.Playing)
+            {
+                message?.Append("Cannot invite while playing in a match. To invite, complete the current match.");
+                return false;
+            }
+            else
+            {
+                return true;
+            }
         }
 
         bool IPlayerGroupAdvisor.AllowAcceptInvite(Player player, StringBuilder message)
@@ -345,11 +351,20 @@ namespace SS.Matchmaking.Modules
             if (player == null || !player.TryGetExtraData(_pdKey, out UsageData usageData))
                 return true;
 
-            if (usageData.Queues.Count == 0)
+            if (usageData.State == QueueState.Queued)
+            {
+                message?.Append("Cannot accept an invite while searching for a match. To accept, stop the search first.");
+                return false;
+            }
+            else if (usageData.State == QueueState.Playing)
+            {
+                message?.Append("Cannot accept an invite while while playing in a match. To accept, complete the current match.");
+                return false;
+            }
+            else
+            {
                 return true;
-
-            message?.Append("Cannot accept an invite while searching for a match. To accept, stop the search first.");
-            return false;
+            }
         }
 
         #endregion
@@ -358,7 +373,27 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (action == PlayerAction.Disconnect)
+            if (action == PlayerAction.Connect)
+            {
+                if (_playersPlaying.Contains(player.Name))
+                {
+                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+                        return;
+
+                    // The player disconnected while playing in match, but has now reconnected.
+                    usageData.SetPlaying();
+
+                    // TODO: send a message to the player that they're still in the match
+
+                    // TODO: automatically move the player to the proper arena
+                    // Can't use IArenaManager.SendToArena() here because this event happens before the player is in the proper state to allow that.
+                    // But, a hacky way to do it is to overwrite:
+                    // player.ConnectAs = 
+                    // which will tell the ArenaPlaceMultiPub module to send them to the proper arena when the client sends the Go packet.
+                    // However, this module doesn't know the arena name. The match module needs to do it.
+                }
+            }
+            else if (action == PlayerAction.Disconnect)
             {
                 // Remove the player from all queues.
                 // Note: If the player was in a group that was queued, the group will remove the player and fire the PlayerGroupMemberRemovedCallback.
@@ -378,10 +413,15 @@ namespace SS.Matchmaking.Modules
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
                 return;
 
-            if (usageData.Queues.Count > 0)
+            if (usageData.State == QueueState.Queued)
             {
                 // The group is searching for a match, stop the search.
                 RemoveFromAllQueues(null, group, usageData, true);
+            }
+            else if (usageData.State == QueueState.Playing)
+            {
+                // The group is playing in a match, remove automatic requeuing.
+                usageData.ClearAutoQueues();
             }
         }
 
@@ -533,10 +573,54 @@ namespace SS.Matchmaking.Modules
 
             // The command is to start a search.
 
-            if (group != null && player != group.Leader)
+            if (group != null)
             {
-                _chat.SendMessage(player, $"{NextCommandName}: Only the group leader can start a search.");
-                return;
+                if (player != group.Leader)
+                {
+                    _chat.SendMessage(player, $"{NextCommandName}: Only the group leader can start a search.");
+                    return;
+                }
+
+                if (group.PendingMembers.Count > 0)
+                {
+                    _chat.SendMessage(player, $"{NextCommandName}: Can't start a search while there are pending invites to the group.");
+                    return;
+                }
+
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                try
+                {
+                    int playingCount = 0;
+                    foreach (Player member in group.Members)
+                    {
+                        if (member.TryGetExtraData(_pdKey, out UsageData memberUsage)
+                            && memberUsage.State == QueueState.Playing)
+                        {
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(member.Name);
+
+                            playingCount++;
+                        }
+                    }
+
+                    if (playingCount == 1)
+                    {
+                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because {sb} is currently playing.");
+                        return;
+                    }
+                    else if (playingCount > 1)
+                    {
+                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because the following members are currently playing: {sb}");
+                        return;
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
             }
 
             if (usageData.State == QueueState.Playing)
@@ -1029,7 +1113,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private class QueueUsageDataPooledObjectPolicy : IPooledObjectPolicy<UsageData>
+        private class UsageDataPooledObjectPolicy : IPooledObjectPolicy<UsageData>
         {
             public UsageData Create()
             {

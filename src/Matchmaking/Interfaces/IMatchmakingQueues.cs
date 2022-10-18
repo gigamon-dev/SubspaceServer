@@ -26,43 +26,33 @@ namespace SS.Matchmaking.Interfaces
         /// Marks the players state as 'Playing'.
         /// For those marked as 'Playing', searches will disabled, and any ongoing ones are stopped.
         /// </summary>
-        /// <param name="soloPlayers">Players that were queued as solo that are to be marked as 'Playing'.</param>
-        /// <param name="groups">Groups that were queued that are to marked as 'Playing'.</param>
-        void SetPlaying(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
+        /// <param name="players">Players that are to be marked as 'Playing'.</param>
+        void SetPlaying(HashSet<Player> players);
 
         /// <summary>
-        /// Removes the 'Playing' state of the players/groups and if automatic requeuing was enabled for those players/groups, they will be requeued in the order provided.
+        /// Removes the 'Playing' state of players that were previously marked with <see cref="SetPlaying(HashSet{Player})"/>, in the order provided.
         /// </summary>
-        /// <remarks>
-        /// Use the <see cref="PlayerOrGroupListPool"/> to reduce allocations.
-        /// </remarks>
-        /// <param name="toUnset">A list of the players and groups to unset.</param>
-        void UnsetPlaying(List<PlayerOrGroup> toUnset);
+        /// <param name="players">The players to unset from the 'Playing' state.</param>
+        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
+        void UnsetPlaying<T>(T players, bool allowRequeue) where T : IReadOnlyCollection<Player>;
 
         /// <summary>
-        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player}, HashSet{IPlayerGroup})"/>
-        /// without allowing automatic re-queuing.
+        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player})"/>.
         /// </summary>
         /// <param name="player">The player to unset from the 'Playing' state.</param>
-        void UnsetPlayingWithoutRequeue(Player player);
-
-        /// <summary>
-        /// Removes the 'Playing' state of a group that was previously marked with <see cref="SetPlaying(HashSet{Player}, HashSet{IPlayerGroup})"/>
-        /// without allowing automatic re-queuing.
-        /// </summary>
-        /// <param name="group">The group to unset from the 'Playing' state.</param>
-        void UnsetPlayingWithoutRequeue(IPlayerGroup group);
+        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
+        void UnsetPlaying(Player player, bool allowRequeue);
 
         /// <summary>
         /// Object pool for <see cref="List{T}"/>s of <see cref="PlayerOrGroup"/>. For use with <see cref="UnsetPlaying(List{PlayerOrGroup})"/>.
         /// </summary>
-        ObjectPool<List<PlayerOrGroup>> PlayerOrGroupListPool { get; }
+        //ObjectPool<List<PlayerOrGroup>> PlayerOrGroupListPool { get; }
     }
 
     /// <summary>
     /// A type that wraps either a <see cref="Core.Player"/> or <see cref="IPlayerGroup"/>.
     /// </summary>
-    public struct PlayerOrGroup
+    public readonly record struct PlayerOrGroup
     {
         public PlayerOrGroup(Player player)
         {

@@ -580,7 +580,7 @@ namespace SS.Matchmaking.Modules
             public bool IsWatchingDamage = false;
         }
 
-        private record struct MatchIdentifier(Arena Arena, int BoxId); // immutable, value equality
+        private readonly record struct MatchIdentifier(Arena Arena, int BoxId); // immutable, value equality
 
         private class MatchStatsPooledObjectPolicy : IPooledObjectPolicy<MatchStats>
         {
