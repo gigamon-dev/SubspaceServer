@@ -139,6 +139,9 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
+            if (!string.Equals(_arenaBaseName, arena.BaseName, StringComparison.OrdinalIgnoreCase))
+                return;
+
             if (action == ArenaAction.Create)
             {
                 KillCallback.Register(arena, Callback_Kill);
