@@ -639,45 +639,45 @@ namespace SS.Core.Modules
             }
         }
 
-        private void AuthDone(Player p, AuthData auth)
+        private void AuthDone(Player player, AuthData auth)
         {
-            if (p == null || auth == null || !p.TryGetExtraData(_pdkey, out CorePlayerData pdata))
+            if (player == null || auth == null || !player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
                 return;
 
-            if (p.Status != PlayerState.WaitAuth)
+            if (player.Status != PlayerState.WaitAuth)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={p.Id}] AuthDone called from wrong stage: {p.Status}");
+                _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={player.Id}] AuthDone called from wrong stage: {player.Status}");
                 return;
             }
 
             // copy the authdata
             pdata.AuthData = auth;
 
-            p.Flags.Authenticated = auth.Authenticated;
+            player.Flags.Authenticated = auth.Authenticated;
 
             if (auth.Code.AuthIsOK())
             {
                 // login succeeded
 
                 // try to locate existing player with the same name
-                Player oldp = _playerData.FindPlayer(auth.Name);
+                Player oldPlayer = _playerData.FindPlayer(auth.Name);
 
                 // set new player's name
-                p.Packet.Name = auth.SendName; // TODO: if SendName != Name, then wouldn't that break remote chat messages?
-                p.Name = auth.Name;
-                p.Packet.Squad = auth.Squad; // this can truncate
-                p.Squad = auth.Squad;
+                player.Packet.Name = auth.SendName; // TODO: if SendName != Name, then wouldn't that break remote chat messages?
+                player.Name = auth.Name;
+                player.Packet.Squad = auth.Squad; // this can truncate
+                player.Squad = auth.Squad;
 
                 // make sure we don't have two identical players. if so, do not
                 // increment stage yet. we'll do it when the other player leaves
-                if (oldp != null && oldp != p)
+                if (oldPlayer != null && oldPlayer != player)
                 {
-                    if (!p.TryGetExtraData(_pdkey, out CorePlayerData oldd))
+                    if (!oldPlayer.TryGetExtraData(_pdkey, out CorePlayerData oldPlayerData))
                         return;
 
-                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] Player already on, kicking him off (pid {p.Id} replacing {oldp.Id}).");
-                    oldd.ReplacedBy = p;
-                    _playerData.KickPlayer(oldp);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] Player already on, kicking him off (pid {player.Id} replacing {oldPlayer.Id}).");
+                    oldPlayerData.ReplacedBy = player;
+                    _playerData.KickPlayer(oldPlayer);
                 }
                 else
                 {
@@ -685,7 +685,7 @@ namespace SS.Core.Modules
                     _playerData.WriteLock();
                     try
                     {
-                        p.Status = PlayerState.NeedGlobalSync;
+                        player.Status = PlayerState.NeedGlobalSync;
                     }
                     finally
                     {
@@ -697,12 +697,12 @@ namespace SS.Core.Modules
             {
                 // if the login didn't succeed status should go to PlayerState.Connected
                 // instead of moving forward, and send the login response now, since we won't do it later.
-                SendLoginResponse(p);
+                SendLoginResponse(player);
 
                 _playerData.WriteLock();
                 try
                 {
-                    p.Status = PlayerState.Connected;
+                    player.Status = PlayerState.Connected;
                 }
                 finally
                 {
