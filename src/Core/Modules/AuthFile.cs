@@ -183,9 +183,9 @@ namespace SS.Core.Modules
 
         void IBillingFallback.Check<T>(Player p, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state)
         {
-            if (!p.TryGetExtraData(pdKey, out PlayerData pd))
+            if (name.Length == 0 || !p.TryGetExtraData(pdKey, out PlayerData pd))
             {
-                done(state, BillingFallbackResult.NotFound);
+                done(state, BillingFallbackResult.Mismatch);
                 return;
             }
 
@@ -214,6 +214,7 @@ namespace SS.Core.Modules
                 }
 
                 done(state, BillingFallbackResult.Mismatch);
+                return;
             }
 
             bool allow = config.GetInt(pwdFile, "General", "AllowUnknown", 1) != 0;
@@ -229,8 +230,7 @@ namespace SS.Core.Modules
             if (name.Length == 0 || name.Length > 24)
                 throw new ArgumentOutOfRangeException(nameof(name));
 
-            if (pwd.Length == 0 || pwd.Length > 32)
-                throw new ArgumentOutOfRangeException(nameof(pwd));
+            // Note: Allowing for an empty pwd (this can happen on a redirect packet).
 
             lock (hashLock)
             {
