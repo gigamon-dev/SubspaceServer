@@ -63,7 +63,7 @@
         /// <param name="player">The player the data is for.</param>
         /// <param name="ms">The one-way time (difference between the server's time and the client's time from the position packet) in milliseconds.</param>
         /// <param name="clientS2CPing">The S2C ping in milliseconds reported by the client in a position packet's extra position data. <see langword="null"/> for position packets without extra position data.</param>
-        /// <param name="serverWeaponCount">The number of weapon packets received from a player since entering an arena.</param>
+        /// <param name="serverWeaponCount">The number of S2C weapon packets sent to a player since entering the arena.</param>
         void Position(Player player, int ms, int? clientS2CPing, uint serverWeaponCount);
 
         /// <summary>

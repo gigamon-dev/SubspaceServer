@@ -89,9 +89,9 @@ namespace SS.Core.Modules
             public Player speccing;
 
             /// <summary>
-            /// # of weapon packets
+            /// The # of S2C weapon packets sent to the player.
             /// </summary>
-            public uint wpnSent;
+            public uint S2CWeaponSent;
 
             /// <summary>
             /// used for determining which weapon packets to ignore for the player, if any
@@ -511,7 +511,7 @@ namespace SS.Core.Modules
             if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
-            pd.wpnSent = (uint)(pd.wpnSent + packets);
+            pd.S2CWeaponSent = (uint)(pd.S2CWeaponSent + packets);
         }
 
         void IGame.SetPlayerEnergyViewing(Player p, SeeEnergy value)
@@ -897,7 +897,7 @@ namespace SS.Core.Modules
                 pd.pl_epd.seeEpd = seeEpd;
                 pd.epdQueries = 0;
 
-                pd.wpnSent = 0;
+                pd.S2CWeaponSent = 0;
                 pd.deathWithoutFiring = 0;
                 p.Flags.SentWeaponPacket = false;
             }
@@ -1088,7 +1088,7 @@ namespace SS.Core.Modules
                     p,
                     (gtc - pos.Time) * 10,
                     len >= 26 ? pos.Extra.S2CPing * 10 : new int?(),
-                    pd.wpnSent);
+                    pd.S2CWeaponSent);
             }
 
             bool isNewer = pos.Time > pd.pos.Time;
@@ -1456,7 +1456,7 @@ namespace SS.Core.Modules
                                         }
 
                                         if (wpn.Weapon.Type != 0)
-                                            idata.wpnSent++;
+                                            idata.S2CWeaponSent++;
 
                                         ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref wpn, 1));
                                         if (data.Length > length)
