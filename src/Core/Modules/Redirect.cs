@@ -159,7 +159,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            ip = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+            ip = BinaryPrimitives.ReadUInt32BigEndian(bytes);
             return true;
         }
 
