@@ -14,20 +14,21 @@ using System.Runtime.InteropServices;
 namespace SS.Matchmaking.Modules
 {
     /// <summary>
-    /// Module for NvN matches.
+    /// Module for team versus matches where the # of teams and # of players per team can be configured.
     /// </summary>
     /// <remarks>
     /// Win conditions:
-    /// - all players of a team knocked out
-    /// - at least one team member has to be in the play area (respawn area separated), like in 2v2
+    /// - last team standing
+    /// - a team is eliminated when all its players are knocked out (no remaining lives)
+    /// - (alternatively) a team is eliminated if none of its players remain in the play area (respawn area separate from play area), like in 2v2
     /// - match time limit hit and one team has a higher # of lives remaining
     /// - in overtime and a kill is made
     /// 
     /// Subbing (IDEA)
     /// -------
-    /// If a player leaves or goes to spec during a game, they have 30 seconds to get back in, after which their spot it forfeit and can be subbed.
+    /// If a player leaves or goes to spec during a game, they have 30 seconds to ?return, after which their spot is forfeit and can be subbed.
     /// Players that leave their game in this manner can be penalized (disallow queuing for a certain timeframe, 10 minutes?).
-    /// Alternatively, a player can request to be subbed (no penalization).
+    /// Alternatively, a player can request to be subbed (no penalization if someone subs).
     /// A player that subs in does not lose their spot in the queue. They can effectively be at the front of the queue when the game ends and get to play in the next game.
     /// 
     /// Time limit
@@ -241,6 +242,8 @@ namespace SS.Matchmaking.Modules
                 _commandManager.RemoveCommand("end", Command_end, arena);
                 _commandManager.RemoveCommand("draw", Command_draw, arena);
                 _commandManager.RemoveCommand("sc", Command_sc, arena);
+
+                // TODO: make sure all matches in the arena are cleared out
             }
         }
 
@@ -288,6 +291,15 @@ namespace SS.Matchmaking.Modules
             }
             else if (action == PlayerAction.LeaveArena)
             {
+                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                    return;
+
+                playerData.HasEnteredArena = false;
+
+                if (playerData.PlayerSlot == null)
+                    return;
+
+                
             }
             else if (action == PlayerAction.Disconnect)
             {
@@ -350,7 +362,23 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
 
+            PlayerSlot playerSlot = playerData.PlayerSlot;
+            if (playerSlot == null)
+                return;
+
+            MatchData matchData = playerSlot.MatchData;
+            if (matchData.Status == MatchStatus.InProgress)
+            {
+                if (playerSlot.Status == PlayerSlotStatus.Playing)
+                {
+                    if (newShip == ShipType.Spec)
+                    {
+                    }
+                }
+            }
         }
 
         #endregion
@@ -901,6 +929,20 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void AssignSlot(PlayerSlot slot, Player player)
+        {
+            if (slot == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            UnassignSlot(slot);
+
+            slot.PlayerName = player.Name;
+            slot.Player = player;
+
+            playerData.PlayerSlot = slot;
+            _playerSlotDictionary[player.Name] = slot;
+        }
+
         private void UnassignSlot(PlayerSlot slot)
         {
             if (slot == null)
@@ -917,20 +959,6 @@ namespace SS.Matchmaking.Modules
                     slot.Player = null;
                 }
             }
-        }
-
-        private void AssignSlot(PlayerSlot slot, Player player)
-        {
-            if (slot == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                return;
-
-            UnassignSlot(slot);
-
-            slot.PlayerName = player.Name;
-            slot.Player = player;
-
-            playerData.PlayerSlot = slot;
-            _playerSlotDictionary[player.Name] = slot;
         }
 
         private void QueueMatchInitialzation(MatchData matchData)
