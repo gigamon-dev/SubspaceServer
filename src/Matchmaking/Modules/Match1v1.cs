@@ -784,7 +784,7 @@ namespace SS.Matchmaking.Modules
 
             public ReadOnlyCollection<int> BoxIds { get; }
 
-            public bool Add(Player player)
+            public bool Add(Player player, DateTime timestamp) // TODO: handle adding to the proper spot based on timestamp
             {
                 if (SoloQueue == null)
                     return false;
@@ -793,7 +793,7 @@ namespace SS.Matchmaking.Modules
                 return true;
             }
 
-            public bool Add(IPlayerGroup group)
+            public bool Add(IPlayerGroup group, DateTime timestamp)
             {
                 //if (GroupQueue == null)
                 return false;

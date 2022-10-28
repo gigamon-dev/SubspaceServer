@@ -30,6 +30,14 @@ namespace SS.Matchmaking.Interfaces
         void SetPlaying(HashSet<Player> players);
 
         /// <summary>
+        /// Marks the player's state as 'Playing', as a substitute player in an ongoing match.
+        /// This tells the service to keep track of the original timestamp that the player queued up
+        /// so that the player can be requeued in the original position.
+        /// </summary>
+        /// <param name="player"></param>
+        void SetPlayingAsSub(Player player);
+
+        /// <summary>
         /// Removes the 'Playing' state of players that were previously marked with <see cref="SetPlaying(HashSet{Player})"/>, in the order provided.
         /// </summary>
         /// <param name="players">The players to unset from the 'Playing' state.</param>

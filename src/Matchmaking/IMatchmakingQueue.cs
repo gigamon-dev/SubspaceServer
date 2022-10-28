@@ -29,15 +29,22 @@ namespace SS.Matchmaking
         /// Adds a solo player to the queue.
         /// </summary>
         /// <param name="player">The player to add.</param>
+        /// <param name="timestamp">
+        /// The timestamp the player should be added as of. Older timestamps have higher priority.
+        /// Normally, this will be <see cref="DateTime.UtcNow"/>.
+        /// For players that are requeuing from being a sub, 
+        /// this value will be the original time the player queued, prior agreeing to sub.
+        /// This way, players do not lose their spot in line if they sub in for an existing game.
+        /// </param>
         /// <returns>True if the player was added. Otherwise, false.</returns>
-        bool Add(Player player);
+        bool Add(Player player, DateTime timestamp);
 
         /// <summary>
         /// Adds a group to the queue.
         /// </summary>
         /// <param name="group">The group to add.</param>
         /// <returns>True if the group was added. Otherwise, false.</returns>
-        bool Add(IPlayerGroup group);
+        bool Add(IPlayerGroup group, DateTime timestamp);
 
         #endregion
 

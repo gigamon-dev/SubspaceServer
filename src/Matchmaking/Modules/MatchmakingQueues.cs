@@ -186,28 +186,41 @@ namespace SS.Matchmaking.Modules
 
             foreach (Player player in players)
             {
-                // Individual
-                if (player.TryGetExtraData(_pdKey, out UsageData usageData))
-                {
-                    foreach (IMatchmakingQueue queue in usageData.Queues)
-                    {
-                        queue.Remove(player);
-                    }
+                SetPlaying(player, false);
+            }
+        }
 
-                    usageData.SetPlaying();
+        void IMatchmakingQueues.SetPlayingAsSub(Player player)
+        {
+            SetPlaying(player, true);
+        }
+
+        private void SetPlaying(Player player, bool isSub)
+        {
+            if (player == null)
+                return;
+
+            // Individual
+            if (player.TryGetExtraData(_pdKey, out UsageData usageData))
+            {
+                foreach (IMatchmakingQueue queue in usageData.Queues.Keys)
+                {
+                    queue.Remove(player);
                 }
 
-                // Group
-                IPlayerGroup group = _playerGroups.GetGroup(player);
-                if (group != null && _groupUsageDictionary.TryGetValue(group, out usageData))
-                {
-                    foreach (IMatchmakingQueue queue in usageData.Queues)
-                    {
-                        queue.Remove(group);
-                    }
+                usageData.SetPlaying(isSub);
+            }
 
-                    usageData.SetPlaying();
+            // Group
+            IPlayerGroup group = _playerGroups.GetGroup(player);
+            if (group != null && _groupUsageDictionary.TryGetValue(group, out usageData))
+            {
+                foreach (IMatchmakingQueue queue in usageData.Queues.Keys)
+                {
+                    queue.Remove(group);
                 }
+
+                usageData.SetPlaying(isSub);
             }
         }
 
@@ -242,9 +255,9 @@ namespace SS.Matchmaking.Modules
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
-                        foreach (IMatchmakingQueue queue in usageData.AutoQueues)
+                        foreach ((IMatchmakingQueue queue, DateTime? timestamp) in usageData.AutoQueues)
                         {
-                            if (Enqueue(player, null, usageData, queue))
+                            if (Enqueue(player, null, usageData, queue, timestamp ?? DateTime.UtcNow))
                                 addedQueues.Add(queue);
                             else
                                 _logManager.LogP(LogLevel.Drivel, nameof(MatchmakingQueues), player, $"Failed to enqueue to: {queue.Name}.");
@@ -299,9 +312,9 @@ namespace SS.Matchmaking.Modules
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
-                        foreach (IMatchmakingQueue queue in usageData.AutoQueues)
+                        foreach ((IMatchmakingQueue queue, DateTime? timestamp) in usageData.AutoQueues)
                         {
-                            if (Enqueue(group.Leader, group, usageData, queue))
+                            if (Enqueue(group.Leader, group, usageData, queue, timestamp ?? DateTime.UtcNow))
                                 addedQueues.Add(queue);
                         }
 
@@ -381,7 +394,7 @@ namespace SS.Matchmaking.Modules
                         return;
 
                     // The player disconnected while playing in match, but has now reconnected.
-                    usageData.SetPlaying();
+                    usageData.SetPlaying(false);
 
                     // TODO: send a message to the player that they're still in the match
 
@@ -497,7 +510,7 @@ namespace SS.Matchmaking.Modules
                         StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
-                            foreach (var queue in usageData.Queues)
+                            foreach (var queue in usageData.Queues.Keys)
                             {
                                 if (sb.Length > 0)
                                     sb.Append(", ");
@@ -523,7 +536,7 @@ namespace SS.Matchmaking.Modules
                                 sb = _objectPoolManager.StringBuilderPool.Get();
                                 try
                                 {
-                                    foreach (var queue in usageData.AutoQueues)
+                                    foreach (var queue in usageData.AutoQueues.Keys)
                                     {
                                         if (sb.Length > 0)
                                             sb.Append(", ");
@@ -675,13 +688,11 @@ namespace SS.Matchmaking.Modules
 
             IMatchmakingQueue AddToQueue(Player player, IPlayerGroup group, UsageData usageData, string queueName)
             {
-                Arena arena = player.Arena;
-                IMatchmakingQueue queue = null;
-
-                if (!_queues.TryGetValue(queueName, out queue))
+                if (!_queues.TryGetValue(queueName, out IMatchmakingQueue queue))
                 {
                     // Did not find a queue with the name provided.
                     // Check if the name provided is an alias.
+                    Arena arena = player.Arena;
                     var advisors = arena.GetAdvisors<IMatchmakingQueueAdvisor>();
                     foreach (IMatchmakingQueueAdvisor advisor in advisors)
                     {
@@ -700,14 +711,14 @@ namespace SS.Matchmaking.Modules
                     return null;
                 }
 
-                if (!Enqueue(player, group, usageData, queue))
+                if (!Enqueue(player, group, usageData, queue, DateTime.UtcNow))
                     return null;
 
                 return queue;
             }
         }
 
-        private bool Enqueue(Player player, IPlayerGroup group, UsageData usageData, IMatchmakingQueue queue)
+        private bool Enqueue(Player player, IPlayerGroup group, UsageData usageData, IMatchmakingQueue queue, DateTime timestamp)
         {
             if (group != null)
             {
@@ -729,12 +740,12 @@ namespace SS.Matchmaking.Modules
                     return false;
                 }
 
-                if (!usageData.AddQueue(queue))
+                if (!usageData.AddQueue(queue, timestamp))
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
                     return false;
                 }
-                else if (!queue.Add(group))
+                else if (!queue.Add(group, timestamp))
                 {
                     usageData.RemoveQueue(queue);
                     _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
@@ -752,12 +763,12 @@ namespace SS.Matchmaking.Modules
                     return false;
                 }
 
-                if (!usageData.AddQueue(queue))
+                if (!usageData.AddQueue(queue, timestamp))
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
                     return false;
                 }
-                else if (!queue.Add(player))
+                else if (!queue.Add(player, timestamp))
                 {
                     usageData.RemoveQueue(queue);
                     _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
@@ -968,7 +979,7 @@ namespace SS.Matchmaking.Modules
             try
             {
                 // Do the actual removal.
-                foreach (var queue in usageData.Queues)
+                foreach (var queue in usageData.Queues.Keys)
                 {
                     bool removed = false;
 
@@ -1040,12 +1051,12 @@ namespace SS.Matchmaking.Modules
         {
             public QueueState State { get; private set; }
             public bool AutoRequeue = false;
-            public readonly HashSet<IMatchmakingQueue> Queues = new();
-            public readonly HashSet<IMatchmakingQueue> AutoQueues = new();
+            public readonly Dictionary<IMatchmakingQueue, DateTime> Queues;
+            public readonly Dictionary<IMatchmakingQueue, DateTime?> AutoQueues;
 
-            public bool AddQueue(IMatchmakingQueue queue)
+            public bool AddQueue(IMatchmakingQueue queue, DateTime timestamp)
             {
-                if (!Queues.Add(queue))
+                if (!Queues.TryAdd(queue, timestamp))
                     return false;
 
                 if (State == QueueState.None)
@@ -1078,16 +1089,16 @@ namespace SS.Matchmaking.Modules
                 return true;
             }
 
-            public void SetPlaying()
+            public void SetPlaying(bool isSub)
             {
                 State = QueueState.Playing;
 
                 AutoQueues.Clear();
 
-                foreach (var queue in Queues)
+                foreach ((IMatchmakingQueue queue, DateTime timestamp) in Queues)
                 {
                     if (queue.Options.AllowAutoRequeue)
-                        AutoQueues.Add(queue);
+                        AutoQueues.Add(queue, isSub ? timestamp : null);
                 }
 
                 Queues.Clear();
