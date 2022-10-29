@@ -605,7 +605,7 @@ namespace SS.Core
                     WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}]");
                     
                     _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
-                    moduleLoadContext.Unload();
+                    //moduleLoadContext.Unload(); // TODO: Investigate why this sometimes causes a seg fault on Linux and Mac.
                 }
             }
 
