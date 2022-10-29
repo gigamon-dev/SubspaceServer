@@ -51,6 +51,11 @@ namespace SS.Core.Configuration
         }
 
         private string _path;
+
+        /// <summary>
+        /// Gets the path of the <see cref="ConfFile"/>.
+        /// <see langword="null"/> for a <see cref="ConfFile"/> that is not yet saved to disk.
+        /// </summary>
         public string Path
         {
             get => _path;
@@ -62,8 +67,28 @@ namespace SS.Core.Configuration
         }
 
         private FileInfo _fileInfo;
+
+        /// <summary>
+        /// Gets the last known timestamp that a <see cref="ConfFile"/> was last modified on disk.
+        /// <see langword="null"/> for a <see cref="ConfFile"/> that is not yet saved to disk.
+        /// </summary>
         public DateTime? LastModified { get; private set; }
-        public bool IsReloadNeeded => _fileInfo != null && LastModified != _fileInfo.LastWriteTimeUtc;
+
+        /// <summary>
+        /// Gets whether the file needs to be reloaded from disk, based on the last modified timestamp of the file.
+        /// <see cref="false"/> for a <see cref="ConfFile"/> that is not yet saved to disk.
+        /// </summary>
+        public bool IsReloadNeeded
+        {
+            get
+            {
+                if (!TryGetLastModified(out DateTime value))
+                    return false;
+
+                return LastModified != value;
+            }
+        }
+
         public List<RawLine> Lines { get; } = new List<RawLine>();
 
         /// <summary>
@@ -143,7 +168,32 @@ namespace SS.Core.Configuration
 
         private void RefreshLastModified()
         {
-            LastModified = _fileInfo?.LastWriteTimeUtc;
+            if (TryGetLastModified(out DateTime value))
+            {
+                LastModified = value;
+            }
+        }
+
+        private bool TryGetLastModified(out DateTime value)
+        {
+            if (_fileInfo == null)
+            {
+                value = default;
+                return false;
+            }
+
+            try
+            {
+                _fileInfo.Refresh();
+                value = _fileInfo.LastWriteTimeUtc;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ReportError($"Error getting last write time of '{Path}'. {ex.Message}");
+                value = default;
+                return false;
+            }
         }
 
         private RawLine ParseLine(string raw, ReadOnlySpan<char> line)
