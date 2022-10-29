@@ -52,6 +52,7 @@ namespace SS.Matchmaking.Modules
         private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
+        private IMapData _mapData;
         private IMatchmakingQueues _matchmakingQueues;
         private INetwork _network;
         private IObjectPoolManager _objectPoolManager;
@@ -98,16 +99,12 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// Slots that are available for substitute players.
         /// </summary>
-        private readonly LinkedList<PlayerSlot> _availableSubSlots = new();
+        private readonly LinkedList<PlayerSlot> _availableSubSlots = new(); // TODO: pooling of node objects
+        // TODO: when a match ends, remember to remove from _availableSubSlots
 
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new();
 
         private readonly ObjectPool<ArenaData> _arenaDataObjectPool = new NonTransientObjectPool<ArenaData>(new ArenaDataPooledObjectPolicy());
-
-        /// <summary>
-        /// Set of slots that can be subbed.
-        /// </summary>
-        //private HashSet<PlayerSlot> _slotsToSubSet = new();
 
         #region Module members
 
@@ -121,6 +118,7 @@ namespace SS.Matchmaking.Modules
             ILogManager logManager,
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
+            IMapData mapData,
             IMatchmakingQueues matchmakingQueues,
             INetwork network,
             IObjectPoolManager objectPoolManager,
@@ -135,6 +133,7 @@ namespace SS.Matchmaking.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _matchmakingQueues = matchmakingQueues ?? throw new ArgumentNullException(nameof(matchmakingQueues));
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
@@ -154,6 +153,9 @@ namespace SS.Matchmaking.Modules
 
             _network.AddPacket(C2SPacketType.Position, Packet_Position);
 
+            _commandManager.AddCommand("loadmatchtype", Command_loadmatchtype);
+            _commandManager.AddCommand("unloadmatchtype", Command_unloadmatchtype);
+
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
             return true;
         }
@@ -161,6 +163,9 @@ namespace SS.Matchmaking.Modules
         public bool Unload(ComponentBroker broker)
         {
             broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken);
+
+            _commandManager.RemoveCommand("loadmatchtype", Command_loadmatchtype);
+            _commandManager.RemoveCommand("unloadmatchtype", Command_unloadmatchtype);
 
             _network.RemovePacket(C2SPacketType.Position, Packet_Position);
 
@@ -180,8 +185,8 @@ namespace SS.Matchmaking.Modules
         ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
         {
             // TOOD: When in a match, allow a player to do a normal ship change instead of using ?sc
-            // If during a period they can ship change, then allow all ships.
-            // If during a period they cannot ship change, but have additional lives, set their next ship.
+            // If during a period they can ship change (start of the match or after death), then allow (ShipMask.All).
+            // If during a period they cannot ship change, but have additional lives, don't allow any ship (ShipMask.None), but set their next ship.
             return ShipMask.None;
         }
 
@@ -222,29 +227,76 @@ namespace SS.Matchmaking.Modules
             if (length != C2S_PositionPacket.LengthWithExtra)
                 return;
 
+            if (player.Ship == ShipType.Spec)
+                return;
+
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            PlayerSlot playerSlot = playerData.PlayerSlot;
-            if (playerSlot == null || playerSlot.Status != PlayerSlotStatus.Playing)
+            PlayerSlot slot = playerData.PlayerSlot;
+            if (slot is null || slot.Status != PlayerSlotStatus.Playing)
                 return;
 
             ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(new Span<byte>(data, 0, C2S_PositionPacket.LengthWithExtra));
 
             // Keep track of the items for the slot.
-            playerSlot.Bursts = pos.Extra.Bursts;
-            playerSlot.Repels = pos.Extra.Repels;
-            playerSlot.Thors = pos.Extra.Thors;
-            playerSlot.Bricks = pos.Extra.Bricks;
-            playerSlot.Decoys = pos.Extra.Decoys;
-            playerSlot.Rockets = pos.Extra.Rockets;
-            playerSlot.Portals = pos.Extra.Portals;
+            slot.Bursts = pos.Extra.Bursts;
+            slot.Repels = pos.Extra.Repels;
+            slot.Thors = pos.Extra.Thors;
+            slot.Bricks = pos.Extra.Bricks;
+            slot.Decoys = pos.Extra.Decoys;
+            slot.Rockets = pos.Extra.Rockets;
+            slot.Portals = pos.Extra.Portals;
 
             if (pos.Weapon.Type != WeaponCodes.Null
-                && playerSlot.AllowShipChangeCutoff != null)
+                && slot.AllowShipChangeCutoff != null)
             {
                 // The player has engaged.
-                playerSlot.AllowShipChangeCutoff = null;
+                slot.AllowShipChangeCutoff = null;
+            }
+
+            string playAreaRegion = slot.MatchData.Configuration.Boxes[slot.MatchData.MatchIdentifier.BoxIdx].PlayAreaMapRegion;
+            if (string.IsNullOrEmpty(playAreaRegion))
+            {
+                slot.IsInPlayArea = true;
+            }
+            else
+            {
+                if (pos.X == 0 && pos.Y == 0)
+                {
+                    // TODO: Verify this. When a player dies, it might send these coordinates? In which case, just ignore it.
+                }
+                else
+                {
+                    bool isInPlayArea = false;
+
+                    foreach (var region in _mapData.RegionsAt(player.Arena, pos.X, pos.Y))
+                    {
+                        if (string.Equals(region.Name, playAreaRegion, StringComparison.OrdinalIgnoreCase))
+                        {
+                            isInPlayArea = true;
+                            break;
+                        }
+                    }
+
+                    slot.IsInPlayArea = isInPlayArea;
+
+                    if (!slot.IsInPlayArea)
+                    {
+                        // The player is outside of the play area.
+                        CheckForMatchCompletion(slot.MatchData);
+                    }
+                }
+            }
+
+            slot.IsFullEnergy = 
+                _arenaDataDictionary.TryGetValue(player.Arena, out ArenaData arenaData) 
+                && pos.Energy >= arenaData.ShipSettings[(int)player.Ship].MaximumEnergy;
+
+            if (slot.SubPlayer is not null && slot.IsFullEnergy)
+            {
+                // Another player is waiting to sub in. Try to sub the other player in.
+                SubSlot(slot);
             }
         }
 
@@ -285,44 +337,52 @@ namespace SS.Matchmaking.Modules
                         InitialDecoy = (byte)_configManager.GetInt(arena.Cfg, shipNames[i], "InitialDecoy", 0),
                         InitialRocket = (byte)_configManager.GetInt(arena.Cfg, shipNames[i], "InitialRocket", 0),
                         InitialPortal = (byte)_configManager.GetInt(arena.Cfg, shipNames[i], "InitialPortal", 0),
+                        MaximumEnergy = (short)_configManager.GetInt(arena.Cfg, shipNames[i], "MaximumEnergy", 0),
                     };
                 }
 
                 KillCallback.Register(arena, Callback_Kill);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
 
-                _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena); // allow a player request for their slot to be subbed out
-                _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena); // for a player to confirm that they agree to sub in
-                _commandManager.AddCommand(CommandNames.Return, Command_return, arena); // return to the game after being spec'd or disconnected
-                _commandManager.AddCommand(CommandNames.Restart, Command_restart, arena); // request that the game be restarted, needs a majority vote
-                _commandManager.AddCommand(CommandNames.Randomize, Command_randomize, arena); // request that teams be randomized and restarted, needs a majority vote --> using this ignores player groups, all players in the match will be randomized
-                _commandManager.AddCommand(CommandNames.End, Command_end, arena); // request that the game be ended as a loss for the team, if all remaining players on a team agree (type the command), the game will end as a loss to that team without having to be killed out.
-                _commandManager.AddCommand(CommandNames.Draw, Command_draw, arena); // request that the game be ended as a draw by agreement (no winner), needs a majority vote across all remaining players
-                _commandManager.AddCommand(CommandNames.ShipChange, Command_sc, arena); // request a ship change. It will be allowed after death.  Otherwise, the sets the next ship to use upon death.
+                _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena);
+                _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena);
+                _commandManager.AddCommand(CommandNames.CancelSub, Command_cancelsub, arena);
+                _commandManager.AddCommand(CommandNames.Return, Command_return, arena);
+                _commandManager.AddCommand(CommandNames.Restart, Command_restart, arena);
+                _commandManager.AddCommand(CommandNames.Randomize, Command_randomize, arena);
+                _commandManager.AddCommand(CommandNames.End, Command_end, arena);
+                _commandManager.AddCommand(CommandNames.Draw, Command_draw, arena);
+                _commandManager.AddCommand(CommandNames.ShipChange, Command_sc, arena);
 
                 arenaData.IFreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
             }
             else if (action == ArenaAction.Destroy)
             {
-                if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData arenaData))
+                if (!_arenaDataDictionary.Remove(arena, out ArenaData arenaData))
                     return;
 
-                if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
-                    return;
+                try
+                {
+                    if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
+                        return;
 
-                KillCallback.Unregister(arena, Callback_Kill);
-                ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+                    KillCallback.Unregister(arena, Callback_Kill);
+                    ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
 
-                _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
-                _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
-                _commandManager.RemoveCommand(CommandNames.Return, Command_return, arena);
-                _commandManager.RemoveCommand(CommandNames.Restart, Command_restart, arena);
-                _commandManager.RemoveCommand(CommandNames.Randomize, Command_randomize, arena);
-                _commandManager.RemoveCommand(CommandNames.End, Command_end, arena);
-                _commandManager.RemoveCommand(CommandNames.Draw, Command_draw, arena);
-                _commandManager.RemoveCommand(CommandNames.ShipChange, Command_sc, arena);
-
-                // TODO: make sure all matches in the arena are cleared out
+                    _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
+                    _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
+                    _commandManager.RemoveCommand(CommandNames.CancelSub, Command_cancelsub, arena);
+                    _commandManager.RemoveCommand(CommandNames.Return, Command_return, arena);
+                    _commandManager.RemoveCommand(CommandNames.Restart, Command_restart, arena);
+                    _commandManager.RemoveCommand(CommandNames.Randomize, Command_randomize, arena);
+                    _commandManager.RemoveCommand(CommandNames.End, Command_end, arena);
+                    _commandManager.RemoveCommand(CommandNames.Draw, Command_draw, arena);
+                    _commandManager.RemoveCommand(CommandNames.ShipChange, Command_sc, arena);
+                }
+                finally
+                {
+                    _arenaDataObjectPool.Return(arenaData);
+                }
             }
         }
 
@@ -397,7 +457,7 @@ namespace SS.Matchmaking.Modules
                     && string.Equals(arena.Name, playerData.SubSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                 {
                     // The player left the arena before entering the game, and therefore did not complete subbing into the match.
-                    CancelInProgressSub(playerData.SubSlot, false);
+                    CancelSubInProgress(playerData.SubSlot, false);
                 }
 
                 PlayerSlot slot = playerData.PlayerSlot;
@@ -416,7 +476,7 @@ namespace SS.Matchmaking.Modules
                 if (playerData.SubSlot != null)
                 {
                     // The player disconnected from the server before being able to complete subbing into the match.
-                    CancelInProgressSub(playerData.SubSlot, false);
+                    CancelSubInProgress(playerData.SubSlot, false);
                 }
 
                 PlayerSlot slot = playerData.PlayerSlot;
@@ -509,8 +569,44 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region Administrative Commands
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<match type>",
+            Description = "Loads (or reloads) a match type from configuration.")]
+        private void Command_loadmatchtype(string commandName, string parameters, Player player, ITarget target)
+        {
+            // TODO:
+
+            // End any existing match of this type.
+
+            // Remember to use _configManager.OpenConfigFile on a worker thread.
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<match type>",
+            Description = "Removes a match type.")]
+        private void Command_unloadmatchtype(string commandName, string parameters, Player player, ITarget target)
+        {
+            // TODO: 
+
+            // End any existing match of this type.
+
+            // Remove the match type.
+
+            // If the queue that the match used doesn't have any other match types, then remove it too.
+        }
+
+        #endregion
+
         #region Commands
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "For a player to request to be subbed out of their current match.")]
         private void Command_requestsub(string commandName, string parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -521,56 +617,74 @@ namespace SS.Matchmaking.Modules
                 return;
 
             playerSlot.IsSubRequested = true;
+            _availableSubSlots.AddLast(playerSlot);
 
             _chat.SendArenaMessage(player.Arena, $"{player.Name} has requested to be subbed out.");
             SendSubAvailablityNotificationToQueuedPlayers(playerSlot.MatchData);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[<queue name>]",
+            Description = 
+            "Searches for the next available slot in any ongoing matches and substitutes the player into the slot.\n" +
+            "When matched with a slot to sub in for, the switch may not happen immediately." +
+            "First, the player may need to be moved to the proper arena." +
+            "Also, the slot may currently contain an active player (that requested to be subbed out), " +
+            "in which case the active player needs to get to full energy to become eligible to be switched out.")]
         private void Command_sub(string commandName, string parameters, Player player, ITarget target)
         {
+            // TODO: maybe the sub command should be in the MatchMakingQueues module, and this method is an advisor method?
+
+            if (player.Ship != ShipType.Spec)
+            {
+                _chat.SendMessage(player, $"You must be in spec to use ?{CommandNames.Sub}.");
+                return;
+            }
+
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
             if (playerData.PlayerSlot is not null)
             {
-                _chat.SendMessage(player, $"You are already playing in a match.");
+                _chat.SendMessage(player, "You are already playing in a match.");
                 return;
             }
 
+            if (playerData.SubSlot is not null)
+            {
+                _chat.SendMessage(player, $"You already have a ?{CommandNames.Sub} attempt in progress.");
+                return;
+            }
+
+            // TODO:
+            //if (_matchmakingQueues.IsQueued(player))
+            //{
+            //    _chat.SendMessage(player, $"You must be queued as a solo to use ?{CommandNames.Sub}");
+            //    return;
+            //}
+
             // Find the next available slot, if one exists.
             PlayerSlot subSlot = null;
-            if (!string.IsNullOrWhiteSpace(parameters))
-            {
-                if (!_queueDictionary.TryGetValue(parameters, out TeamVersusMatchmakingQueue queue))
-                {
-                    if (!queue.ContainsSoloPlayer(player))
-                    {
-                        _chat.SendMessage(player, $"You must be queued as a solo to use ?{CommandNames.Sub}");
-                        return;
-                    }
 
-                    // TODO:
-                    //if(subSlot.CanBeSubbed && subSlot.SubPlayer == null)
-                }
-            }
-            else
+            foreach (PlayerSlot slot in _availableSubSlots)
             {
-                foreach (TeamVersusMatchmakingQueue queue in _queueDictionary.Values)
+                if (slot.CanBeSubbed
+                    && slot.SubPlayer is null // no sub in progress
+                    && (string.IsNullOrWhiteSpace(parameters) || string.Equals(parameters, slot.MatchData.Configuration.QueueName, StringComparison.OrdinalIgnoreCase))
+                    && _queueDictionary.TryGetValue(slot.MatchData.Configuration.QueueName, out TeamVersusMatchmakingQueue queue)
+                    && queue.ContainsSoloPlayer(player))
                 {
-                    if (queue.ContainsSoloPlayer(player))
-                    {
-                        foreach (MatchConfiguration configuration in queue.MatchConfigurations)
-                        {
-                            // TODO:
-                            //configuration.MatchType
-                            //if(subSlot.CanBeSubbed && subSlot.SubPlayer == null)
-                        }
-                    }
+                    subSlot = slot;
+                    break;
                 }
             }
 
             if (subSlot is null)
+            {
+                _chat.SendMessage(player, "There are no available slots to sub into at this moment.");
                 return;
+            }
 
             MatchData matchData = subSlot.MatchData;
             Arena arena = _arenaManager.FindArena(matchData.ArenaName);
@@ -585,7 +699,7 @@ namespace SS.Matchmaking.Modules
 
             if (player.Arena != arena)
             {
-                _chat.SendMessage(player, $"You are being moved to arena {arena.Name} as a sub for an ongoing match. Please stand by.");
+                _chat.SendMessage(player, $"You are being moved to arena {arena.Name} to become a substitute player in an ongoing match. Please stand by.");
 
                 _arenaManager.SendToArena(player, arena.Name, 0, 0);
 
@@ -601,13 +715,34 @@ namespace SS.Matchmaking.Modules
 
         private void SubSlot(PlayerSlot slot)
         {
+            if (slot is null)
+                return;
+
             Player player = slot.SubPlayer;
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return; // no ongoing sub for the slot
 
             if (!slot.CanBeSubbed)
             {
-                CancelInProgressSub(slot, true);
+                CancelSubInProgress(slot, true);
+                return;
+            }
+
+            if (slot.Status == PlayerSlotStatus.Playing
+                && slot.Player is not null
+                && slot.Player.Ship != ShipType.Spec
+                && !slot.IsFullEnergy) // Note: not using slot.Player.Position.Energy since it might not be up to date (depending on the order of position packet handlers)
+            {
+                // The currently assigned player is still playing and isn't at full energy.
+                // Wait until the player gets to full energy.
+
+                // This method will be called again by:
+                // - the position packet handler (when the currently assigned player's energy gets to max)
+                // - the player action handler (when the currently assigned player leaves the arena)
+                // - the ship change handler (when the currently assigned player switches to spec)
+
+                _chat.SendMessage(slot.Player, $"A player is waiting to ?{CommandNames.Sub} in for your slot. Get to full energy to be automatically subbed out.");
+                _chat.SendMessage(slot.SubPlayer, "You will be subbed in when the active player gets to full energy. Please stand by.");
                 return;
             }
 
@@ -615,14 +750,12 @@ namespace SS.Matchmaking.Modules
             Arena arena = player.Arena;
             if (arena is null || !string.Equals(arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
             {
-                CancelInProgressSub(slot, true);
+                CancelSubInProgress(slot, true);
                 return;
             }
 
-            // TODO: If the slot is in use by a player that requested to be subbed, then wait for that player to reach full energy, lagout to spec, or leave before replacing.
-
+            // Notify
             HashSet<Player> toNotify = _objectPoolManager.PlayerSetPool.Get();
-
             try
             {
                 GetPlayersToNotify(matchData, toNotify);
@@ -638,7 +771,7 @@ namespace SS.Matchmaking.Modules
                 _objectPoolManager.PlayerSetPool.Return(toNotify);
             }
 
-            _matchmakingQueues.SetPlayingAsSub(player);
+            _availableSubSlots.Remove(slot);
 
             if (slot.Status == PlayerSlotStatus.Playing
                 && slot.Player is not null
@@ -653,7 +786,27 @@ namespace SS.Matchmaking.Modules
             SetShipAndFreq(slot, true, null);
         }
 
-        private void CancelInProgressSub(PlayerSlot slot, bool notify)
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = $"Cancels a ?{CommandNames.Sub} attempt that's in progress.\n" +
+            "Use this if you no longer want to wait to be subbed in.")]
+        private void Command_cancelsub(string commandName, string parameters, Player player, ITarget target)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            if (playerData.SubSlot is null)
+            {
+                _chat.SendMessage(player, $"There is no ?{CommandNames.Sub} attempt in progress to cancel.");
+                return;
+            }
+
+            CancelSubInProgress(playerData.SubSlot, true);
+        }
+
+        // TODO: Remember to call this when a match ends
+        private void CancelSubInProgress(PlayerSlot slot, bool notify)
         {
             if (slot == null)
                 return;
@@ -665,16 +818,20 @@ namespace SS.Matchmaking.Modules
             playerData.SubSlot = null;
             slot.SubPlayer = null;
 
+            if (notify)
+            {
+                _chat.SendMessage(player, $"The ?{CommandNames.Sub} attempt was cancelled.");
+            }
+
             // Remove the 'playing' state which requeues the player back into the queues.
             // In this scenario, the player should get added back into their original queue positions rather than at the end of the queues.
             _matchmakingQueues.UnsetPlaying(player, true);
-
-            if (notify)
-            {
-                _chat.SendMessage(player, $"The ?sub attempt was cancelled.");
-            }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Returns a player to their current match (e.g. after getting spec'd or disconnected).")]
         private void Command_return(string commandName, string parameters, Player player, ITarget target)
         {
             if (player.Ship != ShipType.Spec
@@ -686,7 +843,7 @@ namespace SS.Matchmaking.Modules
             PlayerSlot slot = playerData.PlayerSlot;
             if (slot == null)
             {
-                _chat.SendMessage(player, $"return: You are not in a match.");
+                _chat.SendMessage(player, $"You are not in a match.");
                 return;
             }
 
@@ -698,7 +855,7 @@ namespace SS.Matchmaking.Modules
 
             if (slot.LagOuts >= matchData.Configuration.MaxLagOuts)
             {
-                _chat.SendMessage(player, $"return: You cannot return to the match because you have exceeded the maximum # of LagOuts: {matchData.Configuration.MaxLagOuts}.");
+                _chat.SendMessage(player, $"You cannot return to the match because you have exceeded the maximum # of LagOuts: {matchData.Configuration.MaxLagOuts}.");
                 return;
             }
 
@@ -728,14 +885,39 @@ namespace SS.Matchmaking.Modules
 
             SetShipAndFreq(slot, true, null);
 
-            _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
+            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+            try
+            {
+                GetPlayersToNotify(slot.MatchData, players);
 
+                if (slot.SubPlayer != null)
+                {
+                    players.Add(slot.SubPlayer);
+                }
+
+                if (players.Count > 0)
+                {
+                    _chat.SendSetMessage(players, $"{player} returned to the match. [Lives: {slot.Lives}]");
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(players);
+            }
+
+            // There is a chance that another player was in the middle of trying to sub in, but didn't complete it yet.
+            // For example, the other player used ?sub and is switching arenas, but this player used ?return before
+            // the other player entered the arena.
             if (slot.SubPlayer != null)
             {
-
+                CancelSubInProgress(slot, true);
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Request that the game be restarted, needs a majority vote")]
         private void Command_restart(string commandName, string parameters, Player player, ITarget target)
         {
             //_chat.SendMessage(, $"{player.Name} requested to restart the game. Vote using: ?restart [y|n]");
@@ -743,6 +925,12 @@ namespace SS.Matchmaking.Modules
             //_chat.SendMessage(, $"The vote to ?restart has expired.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = 
+            "Request that teams be randomized and the game restarted, needs a majority vote.\n" +
+            "Using this ignores player groups, all players in the match will be randomized.")]
         private void Command_randomize(string commandName, string parameters, Player player, ITarget target)
         {
             //_chat.SendMessage(, $"{player.Name} requests to re-randomize the teams and restart the game. To agree, type: ?randomize");
@@ -750,6 +938,13 @@ namespace SS.Matchmaking.Modules
             //_chat.SendMessage(, $"The vote to ?randomize has expired.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = 
+            "Request that the game be ended as a loss for the team, " +
+            "if all remaining players on a team agree (type the command), " +
+            "the game will end as a loss to that team without having to be killed out.")]
         private void Command_end(string commandName, string parameters, Player player, ITarget target)
         {
             // To the opposing team (voting begin)
@@ -775,10 +970,18 @@ namespace SS.Matchmaking.Modules
             //_chat.SendMessage(, $"The vote to surrender has expired. Fight on!");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = null,
+            Description = "Request that the game be ended as a draw by agreement (no winner), needs a majority vote across all remaining players.")]
         private void Command_draw(string commandName, string parameters, Player player, ITarget target)
         {
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<ship #>",
+            Description = "Request a ship change. It will be allowed after death. Otherwise, it sets the next ship to use upon death.")]
         private void Command_sc(string commandName, string parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -787,17 +990,14 @@ namespace SS.Matchmaking.Modules
             PlayerSlot playerSlot = playerData.PlayerSlot;
             if (playerSlot == null)
             {
-                _chat.SendMessage(player, $"sc: You're not playing in a match.");
+                _chat.SendMessage(player, $"You're not playing in a match.");
                 return;
             }
 
             if (playerSlot.AllowShipChangeCutoff != null && playerSlot.AllowShipChangeCutoff < DateTime.UtcNow)
             {
-                if (!int.TryParse(parameters, out int shipNumber) || shipNumber < 1 || shipNumber > 8)
-                {
-                    _chat.SendMessage(player, "sc: Invalid ship type specified.");
+                if (!TryParseShipNumber(player, parameters, out int shipNumber))
                     return;
-                }
 
                 ShipType ship = (ShipType)(shipNumber - 1);
                 _game.SetShip(player, ship);
@@ -806,16 +1006,24 @@ namespace SS.Matchmaking.Modules
             }
             else if (playerSlot.Lives > 0)
             {
-                if (!int.TryParse(parameters, out int shipNumber) || shipNumber < 1 || shipNumber > 8)
-                {
-                    _chat.SendMessage(player, "sc: Invalid ship type specified.");
+                if (!TryParseShipNumber(player, parameters, out int shipNumber))
                     return;
-                }
 
                 ShipType ship = (ShipType)(shipNumber - 1);
                 playerData.NextShip = ship;
 
-                _chat.SendMessage(player, $"sc: Your next ship will be a {ship}.");
+                _chat.SendMessage(player, $"Your next ship will be a {ship}.");
+            }
+
+            bool TryParseShipNumber(Player player, ReadOnlySpan<char> s, out int shipNumber)
+            {
+                if (!int.TryParse(s, out shipNumber) || shipNumber < 1 || shipNumber > 8)
+                {
+                    _chat.SendMessage(player, "Invalid ship type specified.");
+                    return false;
+                }
+
+                return true;
             }
         }
 
@@ -1136,13 +1344,32 @@ namespace SS.Matchmaking.Modules
                     continue;
 
                 //
-                // Start the game
+                // Mark the players as playing.
+                //
+
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    foreach (PlayerSlot playerSlot in matchData.TeamPlayerSlots)
+                    {
+                        players.Add(playerSlot.Player);
+                    }
+
+                    _matchmakingQueues.SetPlaying(players);
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+
+                //
+                // Start the game.
                 //
 
                 // Reserve the match.
                 matchData.Status = MatchStatus.Initializing;
 
-                // Try to find the arena
+                // Try to find the arena.
                 Arena arena = _arenaManager.FindArena(matchData.ArenaName); // This will only find the arena if it already exists and is running.
 
                 foreach (PlayerSlot playerSlot in matchData.TeamPlayerSlots)
@@ -1208,6 +1435,7 @@ namespace SS.Matchmaking.Modules
             playerData.PlayerSlot = slot;
 
             slot.LagOuts = 0;
+            slot.IsSubRequested = false;
         }
 
         private void UnassignSlot(PlayerSlot slot)
@@ -1252,33 +1480,41 @@ namespace SS.Matchmaking.Modules
 
                 if (slot.CanBeSubbed)
                 {
-                    // The slot is immediately available to sub.
-                    _availableSubSlots.AddLast(slot);
-
-                    if (reason == SlotNotActiveReason.ChangedToSpec)
+                    if (slot.SubPlayer is not null)
                     {
-                        _chat.SendSetMessage(players, $"{slot.PlayerName} has changed to spectator mode. The slot is now available for ?sub.");
+                        // The current player requested to be subbed out and another player was waiting (for the current player to hit max energy or leave) to be subbed in. 
+                        SubSlot(slot);
                     }
-                    else if (reason == SlotNotActiveReason.LeftArena)
+                    else
                     {
-                        _chat.SendSetMessage(players, $"{slot.PlayerName} has left the arena. The slot is now available for ?sub.");
-                    }
+                        // The slot is immediately available to sub.
+                        _availableSubSlots.AddLast(slot);
 
-                    SendSubAvailablityNotificationToQueuedPlayers(matchData);
+                        if (reason == SlotNotActiveReason.ChangedToSpec)
+                        {
+                            _chat.SendSetMessage(players, $"{slot.PlayerName} has changed to spectator mode. The slot is now available for ?{CommandNames.Sub}.");
+                        }
+                        else if (reason == SlotNotActiveReason.LeftArena)
+                        {
+                            _chat.SendSetMessage(players, $"{slot.PlayerName} has left the arena. The slot is now available for ?{CommandNames.Sub}.");
+                        }
+
+                        SendSubAvailablityNotificationToQueuedPlayers(matchData);
+                    }
                 }
                 else
                 {
                     // The slot will become available to sub if the player doesn't return in time.
                     if (reason == SlotNotActiveReason.ChangedToSpec)
                     {
-                        _chat.SendSetMessage(players, $"{slot.PlayerName} has changed to spectator mode and has {matchData.Configuration.AllowSubAfter.TotalSeconds} seconds to return. [Lagouts: {slot.LagOuts}]");
+                        _chat.SendSetMessage(players, $"{slot.PlayerName} has changed to spectator mode and has {matchData.Configuration.AllowSubAfter.TotalSeconds} seconds to return before the slot is opened to ?{CommandNames.Sub}. [Lagouts: {slot.LagOuts}]");
                     }
                     else if (reason == SlotNotActiveReason.LeftArena)
                     {
-                        _chat.SendSetMessage(players, $"{slot.PlayerName} has left the arena and has {matchData.Configuration.AllowSubAfter.TotalSeconds} seconds to return. [Lagouts: {slot.LagOuts}]");
+                        _chat.SendSetMessage(players, $"{slot.PlayerName} has left the arena and has {matchData.Configuration.AllowSubAfter.TotalSeconds} seconds to return before the slot is opened to ?{CommandNames.Sub}. [Lagouts: {slot.LagOuts}]");
                     }
 
-                    _mainloopTimer.SetTimer(MainloopTimer_ProcessInactiveSlot, (int)matchData.Configuration.AllowSubAfter.TotalSeconds, Timeout.Infinite, slot, slot);
+                    _mainloopTimer.SetTimer(MainloopTimer_ProcessInactiveSlot, (int)matchData.Configuration.AllowSubAfter.TotalMilliseconds, Timeout.Infinite, slot, slot);
                 }
             }
             finally
@@ -1300,7 +1536,7 @@ namespace SS.Matchmaking.Modules
 
                 if (players.Count > 0)
                 {
-                    _chat.SendSetMessage(players, $"A slot in an ongoing {matchData.Configuration.MatchType} match is available to be subbed. To sub use: ?sub {matchData.Configuration.MatchType}");
+                    _chat.SendSetMessage(players, $"A slot in an ongoing {matchData.Configuration.MatchType} match is available to be subbed. To sub use: ?{CommandNames.Sub} {matchData.Configuration.MatchType}");
                 }
             }
             finally
@@ -1314,6 +1550,9 @@ namespace SS.Matchmaking.Modules
             if (slot == null)
                 return false;
 
+            if (slot.Status != PlayerSlotStatus.Waiting)
+                return false;
+
             // The player assigned to the slot has not returned in time. Therefore, it is now available for ?sub.
             // The player can still ?return before another player takes the slot.
 
@@ -1325,7 +1564,7 @@ namespace SS.Matchmaking.Modules
             {
                 GetPlayersToNotify(slot.MatchData, players);
 
-                _chat.SendSetMessage(players, $"{slot.PlayerName}'s slot is now available for ?sub.");
+                _chat.SendSetMessage(players, $"{slot.PlayerName}'s slot is now available for ?{CommandNames.Sub}.");
             }
             finally
             {
@@ -1477,6 +1716,9 @@ namespace SS.Matchmaking.Modules
                 // Adjust the player's items to the prior remaining amounts.
                 SetRemainingItems(slot);
             }
+
+            // Remove any existing timers for the slot.
+            _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
 
             void SetRemainingItems(PlayerSlot slot)
             {
@@ -1703,6 +1945,14 @@ namespace SS.Matchmaking.Modules
             public Player SubPlayer;
 
             /// <summary>
+            /// Whether the <see cref="Player"/> is at full energy.
+            /// This is used when trying to sub a player in.
+            /// </summary>
+            public bool IsFullEnergy;
+
+            public bool IsInPlayArea;
+
+            /// <summary>
             /// The cutoff timestamp that the player can ship change (after death or at the start of a match).
             /// </summary>
             public DateTime? AllowShipChangeCutoff;
@@ -1803,6 +2053,8 @@ namespace SS.Matchmaking.Modules
             public byte InitialDecoy { get; init; }
             public byte InitialRocket { get; init; }
             public byte InitialPortal { get; init; }
+
+            public short MaximumEnergy { get; init; }
         }
 
         private class ArenaData
@@ -1832,7 +2084,7 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// A type that wraps either a <see cref="Core.Player"/> or <see cref="IPlayerGroup"/>.
         /// </summary>
-        public readonly record struct QueuedPlayerOrGroup
+        private readonly record struct QueuedPlayerOrGroup
         {
             public QueuedPlayerOrGroup(Player player, DateTime timestamp)
             {
@@ -1889,6 +2141,8 @@ namespace SS.Matchmaking.Modules
                 _matchConfigurationList.Add(matchConfiguration);
             }
 
+            #region Add
+
             public bool Add(Player player, DateTime timestamp)
             {
                 Add(new LinkedListNode<QueuedPlayerOrGroup>(new(player, timestamp)));
@@ -1926,27 +2180,9 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public bool ContainsSoloPlayer(Player player)
-            {
-                foreach (QueuedPlayerOrGroup pog in _queue)
-                {
-                    if (pog.Player == player)
-                        return true;
-                }
+            #endregion
 
-                return false;
-            }
-
-            public void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups)
-            {
-                foreach (QueuedPlayerOrGroup pog in _queue)
-                {
-                    if (pog.Player != null)
-                        soloPlayers?.Add(pog.Player);
-                    else if(pog.Group != null)
-                        groups?.Add(pog.Group);
-                }
-            }
+            #region Remove
 
             public bool Remove(Player player)
             {
@@ -1980,6 +2216,30 @@ namespace SS.Matchmaking.Modules
                 }
 
                 return false;
+            }
+
+            #endregion
+
+            public bool ContainsSoloPlayer(Player player)
+            {
+                foreach (QueuedPlayerOrGroup pog in _queue)
+                {
+                    if (pog.Player == player)
+                        return true;
+                }
+
+                return false;
+            }
+
+            public void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups)
+            {
+                foreach (QueuedPlayerOrGroup pog in _queue)
+                {
+                    if (pog.Player != null)
+                        soloPlayers?.Add(pog.Player);
+                    else if (pog.Group != null)
+                        groups?.Add(pog.Group);
+                }
             }
 
             public bool GetMatch(MatchConfiguration matchConfiguration, PlayerSlot[,] teamPlayerSlots)
@@ -2128,6 +2388,7 @@ namespace SS.Matchmaking.Modules
         {
             public const string RequestSub = "requestsub";
             public const string Sub = "sub";
+            public const string CancelSub = "cancelsub";
             public const string Return = "return";
             public const string Restart = "restart";
             public const string Randomize = "randomize";

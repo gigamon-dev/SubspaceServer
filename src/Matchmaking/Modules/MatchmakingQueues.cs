@@ -1051,8 +1051,8 @@ namespace SS.Matchmaking.Modules
         {
             public QueueState State { get; private set; }
             public bool AutoRequeue = false;
-            public readonly Dictionary<IMatchmakingQueue, DateTime> Queues;
-            public readonly Dictionary<IMatchmakingQueue, DateTime?> AutoQueues;
+            public readonly Dictionary<IMatchmakingQueue, DateTime> Queues = new();
+            public readonly Dictionary<IMatchmakingQueue, DateTime?> AutoQueues = new();
 
             public bool AddQueue(IMatchmakingQueue queue, DateTime timestamp)
             {
