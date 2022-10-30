@@ -53,19 +53,19 @@ namespace SS.Core.ComponentInterfaces
     /// </summary>
     /// <param name="commandName">The name of the command that was issued.</param>
     /// <param name="parameters">The characters the player typed after the command name.</param>
-    /// <param name="p">The player issuing the command.</param>
+    /// <param name="player">The player issuing the command.</param>
     /// <param name="target">The target of the command.</param>
     /// <param name="sound">The sound to use.</param>
-    public delegate void CommandWithSoundDelegate(string commandName, string parameters, Player p, ITarget target, ChatSound sound);
+    public delegate void CommandWithSoundDelegate(string commandName, string parameters, Player player, ITarget target, ChatSound sound);
 
     /// <summary>
     /// Delegate for a 'default' command handler.
     /// </summary>
     /// <param name="commandName">The name of the command that was issued.</param>
     /// <param name="line">The full command line.</param>
-    /// <param name="p">The player issuing the command.</param>
+    /// <param name="player">The player issuing the command.</param>
     /// <param name="target">The target of the command.</param>
-    public delegate void DefaultCommandDelegate(string commandName, string line, Player p, ITarget target);
+    public delegate void DefaultCommandDelegate(ReadOnlySpan<char> commandName, ReadOnlySpan<char> line, Player player, ITarget target);
 
     /// <summary>
     /// Interface for a module which deals with registering and dispatching commands.
@@ -156,11 +156,11 @@ namespace SS.Core.ComponentInterfaces
         /// handlers in the server will be bypassed and the command will be
         /// passed directly to the default handler.
         /// </summary>
-        /// <param name="typedLine">what the player typed</param>
-        /// <param name="p">the player who issued the command</param>
-        /// <param name="target">how the command was issued</param>
-        /// <param name="sound">the sound from the chat packet that this command came from</param>
-        void Command(string typedLine, Player p, ITarget target, ChatSound sound);
+        /// <param name="typedLine">The text the player typed (without the ? in the beginning).</param>
+        /// <param name="player">The player who issued the command.</param>
+        /// <param name="target">The target of the command.</param>
+        /// <param name="sound">The sound from the chat packet that this command came from.</param>
+        void Command(ReadOnlySpan<char> typedLine, Player player, ITarget target, ChatSound sound);
 
         /// <summary>
         /// To get the help text of a command that was added.

@@ -848,9 +848,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void DefaultCommandReceived(string commandName, string line, Player p, ITarget target)
+        private void DefaultCommandReceived(ReadOnlySpan<char> commandName, ReadOnlySpan<char> line, Player player, ITarget target)
         {
-            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!pd.IsKnownToBiller)
@@ -858,136 +858,137 @@ namespace SS.Core.Modules
 
             if (target.Type != TargetType.Arena)
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(BillingUdp), p, $"Unknown command with bad target: '{line}'.");
+                _logManager.LogP(LogLevel.Drivel, nameof(BillingUdp), player, $"Unknown command with bad target: '{line}'.");
                 return;
             }
 
-            if (_chat.GetPlayerChatMask(p).IsRestricted(ChatMessageType.BillerCommand))
+            if (_chat.GetPlayerChatMask(player).IsRestricted(ChatMessageType.BillerCommand))
                 return;
 
-            S2B_UserCommand packet = new(p.Id);
+            S2B_UserCommand packet = new(player.Id);
             int len;
 
             if (line.StartsWith("chat=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("chat ", StringComparison.OrdinalIgnoreCase))
             {
-                len = RewriteChatCommand(p, line, ref packet);
+                len = RewriteChatCommand(player, line, ref packet);
             }
             else
             {
+                // Write the command prepended with the question mark.
                 len = packet.SetText(line, true);
             }
 
-            _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, $"Sending command: {packet.TextBytes.ReadNullTerminatedString()}");
+            _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, $"Sending command: {packet.TextBytes.ReadNullTerminatedString()}");
 
             lock (_lockObj)
             {
                 _networkClient.SendPacket(
                     _cc,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)).Slice(0, len),
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..len],
                     NetSendFlags.Reliable);
             }
-        }
 
-        [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, typeof(string), Description = "Comma separated staff chat list.")]
-        [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to staff chats.")]
-        [ConfigHelp("Billing", "LocalChats", ConfigScope.Global, typeof(string), Description = "Comma separated local chat list.")]
-        [ConfigHelp("Billing", "LocalChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to local chats.")]
-        private int RewriteChatCommand(Player p, ReadOnlySpan<char> line, ref S2B_UserCommand packet)
-        {
-            static bool FindChat(ReadOnlySpan<char> searchFor, ReadOnlySpan<char> list)
+            [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, typeof(string), Description = "Comma separated staff chat list.")]
+            [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to staff chats.")]
+            [ConfigHelp("Billing", "LocalChats", ConfigScope.Global, typeof(string), Description = "Comma separated local chat list.")]
+            [ConfigHelp("Billing", "LocalChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to local chats.")]
+            int RewriteChatCommand(Player player, ReadOnlySpan<char> line, ref S2B_UserCommand packet)
             {
-                if (searchFor.IsEmpty || list.IsEmpty)
+                static bool FindChat(ReadOnlySpan<char> searchFor, ReadOnlySpan<char> list)
+                {
+                    if (searchFor.IsEmpty || list.IsEmpty)
+                        return false;
+
+                    ReadOnlySpan<char> chatName;
+                    while ((chatName = list.GetToken(',', out list)).Length > 0)
+                    {
+                        if (searchFor.Equals(chatName, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+
                     return false;
-
-                ReadOnlySpan<char> chatName;
-                while ((chatName = list.GetToken(',', out list)).Length > 0)
-                {
-                    if (searchFor.Equals(chatName, StringComparison.OrdinalIgnoreCase))
-                        return true;
                 }
 
-                return false;
-            }
+                ReadOnlySpan<char> staffChats = _configManager.GetStr(_configManager.Global, "Billing", "StaffChats");
+                ReadOnlySpan<char> staffPrefix = _configManager.GetStr(_configManager.Global, "Billing", "StaffChatPrefix");
+                ReadOnlySpan<char> localChats = _configManager.GetStr(_configManager.Global, "Billing", "LocalChats");
+                ReadOnlySpan<char> localPrefix = _configManager.GetStr(_configManager.Global, "Billing", "LocalChatPrefix");
 
-            ReadOnlySpan<char> staffChats = _configManager.GetStr(_configManager.Global, "Billing", "StaffChats");
-            ReadOnlySpan<char> staffPrefix = _configManager.GetStr(_configManager.Global, "Billing", "StaffChatPrefix");
-            ReadOnlySpan<char> localChats = _configManager.GetStr(_configManager.Global, "Billing", "LocalChats");
-            ReadOnlySpan<char> localPrefix = _configManager.GetStr(_configManager.Global, "Billing", "LocalChatPrefix");
+                line = line[5..]; // skip "chat=" or "chat " (there is no ? at the beginning, it was already removed)
 
-            line = line[6..]; // skip "?chat=" or "?chat "
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-            try
-            {
-                sb.Append("?chat=");
-
-                ReadOnlySpan<char> chatName = ReadOnlySpan<char>.Empty;
-                while ((chatName = line.GetToken(',', out line)).Length > 0)
+                try
                 {
-                    chatName = chatName.Trim();
-                    if (chatName.Length <= 0 || chatName.Length > 31)
-                        continue;
+                    sb.Append("?chat=");
 
-                    bool addComma = sb.Length > 6;
-
-                    if (!localChats.IsWhiteSpace() 
-                        && FindChat(chatName, localChats))
+                    ReadOnlySpan<char> chatName = ReadOnlySpan<char>.Empty;
+                    while ((chatName = line.GetToken(',', out line)).Length > 0)
                     {
-                        if ((localPrefix.Length + 4 + chatName.Length) > 31
-                            || (localPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) > (S2B_UserCommand.MaxTextChars - 1))
-                        {
+                        chatName = chatName.Trim();
+                        if (chatName.Length <= 0 || chatName.Length > 31)
                             continue;
-                        }
 
-                        if (addComma)
-                            sb.Append(',');
+                        bool addComma = sb.Length > 6;
 
-                        sb.Append("$l$");
-                        sb.Append(localPrefix);
-                        sb.Append('|');
-                        sb.Append(chatName);
-                    }
-                    else if (!staffChats.IsWhiteSpace()
-                        && FindChat(chatName, staffChats)
-                        && _capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat))
-                    {
-                        if ((staffPrefix.Length + 4 + chatName.Length) > 31
-                            || (staffPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) > (S2B_UserCommand.MaxTextChars - 1))
+                        if (!localChats.IsWhiteSpace()
+                            && FindChat(chatName, localChats))
                         {
-                            continue;
+                            if ((localPrefix.Length + 4 + chatName.Length) > 31
+                                || (localPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) > (S2B_UserCommand.MaxTextChars - 1))
+                            {
+                                continue;
+                            }
+
+                            if (addComma)
+                                sb.Append(',');
+
+                            sb.Append("$l$");
+                            sb.Append(localPrefix);
+                            sb.Append('|');
+                            sb.Append(chatName);
                         }
-
-                        if (addComma)
-                            sb.Append(',');
-
-                        sb.Append("$s$");
-                        sb.Append(staffPrefix);
-                        sb.Append('|');
-                        sb.Append(chatName);
-                    }
-                    else
-                    {
-                        if (chatName.Length > 31
-                            || chatName.Length + sb.Length + (addComma ? 1 : 0) > (S2B_UserCommand.MaxTextChars - 1))
+                        else if (!staffChats.IsWhiteSpace()
+                            && FindChat(chatName, staffChats)
+                            && _capabilityManager.HasCapability(player, Constants.Capabilities.SendModChat))
                         {
-                            continue;
+                            if ((staffPrefix.Length + 4 + chatName.Length) > 31
+                                || (staffPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) > (S2B_UserCommand.MaxTextChars - 1))
+                            {
+                                continue;
+                            }
+
+                            if (addComma)
+                                sb.Append(',');
+
+                            sb.Append("$s$");
+                            sb.Append(staffPrefix);
+                            sb.Append('|');
+                            sb.Append(chatName);
                         }
+                        else
+                        {
+                            if (chatName.Length > 31
+                                || chatName.Length + sb.Length + (addComma ? 1 : 0) > (S2B_UserCommand.MaxTextChars - 1))
+                            {
+                                continue;
+                            }
 
-                        if (addComma)
-                            sb.Append(',');
+                            if (addComma)
+                                sb.Append(',');
 
-                        sb.Append(chatName);
+                            sb.Append(chatName);
+                        }
                     }
+
+                    Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserCommand.MaxTextChars - 1, sb.Length)];
+                    sb.CopyTo(0, textBuffer, textBuffer.Length);
+                    return packet.SetText(textBuffer, false);
                 }
-
-                Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserCommand.MaxTextChars - 1, sb.Length)];
-                sb.CopyTo(0, textBuffer, textBuffer.Length);
-                return packet.SetText(textBuffer, false);
-            }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
             }
         }
 

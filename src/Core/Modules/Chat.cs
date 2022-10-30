@@ -1384,7 +1384,7 @@ namespace SS.Core.Modules
                     // TODO: give modules a chance to rewrite the command
 
                     // run the command
-                    _commandManager.Command(token.ToString(), p, target, sound); // TODO: change CommandManager and all command delegates to accept ReadOnlySpan<char>
+                    _commandManager.Command(token, p, target, sound);
                 }
             }
             else
@@ -1392,7 +1392,7 @@ namespace SS.Core.Modules
                 // TODO: give modules a chance to rewrite the command
 
                 // run the command
-                _commandManager.Command(msg.ToString(), p, target, sound); // TODO: change CommandManager and all command delegates to accept ReadOnlySpan<char>
+                _commandManager.Command(msg, p, target, sound);
             }
         }
 

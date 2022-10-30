@@ -1,4 +1,5 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -361,60 +362,51 @@ namespace SS.Core.Modules
             }
         }
 
-        void ICommandManager.Command(string typedLine, Player p, ITarget target, ChatSound sound)
+        void ICommandManager.Command(ReadOnlySpan<char> typedLine, Player player, ITarget target, ChatSound sound)
         {
-            if (string.IsNullOrEmpty(typedLine))
-                return;
-
-            if (p == null)
+            if (player == null)
                 return;
 
             // almost all commands assume that p.Arena is not null
-            if (p.Arena == null)
+            if (player.Arena == null)
                 return;
 
             if (target == null)
                 return;
 
-            // NOTE: the Chat module has already removed the starting ? or * from typedLine
-
-            bool skipLocal = false;
+            // NOTE: The Chat module has already removed the starting ? or * from typedLine
 
             typedLine = typedLine.Trim();
+            if (typedLine.IsWhiteSpace())
+                return;
+
+            bool skipLocal = false;
 
             // ?\<command> is a way to send a command straight to the the billing server
             if (typedLine[0] == '\\')
             {
-                typedLine = typedLine.Remove(0, 1);
-                if (typedLine == string.Empty)
+                typedLine = typedLine[1..];
+                if (typedLine.IsWhiteSpace())
                     return;
 
                 skipLocal = true;
             }
 
-            string origLine = typedLine;
+            ReadOnlySpan<char> origLine = typedLine;
 
             // TODO: ASSS cuts command name at 30 characters? why the limit?
             // TODO: ASSS ends command name on ' ', '=', and '#'.  Then for parameters it skips ' ' and '=', but will leave a '#' at the start in the parameters string?
             // = makes sense for ?chat=first,second,third or ?password=newpassword etc...
             // where is # used?
 
-            string[] tokens = typedLine.Split(" =".ToCharArray(), 2, StringSplitOptions.RemoveEmptyEntries);
-            string cmd;
-            string parameters;
-
-            if (tokens.Length == 1)
-            {
-                cmd = tokens[0];
-                parameters = string.Empty;
-            }
-            else if (tokens.Length == 2)
-            {
-                cmd = tokens[0];
-                parameters = tokens[1];
-            }
-            else
+            ReadOnlySpan<char> parameters;
+            ReadOnlySpan<char> cmd = typedLine.GetToken(" =", out parameters);
+            if (cmd.IsEmpty)
                 return;
+
+            string cmdStr = cmd.ToString(); // TODO: workaround string allocation
+            parameters = parameters.TrimStart(" =");
+            string parametersStr = parameters.ToString(); // TODO: workaround string allocation
 
             string prefix;
             Arena remoteArena = null;
@@ -425,7 +417,7 @@ namespace SS.Core.Modules
             }
             else if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                if (targetPlayer.Arena == p.Arena)
+                if (targetPlayer.Arena == player.Arena)
                 {
                     prefix = "privcmd";
                 }
@@ -449,11 +441,11 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_cmdLookup.TryGetValue(cmd, out LinkedList<CommandData> list))
+                    if (_cmdLookup.TryGetValue(cmdStr, out LinkedList<CommandData> list))
                     {
                         foreach (CommandData cd in list)
                         {
-                            if (cd.Arena != null && cd.Arena != p.Arena)
+                            if (cd.Arena != null && cd.Arena != player.Arena)
                                 continue;
 
                             if (cd is BasicCommandData basicData)
@@ -474,16 +466,16 @@ namespace SS.Core.Modules
             if (skipLocal || !foundLocal)
             {
                 // send it to the biller
-                DefaultCommandEvent?.Invoke(cmd, origLine, p, target);
+                DefaultCommandEvent?.Invoke(cmd, origLine, player, target);
             }
             else if (foundLocal)
             {
-                if (Allowed(p, cmd, prefix, remoteArena))
+                if (Allowed(player, cmdStr, prefix, remoteArena))
                 {
-                    LogCommand(p, target, cmd, parameters);
+                    LogCommand(player, target, cmdStr, parameters);
 
-                    basicHandlers?.Invoke(cmd, parameters, p, target);
-                    soundHandlers?.Invoke(cmd, parameters, p, target, sound);
+                    basicHandlers?.Invoke(cmdStr, parametersStr, player, target);
+                    soundHandlers?.Invoke(cmdStr, parametersStr, player, target, sound);
                 }
 #if CFG_LOG_ALL_COMMAND_DENIALS
                 else
@@ -552,10 +544,10 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool Allowed(Player p, string cmd, string prefix, Arena remoteArena)
+        private bool Allowed(Player player, string cmd, string prefix, Arena remoteArena)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (string.IsNullOrEmpty(cmd))
                 throw new ArgumentOutOfRangeException(nameof(cmd), cmd, "cannot be null or empty");
@@ -578,15 +570,15 @@ namespace SS.Core.Modules
             string capability = prefix + "_" + cmd;
 
             if (remoteArena != null)
-                return _capabilityManager.HasCapability(p, remoteArena, capability);
+                return _capabilityManager.HasCapability(player, remoteArena, capability);
             else
-                return _capabilityManager.HasCapability(p, capability);
+                return _capabilityManager.HasCapability(player, capability);
         }
 
-        private void LogCommand(Player p, ITarget target, string cmd, string parameters)
+        private void LogCommand(Player player, ITarget target, string cmd, ReadOnlySpan<char> parameters)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (target == null)
                 throw new ArgumentNullException(nameof(target));
@@ -627,10 +619,10 @@ namespace SS.Core.Modules
 
                 sb.Append($": {cmd}");
 
-                if (!string.IsNullOrWhiteSpace(parameters))
+                if (!parameters.IsWhiteSpace())
                     sb.Append($" {parameters}");
 
-                _logManager.LogP(LogLevel.Info, nameof(CommandManager), p, sb);
+                _logManager.LogP(LogLevel.Info, nameof(CommandManager), player, sb);
             }
             finally
             {
