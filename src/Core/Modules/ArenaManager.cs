@@ -86,6 +86,11 @@ namespace SS.Core.Modules
         private class ArenaData
         {
             /// <summary>
+            /// Whether the arena's config file is being loaded on a worker thread.
+            /// </summary>
+            public bool IsLoadingConfig = false;
+
+            /// <summary>
             /// counter for the # of holds on the arena
             /// </summary>
             public int Holds = 0;
@@ -1070,7 +1075,20 @@ namespace SS.Core.Modules
                     switch (status)
                     {
                         case ArenaState.DoInit0:
-                            arena.Cfg = _configManager.OpenConfigFile(arena.BaseName, null, ArenaConfChanged, arena);
+                            if (arena.Cfg is null)
+                            {
+                                if (!arenaData.IsLoadingConfig)
+                                {
+                                    // Open the arena's config file.
+                                    // Note: ASSS does it right here on the mainloop thread.
+                                    // This operation will most likely do blocking I/O (unless the file was previously opened, e.g. default arena's config).
+                                    // However, any type of blocking I/O on the mainloop thread should be avoided. Therefore, doing it on a worker thread.
+                                    arenaData.IsLoadingConfig = _mainloop.QueueThreadPoolWorkItem(LoadArenaConfig, arena);
+                                }
+
+                                continue;
+                            }
+
                             arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq);
                             arena.Status = ArenaState.WaitHolds0;
                             Debug.Assert(arenaData.Holds == 0);
@@ -1208,6 +1226,43 @@ namespace SS.Core.Modules
             }
 
             return true;
+
+            void LoadArenaConfig(Arena arena)
+            {
+                if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                {
+                    return;
+                }
+
+                ReadLock();
+                try
+                {
+                    if (!arenaData.IsLoadingConfig)
+                        return;
+                }
+                finally
+                {
+                    ReadUnlock();
+                }
+
+                ConfigHandle configHandle = _configManager.OpenConfigFile(arena.BaseName, null, ArenaConfChanged, arena);
+
+                //if (configHandle is null)
+                //{
+                //    // TODO: handle the case where a config file couldn't be opened. This is extremely serious. It means that even the default arena config couldn't be opened.
+                //}
+
+                WriteLock();
+                try
+                {
+                    arena.Cfg = configHandle;
+                    arenaData.IsLoadingConfig = false;
+                }
+                finally
+                {
+                    WriteUnlock();
+                }
+            }
         }
 
         // call with writeLock held
