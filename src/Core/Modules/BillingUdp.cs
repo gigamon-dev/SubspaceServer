@@ -914,7 +914,7 @@ namespace SS.Core.Modules
             ReadOnlySpan<char> localChats = _configManager.GetStr(_configManager.Global, "Billing", "LocalChats");
             ReadOnlySpan<char> localPrefix = _configManager.GetStr(_configManager.Global, "Billing", "LocalChatPrefix");
 
-            line = line[5..]; // skip "?chat=" or "?chat "
+            line = line[6..]; // skip "?chat=" or "?chat "
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
@@ -931,33 +931,54 @@ namespace SS.Core.Modules
 
                     bool addComma = sb.Length > 6;
 
-                    if (!localChats.IsWhiteSpace()
-                        && (localPrefix.Length + 4 + chatName.Length) <= 31
-                        && (localPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) <= (S2B_UserCommand.MaxTextChars - 1)
+                    if (!localChats.IsWhiteSpace() 
                         && FindChat(chatName, localChats))
                     {
+                        if ((localPrefix.Length + 4 + chatName.Length) > 31
+                            || (localPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) > (S2B_UserCommand.MaxTextChars - 1))
+                        {
+                            continue;
+                        }
+
                         if (addComma)
                             sb.Append(',');
 
                         sb.Append("$l$");
                         sb.Append(localPrefix);
                         sb.Append('|');
+                        sb.Append(chatName);
                     }
                     else if (!staffChats.IsWhiteSpace()
-                        && (staffPrefix.Length + 4 + chatName.Length) <= 31
-                        && (staffPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) <= (S2B_UserCommand.MaxTextChars - 1)
-                        && _capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat)
-                        && FindChat(chatName, staffChats))
+                        && FindChat(chatName, staffChats)
+                        && _capabilityManager.HasCapability(p, Constants.Capabilities.SendModChat))
                     {
+                        if ((staffPrefix.Length + 4 + chatName.Length) > 31
+                            || (staffPrefix.Length + 4 + chatName.Length + sb.Length + (addComma ? 1 : 0)) > (S2B_UserCommand.MaxTextChars - 1))
+                        {
+                            continue;
+                        }
+
                         if (addComma)
                             sb.Append(',');
 
                         sb.Append("$s$");
                         sb.Append(staffPrefix);
                         sb.Append('|');
+                        sb.Append(chatName);
                     }
+                    else
+                    {
+                        if (chatName.Length > 31
+                            || chatName.Length + sb.Length + (addComma ? 1 : 0) > (S2B_UserCommand.MaxTextChars - 1))
+                        {
+                            continue;
+                        }
 
-                    sb.Append(chatName);
+                        if (addComma)
+                            sb.Append(',');
+
+                        sb.Append(chatName);
+                    }
                 }
 
                 Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserCommand.MaxTextChars - 1, sb.Length)];
