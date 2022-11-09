@@ -17,14 +17,14 @@ namespace SS.Packets.Game
         private fixed byte arenaNameBytes[ArenaNameBytesLength];
         private uint loginId;
         
-        public S2C_Redirect(uint ip, ushort port, short arenaType, string arenaName, uint loginId)
+        public S2C_Redirect(uint ip, ushort port, short arenaType, ReadOnlySpan<char> arenaName, uint loginId)
         {
             Type = (byte)S2CPacketType.Redirect;
             this.ip = LittleEndianConverter.Convert(ip);
             this.port = LittleEndianConverter.Convert(port);
             this.arenaType = LittleEndianConverter.Convert(arenaType);
             this.loginId = LittleEndianConverter.Convert(loginId);
-            ArenaName = arenaName;
+            ArenaNameBytes.WriteNullPaddedString(arenaName, false);
         }
 
         #region Helper Properties

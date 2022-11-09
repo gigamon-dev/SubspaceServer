@@ -107,7 +107,7 @@ namespace SS.Core.Modules
                 registeredRedirect.ArenaName);
         }
 
-        bool IRedirect.RawRedirect(ITarget target, IPEndPoint ipEndPoint, short arenaType, string arenaName)
+        bool IRedirect.RawRedirect(ITarget target, IPEndPoint ipEndPoint, short arenaType, ReadOnlySpan<char> arenaName)
         {
             if (target == null || ipEndPoint == null)
                 return false;

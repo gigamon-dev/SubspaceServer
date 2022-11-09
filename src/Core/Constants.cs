@@ -97,6 +97,24 @@ namespace SS.Core
         public const int RandMax = 0x7fff;
 
         /// <summary>
+        /// The maximum # of characters an arena name can contain.
+        /// </summary>
+        /// <remarks>
+        /// The arena name field of the C2S 0x01 (Go Arena) packet has a limit of 16 bytes, with the last byte required to be a null terminator.
+        /// Subspace uses a single-byte character encoding.
+        /// </remarks>
+        public const int MaxArenaNameLength = 15;
+
+        /// <summary>
+        /// The maximum # of characters a player name can contain.
+        /// </summary>
+        /// <remarks>
+        /// The player name field of the C2C 0x03 (Player Entering) packet has a limit of 20 bytes, with the last byte required to be a null terminator.
+        /// Subspace uses a single-byte character encoding.
+        /// </remarks>
+        public const int MaxPlayerNameLength = 19;
+
+        /// <summary>
         /// Represents all public arenas.
         /// </summary>
         /// <remarks>

@@ -1572,7 +1572,20 @@ namespace SS.Core.Modules
 
             if (p.Type == ClientType.Continuum)
             {
-                // TODO: peer redirects
+                // Peer redirects
+                IPeer peer = Broker.GetInterface<IPeer>();
+                if (peer is not null)
+                {
+                    try
+                    {
+                        if (peer.ArenaRequest(p, go.ArenaType, name))
+                            return;
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref peer);
+                    }
+                }
 
                 // General redirects
                 IRedirect redirect = Broker.GetInterface<IRedirect>();

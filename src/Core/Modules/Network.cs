@@ -2307,6 +2307,20 @@ namespace SS.Core.Modules
                         stats.Total = stats.TempTotal;
                         stats.Playing = stats.TempPlaying;
                     }
+
+                    IPeer peer = _broker.GetInterface<IPeer>();
+                    if (peer is not null)
+                    {
+                        try
+                        {
+                            _pingData.Global.Total += (uint)peer.GetPopulationSummary();
+                            // peer protocol does not provide a "playing" count
+                        }
+                        finally
+                        {
+                            _broker.ReleaseInterface(ref peer);
+                        }
+                    }
                 }
 
                 //

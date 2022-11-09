@@ -11,6 +11,7 @@ namespace SS.Core.Modules
 {
     public class DirectoryPublisher : IModule
     {
+        private ComponentBroker _broker;
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
@@ -32,6 +33,7 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             IServerTimer serverTimer)
         {
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -226,6 +228,19 @@ namespace SS.Core.Modules
             _logManager.LogM(LogLevel.Drivel, nameof(DirectoryPublisher), "Sending information to directory servers.");
 
             _arenaManager.GetPopulationSummary(out int globalTotal, out _);
+
+            IPeer peer = _broker.GetInterface<IPeer>();
+            if (peer is not null)
+            {
+                try
+                {
+                    globalTotal += peer.GetPopulationSummary();
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref peer);
+                }
+            }
 
             lock (_lock)
             {

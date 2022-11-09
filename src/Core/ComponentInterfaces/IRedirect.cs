@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -23,7 +24,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arenaType">The arena type (same as for the ?go packet).</param>
         /// <param name="arenaName">The arena name.</param>
         /// <returns>True if the <paramref name="target"/> players were sent a redirect. Otherwise, false.</returns>
-        bool RawRedirect(ITarget target, IPEndPoint ipEndPoint, short arenaType, string arenaName);
+        bool RawRedirect(ITarget target, IPEndPoint ipEndPoint, short arenaType, ReadOnlySpan<char> arenaName);
 
         /// <summary>
         /// Attempts to redirect a player for an arena change.

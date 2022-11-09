@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets;
 using SS.Packets.Game;
@@ -10,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using static SS.Core.ComponentInterfaces.IPeer;
 
 namespace SS.Core.Modules
 {
@@ -53,6 +55,9 @@ namespace SS.Core.Modules
 
         private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
         private readonly Dictionary<string, CommandGroup> _commandGroups = new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly ObjectPool<ArenaListItem> _arenaListItemPool = new NonTransientObjectPool<ArenaListItem>(new ArenaListItemPooledObjectPolicy());
+        private readonly ObjectPool<List<ArenaListItem>> _arenaListItemListPool = new DefaultObjectPool<List<ArenaListItem>>(new ArenaListItemListPooledObjectPolicy());
 
         public PlayerCommand()
         {
@@ -744,17 +749,21 @@ namespace SS.Core.Modules
             "empty arenas that the server knows about. The {-t} switch forces\n" +
             "the output to be in text even for regular clients (useful when using\n" +
             "the Continuum chat window).")]
-        private void Command_arena(string command, string parameters, Player p, ITarget target)
+        private void Command_arena(string command, string parameters, Player player, ITarget target)
         {
-            // TODO: add support for chat output
-            // TODO: add support for -a argument
-            //bool isChatOutput = p.Type == ClientType.Chat || parameters.Contains("-t");
-            bool includePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
+            bool isChatOutput = player.Type == ClientType.Chat || parameters.Contains("-t", StringComparison.OrdinalIgnoreCase);
+            bool includePrivateArenas = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
+            bool showAllPeer = parameters.Contains("-p", StringComparison.OrdinalIgnoreCase);
 
-            Span<byte> bufferSpan = stackalloc byte[1024];
+            List<ArenaListItem> arenaList = isChatOutput ? _arenaListItemListPool.Get() : null;
+            Span<byte> bufferSpan = isChatOutput ? Span<byte>.Empty : stackalloc byte[1024];
 
-            // Write header
-            bufferSpan[0] = (byte)S2CPacketType.Arena;
+            if (!isChatOutput)
+            {
+                // Write header
+                bufferSpan[0] = (byte)S2CPacketType.Arena;
+            }
+
             int length = 1;
 
             _arenaManager.Lock();
@@ -766,26 +775,21 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaManager.Arenas)
                 {
-                    int nameLength = StringUtils.DefaultEncoding.GetByteCount(arena.Name) + 1; // +1 because the name in the packet is null terminated
-                    int additionalLength = nameLength + 2;
-
-                    if (length + additionalLength > (Constants.MaxPacket - ReliableHeader.Length))
-                    {
-                        break;
-                    }
-
                     if (arena.Status == ArenaState.Running
-                        && (!arena.IsPrivate || includePrivateArenas || p.Arena == arena))
+                        && (!arena.IsPrivate || includePrivateArenas || player.Arena == arena))
                     {
-                        // arena name
-                        Span<byte> remainingSpan = bufferSpan[length..];
-                        remainingSpan = remainingSpan[remainingSpan.WriteNullTerminatedString(arena.Name)..];
+                        if (isChatOutput)
+                        {
+                            ArenaListItem item = _arenaListItemPool.Get();
+                            item.Set(arena.Name, arena.Total, arena == player.Arena);
+                            arenaList.Add(item);
+                        }
+                        else
+                        {
+                            if (!AppendToPacket(bufferSpan, ref length, arena.Name, arena.Total, arena == player.Arena))
+                                break;
+                        }
 
-                        // player count (a negative value denotes the player's current arena)
-                        Span<byte> playerCountSpan = remainingSpan.Slice(0, 2);
-                        BinaryPrimitives.WriteInt16LittleEndian(playerCountSpan, arena == p.Arena ? (short)-arena.Total : (short)arena.Total);
-
-                        length += additionalLength;
                     }
                 }
             }
@@ -794,9 +798,87 @@ namespace SS.Core.Modules
                 _arenaManager.Unlock();
             }
 
-            // TODO: additional arena list logic (-a argument)
+            IPeer peer = _broker.GetInterface<IPeer>();
+            if (peer is not null)
+            {
+                peer.Lock();
+                try
+                {
+                    // Note: Using indexing to access the lists so workaround allocations from enumerating.
 
-            _network.SendToOne(p, bufferSpan.Slice(0, length), NetSendFlags.Reliable);
+                    for (int zoneIndex = 0; zoneIndex < peer.Peers.Count; zoneIndex++)
+                    {
+                        IPeerZone peerZone = peer.Peers[zoneIndex];
+                        for (int arenaIndex = 0; arenaIndex < peerZone.Arenas.Count; arenaIndex++)
+                        {
+                            IPeerArena peerArena = peerZone.Arenas[arenaIndex];
+                            if (!peerArena.IsConfigured && !showAllPeer)
+                                continue;
+
+                            if (isChatOutput)
+                            {
+                                ArenaListItem item = _arenaListItemPool.Get();
+                                item.Set(peerArena.Name.LocalName, peerArena.PlayerCount, false);
+                                arenaList.Add(item);
+                            }
+                            else
+                            {
+                                if (!AppendToPacket(bufferSpan, ref length, peerArena.Name.LocalName, peerArena.PlayerCount, false))
+                                    break;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    peer.Unlock();
+                    _broker.ReleaseInterface(ref peer);
+                }
+            }
+
+            if (parameters.Contains("-a", StringComparison.OrdinalIgnoreCase))
+            {
+                // TODO: additional arena list logic (-a argument)
+            }
+
+            if (isChatOutput)
+            {
+                arenaList.Sort(ArenaListItemComparer.Instance);
+
+                foreach (ArenaListItem item in arenaList)
+                {
+                    _chat.SendMessage(player, $"{item.ArenaName,-15} {item.PlayerCount,3}{(item.IsCurrent ? " (current)" : "")}");
+                    _arenaListItemPool.Return(item);
+                }
+
+                _arenaListItemListPool.Return(arenaList);
+            }
+            else
+            {
+                _network.SendToOne(player, bufferSpan[..length], NetSendFlags.Reliable);
+            }
+
+            static bool AppendToPacket(Span<byte> bufferSpan, ref int length, ReadOnlySpan<char> arenaName, int playerCount, bool isCurrent)
+            {
+                int nameLength = StringUtils.DefaultEncoding.GetByteCount(arenaName) + 1; // +1 because the name in the packet is null terminated
+                int additionalLength = nameLength + 2;
+
+                if (length + additionalLength > (Constants.MaxPacket - ReliableHeader.Length))
+                {
+                    return false;
+                }
+
+                // arena name
+                Span<byte> remainingSpan = bufferSpan[length..];
+                remainingSpan = remainingSpan[remainingSpan.WriteNullTerminatedString(arenaName)..];
+
+                // player count (a negative value denotes the player's current arena)
+                Span<byte> playerCountSpan = remainingSpan.Slice(0, 2);
+                BinaryPrimitives.WriteInt16LittleEndian(playerCountSpan, isCurrent ? (short)-playerCount : (short)playerCount);
+
+                length += additionalLength;
+                return true;
+            }
         }
 
         [CommandHelp(
@@ -1211,13 +1293,24 @@ namespace SS.Core.Modules
                 sb.Append(p.Name);
 
                 _chat.SendArenaMessage(null, sound, sb);
+
+                IPeer peer = _broker.GetInterface<IPeer>();
+                if (peer is not null)
+                {
+                    try
+                    {
+                        peer.SendZoneMessage(sb);
+                    }
+                    finally
+                    {
+                        _broker.ReleaseInterface(ref peer);
+                    }
+                }
             }
             finally
             {
                 _objectPoolManager.StringBuilderPool.Return(sb);
             }
-
-            // TODO: peer
         }
 
         [CommandHelp(
@@ -1228,7 +1321,18 @@ namespace SS.Core.Modules
         {
             _chat.SendArenaMessage(null, sound, parameters);
 
-            // TODO: peer
+            IPeer peer = _broker.GetInterface<IPeer>();
+            if (peer is not null)
+            {
+                try
+                {
+                    peer.SendZoneMessage(parameters);
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref peer);
+                }
+            }
         }
 
         [CommandHelp(
@@ -2220,9 +2324,9 @@ namespace SS.Core.Modules
                 return;
             }
 
-            int score = int.MaxValue; // lower is better
-            string bestArena = null;
-            string bestPlayer = null;
+            int score = int.MaxValue; // lower is better, -1 means it's an exact match
+            StringBuilder bestPlayer = _objectPoolManager.StringBuilderPool.Get();
+            StringBuilder bestArena = _objectPoolManager.StringBuilderPool.Get();
 
             _playerData.Lock();
 
@@ -2236,8 +2340,10 @@ namespace SS.Core.Modules
                     if (string.Equals(otherPlayer.Name, parameters, StringComparison.OrdinalIgnoreCase))
                     {
                         // exact match
-                        bestPlayer = otherPlayer.Name;
-                        bestArena = otherPlayer.Arena?.Name;
+                        bestPlayer.Clear();
+                        bestPlayer.Append(otherPlayer.Name);
+                        bestArena.Clear();
+                        bestArena.Append(otherPlayer.Arena?.Name);
                         score = -1;
                         break;
                     }
@@ -2248,8 +2354,10 @@ namespace SS.Core.Modules
                         // for substring matches, the score is the distance from the start of the name
                         if (index < score)
                         {
-                            bestPlayer = otherPlayer.Name;
-                            bestArena = otherPlayer.Arena?.Name;
+                            bestPlayer.Clear();
+                            bestPlayer.Append(otherPlayer.Name);
+                            bestArena.Clear();
+                            bestArena.Append(otherPlayer.Arena?.Name);
                             score = index;
                         }
                     }
@@ -2260,14 +2368,28 @@ namespace SS.Core.Modules
                 _playerData.Unlock();
             }
 
-            // TODO: peer
-
-            if (!string.IsNullOrWhiteSpace(bestPlayer)
-                && !string.IsNullOrWhiteSpace(bestArena))
+            if (score > 0) // there's a chance there could be a better match in a peer zone
             {
-                if (!bestArena.StartsWith('#')
+                IPeer peer = _broker.GetInterface<IPeer>();
+                if (peer is not null)
+                {
+                    try
+                    {
+                        peer.FindPlayer(parameters, ref score, bestPlayer, bestArena);
+                    }
+                    finally
+                    {
+                        _broker.ReleaseInterface(ref peer);
+                    }
+                }
+            }
+
+            if (bestPlayer.Length > 0
+                && bestArena.Length > 0)
+            {
+                if (bestArena[0] != '#'
                     || _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena)
-                    || string.Equals(p.Arena.Name, bestArena, StringComparison.OrdinalIgnoreCase))
+                    || IsInArena(p, bestArena))
                 {
                     _chat.SendMessage(p, $"{bestPlayer} is in arena {bestArena}.");
                 }
@@ -2282,6 +2404,16 @@ namespace SS.Core.Modules
                 // exact match not found
                 // have the command manager send it as the default command (to be handled by the billing server)
                 _commandManager.Command($"\\find {parameters}", p, target, ChatSound.None);
+            }
+
+            static bool IsInArena(Player player, StringBuilder arenaName)
+            {
+                if (player.Arena is null)
+                    return false;
+
+                Span<char> arenaSpan = stackalloc char[arenaName.Length];
+                arenaName.CopyTo(0, arenaSpan, arenaName.Length);
+                return MemoryExtensions.Equals(player.Arena.Name, arenaSpan, StringComparison.OrdinalIgnoreCase);
             }
         }
 
@@ -2989,5 +3121,105 @@ namespace SS.Core.Modules
         }
 
         #endregion
+
+        private class ArenaListItem
+        {
+            private readonly char[] _arenaNameChars = new char[Constants.MaxArenaNameLength];
+            private int _length = 0;
+            public ReadOnlySpan<char> ArenaName => new ReadOnlySpan<char>(_arenaNameChars, 0, _length);
+
+            public int PlayerCount { get; private set; } = 0;
+            public bool IsCurrent { get; private set; } = false;
+
+            public void Set(ReadOnlySpan<char> arenaName, int playerCount, bool isCurrent)
+            {
+                if (arenaName.Length > Constants.MaxArenaNameLength)
+                    throw new ArgumentException($"Length exceeds the maximum allowed for an arena name ({Constants.MaxArenaNameLength}).", nameof(arenaName));
+
+                arenaName.CopyTo(_arenaNameChars);
+                _length = arenaName.Length;
+                PlayerCount = playerCount;
+                IsCurrent = isCurrent;
+            }
+
+            public void Clear()
+            {
+                Set("", 0, false);
+            }
+        }
+
+        private class ArenaListItemComparer : IComparer<ArenaListItem>
+        {
+            public static readonly ArenaListItemComparer Instance = new();
+
+            public int Compare(ArenaListItem x, ArenaListItem y)
+            {
+                // first, partitioned with empty arenas at the end
+                if (x.PlayerCount == 0)
+                {
+                    if (y.PlayerCount != 0)
+                        return 1;
+                }
+                else
+                {
+                    if (y.PlayerCount == 0)
+                        return -1;
+                }
+
+                // within those partitions, partition with private arenas at the end
+                if (x.ArenaName[0] == '#')
+                {
+                    if (y.ArenaName[0] != '#')
+                        return 1;
+                }
+                else
+                {
+                    if (y.ArenaName[0] == '#')
+                        return -1;
+                }
+
+                // order by player count desc
+                int value = x.PlayerCount - y.PlayerCount;
+                if (value != 0)
+                    return value;
+
+                // order by arena name asc
+                return MemoryExtensions.CompareTo(x.ArenaName, y.ArenaName, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        private class ArenaListItemPooledObjectPolicy : IPooledObjectPolicy<ArenaListItem>
+        {
+            public ArenaListItem Create()
+            {
+                return new ArenaListItem();
+            }
+
+            public bool Return(ArenaListItem obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class ArenaListItemListPooledObjectPolicy : IPooledObjectPolicy<List<ArenaListItem>>
+        {
+            public List<ArenaListItem> Create()
+            {
+                return new List<ArenaListItem>();
+            }
+
+            public bool Return(List<ArenaListItem> obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
     }
 }
