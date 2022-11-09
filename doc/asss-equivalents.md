@@ -72,7 +72,7 @@ This document provides an overview of the various server parts and their relatio
 | notify | SS.Core.Module.Notify | |
 | objects | SS.Core.Modules.LvzObjects | TODO: currently toggle functionality only |
 | obscene | SS.Core.Modules.Obscene | |
-| peer | | TODO: very low priority |
+| peer | SS.Core.Modules.Peer | |
 | scoring:periodic | SS.Core.Modules.Scoring.PeriodicReward | |
 | persist | SS.Core.Modules.Persist | |
 | playercmd | SS.Core.Modules.PlayerCommand | |
@@ -149,7 +149,7 @@ This document provides an overview of the various server parts and their relatio
 | Iobjects | SS.Core.ComponentInterfaces.ILvzObjects | |
 | Iobscene | SS.Core.ComponentInterfaces.IObscene | |
 | Ioptparser | n/a | Python specific |
-| Ipeer | - | |
+| Ipeer | SS.Core.ComponentInterfaces.IPeer | |
 | - | SS.Core.ComponentInterfaces.IPeriodicReward | |
 | Iperiodicpoints | SS.Core.ComponentInterfaces.IPeriodicRewardPoints | |
 | Ipoints_koth | n/a | |
