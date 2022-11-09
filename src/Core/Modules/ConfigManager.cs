@@ -4,6 +4,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Core.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 
@@ -377,7 +378,7 @@ namespace SS.Core.Modules
             }
         }
 
-        public int GetInt(ConfigHandle handle, string section, string key, int defaultValue)
+        public int GetInt(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, int defaultValue)
         {
             if (handle is not DocumentHandle documentHandle)
                 throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
@@ -396,11 +397,15 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    if (configHelp.Sections.Contains(section))
+                    // TODO: remove string allocations when the IConfigHelp is spannified
+                    string sectionStr = section.ToString();
+                    string keyStr = key.ToString();
+
+                    if (configHelp.Sections.Contains(sectionStr))
                     {
                         var helpAttributes =
-                            from helpTuple in configHelp.Sections[section]
-                            where string.Equals(helpTuple.Attr.Key, key, StringComparison.OrdinalIgnoreCase)
+                            from helpTuple in configHelp.Sections[sectionStr]
+                            where string.Equals(helpTuple.Attr.Key, keyStr, StringComparison.OrdinalIgnoreCase)
                                 && helpTuple.Attr.Type.IsEnum
                                 && helpTuple.Attr.Scope == documentHandle.Scope
                                 && string.Equals(helpTuple.Attr.FileName, documentHandle.FileName, StringComparison.OrdinalIgnoreCase)
@@ -432,7 +437,7 @@ namespace SS.Core.Modules
             return defaultValue; // Note: This differs from ASSS which returns 0.
         }
 
-        public T GetEnum<T>(ConfigHandle handle, string section, string key, T defaultValue) where T : struct, Enum
+        public T GetEnum<T>(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, T defaultValue) where T : struct, Enum
         {
             string value = GetStr(handle, section, key);
 
@@ -444,7 +449,7 @@ namespace SS.Core.Modules
                 : defaultValue;
         }
 
-        public string GetStr(ConfigHandle handle, string section, string key)
+        public string GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key)
         {
             if (handle == null)
                 throw new ArgumentNullException(nameof(handle));
@@ -481,7 +486,7 @@ namespace SS.Core.Modules
 
         public void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent)
         {
-            SetStr(handle, section, key, value.ToString(), comment, permanent);
+            SetStr(handle, section, key, value.ToString("D", CultureInfo.InvariantCulture), comment, permanent);
         }
 
         public void SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent) where T : struct, Enum

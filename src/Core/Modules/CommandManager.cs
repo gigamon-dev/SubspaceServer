@@ -1,17 +1,16 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using System.Threading;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// <inheritdoc cref="ICommandManager"/>
-    /// </summary>
     [CoreModuleInfo]
     public class CommandManager : IModule, ICommandManager, IModuleLoaderAware
     {
@@ -22,6 +21,8 @@ namespace SS.Core.Modules
         private IConfigManager _configManager;
         private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<ICommandManager> _iCommandManagerToken;
+
+        private ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new CommandSummaryListPooledObjectPolicy());
 
         private IChat _chat;
 
@@ -79,8 +80,8 @@ namespace SS.Core.Modules
         #endregion
 
         private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
-        private readonly Dictionary<string, LinkedList<CommandData>> _cmdLookup = new(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _unloggedCommands = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Trie<LinkedList<CommandData>> _cmdLookup = new(false);
+        private readonly Trie _unloggedCommands = new(false);
 
         private readonly object _lockObj = new();
         private event DefaultCommandDelegate DefaultCommandEvent;
@@ -223,7 +224,7 @@ namespace SS.Core.Modules
                 if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
                 {
                     ll = new LinkedList<CommandData>();
-                    _cmdLookup.Add(commandName, ll);
+                    _cmdLookup.TryAdd(commandName, ll);
                 }
 
                 ll.AddLast(cd);
@@ -255,7 +256,7 @@ namespace SS.Core.Modules
                     try
                     {
                         sb.Append($"Targets: {helpAttr.Targets:F}\n");
-                        sb.Append($"Args: {helpAttr.Args ?? "None" }\n");
+                        sb.Append($"Args: {helpAttr.Args ?? "None"}\n");
 
                         if (!string.IsNullOrWhiteSpace(helpAttr.Description))
                             sb.Append(helpAttr.Description);
@@ -300,7 +301,7 @@ namespace SS.Core.Modules
                 }
 
                 if (ll.Count == 0)
-                    _cmdLookup.Remove(commandName);
+                    _cmdLookup.Remove(commandName, out _);
             }
             finally
             {
@@ -328,7 +329,7 @@ namespace SS.Core.Modules
                 }
 
                 if (ll.Count == 0)
-                    _cmdLookup.Remove(commandName);
+                    _cmdLookup.Remove(commandName, out _);
             }
             finally
             {
@@ -441,7 +442,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_cmdLookup.TryGetValue(cmdStr, out LinkedList<CommandData> list))
+                    if (_cmdLookup.TryGetValue(cmd, out LinkedList<CommandData> list))
                     {
                         foreach (CommandData cd in list)
                         {
@@ -470,9 +471,9 @@ namespace SS.Core.Modules
             }
             else if (foundLocal)
             {
-                if (Allowed(player, cmdStr, prefix, remoteArena))
+                if (Allowed(player, cmd, prefix, remoteArena))
                 {
-                    LogCommand(player, target, cmdStr, parameters);
+                    LogCommand(player, target, cmd, parameters);
 
                     basicHandlers?.Invoke(cmdStr, parametersStr, player, target);
                     soundHandlers?.Invoke(cmdStr, parametersStr, player, target, sound);
@@ -514,7 +515,7 @@ namespace SS.Core.Modules
             return ret;
         }
 
-        void ICommandManager.AddUnlogged(string commandName)
+        void ICommandManager.AddUnlogged(ReadOnlySpan<char> commandName)
         {
             _rwLock.EnterWriteLock();
 
@@ -528,7 +529,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void ICommandManager.RemoveUnlogged(string commandName)
+        void ICommandManager.RemoveUnlogged(ReadOnlySpan<char> commandName)
         {
             _rwLock.EnterWriteLock();
 
@@ -544,13 +545,13 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool Allowed(Player player, string cmd, string prefix, Arena remoteArena)
+        private bool Allowed(Player player, ReadOnlySpan<char> cmd, string prefix, Arena remoteArena)
         {
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (string.IsNullOrEmpty(cmd))
-                throw new ArgumentOutOfRangeException(nameof(cmd), cmd, "cannot be null or empty");
+            if (cmd.IsEmpty)
+                throw new ArgumentException("Cannot be empty.", nameof(cmd));
 
             if (string.IsNullOrEmpty(prefix))
                 throw new ArgumentOutOfRangeException(nameof(prefix), prefix, "cannot be null or empty");
@@ -567,7 +568,9 @@ namespace SS.Core.Modules
 #endif
             }
 
-            string capability = prefix + "_" + cmd;
+            Span<char> capability = stackalloc char[prefix.Length + 1 + cmd.Length];
+            bool success = capability.TryWrite($"{prefix}_{cmd}", out int charsWritten);
+            Debug.Assert(success && charsWritten == capability.Length);
 
             if (remoteArena != null)
                 return _capabilityManager.HasCapability(player, remoteArena, capability);
@@ -575,7 +578,7 @@ namespace SS.Core.Modules
                 return _capabilityManager.HasCapability(player, capability);
         }
 
-        private void LogCommand(Player player, ITarget target, string cmd, ReadOnlySpan<char> parameters)
+        private void LogCommand(Player player, ITarget target, ReadOnlySpan<char> cmd, ReadOnlySpan<char> parameters)
         {
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
@@ -583,8 +586,8 @@ namespace SS.Core.Modules
             if (target == null)
                 throw new ArgumentNullException(nameof(target));
 
-            if (string.IsNullOrEmpty(cmd))
-                throw new ArgumentException("cannot be null or empty", nameof(cmd));
+            if (cmd.IsEmpty)
+                throw new ArgumentException("Cannot be empty.", nameof(cmd));
 
             if (_logManager == null)
                 return;
@@ -633,7 +636,7 @@ namespace SS.Core.Modules
         private void InitializeUnloggedCommands()
         {
             _rwLock.EnterWriteLock();
-            
+
             try
             {
                 _unloggedCommands.Clear();
@@ -659,7 +662,7 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None | CommandTarget.Player, 
+            Targets = CommandTarget.None | CommandTarget.Player,
             Description =
             "Displays all the commands that you (or the specified player) can use.\n" +
             "Commands in the arena section are specific to the current arena.\n" +
@@ -724,42 +727,71 @@ namespace SS.Core.Modules
             if (_chat == null)
                 return;
 
+            List<CommandSummary> globalCommands = _commandSummaryListPool.Get();
+            List<CommandSummary> arenaCommands = _commandSummaryListPool.Get();
+
             _rwLock.EnterReadLock();
 
             try
             {
-                var commands = 
-                    from kvp in _cmdLookup
-                    let command = kvp.Key
-                    let canArena = Allowed(p, command, "cmd", null)
-                    let canPriv = Allowed(p, command, "privcmd", null)
-                    let canRemotePriv = Allowed(p, command, "rprivcmd", null)
-                    where !excludeNoAccess || canArena || canPriv || canRemotePriv
-                    from commandData in kvp.Value
-                    where (!excludeGlobal && commandData.Arena == null) || commandData.Arena == arena
-                    orderby command
-                    select (command, isArenaSpecific: commandData.Arena != null, canArena, canPriv, canRemotePriv);
+                foreach (var kvp in _cmdLookup)
+                {
+                    var commandSpan = kvp.Key.Span;
+                    bool canArena = Allowed(p, commandSpan, "cmd", null);
+                    bool canPriv = Allowed(p, commandSpan, "privcmd", null);
+                    bool canRemotePriv = Allowed(p, commandSpan, "rprivcmd", null);
+
+                    if (excludeNoAccess && !canArena && !canPriv && !canRemotePriv)
+                        continue;
+
+                    foreach (var commandData in kvp.Value)
+                    {
+                        List<CommandSummary> list = null;
+                        if (commandData.Arena == null)
+                        {
+                            if (!excludeGlobal)
+                            {
+                                list = globalCommands;
+                            }
+                        }
+                        else
+                        {
+                            list = arenaCommands;
+                        }
+
+                        if (list is not null)
+                        {
+                            list?.Add(
+                                new CommandSummary()
+                                {
+                                    Command = new MutableStringBuffer(commandSpan), // can't hold onto kvp.Key, create a copy of the string
+                                    CanArena = canArena,
+                                    CanPriv = canPriv,
+                                    CanRemotePriv = canRemotePriv,
+                                });
+                        }
+                    }
+                }
 
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
                 try
                 {
-                    if (!excludeGlobal)
+                    if (globalCommands.Count > 0)
                     {
-                        var globalCommands = commands.Where(c => !c.isArenaSpecific);
-                        if (globalCommands.Any())
-                        {
-                            sb.Append("Zone:");
-                            AppendCommands(sb, globalCommands);
-                            _chat.SendWrappedText(sendTo, sb);
-                        }
+                        globalCommands.Sort(CommandSummaryComparer.OrdinalIgnoreCase);
+
+                        sb.Append("Zone:");
+                        AppendCommands(sb, globalCommands);
+                        _chat.SendWrappedText(sendTo, sb);
                     }
 
                     sb.Clear();
 
-                    var arenaCommands = commands.Where(c => c.isArenaSpecific);
-                    if (arenaCommands.Any())
+                    if (arenaCommands.Count > 0)
                     {
+                        arenaCommands.Sort(CommandSummaryComparer.OrdinalIgnoreCase);
+
                         sb.Append("Arena:");
                         AppendCommands(sb, arenaCommands);
                         _chat.SendWrappedText(sendTo, sb);
@@ -773,33 +805,130 @@ namespace SS.Core.Modules
             finally
             {
                 _rwLock.ExitReadLock();
+
+                foreach (var summary in globalCommands)
+                    summary.Command.Dispose();
+
+                foreach (var summary in arenaCommands)
+                    summary.Command.Dispose();
+
+                _commandSummaryListPool.Return(globalCommands);
+                _commandSummaryListPool.Return(arenaCommands);
             }
 
-            static void AppendCommands(StringBuilder sb, IEnumerable<(string command, bool isArenaSpecific, bool canArena, bool canPriv, bool canRemotePriv)> commands)
+            static void AppendCommands(StringBuilder sb, List<CommandSummary> commands)
             {
-                foreach (var (command, isArenaSpecific, canArena, canPriv, canRemotePriv) in commands)
+                foreach (CommandSummary commandSummary in commands)
                 {
                     sb.Append(' ');
 
-                    if (!canArena && !canPriv && !canRemotePriv)
+                    if (!commandSummary.CanArena && !commandSummary.CanPriv && !commandSummary.CanRemotePriv)
                     {
                         sb.Append('!');
                     }
                     else
                     {
-                        if (canArena)
+                        if (commandSummary.CanArena)
                             sb.Append('.');
 
-                        if (canPriv)
+                        if (commandSummary.CanPriv)
                             sb.Append('/');
 
-                        if (canRemotePriv)
+                        if (commandSummary.CanRemotePriv)
                             sb.Append(':');
                     }
 
-                    sb.Append(command);
+                    sb.Append(commandSummary.Command.Value);
                 }
             }
         }
+
+        #region Helper types
+
+        private struct CommandSummary
+        {
+            public MutableStringBuffer Command { get; set; }
+            public bool CanArena { get; set; }
+            public bool CanPriv { get; set; }
+            public bool CanRemotePriv { get; set; }
+        }
+
+        private class CommandSummaryListPooledObjectPolicy : PooledObjectPolicy<List<CommandSummary>>
+        {
+            public override List<CommandSummary> Create()
+            {
+                return new List<CommandSummary>();
+            }
+
+            public override bool Return(List<CommandSummary> obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class CommandSummaryComparer : IComparer<CommandSummary>
+        {
+            public static readonly CommandSummaryComparer Ordinal = new(StringComparison.Ordinal);
+            public static readonly CommandSummaryComparer OrdinalIgnoreCase = new(StringComparison.OrdinalIgnoreCase);
+
+            private StringComparison _stringComparison;
+
+            private CommandSummaryComparer(StringComparison stringComparison)
+            {
+                _stringComparison = stringComparison;
+            }
+
+            public int Compare(CommandSummary x, CommandSummary y)
+            {
+                return MemoryExtensions.CompareTo(x.Command.Value, y.Command.Value, _stringComparison);
+            }
+        }
+
+        private struct MutableStringBuffer : IDisposable
+        {
+            public char[] Array { get; private set; }
+            public int Length { get; private set; }
+
+            public ReadOnlySpan<char> Value => Array is null ? ReadOnlySpan<char>.Empty : new ReadOnlySpan<char>(Array, 0, Length);
+
+            public MutableStringBuffer(ReadOnlySpan<char> value)
+            {
+                Array = null;
+                Length = 0;
+
+                Set(value);
+            }
+
+            public void Set(ReadOnlySpan<char> value)
+            {
+                if (Array is not null 
+                    && (value.IsEmpty || Array.Length < value.Length))
+                {
+                    ArrayPool<char>.Shared.Return(Array);
+                    Array = null;
+                }
+
+                if (value.IsEmpty)
+                {
+                    Length = 0;
+                    return;
+                }
+
+                Array ??= ArrayPool<char>.Shared.Rent(value.Length);
+                value.CopyTo(Array);
+                Length = value.Length;
+            }
+
+            public void Dispose()
+            {
+                Set(ReadOnlySpan<char>.Empty);
+            }
+        }
+
+        #endregion
     }
 }

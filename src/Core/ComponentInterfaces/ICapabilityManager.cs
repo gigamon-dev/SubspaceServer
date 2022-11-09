@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -41,7 +38,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="p">the player to check</param>
         /// <param name="capability">the capability to check for</param>
         /// <returns>true if the player has the capability, otherwise false</returns>
-        bool HasCapability(Player p, string capability);
+        bool HasCapability(Player p, ReadOnlySpan<char> capability);
 
         /// <summary>
         /// Check if a player has a given capability, using a name instead
@@ -51,7 +48,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="name"></param>
         /// <param name="capability"></param>
         /// <returns></returns>
-        bool HasCapability(string name, string capability);
+        bool HasCapability(ReadOnlySpan<char> name, ReadOnlySpan<char> capability);
 
         /// <summary>
         /// Checks if a player has a given capability in an arena other than
@@ -61,7 +58,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="a">the arena to check in</param>
         /// <param name="capability">the capability to check for</param>
         /// <returns>true if the player would have the requested capability, if he were in that arena</returns>
-        bool HasCapability(Player p, Arena a, string capability);
+        bool HasCapability(Player p, Arena a, ReadOnlySpan<char> capability);
 
         /// <summary>
         /// Determines if a player can perform actions on another player.

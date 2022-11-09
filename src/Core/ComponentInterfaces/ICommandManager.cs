@@ -175,12 +175,12 @@ namespace SS.Core.ComponentInterfaces
         /// It will still log that the command was executed, but without parameter details.
         /// </summary>
         /// <param name="commandName">The command to add.</param>
-        void AddUnlogged(string commandName);
+        void AddUnlogged(ReadOnlySpan<char> commandName);
 
         /// <summary>
         /// Removes a command from the collection of commands that should not have its parameters be included in logs.
         /// </summary>
         /// <param name="commandName">The command to remove.</param>
-        void RemoveUnlogged(string commandName);
+        void RemoveUnlogged(ReadOnlySpan<char> commandName);
     }
 }

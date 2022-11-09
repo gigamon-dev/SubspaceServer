@@ -137,7 +137,7 @@ namespace SS.Core.Modules
 
         #region ICapabilityManager Members
 
-        bool ICapabilityManager.HasCapability(Player p, string capability)
+        bool ICapabilityManager.HasCapability(Player p, ReadOnlySpan<char> capability)
         {
             if (p == null)
                 return false;
@@ -148,7 +148,7 @@ namespace SS.Core.Modules
             return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
         }
 
-        bool ICapabilityManager.HasCapability(string name, string capability)
+        bool ICapabilityManager.HasCapability(ReadOnlySpan<char> name, ReadOnlySpan<char> capability)
         {
             string group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, name);
             if (string.IsNullOrEmpty(group))
@@ -157,7 +157,7 @@ namespace SS.Core.Modules
             return _configManager.GetStr(_groupDefConfHandle, group, capability) != null;
         }
 
-        bool ICapabilityManager.HasCapability(Player p, Arena arena, string capability)
+        bool ICapabilityManager.HasCapability(Player p, Arena arena, ReadOnlySpan<char> capability)
         {
             if (p == null || arena == null)
                 return false;

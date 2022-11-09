@@ -1,7 +1,7 @@
-﻿using System;
+﻿using SS.Utilities;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
+using System.Diagnostics;
 
 namespace SS.Core.Configuration
 {
@@ -37,7 +37,7 @@ namespace SS.Core.Configuration
         /// <summary>
         /// Active Properties
         /// </summary>
-        private readonly Dictionary<PropertyKey, PropertyInfo> propertyDictionary = new();
+        private readonly Trie<PropertyInfo> propertyLookup = new(false);
 
         /// <summary>
         /// The file currently being updated.
@@ -96,7 +96,7 @@ namespace SS.Core.Configuration
 
             files.Clear();
             lines.Clear();
-            propertyDictionary.Clear();
+            propertyLookup.Clear();
             updatingFile = null;
             IsReloadNeeded = false;
 
@@ -151,12 +151,14 @@ namespace SS.Core.Configuration
                     RawProperty rawProperty = (RawProperty)lineRef.Line;
                     string section = rawProperty.SectionOverride ?? currentSection;
 
-                    propertyDictionary[CreatePropertyDictionaryKey(section, rawProperty.Key)] =
+                    PropertyLookup_AddOrReplace(
+                        section,
+                        rawProperty.Key,
                         new PropertyInfo()
                         {
                             Value = rawProperty.Value,
                             PropertyReference = lineRef,
-                        };
+                        });
                 }
             }
         }
@@ -170,17 +172,62 @@ namespace SS.Core.Configuration
             file.Changed += File_Changed;
         }
 
-        private static PropertyKey CreatePropertyDictionaryKey(string section, string key)
-        {
-            return new PropertyKey(section, key);
-        }
-
         private void File_Changed(object sender, EventArgs e)
         {
             if (updatingFile != sender)
             {
                 IsReloadNeeded = true;
             }
+        }
+
+        private void PropertyLookup_AddOrReplace(ReadOnlySpan<char> section, ReadOnlySpan<char> key, PropertyInfo propertyInfo)
+        {
+            if (section.IsEmpty && key.IsEmpty)
+                throw new Exception("No section or key specified");
+
+            if (propertyInfo is null)
+                throw new ArgumentNullException(nameof(propertyInfo));
+
+            Span<char> trieKey = stackalloc char[!section.IsEmpty && !key.IsEmpty ? section.Length + 1 + key.Length : (!section.IsEmpty ? section.Length : key.Length)];
+            if (!section.IsEmpty && !key.IsEmpty)
+            {
+                bool success = trieKey.TryWrite($"{section}:{key}", out int charsWritten);
+                Debug.Assert(success && charsWritten == trieKey.Length);
+            }
+            else if (!section.IsEmpty)
+            {
+                section.CopyTo(trieKey);
+            }
+            else
+            {
+                key.CopyTo(trieKey);
+            }
+
+            propertyLookup.Remove(trieKey, out _);
+            propertyLookup.TryAdd(trieKey, propertyInfo);    
+        }
+
+        private bool PropertyLookup_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out PropertyInfo propertyInfo)
+        {
+            if (section.IsEmpty && key.IsEmpty)
+                throw new Exception("No section or key specified");
+
+            Span<char> trieKey = stackalloc char[!section.IsEmpty && !key.IsEmpty ? section.Length + 1 + key.Length : (!section.IsEmpty ? section.Length : key.Length)];
+            if (!section.IsEmpty && !key.IsEmpty)
+            {
+                bool success = trieKey.TryWrite($"{section}:{key}", out int charsWritten);
+                Debug.Assert(success && charsWritten == trieKey.Length);
+            }
+            else if (!section.IsEmpty)
+            {
+                section.CopyTo(trieKey);
+            }
+            else
+            {
+                key.CopyTo(trieKey);
+            }
+
+            return propertyLookup.TryGetValue(trieKey, out propertyInfo);
         }
 
         /// <summary>
@@ -207,18 +254,29 @@ namespace SS.Core.Configuration
             if (permanent)
             {
                 // try to find an existing section to insert it into
-                var matchingSections =
-                    from lineReference in lines
-                    where lineReference.Line.LineType == ConfLineType.Section
-                    let rawSection = (RawSection)lineReference.Line
-                    where string.Equals(section, rawSection.Name, StringComparison.OrdinalIgnoreCase)
-                    let docIndex = lines.IndexOf(lineReference)
-                    where docIndex != -1 // sanity
-                select (rawSection, lineReference.File, docIndex);
+                (ConfFile file, int docIndex)? lastMatchingSection = null;
 
-                if (matchingSections.Any())
+                foreach (LineReference lineReference in lines)
                 {
-                    var (rawSection, file, docIndex) = matchingSections.Last();
+                    if (lineReference.Line.LineType != ConfLineType.Section
+                        || lineReference.Line is not RawSection rawSection
+                        || !string.Equals(section, rawSection.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    int docIndex = lines.IndexOf(lineReference);
+                    if (docIndex == -1) // sanity
+                    {
+                        continue;
+                    }
+
+                    lastMatchingSection = (lineReference.File, docIndex);
+                }
+
+                if (lastMatchingSection != null)
+                {
+                    var (file, docIndex) = lastMatchingSection.Value;
 
                     // find the last property in the section, as long as it's in the same file
                     for (int i = docIndex + 1; i < lines.Count; i++)
@@ -266,12 +324,14 @@ namespace SS.Core.Configuration
                         lines.Insert(docIndex + 1, lineReference);
 
                         // add it to the properties we know about
-                        propertyDictionary[CreatePropertyDictionaryKey(section, key)] =
+                        PropertyLookup_AddOrReplace(
+                            section,
+                            key,
                             new PropertyInfo()
                             {
                                 Value = value,
                                 PropertyReference = lineReference,
-                            };
+                            });
 
                         return;
                     }
@@ -305,12 +365,14 @@ namespace SS.Core.Configuration
 
                 lines.Add(lineRef);
 
-                propertyDictionary[CreatePropertyDictionaryKey(section, key)] =
+                PropertyLookup_AddOrReplace(
+                    section,
+                    key,
                     new PropertyInfo()
                     {
                         Value = value,
                         PropertyReference = lineRef
-                    };
+                    });
             }
         }
 
@@ -321,9 +383,9 @@ namespace SS.Core.Configuration
         /// <param name="key">The key of the property.</param>
         /// <param name="value">When this method returns, contains the value of the property if found; otherwise, null.</param>
         /// <returns><see langword="true"/> if the property was found; otherwise, <see langword="false"/>.</returns>
-        public bool TryGetValue(string section, string key, out string value)
+        public bool TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out string value)
         {
-            if (!propertyDictionary.TryGetValue(CreatePropertyDictionaryKey(section, key), out PropertyInfo propertyInfo))
+            if (!PropertyLookup_TryGetValue(section, key, out PropertyInfo propertyInfo))
             {
                 value = default;
                 return false;
@@ -342,9 +404,9 @@ namespace SS.Core.Configuration
         /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
         /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
         /// <returns>True if the property was found and updated.  Otherwise, false.</returns>
-        public bool TryUpdateProperty(string section, string key, string value, bool permanent, string comment = null)
+        public bool TryUpdateProperty(ReadOnlySpan<char> section, ReadOnlySpan<char> key, string value, bool permanent, string comment = null)
         {
-            if (!propertyDictionary.TryGetValue(CreatePropertyDictionaryKey(section, key), out PropertyInfo propertyInfo))
+            if (!PropertyLookup_TryGetValue(section, key, out PropertyInfo propertyInfo))
             {
                 return false;
             }
@@ -415,34 +477,6 @@ namespace SS.Core.Configuration
             public string Value { get; set; }
 
             public LineReference PropertyReference { get; set; }
-        }
-
-        private struct PropertyKey : IEquatable<PropertyKey>
-        {
-            public readonly string Section;
-            public readonly string Key;
-
-            public PropertyKey(string section, string key)
-            {
-                Section = section ?? "";
-                Key = key ?? "";
-            }
-
-            public override int GetHashCode()
-            {
-                return Section.GetHashCode(StringComparison.OrdinalIgnoreCase) ^ Key.GetHashCode(StringComparison.OrdinalIgnoreCase);
-            }
-
-            public override bool Equals([NotNullWhen(true)] object obj)
-            {
-                return (obj is PropertyKey other) && Equals(other);
-            }
-
-            public bool Equals(PropertyKey other)
-            {
-                return string.Equals(Key, other.Key, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(Section, other.Section, StringComparison.OrdinalIgnoreCase);
-            }
         }
     }
 }

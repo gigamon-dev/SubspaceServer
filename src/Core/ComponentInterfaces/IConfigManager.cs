@@ -149,7 +149,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to read</param>
         /// <returns>the value of the key as a string, or NULL if the key isn't present</returns>
-        string GetStr(ConfigHandle handle, string section, string key);
+        string GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key);
 
         /// <summary>
         /// Gets an integer value from a config file.
@@ -159,7 +159,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="key">the name of the key to read</param>
         /// <param name="defvalue">the value to be returned if the key isn't found</param>
         /// <returns>the value of the key converted to an integer, or defvalue if it wasn't found. one special conversion is done: if the key has a string value that starts with a letter "y", then 1 is returned instead of 0.</returns>
-        int GetInt(ConfigHandle handle, string section, string key, int defvalue);
+        int GetInt(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, int defvalue);
 
         /// <summary>
         /// Gets an enum value from a config file.
@@ -174,7 +174,7 @@ namespace SS.Core.ComponentInterfaces
         /// If the enum has <see cref="FlagsAttribute"/>, the value can be a combination.
         /// Otherwise, it will be a defined value of the Enum.
         /// </returns>
-        T GetEnum<T>(ConfigHandle handle, string section, string key, T defaultValue) where T : struct, Enum;
+        T GetEnum<T>(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, T defaultValue) where T : struct, Enum;
 
         /// <summary>
         /// Changes a config file value.
