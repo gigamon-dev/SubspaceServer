@@ -257,7 +257,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Commands
 
-        private void Command_resetkoth(string commandName, string parameters, Player p, ITarget target)
+        private void Command_resetkoth(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ResetGame(p.Arena, true);
         }

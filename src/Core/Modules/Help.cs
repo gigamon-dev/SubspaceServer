@@ -1,6 +1,6 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private string _helpCommandName;
         private ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> _settingsLookup;
         public ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> Sections => _settingsLookup;
-        private readonly Dictionary<string, string> _sectionAllKeysDictionary = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Trie<string> _sectionAllKeysDictionary = new(false);
         private string _sectionGroupsStr;
 
         public bool Load(
@@ -171,9 +171,9 @@ namespace SS.Core.Modules
             "Displays help on a command or config file setting. Use {section:}\n" +
             "to list known keys in that section. Use {:} to list known section\n" +
             "names.")]
-        private void Command_help(string command, string parameters, Player p, ITarget target)
+        private void Command_help(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (!string.IsNullOrWhiteSpace(parameters))
+            if (!parameters.IsWhiteSpace())
             {
                 if (parameters[0] == '?' || parameters[0] == '*' || parameters[0] == '!')
                 {
@@ -181,7 +181,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 parameters = _helpCommandName;
             }
@@ -189,20 +189,20 @@ namespace SS.Core.Modules
             int colonIndex = parameters.IndexOf(':');
             if (colonIndex != -1)
             {
-                string section = parameters.Substring(0, colonIndex);
-                string key = parameters[(colonIndex + 1)..];
+                ReadOnlySpan<char> section = parameters[..colonIndex];
+                ReadOnlySpan<char> key = parameters[(colonIndex + 1)..];
 
-                if (string.IsNullOrWhiteSpace(section))
+                if (section.IsWhiteSpace())
                 {
                     PrintConfigSections(p);
                 }
-                else if (string.IsNullOrWhiteSpace(key))
+                else if (key.IsWhiteSpace())
                 {
                     PrintConfigSectionKeys(p, section);
                 }
                 else
                 {
-                    PrintConfigHelp(p, section, key);
+                    PrintConfigHelp(p, section.ToString(), key.ToString()); // TODO: remove LINQ and string allocation
                 }
             }
             else
@@ -217,7 +217,7 @@ namespace SS.Core.Modules
             _chat.SendWrappedText(p, _sectionGroupsStr);
         }
 
-        private void PrintConfigSectionKeys(Player p, string section)
+        private void PrintConfigSectionKeys(Player p, ReadOnlySpan<char> section)
         {
             if (!_sectionAllKeysDictionary.TryGetValue(section, out string allKeysStr))
             {
@@ -268,7 +268,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void PrintCommandHelp(Player p, string command)
+        private void PrintCommandHelp(Player p, ReadOnlySpan<char> command)
         {
             if (p == null)
                 return;

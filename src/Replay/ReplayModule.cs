@@ -479,7 +479,7 @@ namespace SS.Replay
             Targets = CommandTarget.None,
             Args = "status | record <file> | play <file> | pause | stop",
             Description = "Controls a replay recording or playback.")]
-        private void Command_replay(string commandName, string parameters, Player player, ITarget target)
+        private void Command_replay(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Debug.Assert(_mainloop.IsMainloop);
 

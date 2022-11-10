@@ -14,7 +14,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">The target player(s) to redirect.</param>
         /// <param name="destination">The destination to look for.</param>
         /// <returns>True if the <paramref name="target"/> players were sent a redirect. Otherwise, false.</returns>
-        bool AliasRedirect(ITarget target, string destination);
+        bool AliasRedirect(ITarget target, ReadOnlySpan<char> destination);
 
         /// <summary>
         /// Attempts to redirect a <paramref name="target"/> set of players to a specified zone/arena.

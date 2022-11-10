@@ -126,7 +126,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Command_obscene(string commandName, string parameters, Player p, ITarget target)
+        private void Command_obscene(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             p.Flags.ObscenityFilter = !p.Flags.ObscenityFilter;
 

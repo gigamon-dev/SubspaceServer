@@ -150,7 +150,7 @@ namespace SS.Core.Modules.Scoring
             Targets = CommandTarget.None,
             Args = null,
             Description = "Rewards teams in the current arena as if the periodic timer elapsed.")]
-        private void Command_periodicreward(string commandName, string parameters, Player p, ITarget target)
+        private void Command_periodicreward(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ((IPeriodicReward)this).Reward(p.Arena);
         }
@@ -159,7 +159,7 @@ namespace SS.Core.Modules.Scoring
             Targets = CommandTarget.None,
             Args = null,
             Description = "Resets the periodic timer in the current arena.")]
-        private void Command_periodicreset(string commandName, string parameters, Player p, ITarget target)
+        private void Command_periodicreset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ((IPeriodicReward)this).Reset(p.Arena);
             _chat.SendMessage(p, $"Periodic reward timer reset.");
@@ -169,7 +169,7 @@ namespace SS.Core.Modules.Scoring
             Targets = CommandTarget.None,
             Args = null,
             Description = "Stops the periodic timer in the current arena.")]
-        private void Command_periodicstop(string commandName, string parameters, Player p, ITarget target)
+        private void Command_periodicstop(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ((IPeriodicReward)this).Stop(p.Arena);
             _chat.SendMessage(p, $"Periodic reward timer stopped.");

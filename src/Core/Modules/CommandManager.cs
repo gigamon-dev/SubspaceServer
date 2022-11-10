@@ -405,9 +405,7 @@ namespace SS.Core.Modules
             if (cmd.IsEmpty)
                 return;
 
-            string cmdStr = cmd.ToString(); // TODO: workaround string allocation
             parameters = parameters.TrimStart(" =");
-            string parametersStr = parameters.ToString(); // TODO: workaround string allocation
 
             string prefix;
             Arena remoteArena = null;
@@ -475,8 +473,8 @@ namespace SS.Core.Modules
                 {
                     LogCommand(player, target, cmd, parameters);
 
-                    basicHandlers?.Invoke(cmdStr, parametersStr, player, target);
-                    soundHandlers?.Invoke(cmdStr, parametersStr, player, target, sound);
+                    basicHandlers?.Invoke(cmd, parameters, player, target);
+                    soundHandlers?.Invoke(cmd, parameters, player, target, sound);
                 }
 #if CFG_LOG_ALL_COMMAND_DENIALS
                 else
@@ -487,7 +485,7 @@ namespace SS.Core.Modules
             }
         }
 
-        string ICommandManager.GetHelpText(string commandName, Arena arena)
+        string ICommandManager.GetHelpText(ReadOnlySpan<char> commandName, Arena arena)
         {
             string ret = null;
 
@@ -672,7 +670,7 @@ namespace SS.Core.Modules
             "A slash '/' means you can send the command in a private message to a player, " +
             "the effects will then apply to that player only.\n" +
             "A colon ':' means you can send the command in a private message to a player in a different arena")]
-        private void Command_commands(string commandName, string parameters, Player p, ITarget target)
+        private void Command_commands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (_chat == null)
                 return;
@@ -707,7 +705,7 @@ namespace SS.Core.Modules
             "A slash '/' means you can send the command in a private message to a player, " +
             "the effects will then apply to that player only.\n" +
             "A colon ':' means you can send the command in a private message to a player in a different arena")]
-        private void Command_allcommands(string commandName, string parameters, Player p, ITarget target)
+        private void Command_allcommands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (_chat == null)
                 return;

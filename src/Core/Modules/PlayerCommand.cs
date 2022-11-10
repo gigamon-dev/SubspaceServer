@@ -7,6 +7,7 @@ using SS.Utilities;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -54,7 +55,7 @@ namespace SS.Core.Modules
         private DateTime _startedAt;
 
         private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
-        private readonly Dictionary<string, CommandGroup> _commandGroups = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Trie<CommandGroup> _commandGroups = new(false);
 
         private readonly ObjectPool<ArenaListItem> _arenaListItemPool = new NonTransientObjectPool<ArenaListItem>(new ArenaListItemPooledObjectPolicy());
         private readonly ObjectPool<List<ArenaListItem>> _arenaListItemListPool = new DefaultObjectPool<List<ArenaListItem>>(new ArenaListItemListPooledObjectPolicy());
@@ -425,15 +426,15 @@ namespace SS.Core.Modules
             Args = "[{-all} | <command group>]",
             Description = "Enables all the commands in the specified command group. This is only\n" +
             "useful after using ?disablecmdgroup. Use {-all} to enable all command groups.")]
-        private void Command_enablecmdgroup(string command, string parameters, Player p, ITarget target)
+        private void Command_enablecmdgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 PrintCommandGroups(p);
                 return;
             }
 
-            if (parameters.Contains("-all"))
+            if (parameters.Contains("-all", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (CommandGroup group in _commandGroups.Values)
                 {
@@ -469,15 +470,15 @@ namespace SS.Core.Modules
             "modules that they require. This can be used to release interfaces so that\n" +
             $"modules can be unloaded or upgraded without unloading the {nameof(PlayerCommand)}\n" +
             "module which would be irreversible). Use {-all} to disable all command groups.")]
-        private void Command_disablecmdgroup(string command, string parameters, Player p, ITarget target)
+        private void Command_disablecmdgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 PrintCommandGroups(p);
                 return;
             }
 
-            if (parameters.Contains("-all"))
+            if (parameters.Contains("-all", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (CommandGroup group in _commandGroups.Values)
                 {
@@ -526,7 +527,7 @@ namespace SS.Core.Modules
             "Displays lag information about you or a target player.\n" +
             "Use {-v} for more detail. The format of the ping fields is\n" +
             "\"last average (min-max)\".")]
-        private void Command_lag(string command, string parameters, Player p, ITarget target)
+        private void Command_lag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = p;
@@ -547,7 +548,7 @@ namespace SS.Core.Modules
 
             string prefix = targetPlayer == p ? "lag" : targetPlayer.Name;
 
-            if (!parameters.Contains("-v"))
+            if (!parameters.Contains("-v", StringComparison.OrdinalIgnoreCase))
             {
                 _chat.SendMessage(p, $"{prefix}: avg ping: {average} ploss: s2c: {packetloss.s2c * 100d:F2} c2s: {packetloss.c2s * 100d:F2}");
             }
@@ -575,7 +576,7 @@ namespace SS.Core.Modules
             "Causes the specified interval to be reset. If {-g} is specified, reset the interval\n" +
             "at the global scope. If {-a} is specified, use the named arena group. Otherwise, use\n" +
             "the current arena's scope. Interval names can be \"game\", \"reset\", or \"maprotation\".")]
-        private void Command_endinterval(string command, string parameters, Player p, ITarget target)
+        private void Command_endinterval(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> token;
@@ -669,7 +670,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = null,
             Description = "Resets your own score, or the target player's score.")]
-        private void Command_scorereset(string command, string parameters, Player p, ITarget target)
+        private void Command_scorereset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             // For now, only reset PersistInterval.Reset scores, since those are the only ones the client sees.
             if (target.TryGetArenaTarget(out Arena arena))
@@ -702,7 +703,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Any,
             Args = "<points to add>",
             Description = "Adds the specified number of points to the targets' flag points.")]
-        private void Command_points(string command, string parameters, Player p, ITarget target)
+        private void Command_points(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!int.TryParse(parameters, out int pointsToAdd))
                 return;
@@ -749,7 +750,7 @@ namespace SS.Core.Modules
             "empty arenas that the server knows about. The {-t} switch forces\n" +
             "the output to be in text even for regular clients (useful when using\n" +
             "the Continuum chat window).")]
-        private void Command_arena(string command, string parameters, Player player, ITarget target)
+        private void Command_arena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool isChatOutput = player.Type == ClientType.Chat || parameters.Contains("-t", StringComparison.OrdinalIgnoreCase);
             bool includePrivateArenas = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
@@ -889,9 +890,9 @@ namespace SS.Core.Modules
             "{-r} is specified, exit with {EXIT_RECYCLE} instead. The {run-asss}\n" +
             "script, if it is being used, will notice {EXIT_RECYCLE} and restart\n" +
             "the server.")]
-        private void Command_shutdown(string command, string parameters, Player p, ITarget target)
+        private void Command_shutdown(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            ExitCode code = string.Equals(parameters, "-r", StringComparison.OrdinalIgnoreCase)
+            ExitCode code = parameters.Equals("-r", StringComparison.OrdinalIgnoreCase)
                 ? ExitCode.Recycle
                 : ExitCode.None;
 
@@ -905,7 +906,7 @@ namespace SS.Core.Modules
             "Immediately shuts down the server, exiting with {EXIT_RECYCLE}. The\n" +
             "{run-asss} script, if it is being used, will notice {EXIT_RECYCLE}\n" +
             "and restart the server.")]
-        private void Command_recyclezone(string command, string parameters, Player p, ITarget target)
+        private void Command_recyclezone(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             _mainloop.Quit(ExitCode.Recycle);
         }
@@ -914,7 +915,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Recycles the current arena without kicking players off.")]
-        private void Command_recyclearena(string command, string parameters, Player p, ITarget target)
+        private void Command_recyclearena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!_arenaManager.RecycleArena(p.Arena))
             {
@@ -926,7 +927,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None, 
             Args = null, 
             Description = "Displays the arena owner.")]
-        private void Command_owner(string command, string parameters, Player p, ITarget target)
+        private void Command_owner(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -948,7 +949,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Displays the name of the zone.")]
-        private void Command_zone(string command, string parameters, Player p, ITarget target)
+        private void Command_zone(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             string zoneName = _configManager.GetStr(_configManager.Global, "Billing", "ServerName");
             _chat.SendMessage(p, $"Zone: {(!string.IsNullOrWhiteSpace(zoneName) ? zoneName : "(none)")}");
@@ -958,7 +959,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Displays how long the server has been running.")]
-        private void Command_uptime(string command, string parameters, Player p, ITarget target)
+        private void Command_uptime(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             TimeSpan ts = DateTime.UtcNow - _startedAt;
 
@@ -972,7 +973,7 @@ namespace SS.Core.Modules
             "Prints out information about the server.\n" +
             "For staff members, it will print more detailed version information.\n" +
             "If staff members specify the {-v} arg, it will print even more verbose information.")]
-        private void Command_version(string command, string parameters, Player p, ITarget target)
+        private void Command_version(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             _chat.SendMessage(p, $"Subspace Server .NET");
 
@@ -984,7 +985,7 @@ namespace SS.Core.Modules
 
                 foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
                 {
-                    if (!parameters.Contains("v")
+                    if (!parameters.Contains("v", StringComparison.OrdinalIgnoreCase)
                         && (assembly.FullName.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
                             || assembly.FullName.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase)
                             || assembly.FullName.StartsWith("netstandard,", StringComparison.OrdinalIgnoreCase)
@@ -998,7 +999,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Command_sheep(string command, string parameters, Player p, ITarget target)
+        private void Command_sheep(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (target.Type != TargetType.Arena)
                 return;
@@ -1015,50 +1016,49 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "none or <arena name> or all",
             Description = "Displays the current jackpot for this arena, the named arena, or all arenas.")]
-        private void Command_jackpot(string command, string parameters, Player p, ITarget target)
+        private void Command_jackpot(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (!string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
-                if (string.Equals(parameters, "all", StringComparison.OrdinalIgnoreCase))
+                _chat.SendMessage(p, $"The jackpot is {_jackpot.GetJackpot(p.Arena)}.");
+                return;
+            }
+
+            if (parameters.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                bool canSeePrivArena = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
+
+                _arenaManager.Lock();
+
+                try
                 {
-                    bool canSeePrivArena = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
-
-                    _arenaManager.Lock();
-
-                    try
+                    foreach (Arena arena in _arenaManager.Arenas)
                     {
-                        foreach(Arena arena in _arenaManager.Arenas)
+                        int jackpotValue;
+                        if (arena.Status == ArenaState.Running
+                            && (!arena.IsPrivate || canSeePrivArena || p.Arena == arena)
+                            && (jackpotValue = _jackpot.GetJackpot(arena)) > 0)
                         {
-                            int jackpotValue;
-                            if (arena.Status == ArenaState.Running
-                                && (!arena.IsPrivate || canSeePrivArena || p.Arena == arena)
-                                && (jackpotValue = _jackpot.GetJackpot(arena)) > 0)
-                            {
-                                _chat.SendMessage(p, $"The jackpot in {arena.Name} is {jackpotValue}.");
-                            }
+                            _chat.SendMessage(p, $"The jackpot in {arena.Name} is {jackpotValue}.");
                         }
                     }
-                    finally
-                    {
-                        _arenaManager.Unlock();
-                    }
                 }
-                else
+                finally
                 {
-                    Arena arena = _arenaManager.FindArena(parameters);
-                    if (arena != null)
-                    {
-                        _chat.SendMessage(p, $"The jackpot in {arena.Name} is {_jackpot.GetJackpot(arena)}.");
-                    }
-                    else
-                    {
-                        _chat.SendMessage(p, $"Arena '{parameters}' does not exist.");
-                    }
+                    _arenaManager.Unlock();
                 }
             }
             else
             {
-                _chat.SendMessage(p, $"The jackpot is {_jackpot.GetJackpot(p.Arena)}.");
+                Arena arena = _arenaManager.FindArena(parameters.ToString()); // TODO: Can ArenaManager be changed to not use Dictionary<string, Arena>? Trie<Arena> needs enumerator performance enhancements first. Or use dual data structures?
+                if (arena != null)
+                {
+                    _chat.SendMessage(p, $"The jackpot in {arena.Name} is {_jackpot.GetJackpot(arena)}.");
+                }
+                else
+                {
+                    _chat.SendMessage(p, $"Arena '{parameters}' does not exist.");
+                }
             }
         }
 
@@ -1066,7 +1066,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<new jackpot value>",
             Description = "Sets the jackpot for this arena to a new value.")]
-        private void Command_setjackpot(string command, string parameters, Player p, ITarget target)
+        private void Command_setjackpot(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!int.TryParse(parameters, out int value))
             {
@@ -1090,7 +1090,7 @@ namespace SS.Core.Modules
             Args = "section:key",
             Description = "Displays the value of a global setting. Make sure there are no\n" +
             "spaces around the colon.")]
-        private void Command_getX(string command, string parameters, Player p, ITarget target)
+        private void Command_getX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> token = remaining.GetToken(':', out remaining).Trim();
@@ -1103,7 +1103,7 @@ namespace SS.Core.Modules
             string section = token.ToString();
             string key = remaining.ToString();
 
-            ConfigHandle ch = string.Equals(command, "geta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
+            ConfigHandle ch = command.Equals("geta", StringComparison.OrdinalIgnoreCase) ? p.Arena.Cfg : _configManager.Global;
             string result = _configManager.GetStr(ch, section, key);
             if (result != null)
             {
@@ -1129,15 +1129,15 @@ namespace SS.Core.Modules
             Description = "Sets the value of a global setting. Make sure there are no\n" +
             "spaces around either the colon or the equals sign. A {-t} makes\n" +
             "the setting temporary.\n")]
-        private void Command_setX(string command, string parameters, Player p, ITarget target)
+        private void Command_setX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
                 return;
 
-            ConfigHandle ch = string.Equals(command, "seta", StringComparison.Ordinal) ? p.Arena.Cfg : _configManager.Global;
+            ConfigHandle ch = command.Equals("seta", StringComparison.OrdinalIgnoreCase) ? p.Arena.Cfg : _configManager.Global;
             bool permanent = true;
 
-            ReadOnlySpan<char> line = parameters.AsSpan();
+            ReadOnlySpan<char> line = parameters;
             if (line.StartsWith("-t"))
             {
                 permanent = false;
@@ -1152,7 +1152,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Prints out some statistics from the network layer.")]
-        private void Command_netstats(string command, string parameters, Player p, ITarget target)
+        private void Command_netstats(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
 
@@ -1201,7 +1201,7 @@ namespace SS.Core.Modules
             "Displays various information on the target player, including which\n" +
             "client they are using, their resolution, IP address, how long they have\n" +
             "been connected, and bandwidth usage information.")]
-        private void Command_info(string command, string parameters, Player p, ITarget target)
+        private void Command_info(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player t))
             {
@@ -1228,7 +1228,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "<text>",
             Description = "Displays the text as an arena (green) message to the targets.")]
-        private void Command_a(string command, string parameters, Player p, ITarget target, ChatSound sound)
+        private void Command_a(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target, ChatSound sound)
         {
             if (target.TryGetArenaTarget(out Arena arena))
             {
@@ -1255,7 +1255,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "<text>",
             Description = "Displays the text as an anonymous arena (green) message to the targets.")]
-        private void Command_aa(string command, string parameters, Player p, ITarget target, ChatSound sound)
+        private void Command_aa(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target, ChatSound sound)
         {
             if (target.TryGetArenaTarget(out Arena arena))
             {
@@ -1282,7 +1282,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<text>",
             Description = "Displays the text as an arena (green) message to the whole zone.")]
-        private void Command_z(string command, string parameters, Player p, ITarget target, ChatSound sound)
+        private void Command_z(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target, ChatSound sound)
         {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
@@ -1317,7 +1317,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<text>",
             Description = "Displays the text as an anonymous arena (green) message to the whole zone.")]
-        private void Command_az(string command, string parameters, Player p, ITarget target, ChatSound sound)
+        private void Command_az(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target, ChatSound sound)
         {
             _chat.SendArenaMessage(null, sound, parameters);
 
@@ -1339,7 +1339,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player,
             Args = "<message>",
             Description = "Sends a red warning message to a player.")]
-        private void Command_warn(string command, string parameters, Player p, ITarget target)
+        private void Command_warn(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
@@ -1375,7 +1375,7 @@ namespace SS.Core.Modules
             Args = "<message>",
             Description = "Sends a private message to a player.\n" +
             "Useful for logging replies to moderator help requests.")]
-        private void Command_reply(string command, string parameters, Player p, ITarget target)
+        private void Command_reply(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
@@ -1441,18 +1441,18 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "<x xoord> <y coord>",
             Description = "Warps target player(s) to an x,y coordinate.")]
-        private void Command_warpto(string command, string parameters, Player p, ITarget target)
+        private void Command_warpto(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
                 return;
 
-            ReadOnlySpan<char> coordsSpan = parameters.AsSpan().Trim();
+            ReadOnlySpan<char> coordsSpan = parameters.Trim();
 
             int index = coordsSpan.IndexOf(' ');
             if (index == -1)
                 return;
 
-            if (!short.TryParse(coordsSpan.Slice(0, index), out short x))
+            if (!short.TryParse(coordsSpan[..index], out short x))
                 return;
 
             if (!short.TryParse(coordsSpan[(index + 1)..], out short y))
@@ -1468,7 +1468,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = null,
             Description = "Resets the ship of the target player(s).")]
-        private void Command_shipreset(string command, string parameters, Player p, ITarget target)
+        private void Command_shipreset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             _game.ShipReset(target);
         }
@@ -1524,7 +1524,7 @@ namespace SS.Core.Modules
             "than one prize can be specified in one command. A count without a prize\n" +
             "name means {random}. For compatability, numerical prize ids with {#} are\n" +
             "supported.")]
-        private void Command_prize(string command, string parameters, Player p, ITarget target)
+        private void Command_prize(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             short count = 1;
             int? type = null;
@@ -1610,18 +1610,18 @@ namespace SS.Core.Modules
             "present, it will spec the targets before locking them. If {-n} is present,\n" +
             "it will notify players of their change in status. If {-t} is present, you\n" +
             "can specify a timeout in seconds for the lock to be effective.")]
-        private void Command_lock(string command, string parameters, Player p, ITarget target)
+        private void Command_lock(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            int index = parameters.IndexOf("-t");
+            int index = parameters.IndexOf("-t", StringComparison.OrdinalIgnoreCase);
 
             int timeout;
-            if (index == -1 || !int.TryParse(parameters.AsSpan(index + 2), out timeout))
+            if (index == -1 || !int.TryParse(parameters[(index + 2)..], out timeout))
                 timeout = 0;
 
             _game.Lock(
                 target,
-                parameters.Contains("-n"),
-                parameters.Contains("-s"),
+                parameters.Contains("-n", StringComparison.OrdinalIgnoreCase),
+                parameters.Contains("-s", StringComparison.OrdinalIgnoreCase),
                 timeout);
         }
 
@@ -1630,9 +1630,9 @@ namespace SS.Core.Modules
             Args = "[-n]",
             Description = "Unlocks the specified targets so that they can now change ships. An optional\n" +
             "{-n} notifies players of their change in status.")]
-        private void Command_unlock(string command, string parameters, Player p, ITarget target)
+        private void Command_unlock(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            _game.Unlock(target, parameters.Contains("-n"));
+            _game.Unlock(target, parameters.Contains("-n", StringComparison.OrdinalIgnoreCase));
         }
 
         [CommandHelp(
@@ -1644,17 +1644,17 @@ namespace SS.Core.Modules
             "only change the arena's state, and not lock current players. The {-i} option means to\n" +
             "only lock entering players to their initial ships, instead of spectator mode. The {-s}\n" +
             "means to spec all players before locking the arena.")]
-        private void Command_lockarena(string command, string parameters, Player p, ITarget target)
+        private void Command_lockarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetArenaTarget(out Arena arena))
                 return;
 
             _game.LockArena(
                 arena,
-                parameters.Contains("-n"),
-                parameters.Contains("-a"),
-                parameters.Contains("-i"),
-                parameters.Contains("-s"));
+                parameters.Contains("-n", StringComparison.OrdinalIgnoreCase),
+                parameters.Contains("-a", StringComparison.OrdinalIgnoreCase),
+                parameters.Contains("-i", StringComparison.OrdinalIgnoreCase),
+                parameters.Contains("-s", StringComparison.OrdinalIgnoreCase));
         }
 
         [CommandHelp(
@@ -1664,15 +1664,15 @@ namespace SS.Core.Modules
             "locked to spectator mode. Also unlocks everyone currently in the arena to their ships.\n" +
             "The {-n} options means to notify players of their change in status. The {-a} option\n" +
             "means to only change the arena's state, and not unlock current players.")]
-        private void Command_unlockarena(string command, string parameters, Player p, ITarget target)
+        private void Command_unlockarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetArenaTarget(out Arena arena))
                 return;
 
             _game.UnlockArena(
                 arena,
-                parameters.Contains("-n"),
-                parameters.Contains("-a"));
+                parameters.Contains("-n", StringComparison.OrdinalIgnoreCase),
+                parameters.Contains("-a", StringComparison.OrdinalIgnoreCase));
         }
 
         [CommandHelp(
@@ -1680,7 +1680,7 @@ namespace SS.Core.Modules
             Args = "[{-f}] <freq number>",
             Description = "Moves the targets to the specified freq.\n" +
             "If -f is specified, this command ignores the arena freqman.")]
-        private void Command_setfreq(string command, string parameters, Player p, ITarget target)
+        private void Command_setfreq(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             bool useFreqManager = true;
             short? freq = null;
@@ -1771,7 +1771,7 @@ namespace SS.Core.Modules
             Description = "Sets the targets to the specified ship. The argument must be a\n" +
             "number from 1 (Warbird) to 8 (Shark), or 9 (Spec).\n" +
             "If -f is specified, this command ignores the arena freqman.\n")]
-        private void Command_setship(string command, string parameters, Player p, ITarget target)
+        private void Command_setship(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             bool useFreqManager = true;
             ShipType? ship = null;
@@ -1854,7 +1854,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = null,
             Description = "Sends all of the targets to spectator mode.")]
-        private void Command_specall(string command, string parameters, Player p, ITarget target)
+        private void Command_specall(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
@@ -1875,9 +1875,9 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player,
             Args = "<arena name>",
             Description = "Sends target player to the named arena. (Works on Continuum users only.)")]
-        private void Command_send(string command, string parameters, Player p, ITarget target)
+        private void Command_send(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
                 return;
 
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -1905,29 +1905,30 @@ namespace SS.Core.Modules
             "only modules attached to this arena. With {-s}, sorts by name.\n" +
             "With optional `text`, limits modules displayed to those whose names\n" +
             "contain the given text.")]
-        private void Command_lsmod(string command, string parameters, Player p, ITarget target)
+        private void Command_lsmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             bool sort = false;
             string substr = null;
 
             Arena arena = null;
 
-            if (!string.IsNullOrWhiteSpace(parameters))
+            if (!parameters.IsWhiteSpace())
             {
-                string[] args = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                foreach (string arg in args)
+                ReadOnlySpan<char> remaining = parameters;
+                ReadOnlySpan<char> arg;
+                while (!(arg = remaining.GetToken(' ', out remaining)).IsEmpty)
                 {
-                    if (string.Equals(arg, "-a", StringComparison.OrdinalIgnoreCase))
+                    if (arg.Equals("-a", StringComparison.OrdinalIgnoreCase))
                     {
                         target.TryGetArenaTarget(out arena);
                     }
-                    else if (string.Equals(arg, "-s", StringComparison.OrdinalIgnoreCase))
+                    else if (arg.Equals("-s", StringComparison.OrdinalIgnoreCase))
                     {
                         sort = true;
                     }
                     else
                     {
-                        substr = arg;
+                        substr = arg.ToString();
                     }
                 }
             }
@@ -1975,12 +1976,13 @@ namespace SS.Core.Modules
             "Displays information about the specified module. This might include a\n" +
             "version number, contact information for the author, and a general\n" +
             "description of the module.")]
-        private void Command_modinfo(string command, string parameters, Player p, ITarget target)
+        private void Command_modinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            string parametersStr = parameters.ToString();
+            if (string.IsNullOrWhiteSpace(parametersStr))
                 return;
 
-            var infoArray = _mm.GetModuleInfo(parameters);
+            var infoArray = _mm.GetModuleInfo(parametersStr);
 
             if (infoArray.Length > 0)
             {
@@ -2013,31 +2015,26 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<module name>",
+            Args = "<module name> [plugin assembly path]",
             Description = "Immediately loads the specified module into the server.")]
-        private void Command_insmod(string command, string parameters, Player p, ITarget target)
+        private void Command_insmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
                 return;
 
             string moduleTypeName;
             string path;
 
-            string[] tokens = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length == 1)
+            int index = parameters.IndexOf(' ');
+            if (index == -1)
             {
-                moduleTypeName = tokens[0];
+                moduleTypeName = parameters.ToString();
                 path = null;
-            }
-            else if (tokens.Length == 2)
-            {
-                moduleTypeName = tokens[0];
-                path = tokens[1];
-                path = path.Trim('"', '\'', ' ');
             }
             else
             {
-                return;
+                moduleTypeName = parameters[..index].ToString();
+                path = parameters[(index + 1)..].Trim().Trim("\"\'").ToString();
             }
 
             if (_mm.LoadModule(moduleTypeName, path))
@@ -2050,12 +2047,12 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<module name>",
             Description = "Attempts to unload the specified module from the server.")]
-        private void Command_rmmod(string command, string parameters, Player p, ITarget target)
+        private void Command_rmmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
                 return;
 
-            if (_mm.UnloadModule(parameters))
+            if (_mm.UnloadModule(parameters.ToString()))
                 _chat.SendMessage(p, $"Module '{parameters}' unloaded.");
             else
                 _chat.SendMessage(p, $"Failed to unload module '{parameters}'.");
@@ -2067,31 +2064,40 @@ namespace SS.Core.Modules
             Description =
             "Attaches the specified module to this arena. Or with {-d},\n" +
             "detaches the module from the arena.")]
-        private void Command_attmod(string command, string parameters, Player p, ITarget target)
+        private void Command_attmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            bool detach = false;
-            string module = parameters;
+            if (parameters.IsEmpty)
+                return;
 
-            if (!string.IsNullOrWhiteSpace(parameters))
+            bool detach = false;
+            ReadOnlySpan<char> module = ReadOnlySpan<char>.Empty;
+
+            ReadOnlySpan<char> token;
+            while (!(token = parameters.GetToken(' ', out parameters)).IsEmpty)
             {
-                string[] tokens = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                if (tokens.Length == 2 && string.Equals(tokens[0], "-d"))
+                if (token.Equals("-d", StringComparison.OrdinalIgnoreCase))
                 {
                     detach = true;
-                    module = tokens[1];
+                }
+                else
+                {
+                    module = token;
                 }
             }
 
-            AttachDetachModule(p, module, detach);
+            if (module.IsEmpty)
+                return;
+
+            AttachDetachModule(p, module.ToString(), detach);
         }
 
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<module name>",
             Description = "Detaches the module from the arena.")]
-        private void Command_detmod(string command, string parameters, Player p, ITarget target)
+        private void Command_detmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            AttachDetachModule(p, parameters, true);
+            AttachDetachModule(p, parameters.ToString(), true);
         }
 
         private void AttachDetachModule(Player p, string module, bool detach)
@@ -2119,7 +2125,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player | CommandTarget.None,
             Args = null,
             Description = "Displays the group of the player, or if none specified, you.")]
-        private void Command_getgroup(string command, string parameters, Player p, ITarget target)
+        private void Command_getgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
@@ -2143,27 +2149,27 @@ namespace SS.Core.Modules
             "the target player logs out or changes arenas, the group will be lost.\n\n" +
             "The optional {-a} means to make the assignment local to the current\n" +
             "arena, rather than being valid in the entire zone.")]
-        private void Command_setgroup(string command, string parameters, Player p, ITarget target)
+        private void Command_setgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 return;
 
             bool permanent = false;
             bool global = true;
-            string groupName = null;
+            ReadOnlySpan<char> groupName = null;
 
-            string[] parameterArray = parameters.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (string parameter in parameterArray)
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while (!(token = remaining.GetToken(' ', out remaining)).IsEmpty)
             {
-                if (string.Equals(parameter, "-p"))
+                if (token.Equals("-p", StringComparison.OrdinalIgnoreCase))
                     permanent = true;
-                else if (string.Equals(parameter, "-a"))
+                else if (token.Equals("-a", StringComparison.OrdinalIgnoreCase))
                     global = false;
-                else
-                    groupName = parameter;
-            }
+                else groupName = token;
+            }            
 
-            if (string.IsNullOrWhiteSpace(groupName))
+            if (groupName.IsWhiteSpace())
                 return;
 
             if (!_capabilityManager.HasCapability(p, $"higher_than_{groupName}"))
@@ -2203,7 +2209,7 @@ namespace SS.Core.Modules
             "the group was assigned for this session only, then it will be removed\n" +
             "for this session; if it is a global group, it will be removed globally;\n" +
             "and if it is an arena group, it will be removed for this arena.")]
-        private void Command_rmgroup(string command, string parameters, Player p, ITarget target)
+        private void Command_rmgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 return;
@@ -2226,22 +2232,26 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<group name> <password>",
             Description = "Logs you in to the specified group, if the password is correct.")]
-        private void Command_grplogin(string command, string parameters, Player p, ITarget target)
+        private void Command_grplogin(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            string[] parameterArray = parameters.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (parameterArray.Length != 2)
+            int index = parameters.IndexOf(' ');
+            if (index == -1)
             {
                 _chat.SendMessage(p, "You must specify a group name and password.");
+                return;
             }
-            else if (_groupManager.CheckGroupPassword(parameterArray[0], parameterArray[1]))
+            
+            ReadOnlySpan<char> groupName = parameters[..index];
+            ReadOnlySpan<char> passwordSpan = parameters[(index + 1)..];
+
+            if (_groupManager.CheckGroupPassword(groupName, passwordSpan))
             {
-                _groupManager.SetTempGroup(p, parameterArray[0]);
-                _chat.SendMessage(p, $"You are now in group {parameterArray[0]}.");
+                _groupManager.SetTempGroup(p, groupName);
+                _chat.SendMessage(p, $"You are now in group {groupName}.");
             }
             else
             {
-                _chat.SendMessage(p, $"Bad password for group {parameterArray[0]}.");
+                _chat.SendMessage(p, $"Bad password for group {groupName}.");
             }
         }
 
@@ -2250,7 +2260,7 @@ namespace SS.Core.Modules
             Args = null,
             Description = "Lists all staff members logged on, which arena they are in, and\n" +
             "which group they belong to.\n")]
-        private void Command_listmod(string command, string parameters, Player p, ITarget target)
+        private void Command_listmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             bool canSeePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
             bool canSeeAllStaff = _capabilityManager.HasCapability(p, Constants.Capabilities.SeeAllStaff);
@@ -2316,10 +2326,10 @@ namespace SS.Core.Modules
             Description = "Tells you where the specified player is right now. If you specify\n" +
             "only part of a player name, it will try to find a matching name\n" +
             "using a case insensitive substring search.")]
-        private void Command_find(string command, string parameters, Player p, ITarget target)
+        private void Command_find(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (target.Type != TargetType.Arena 
-                || string.IsNullOrWhiteSpace(parameters))
+                || parameters.IsWhiteSpace())
             {
                 return;
             }
@@ -2337,7 +2347,7 @@ namespace SS.Core.Modules
                     if (p.Status != PlayerState.Playing)
                         continue;
 
-                    if (string.Equals(otherPlayer.Name, parameters, StringComparison.OrdinalIgnoreCase))
+                    if (parameters.Equals(otherPlayer.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         // exact match
                         bestPlayer.Clear();
@@ -2348,7 +2358,7 @@ namespace SS.Core.Modules
                         break;
                     }
 
-                    int index = otherPlayer.Name.IndexOf(parameters, StringComparison.OrdinalIgnoreCase);
+                    int index = otherPlayer.Name.AsSpan().IndexOf(parameters, StringComparison.OrdinalIgnoreCase);
                     if (index != -1)
                     {
                         // for substring matches, the score is the distance from the start of the name
@@ -2421,7 +2431,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Player,
             Args = null,
             Description = "Displays the current location (on the map) of the target player.")]
-        private void Command_where(string command, string parameters, Player p, ITarget target)
+        private void Command_where(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player t))
                 t = p;
@@ -2463,7 +2473,7 @@ namespace SS.Core.Modules
             "Current limitations: You can't currently restrict a particular\n" +
             "frequency. Leaving and entering an arena will remove a player's chat\n" +
             "mask, unless it has a timeout.\n")]
-        private void Command_setcm(string command, string parameters, Player p, ITarget target)
+        private void Command_setcm(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ChatMask mask;
             Player targetPlayer = null;
@@ -2553,7 +2563,7 @@ namespace SS.Core.Modules
             Description = "Prints out the chat mask for the target player, or if no target, for the\n" +
             "current arena. The chat mask specifies which types of chat messages are\n" +
             "allowed.")]
-        private void Command_getcm(string command, string parameters, Player p, ITarget target)
+        private void Command_getcm(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ChatMask mask;
 
@@ -2590,9 +2600,9 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<arena name>", 
             Description = "Lists the players in the given arena.")]
-        private void Command_listarena(string command, string parameters, Player p, ITarget target)
+        private void Command_listarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            string arenaName = !string.IsNullOrWhiteSpace(parameters) ? parameters : p.Arena?.Name;
+            string arenaName = !parameters.IsWhiteSpace() ? parameters.ToString() : p.Arena?.Name; // TODO: string allocation, requires ArenaManager changes
             if (string.IsNullOrWhiteSpace(arenaName))
                 return;
 
@@ -2648,7 +2658,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Arena,
             Args = null,
             Description = "Displays information about the map in this arena.")]
-        private void Command_mapinfo(string command, string parameters, Player p, ITarget target)
+        private void Command_mapinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -2699,7 +2709,7 @@ namespace SS.Core.Modules
             Args = "[<image file extension>]",
             Description = "Downloads an image of the map.\n" +
             $"The image format can optionally be specified. The default is '{DefaultMapImageFormat}'.")]
-        private void Command_mapimage(string command, string parameters, Player p, ITarget target)
+        private void Command_mapimage(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!p.IsStandard)
             {
@@ -2715,15 +2725,24 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(mapPath))
                 return;
 
-            parameters = parameters?.Trim() ?? string.Empty;
-            if (parameters.Any(c => Path.GetInvalidFileNameChars().Contains(c)))
+            parameters = parameters.Trim().Trim('.');
+            foreach (char c in Path.GetInvalidFileNameChars())
             {
-                _chat.SendMessage(p, "Invalid image file extension.");
-                return;
+                if (parameters.Contains(c))
+                {
+                    _chat.SendMessage(p, "Invalid image file extension.");
+                    return;
+                }
             }
 
-            string extension = !string.IsNullOrWhiteSpace(parameters) ? parameters : DefaultMapImageFormat;
-            string path = Path.ChangeExtension(Path.Combine("tmp", $"mapimage-{Guid.NewGuid()}"), extension);
+            ReadOnlySpan<char> extension = !parameters.IsWhiteSpace() ? parameters : DefaultMapImageFormat;
+
+            const string prefix = "mapimage-";
+            Span<char> fileName = stackalloc char[prefix.Length + 32 + 1 + extension.Length];
+            bool success = fileName.TryWrite($"{prefix}{Guid.NewGuid():N}.{extension}", out int charsWritten);
+            Debug.Assert(success && fileName.Length == charsWritten);
+
+            string path = Path.Join("tmp", fileName);
 
             try
             {
@@ -2736,7 +2755,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            string imageFileName = Path.ChangeExtension(Path.GetFileNameWithoutExtension(mapPath), extension);
+            string imageFileName = $"{Path.GetFileNameWithoutExtension(mapPath.AsSpan())}.{extension}";
             _fileTransfer.SendFile(p, path, imageFileName, true);
         }
 
@@ -2744,7 +2763,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Causes the flag game to immediately reset.")]
-        private void Command_flagreset(string command, string parameters, Player p, ITarget target)
+        private void Command_flagreset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -2768,13 +2787,13 @@ namespace SS.Core.Modules
             "A number without a plus or minus sign is taken as a new count.\n" +
             "A plus signifies adding that many, and a minus removes that many.\n" +
             "Continuum currently supports only eight balls.")]
-        private void Command_ballcount(string command, string parameters, Player p, ITarget target)
+        private void Command_ballcount(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
                 return;
 
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 if (_balls.TryGetBallSettings(arena, out BallSettings ballSettings))
                 {
@@ -2806,7 +2825,7 @@ namespace SS.Core.Modules
             "If no ball is specified, ball id = is assumed.\n" +
             "If -f is specified, the ball is forced onto the player and there will be no shot timer, and if the player is already carrying a ball it will be dropped where they are standing.\n" +
             "If -f is not specified, then the ball is simply moved underneath a player for him to pick up, but any balls already carried are not dropped.")]
-        private void Command_giveball(string command, string parameters, Player p, ITarget target)
+        private void Command_giveball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -2815,7 +2834,7 @@ namespace SS.Core.Modules
             bool force = false;
             byte ballId = 0;
 
-            ReadOnlySpan<char> remaining = parameters.AsSpan();
+            ReadOnlySpan<char> remaining = parameters;
 
             do
             {
@@ -2903,13 +2922,13 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<ball id> <x-coord> <y-coord>",
             Description = "Move the specified ball to the specified coordinates.")]
-        private void Command_moveball(string command, string parameters, Player p, ITarget target)
+        private void Command_moveball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
                 return;
 
-            ReadOnlySpan<char> token = parameters.AsSpan().GetToken(' ', out ReadOnlySpan<char> remaining);
+            ReadOnlySpan<char> token = parameters.GetToken(' ', out ReadOnlySpan<char> remaining);
             if (token.IsEmpty || !byte.TryParse(token, out byte ballId))
             {
                 _chat.SendMessage(p, "Invalid ball ID.");
@@ -2965,7 +2984,7 @@ namespace SS.Core.Modules
             Description =
             "Resets the specified existing ball back to its spawn location.\n" +
             "If no ball is specified, ball id 0 is assumed.")]
-        private void Command_spawnball(string command, string parameters, Player p, ITarget target)
+        private void Command_spawnball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -2973,7 +2992,7 @@ namespace SS.Core.Modules
 
             int ballId;
 
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 ballId = 0;
             }
@@ -2997,7 +3016,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Displays the last known position of balls, as well as the player who is carrying it or who fired it, if applicable.")]
-        private void Command_ballinfo(string command, string parameters, Player p, ITarget target)
+        private void Command_ballinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -3045,7 +3064,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None, 
             Description = "Displays information about server internals. It currently includes information about object pooling.")]
-        private void Command_serverstats(string command, string parameters, Player p, ITarget target)
+        private void Command_serverstats(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             IObjectPoolManager poolManager = _broker.GetInterface<IObjectPoolManager>();
             if (poolManager != null)

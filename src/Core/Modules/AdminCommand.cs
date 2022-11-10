@@ -61,14 +61,14 @@ namespace SS.Core.Modules
             "subcommands: {flush} flushes the log file to disk (in preparation for\n" +
             "copying it, for example), and {reopen} tells the server to close and\n" +
             "re-open the log file (to rotate the log while the server is running).")]
-        private void Command_admlogfile(string commandName, string parameters, Player p, ITarget target)
+        private void Command_admlogfile(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.Equals(parameters, "flush", StringComparison.OrdinalIgnoreCase))
+            if (parameters.Equals("flush", StringComparison.OrdinalIgnoreCase))
             {
                 logFile.Flush();
                 chat.SendMessage(p, "Log file flushed.");
             }
-            else if (string.Equals(parameters, "reopen", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.Equals("reopen", StringComparison.OrdinalIgnoreCase))
             {
                 logFile.Reopen();
                 chat.SendMessage(p, "Log file reopened.");
@@ -81,7 +81,7 @@ namespace SS.Core.Modules
             Description =
                 "Transfers the specified file from the server to the client. The filename\n" +
                 "is considered relative to the current working directory.")]
-        private void Command_getfile(string command, string parameters, Player p, ITarget target)
+        private void Command_getfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!p.IsStandard)
             {
@@ -90,7 +90,7 @@ namespace SS.Core.Modules
             }
 
             string workingDir = fileTransfer.GetWorkingDirectory(p);
-            string path = Path.Combine(workingDir, parameters);
+            string path = Path.Join(workingDir, parameters);
 
             string fullPath = Path.GetFullPath(path);
             string currentDir = Directory.GetCurrentDirectory();
@@ -122,7 +122,7 @@ namespace SS.Core.Modules
                 "The server filename, if specified, will be considered relative to the\n" +
                 "current working directory. If omitted, the uploaded file will be placed\n" +
                 "in the current working directory and named the same as on the client.")]
-        private void Command_putfile(string command, string parameters, Player p, ITarget target)
+        private void Command_putfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!p.IsStandard)
             {
@@ -131,24 +131,22 @@ namespace SS.Core.Modules
             }
 
             string workingDir = fileTransfer.GetWorkingDirectory(p);
-            string clientFilename;
-            string serverFilename;
+            ReadOnlySpan<char> clientFilename;
+            ReadOnlySpan<char> serverFilename;
 
             int colonIndex = parameters.IndexOf(':');
             if (colonIndex != -1)
             {
-                clientFilename = parameters.Substring(0, colonIndex);
-                serverFilename = (colonIndex == parameters.Length - 1)
-                    ? null
-                    : parameters.Substring(colonIndex + 1);
+                clientFilename = parameters[..colonIndex];
+                serverFilename = parameters[(colonIndex + 1)..];
             }
             else
             {
                 clientFilename = parameters;
-                serverFilename = null;
+                serverFilename = "";
             }
 
-            string serverPath = Path.Combine(workingDir, serverFilename ?? Path.GetFileName(clientFilename));
+            string serverPath = Path.Join(workingDir, !serverFilename.IsEmpty ? serverFilename : clientFilename);
             string fullPath = Path.GetFullPath(serverPath);
             string currentDir = Directory.GetCurrentDirectory();
 
@@ -160,7 +158,7 @@ namespace SS.Core.Modules
             {
                 fileTransfer.RequestFile(
                     p, 
-                    clientFilename, 
+                    clientFilename.ToString(), 
                     FileUploaded,
                     new UploadContext(
                         p,
@@ -177,19 +175,17 @@ namespace SS.Core.Modules
                 "must be an absolute path; it is not considered relative to the previous\n" +
                 "working directory. If no arguments are specified, return to the server's\n" +
                 "root directory.")]
-        private void Command_cd(string command, string parameters, Player p, ITarget target)
+        private void Command_cd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
-                parameters = ".";
-
-            string fullPath = Path.GetFullPath(parameters);
+            string parametersStr = parameters.IsWhiteSpace() ? "." : parameters.ToString();
+            string fullPath = Path.GetFullPath(parametersStr);
             string currentDir = Directory.GetCurrentDirectory();
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
                 chat.SendMessage(p, "Invalid path.");
             }
-            else if (!Directory.Exists(parameters))
+            else if (!Directory.Exists(parametersStr))
             {
                 chat.SendMessage(p, "The specified path doesn't exist.");
             }
@@ -206,7 +202,7 @@ namespace SS.Core.Modules
             Description = 
                 "Prints the current server-side working directory.\n" +
                 "A working directory of \".\" indicates the server's root directory.")]
-        private void Command_pwd(string command, string parameters, Player p, ITarget target)
+        private void Command_pwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             chat.SendMessage(p, $"Current working directory: {fileTransfer.GetWorkingDirectory(p)}");
         }

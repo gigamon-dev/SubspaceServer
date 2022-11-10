@@ -44,9 +44,9 @@ namespace SS.Core.ComponentInterfaces
     /// </summary>
     /// <param name="commandName">The name of the command that was issued.</param>
     /// <param name="parameters">The characters the player typed after the command name.</param>
-    /// <param name="p">The player issuing the command.</param>
+    /// <param name="player">The player issuing the command.</param>
     /// <param name="target">The target of the command.</param>
-    public delegate void CommandDelegate(string commandName, string parameters, Player p, ITarget target);
+    public delegate void CommandDelegate(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target);
 
     /// <summary>
     /// Delegate for a command handler that also uses sounds.
@@ -56,7 +56,7 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="player">The player issuing the command.</param>
     /// <param name="target">The target of the command.</param>
     /// <param name="sound">The sound to use.</param>
-    public delegate void CommandWithSoundDelegate(string commandName, string parameters, Player player, ITarget target, ChatSound sound);
+    public delegate void CommandWithSoundDelegate(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target, ChatSound sound);
 
     /// <summary>
     /// Delegate for a 'default' command handler.
@@ -168,7 +168,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="commandName"></param>
         /// <param name="arena"></param>
         /// <returns></returns>
-        string GetHelpText(string commandName, Arena arena);
+        string GetHelpText(ReadOnlySpan<char> commandName, Arena arena);
 
         /// <summary>
         /// Adds a command from the collection of commands that should not have its parameters be included in logs.

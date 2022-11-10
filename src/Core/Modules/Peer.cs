@@ -930,14 +930,13 @@ namespace SS.Core.Modules
 
                 _peers.Clear();
 
-                //Span<char> peerSection = stackalloc char[7]; // TODO: Change to use a stackallocated Span<char> when IConfigManager is spannified.
+                Span<char> sectionSpan = stackalloc char[7];
                 for (int i = 0; i < 255; i++)
                 {
-                    //if (!MemoryExtensions.TryWrite(peerSection, $"Peer{i}", out int charsWritten))
-                    //continue;
+                    if (!MemoryExtensions.TryWrite(sectionSpan, $"Peer{i}", out int charsWritten))
+                        continue;
 
-                    //ReadOnlySpan<char> section = peerSection[..charsWritten];
-                    string peerSection = $"Peer{i}";
+                    ReadOnlySpan<char> peerSection = sectionSpan[..charsWritten];
 
                     string addressStr = _configManager.GetStr(_configManager.Global, peerSection, "Address");
                     if (string.IsNullOrWhiteSpace(addressStr))

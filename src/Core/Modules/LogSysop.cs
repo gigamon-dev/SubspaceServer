@@ -172,7 +172,7 @@ namespace SS.Core.Modules
             "If limiting text is specified, only lines that contain that text will\n" +
             "be displayed. If a player is targeted, only lines mentioning that player\n" +
             "will be displayed.")]
-        private void Command_lastlog(string commandName, string parameters, Player p, ITarget target)
+        private void Command_lastlog(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             target.TryGetPlayerTarget(out Player targetPlayer);
 
@@ -185,7 +185,7 @@ namespace SS.Core.Modules
                 MemoryExtensions.TryWrite(nameFilter, $"[{targetPlayer.Name}]", out _);
             }
 
-            ReadOnlySpan<char> args = parameters.AsSpan();
+            ReadOnlySpan<char> args = parameters;
             ReadOnlySpan<char> token = args.GetToken(' ', out ReadOnlySpan<char> textFilter);
 
             if (int.TryParse(token, out int count))

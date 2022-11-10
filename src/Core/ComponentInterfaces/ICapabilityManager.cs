@@ -35,30 +35,30 @@ namespace SS.Core.ComponentInterfaces
         /// file. Capabilities for commands are all named "cmd_foo" for ?foo,
         /// and "privcmd_foo" for /?foo.
         /// </summary>
-        /// <param name="p">the player to check</param>
+        /// <param name="player">the player to check</param>
         /// <param name="capability">the capability to check for</param>
         /// <returns>true if the player has the capability, otherwise false</returns>
-        bool HasCapability(Player p, ReadOnlySpan<char> capability);
+        bool HasCapability(Player player, ReadOnlySpan<char> capability);
 
         /// <summary>
         /// Check if a player has a given capability, using a name instead
         /// a player pointer.  This is intended to be used before the player's 
         /// name has been assigned. You shouldn't have to use this.
         /// </summary>
-        /// <param name="name"></param>
+        /// <param name="playerName"></param>
         /// <param name="capability"></param>
         /// <returns></returns>
-        bool HasCapability(ReadOnlySpan<char> name, ReadOnlySpan<char> capability);
+        bool HasCapability(ReadOnlySpan<char> playerName, ReadOnlySpan<char> capability);
 
         /// <summary>
         /// Checks if a player has a given capability in an arena other than
         /// the one he's currently in.
         /// </summary>
-        /// <param name="p">the player</param>
-        /// <param name="a">the arena to check in</param>
+        /// <param name="player">the player</param>
+        /// <param name="arena">the arena to check in</param>
         /// <param name="capability">the capability to check for</param>
         /// <returns>true if the player would have the requested capability, if he were in that arena</returns>
-        bool HasCapability(Player p, Arena a, ReadOnlySpan<char> capability);
+        bool HasCapability(Player player, Arena arena, ReadOnlySpan<char> capability);
 
         /// <summary>
         /// Determines if a player can perform actions on another player.
@@ -67,9 +67,9 @@ namespace SS.Core.ComponentInterfaces
         /// The exact meaning of "higher" is determined by the capability
         /// manger, but it should at least be transitive.
         /// </summary>
-        /// <param name="a">a player</param>
-        /// <param name="b">a player</param>
-        /// <returns>true if a is higher than b, otherwise false</returns>
+        /// <param name="a">The first player.</param>
+        /// <param name="b">The second player.</param>
+        /// <returns><see langword="true"/> if <paramref name="a"/> is higher than <paramref name="b"/>, otherwise <see langword="false"/>.</returns>
         bool HigherThan(Player a, Player b);
     }
 }

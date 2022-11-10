@@ -234,11 +234,11 @@ namespace SS.Core.Modules
             "turns it on, 0 turns it off, and no argument toggles. If sent as a\n" +
             "public command, only {?watchdamage 0} is meaningful, and it turns off\n" +
             "damage watching on all players.")]
-        private void Command_watchdamage(string commandName, string parameters, Player p, ITarget target)
+        private void Command_watchdamage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (target.Type == TargetType.Arena)
             {
-                if (string.Equals(parameters, "0", StringComparison.OrdinalIgnoreCase))
+                if (parameters.Equals("0", StringComparison.OrdinalIgnoreCase))
                 {
                     // Remove all subscriptions the player has on other players.
                     ((IWatchDamage)this).ClearWatch(p, false);
@@ -253,7 +253,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (string.Equals(parameters, "0", StringComparison.OrdinalIgnoreCase))
+                if (parameters.Equals("0", StringComparison.OrdinalIgnoreCase))
                 {
                     // off
                     if (((IWatchDamage)this).TryRemoveWatch(p, targetPlayer))
@@ -261,7 +261,7 @@ namespace SS.Core.Modules
                         _chat.SendMessage(p, $"Damage watching of {targetPlayer.Name} turned off.");
                     }
                 }
-                else if (string.Equals(parameters, "1", StringComparison.OrdinalIgnoreCase))
+                else if (parameters.Equals("1", StringComparison.OrdinalIgnoreCase))
                 {
                     // on
                     if (((IWatchDamage)this).TryAddWatch(p, targetPlayer))

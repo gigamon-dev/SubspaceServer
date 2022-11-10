@@ -66,7 +66,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<message>",
             Description = "Sends the message to all online staff members.")]
-        private void Command_NotifyCommand(string commandName, string parameters, Player p, ITarget target)
+        private void Command_NotifyCommand(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
 
             if (_chat.GetPlayerChatMask(p).IsAllowed(ChatMessageType.ModChat))
             {
-                if (string.IsNullOrWhiteSpace(parameters))
+                if (parameters.IsWhiteSpace())
                 {
                     _chat.SendMessage(p, !string.IsNullOrWhiteSpace(_emptyReply) ? _emptyReply : "Please include a message to send to online staff.");
                 }

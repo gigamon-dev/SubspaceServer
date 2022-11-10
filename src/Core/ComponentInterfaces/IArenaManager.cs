@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using System;
 using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
@@ -43,7 +44,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arenaName">the arena to send him to</param>
         /// <param name="spawnx">the x coord he should spawn at, or 0 for default</param>
         /// <param name="spawny">the y coord he should spawn at, or 0 for default</param>
-        void SendToArena(Player p, string arenaName, int spawnx, int spawny);
+        void SendToArena(Player p, ReadOnlySpan<char> arenaName, int spawnx, int spawny);
 
         /// <summary>
         /// This is a function for locating arenas.

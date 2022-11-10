@@ -125,7 +125,7 @@ namespace SS.Core.Modules
             "Kicks the player off of the server, with an optional timeout. (-s number, -t number, or number for seconds, -m number for minutes.)\n" +
             "For kicks with a timeout, you may provide a message to be displayed to the user.\n" +
             "Messages appear to users on timeout as \"You have been temporarily kicked for <reason>.\"")]
-        private void Command_kick(string commandName, string parameters, Player p, ITarget target)
+        private void Command_kick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
@@ -150,11 +150,11 @@ namespace SS.Core.Modules
 
                 if (parameters.StartsWith("-t") || parameters.StartsWith("-s"))
                 {
-                    ReadOnlySpan<char> token = parameters.AsSpan(2).GetToken(' ', out reason);
+                    ReadOnlySpan<char> token = parameters[2..].GetToken(' ', out reason);
                     if (token.IsEmpty
                         || !int.TryParse(token, out int numValue))
                     {
-                        _chat.SendMessage(p, $"{parameters.AsSpan(0, 2)} was specified, but invalid input for a timeout period.");
+                        _chat.SendMessage(p, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
                         return;
                     }
 
@@ -162,11 +162,11 @@ namespace SS.Core.Modules
                 }
                 else if (parameters.StartsWith("-m"))
                 {
-                    ReadOnlySpan<char> token = parameters.AsSpan(2).GetToken(' ', out reason);
+                    ReadOnlySpan<char> token = parameters[2..].GetToken(' ', out reason);
                     if (token.IsEmpty
                         || !int.TryParse(token, out int numValue))
                     {
-                        _chat.SendMessage(p, $"{parameters.AsSpan(0, 2)} was specified, but invalid input for a timeout period.");
+                        _chat.SendMessage(p, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
                         return;
                     }
 
@@ -174,7 +174,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    ReadOnlySpan<char> token = parameters.AsSpan().GetToken(' ', out reason);
+                    ReadOnlySpan<char> token = parameters.GetToken(' ', out reason);
                     if (!token.IsEmpty
                         && int.TryParse(token, out int numValue))
                     {
@@ -182,7 +182,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        reason = parameters.AsSpan();
+                        reason = parameters;
                     }
                 }
 
@@ -214,7 +214,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Lists the current kicks (machine-id bans) in effect.")]
-        private void Command_listkick(string commandName, string parameters, Player p, ITarget target)
+        private void Command_listkick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
             try
@@ -249,7 +249,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<machine id>",
             Description = "Removes a machine id ban.")]
-        private void Command_delkick(string commandName, string parameters, Player p, ITarget target)
+        private void Command_delkick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!uint.TryParse(parameters, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint macId))
             {

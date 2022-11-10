@@ -420,7 +420,7 @@ namespace SS.Matchmaking.Modules
             Description = 
             "Starts a matchmaking search.\n" +
             "An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.")]
-        private void Command_next(string commandName, string parameters, Player player, ITarget target)
+        private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Status != PlayerState.Playing || player.Arena == null)
                 return;
@@ -444,7 +444,7 @@ namespace SS.Matchmaking.Modules
                     return;
             }
 
-            if (string.Equals(parameters, "-list", StringComparison.OrdinalIgnoreCase))
+            if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase))
             {
                 // Print usage details.
                 switch (usageData.State)
@@ -511,7 +511,7 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (string.Equals(parameters, "-listall", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.Equals("-listall", StringComparison.OrdinalIgnoreCase))
             {
                 // TOOD: include stats of how many players and groups are in each queeue
                 foreach (var queue in _queues.Values)
@@ -524,7 +524,7 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (string.Equals(parameters, "-auto", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.Equals("-auto", StringComparison.OrdinalIgnoreCase))
             {
                 _chat.SendMessage(player, $"{NextCommandName}: Automatic requeuing {(usageData.AutoRequeue ? "disabled" : "enabled")}.");
                 usageData.AutoRequeue = !usageData.AutoRequeue;
@@ -545,20 +545,20 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 // No queue name(s) were specified. Check if there is a default queue for the arena.
                 var advisors = _broker.GetAdvisors<IMatchmakingQueueAdvisor>();
                 foreach (var advisor in advisors)
                 {
                     parameters = advisor.GetDefaultQueue(player.Arena);
-                    if (!string.IsNullOrWhiteSpace(parameters))
+                    if (!parameters.IsWhiteSpace())
                     {
                         break;
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(parameters))
+                if (parameters.IsWhiteSpace())
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: You must specify which queue(s) to search on.");
                     return;
@@ -750,7 +750,7 @@ namespace SS.Matchmaking.Modules
             Args = "<none> | [<queue name>[, <queue name>[, ...]]]",
             Description = "Cancels a matchmaking search.\n" +
             "Use the command without specifying a <queue name> to remove from all matchmaking queues.")]
-        private void Command_cancel(string commandName, string parameters, Player player, ITarget target)
+        private void Command_cancel(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // Check if the player is in a group.
             IPlayerGroup group = _playerGroups.GetGroup(player);
@@ -777,7 +777,7 @@ namespace SS.Matchmaking.Modules
                     return;
             }
 
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 if (usageData.State == QueueState.Playing && usageData.AutoRequeue)
                 {

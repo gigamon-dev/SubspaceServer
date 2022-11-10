@@ -1,5 +1,7 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
 
 namespace SS.Core.Modules
@@ -32,58 +34,26 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<ICapabilityManager> _iCapabilityManagerToken;
         private InterfaceRegistrationToken<IGroupManager> _iGroupManagerToken;
 
-        /// <summary>
-        /// Enumeration representing the source of group membership.
-        /// </summary>
-        private enum GroupSource
-        {
-            /// <summary>
-            /// No source, default value.
-            /// </summary>
-            Default,
-
-            /// <summary>
-            /// Global config, Global section: [(global)]
-            /// </summary>
-            Global,
-
-            /// <summary>
-            /// Global config, Arena section: [&lt;arena base name&gt;]
-            /// </summary>
-            Arena,
-
-#if CFG_USE_ARENA_STAFF_LIST
-            /// <summary>
-            /// Arena config, [Staff] section
-            /// </summary>
-            ArenaList, 
-#endif
-            /// <summary>
-            /// Temporary, not persisted in a config file.
-            /// </summary>
-            Temp,
-        }
-
-        private class PlayerData
-        {
-            /// <summary>
-            /// The player's current group.
-            /// </summary>
-            public string Group;
-
-            /// <summary>
-            /// The source of the <see cref="Group"/>.
-            /// </summary>
-            public GroupSource Source;
-        }
-
         private PlayerDataKey<PlayerData> _pdkey;
+        private readonly PlayerDataPooledObjectPolicy _playerDataPooledObjectPolicy = new();
+        private readonly ObjectPool<PlayerData> _playerDataPool;
 
         private ConfigHandle _groupDefConfHandle;
         private ConfigHandle _staffConfHandle;
 
         private const string Group_Default = "default";
         private const string Group_None = "none";
+
+        private Trie<string> _groupNameCache = new(false)
+        {
+            { Group_Default, Group_Default },
+            { Group_None, Group_None }
+        };
+
+        public CapabilityManager()
+        {
+            _playerDataPool = new DefaultObjectPool<PlayerData>(_playerDataPooledObjectPolicy);
+        }
 
         #region IModule Members
 
@@ -100,7 +70,7 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
-            _pdkey = _playerData.AllocatePlayerData<PlayerData>();
+            _pdkey = _playerData.AllocatePlayerData(_playerDataPooledObjectPolicy); // separate pool from ours, but it's ok
 
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
@@ -137,12 +107,12 @@ namespace SS.Core.Modules
 
         #region ICapabilityManager Members
 
-        bool ICapabilityManager.HasCapability(Player p, ReadOnlySpan<char> capability)
+        bool ICapabilityManager.HasCapability(Player player, ReadOnlySpan<char> capability)
         {
-            if (p == null)
+            if (player == null)
                 return false;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
                 return false;
 
             return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
@@ -157,15 +127,21 @@ namespace SS.Core.Modules
             return _configManager.GetStr(_groupDefConfHandle, group, capability) != null;
         }
 
-        bool ICapabilityManager.HasCapability(Player p, Arena arena, ReadOnlySpan<char> capability)
+        bool ICapabilityManager.HasCapability(Player player, Arena arena, ReadOnlySpan<char> capability)
         {
-            if (p == null || arena == null)
+            if (player == null || arena == null)
                 return false;
 
-            PlayerData tempPd = new PlayerData();
-            UpdateGroup(p, tempPd, arena, false);
-
-            return _configManager.GetStr(_groupDefConfHandle, tempPd.Group, capability) != null;
+            PlayerData tempPlayerData = _playerDataPool.Get();
+            try
+            {
+                UpdateGroup(player, tempPlayerData, arena, false);
+                return _configManager.GetStr(_groupDefConfHandle, tempPlayerData.Group, capability) != null;
+            }
+            finally
+            {
+                _playerDataPool.Return(tempPlayerData);
+            }
         }
 
         bool ICapabilityManager.HigherThan(Player a, Player b)
@@ -173,92 +149,92 @@ namespace SS.Core.Modules
             if (a == null || b == null)
                 return false;
 
-            if (!b.TryGetExtraData(_pdkey, out PlayerData bpd))
+            if (!b.TryGetExtraData(_pdkey, out PlayerData bPlayerData))
                 return false;
 
-            return ((ICapabilityManager)this).HasCapability(a, $"higher_than_{bpd.Group}");
+            return ((ICapabilityManager)this).HasCapability(a, $"higher_than_{bPlayerData.Group}");
         }
 
         #endregion
 
         #region IGroupManager Members
 
-        string IGroupManager.GetGroup(Player p)
+        string IGroupManager.GetGroup(Player player)
         {
-            if (p == null)
+            if (player == null)
                 return null;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return null;
 
-            return pd.Group;
+            return playerData.Group;
         }
 
-        void IGroupManager.SetPermGroup(Player p, string group, bool global, string info)
+        void IGroupManager.SetPermGroup(Player player, ReadOnlySpan<char> group, bool global, string comment)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return;
 
             // first set it for the current session
-            pd.Group = group;
+            playerData.Group = GetOrAddCachedGroupName(group);
 
             // now set it permanently
             if (global)
             {
-                _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, p.Name, group, info, true);
-                pd.Source = GroupSource.Global;
+                _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name, playerData.Group, comment, true);
+                playerData.Source = GroupSource.Global;
             }
-            else if (p.Arena != null)
+            else if (player.Arena != null)
             {
-                _configManager.SetStr(_staffConfHandle, p.Arena.BaseName, p.Name, group, info, true);
-                pd.Source = GroupSource.Arena;
+                _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name, playerData.Group, comment, true);
+                playerData.Source = GroupSource.Arena;
             }
         }
 
-        void IGroupManager.SetTempGroup(Player p, string group)
+        void IGroupManager.SetTempGroup(Player player, ReadOnlySpan<char> group)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (string.IsNullOrWhiteSpace(group))
+            if (group.IsWhiteSpace())
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return;
 
-            pd.Group = group;
-            pd.Source = GroupSource.Temp;
+            playerData.Group = GetOrAddCachedGroupName(group);
+            playerData.Source = GroupSource.Temp;
         }
 
-        void IGroupManager.RemoveGroup(Player p, string info)
+        void IGroupManager.RemoveGroup(Player player, string comment)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return;
 
             // in all cases, set current group to default
-            pd.Group = Group_Default;
+            playerData.Group = Group_Default;
 
-            switch (pd.Source)
+            switch (playerData.Source)
             {
                 case GroupSource.Default:
                     break; // player is in the default group already, nothing to do
 
                 case GroupSource.Global:
-                    _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, p.Name, Group_Default, info, true);
+                    _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name, Group_Default, comment, true);
                     break;
 
                 case GroupSource.Arena:
-                    _configManager.SetStr(_staffConfHandle, p.Arena.BaseName, p.Name, Group_Default, info, true);
+                    _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name, Group_Default, comment, true);
                     break;
 #if CFG_USE_ARENA_STAFF_LIST
-                case CapSource.ArenaList:
-                    _configManager.SetStr(p.Arena.Cfg, "Staff", p.Name, Group_Default, info);
+                case GroupSource.ArenaList:
+                    _configManager.SetStr(player.Arena.Cfg, "Staff", player.Name, Group_Default, comment, true);
                     break;
 #endif
                 case GroupSource.Temp:
@@ -266,34 +242,36 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IGroupManager.CheckGroupPassword(string group, string pw)
+        bool IGroupManager.CheckGroupPassword(ReadOnlySpan<char> group, ReadOnlySpan<char> pw)
         {
             string correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
 
             if (string.IsNullOrWhiteSpace(correctPw))
                 return false;
 
-            return string.Equals(correctPw, pw, StringComparison.OrdinalIgnoreCase);
+            return pw.Equals(correctPw, StringComparison.Ordinal);
         }
 
         #endregion
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        #region Callbacks
+
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
             switch (action)
             {
                 case PlayerAction.PreEnterArena:
-                    UpdateGroup(p, pd, arena, true);
+                    UpdateGroup(player, pd, arena, true);
                     break;
 
                 case PlayerAction.Connect:
-                    UpdateGroup(p, pd, null, true);
+                    UpdateGroup(player, pd, null, true);
                     break;
 
                 case PlayerAction.Disconnect:
@@ -303,65 +281,147 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_NewPlayer(Player p, bool isNew)
+        private void Callback_NewPlayer(Player player, bool isNew)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (isNew)
             {
-                if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
                     return;
 
                 pd.Group = Group_None;
             }
         }
 
-        private void UpdateGroup(Player p, PlayerData pd, Arena arena, bool log)
+        #endregion
+
+        private void UpdateGroup(Player player, PlayerData playerData, Arena arena, bool log)
         {
-            if (p == null || pd == null)
+            if (player == null || playerData == null)
                 return;
 
-            if (!p.Flags.Authenticated)
+            if (!player.Flags.Authenticated)
             {
                 // if the player hasn't been authenticated against either the
                 // biller or password file, don't assign groups based on name.
-                pd.Group = Group_Default;
-                pd.Source = GroupSource.Default;
+                playerData.Group = Group_Default;
+                playerData.Source = GroupSource.Default;
                 return;
             }
 
-            string g;
-            if (arena != null && !string.IsNullOrEmpty(g = _configManager.GetStr(_staffConfHandle, arena.BaseName, p.Name)))
+            string group;
+            if (arena != null && !string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, arena.BaseName, player.Name)))
             {
-                pd.Group = g;
-                pd.Source = GroupSource.Arena;
+                playerData.Group = GetOrAddCachedGroupName(group);
+                playerData.Source = GroupSource.Arena;
 
                 if (log)
-                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, $"Assigned to group '{pd.Group}' (arena).");
+                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), player, $"Assigned to group '{playerData.Group}' (arena).");
             }
 #if CFG_USE_ARENA_STAFF_LIST
-            else if (arena != null && arena.Cfg != null && !string.IsNullOrEmpty(g = _configManager.GetStr(arena.Cfg, "Staff", p.Name)))
+            else if (arena != null && arena.Cfg != null && !string.IsNullOrEmpty(group = _configManager.GetStr(arena.Cfg, "Staff", player.Name)))
             {
-                pd.Group = g;
-                pd.Source = CapSource.ArenaList;
+                playerData.Group = GetOrAddCachedGroupName(group);
+                playerData.Source = GroupSource.ArenaList;
+
                 if (log)
-                    _logManager.LogP(LogLevel.Drivel, "CapabilityManager", p, "assigned to group '{0}' (arenaconf)", pd.Group);
+                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), player, $"Assigned to group '{playerData.Group}' (arenaconf)");
             }
 #endif
-            else if (!string.IsNullOrEmpty(g = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, p.Name)))
+            else if (!string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name)))
             {
                 // only global groups available for now
-                pd.Group = g;
-                pd.Source = GroupSource.Global;
+                playerData.Group = GetOrAddCachedGroupName(group);
+                playerData.Source = GroupSource.Global;
+
                 if (log)
-                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), p, $"Assigned to group '{pd.Group}' (global).");
+                    _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), player, $"Assigned to group '{playerData.Group}' (global).");
             }
             else
             {
-                pd.Group = Group_Default;
-                pd.Source = GroupSource.Default;
+                playerData.Group = Group_Default;
+                playerData.Source = GroupSource.Default;
             }
         }
+
+        private string GetOrAddCachedGroupName(ReadOnlySpan<char> group)
+        {
+            if (_groupNameCache.TryGetValue(group, out string groupStr))
+                return groupStr;
+
+            // Add it to the cache.
+            groupStr = group.ToString();
+            _groupNameCache.Add(group, groupStr);
+            return groupStr;
+        }
+
+        #region Helper Types
+
+        /// <summary>
+        /// Enumeration representing the source of group membership.
+        /// </summary>
+        private enum GroupSource
+        {
+            /// <summary>
+            /// No source, default value.
+            /// </summary>
+            Default,
+
+            /// <summary>
+            /// Global config, Global section: [(global)]
+            /// </summary>
+            Global,
+
+            /// <summary>
+            /// Global config, Arena section: [&lt;arena base name&gt;]
+            /// </summary>
+            Arena,
+
+#if CFG_USE_ARENA_STAFF_LIST
+            /// <summary>
+            /// Arena config, [Staff] section
+            /// </summary>
+            ArenaList,
+#endif
+            /// <summary>
+            /// Temporary, not persisted in a config file.
+            /// </summary>
+            Temp,
+        }
+
+        private class PlayerData
+        {
+            /// <summary>
+            /// The player's current group.
+            /// </summary>
+            public string Group;
+
+            /// <summary>
+            /// The source of the <see cref="Group"/>.
+            /// </summary>
+            public GroupSource Source;
+        }
+
+        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
+        {
+            public PlayerData Create()
+            {
+                return new PlayerData();
+            }
+
+            public bool Return(PlayerData obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Group = Group_Default;
+                obj.Source = GroupSource.Default;
+                return true;
+            }
+        }
+
+        #endregion
     }
 }

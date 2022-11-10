@@ -307,7 +307,7 @@ namespace SS.Core.Modules.Scoring
             Description = "Changes score of current soccer game, based on arguments. Only supports\n" +
             "first eight freqs, and arena must be in absolute scoring mode \n" +
             "(Soccer:CapturePoints < 0).")]
-        private void Command_setscore(string commandName, string parameters, Player p, ITarget target)
+        private void Command_setscore(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -352,7 +352,7 @@ namespace SS.Core.Modules.Scoring
             Targets = CommandTarget.None,
             Args = null,
             Description = "Returns the current score of the soccer game in progress.")]
-        private void Command_score(string commandName, string parameters, Player p, ITarget target)
+        private void Command_score(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null)
@@ -365,7 +365,7 @@ namespace SS.Core.Modules.Scoring
             Targets = CommandTarget.None,
             Args = null,
             Description = "Resets soccer game scores and balls.")]
-        private void Command_resetgame(string commandName, string parameters, Player p, ITarget target)
+        private void Command_resetgame(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             ResetGame(p.Arena, p);
         }

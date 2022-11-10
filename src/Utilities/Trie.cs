@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 #nullable enable
 
@@ -17,12 +18,15 @@ namespace SS.Utilities
     {
         private readonly Trie<byte> _trie;
 
+        /// <summary>
+        /// Initializes a new case sensitive instance of the <see cref="Trie"/> class.
+        /// </summary>
         public Trie() : this(true)
         {
         }
 
         /// <summary>
-        /// Creates a new instance of a <see cref="Trie{TValue}"/>.
+        /// Initializes a new instance of the <see cref="Trie"/> class.
         /// </summary>
         /// <param name="caseSensitive">Whether the trie is case sensitive.</param>
         public Trie(bool caseSensitive)
@@ -30,18 +34,36 @@ namespace SS.Utilities
             _trie = new(caseSensitive);
         }
 
+        /// <summary>
+        /// Gets the number of elements that are contained in the trie.
+        /// </summary>
         public int Count => _trie.Count;
 
+        /// <summary>
+        /// Attempts to add the specified <paramref name="key"/> to the trie.
+        /// </summary>
+        /// <param name="key">The key of the element to add.</param>
+        /// <returns><see langword="true"/> if the key was added; otherwise <see langword="false"/>.</returns>
         public bool Add(ReadOnlySpan<char> key)
         {
             return _trie.TryAdd(key, 0);
         }
 
+        /// <summary>
+        /// Removes the specified <paramref name="key"/> from the trie.
+        /// </summary>
+        /// <param name="key">The key of the element to remove.</param>
+        /// <returns><see langword="true"/> if the element was removed; otherwise <see langword="false"/>.</returns>
         public bool Remove(ReadOnlySpan<char> key)
         {
             return _trie.Remove(key, out _);
         }
 
+        /// <summary>
+        /// Determines whether the trie contains the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key to search for.</param>
+        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool Contains(ReadOnlySpan<char> key)
         {
             return _trie.ContainsKey(key);
@@ -62,6 +84,9 @@ namespace SS.Utilities
             return GetEnumerator();
         }
 
+        /// <summary>
+        /// Removes all elements from the trie.
+        /// </summary>
         public void Clear()
         {
             _trie.Clear();
@@ -80,14 +105,14 @@ namespace SS.Utilities
         private readonly TrieNode<TValue> _root;
 
         /// <summary>
-        /// Creates a new instance of a case sensitive <see cref="Trie{TValue}"/>.
+        /// Initializes a new case sensitive instance of the <see cref="Trie{TValue}"/> class.
         /// </summary>
         public Trie() : this(true)
         {
         }
 
         /// <summary>
-        /// Creates a new instance of a <see cref="Trie{TValue}"/>.
+        /// Initializes a new instance of the <see cref="Trie{TValue}"/> class.
         /// </summary>
         /// <param name="caseSensitive">Whether the trie is case sensitive.</param>
         public Trie(bool caseSensitive)
@@ -96,8 +121,60 @@ namespace SS.Utilities
             _root = _trieNodePool.Get();
         }
 
+        /// <summary>
+        /// Gets the number of elements that are contained in the trie.
+        /// </summary>
         public int Count { get; private set; } = 0;
 
+        /// <summary>
+        /// Gets or sets the value associated with the specified <paramref name="key"/>.
+        /// </summary>
+        /// <remarks>
+        /// When setting, if the <paramref name="key"/> is already in the trie, the existing value is replaced with the specified value.
+        /// </remarks>
+        /// <param name="key">The key.</param>
+        /// <returns>The value associated with the <paramref name="key"/>.</returns>
+        /// <exception cref="KeyNotFoundException">The <paramref name="key"/> does not exist in the trie.</exception>
+        public TValue this[ReadOnlySpan<char> key]
+        {
+            get
+            {
+                if (TryGetValue(key, out TValue? value))
+                    return value;
+
+                throw new KeyNotFoundException();
+            }
+
+            set
+            {
+                if (!TryAdd(key, value))
+                {
+                    // Replace the existing value.
+                    // TODO: Change to just replace into the existing ndoe instead of removing and then re-adding.
+                    Remove(key, out _);
+                    TryAdd(key, value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds the specified <paramref name="key"/> and <paramref name="value"/> to the trie.
+        /// </summary>
+        /// <param name="key">The key of the element to add.</param>
+        /// <param name="value">The value of the element to add.</param>
+        /// <exception cref="ArgumentException">An element with the same key already exists.</exception>
+        public void Add(ReadOnlySpan<char> key, TValue value)
+        {
+            if (!TryAdd(key, value))
+                throw new ArgumentException("An element with the same key already exists.", nameof(key));
+        }
+
+        /// <summary>
+        /// Attempts to add the specified <paramref name="key"/> and <paramref name="value"/> to the trie.
+        /// </summary>
+        /// <param name="key">The key of the element to add.</param>
+        /// <param name="value">The value of the element to add.</param>
+        /// <returns><see langword="true"/> if the key/value pair was added; otherwise <see langword="false"/>.</returns>
         public bool TryAdd(ReadOnlySpan<char> key, TValue value)
         {
             if (key.IsEmpty)
@@ -134,6 +211,12 @@ namespace SS.Utilities
             return true;
         }
 
+        /// <summary>
+        /// Removes the element with the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key of the element to remove.</param>
+        /// <param name="value">The value removed.</param>
+        /// <returns><see langword="true"/> if the element was removed; otherwise <see langword="false"/>.</returns>
         public bool Remove(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
         {
             if (key.IsEmpty)
@@ -190,6 +273,11 @@ namespace SS.Utilities
             }
         }
 
+        /// <summary>
+        /// Determines whether the trie contains the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key to search for.</param>
+        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool ContainsKey(ReadOnlySpan<char> key)
         {
             if (key.IsEmpty)
@@ -215,6 +303,12 @@ namespace SS.Utilities
             return current.IsLeaf;
         }
 
+        /// <summary>
+        /// Gets the value associated with the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key to search for.</param>
+        /// <param name="value">The value if found. Otherwise, the <see langword="default"/> value.</param>
+        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool TryGetValue(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
         {
             if (key.IsEmpty)
@@ -256,6 +350,7 @@ namespace SS.Utilities
         //{
         //}
 
+        // TODO: can this be made more efficient (no allocations) by using an enumerator struct?
         public IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)> GetEnumerator()
         {
             foreach (var key in EnumerateKeys(_root))
@@ -311,6 +406,7 @@ namespace SS.Utilities
             return GetEnumerator();
         }
 
+        // TODO: can this be made more efficient (no allocations) by using an enumerator struct?
         public IEnumerator<ReadOnlyMemory<char>> Keys
         {
             get
@@ -364,6 +460,58 @@ namespace SS.Utilities
             }
         }
 
+        // TODO: can this be made more efficient (no allocations) by using an enumerator struct?
+        public IEnumerable<TValue?> Values
+        {
+            get
+            {
+                foreach (var value in EnumerateValues(_root))
+                {
+                    yield return value;
+                }
+
+                IEnumerable<TValue?> EnumerateValues(TrieNode<TValue> node)
+                {
+                    if (node.IsLeaf)
+                    {
+                        yield return node.Value;
+                    }
+
+                    foreach (var childKVP in node.Children)
+                    {
+                        foreach (var value in EnumerateValues(childKVP.Value))
+                        {
+                            yield return value;
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+        public ValueEnumerator<TValue> Values => new ValueEnumerator(this);
+
+        public struct ValueEnumerator<TData>
+        {
+            private readonly Trie<TData> _trie;
+            //private TrieNode<TData>
+
+            internal ValueEnumerator(Trie<TData> trie)
+            {
+                _trie = trie;
+            }
+
+            public TData? Current { get; private set; }
+
+            public bool MoveNext()
+            {
+            }
+        }
+        */
+
+        /// <summary>
+        /// Removes all elements from the trie.
+        /// </summary>
         public void Clear()
         {
             RemoveAllChildren(_root);

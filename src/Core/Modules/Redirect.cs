@@ -19,7 +19,7 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IRedirect> _iRedirectRegistrationToken;
 
-        private readonly Dictionary<string, RegisteredRedirect> _redirectCache = new();
+        private readonly Trie<RegisteredRedirect> _redirectCache = new(false);
 
         #region Module members
 
@@ -54,7 +54,7 @@ namespace SS.Core.Modules
             "player tries to ?go to an arena name listed in this section, they " +
             "will be redirected to the zone specified as the value of the " +
             "setting. The format of values is 'ip:port[:arena]'.")]
-        bool IRedirect.AliasRedirect(ITarget target, string destination)
+        bool IRedirect.AliasRedirect(ITarget target, ReadOnlySpan<char> destination)
         {
             if (target == null)
                 return false;
@@ -62,7 +62,7 @@ namespace SS.Core.Modules
             if (!_redirectCache.TryGetValue(destination, out RegisteredRedirect registeredRedirect))
             {
                 bool isAlias = true;
-                string value = _configManager.GetStr(_configManager.Global, "Redirects", destination);
+                ReadOnlySpan<char> value = _configManager.GetStr(_configManager.Global, "Redirects", destination);
                 if (value == null)
                 {
                     // If it's not an alias, then maybe it's a literal address.
@@ -134,7 +134,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Any,
             Args = "<redirect alias> | <ip>:<port>[:<arena>]",
             Description = "Redirects the target to a different zone.")]
-        private void Command_redirect(string command, string parameters, Player p, ITarget target)
+        private void Command_redirect(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (target.Type == TargetType.Arena)
             {

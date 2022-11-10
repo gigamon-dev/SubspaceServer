@@ -1011,7 +1011,7 @@ namespace SS.Core.Modules.Scoring
             "target, yourself. By default, it will show arena stats. Use {-g} to switch it to\n" +
             "show global (zone-wide) stats. An interval name can be specified as an argument.\n" +
             "By default, the per-reset interval is used.")]
-        private void Command_stats(string commandName, string parameters, Player p, ITarget target)
+        private void Command_stats(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {

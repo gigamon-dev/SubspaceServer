@@ -287,9 +287,9 @@ namespace SS.Core.Modules
             "server.\n")]
         [ConfigHelp("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
             Description = "If true, you must be authenticated (have used a correct password) according to this module or some other module before using ?local_password to change your local password.")]
-        private void Command_passwd(string command, string parameters, Player p, ITarget target)
+        private void Command_passwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 chat.SendMessage(p, "You must specify a password.");
             }
@@ -315,15 +315,15 @@ namespace SS.Core.Modules
             Description =
             "Adds a player to passwd.conf with no set password. This will allow them\n" +
             "to log in when AllowUnknown is set to false, and has no use otherwise.\n")]
-        private void Command_addallowed(string command, string parameters, Player p, ITarget target)
+        private void Command_addallowed(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 chat.SendMessage(p, "You must specify a player name.");
                 return;
             }
 
-            config.SetStr(pwdFile, "users", parameters, "any", $"added by {p.Name} on {DateTime.UtcNow}", true);
+            config.SetStr(pwdFile, "users", parameters.ToString(), "any", $"added by {p.Name} on {DateTime.UtcNow}", true);
             chat.SendMessage(p, $"Added {parameters} to the allowed player list.");
         }
 
@@ -333,7 +333,7 @@ namespace SS.Core.Modules
             Description =
             "If used on a player that has no local password set, it will set their\n" +
             "local password to the password they used to log in to this session.\n")]
-        private void Command_set_local_password(string command, string parameters, Player p, ITarget target)
+        private void Command_set_local_password(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {

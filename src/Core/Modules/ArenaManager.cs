@@ -422,7 +422,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManager.SendToArena(Player player, string arenaName, int spawnx, int spawny)
+        void IArenaManager.SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnx, int spawny)
         {
             switch(player.Type)
             {
@@ -544,7 +544,7 @@ namespace SS.Core.Modules
             playing = playingCount;
         }
 
-        private void CompleteGo(Player player, string reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
+        private void CompleteGo(Player player, ReadOnlySpan<char> reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
         {
             // status should be LoggedIn or Playing at this point
             if (player.Status != PlayerState.LoggedIn && player.Status != PlayerState.Playing && player.Status != PlayerState.LeavingArena)

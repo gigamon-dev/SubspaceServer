@@ -120,7 +120,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<duration>", 
             Description = "Sets the arena timer. Not for arenas using a Misc:TimedGame.")]
-        private void Command_timer(string commandName, string parameters, Player p, ITarget target)
+        private void Command_timer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -158,7 +158,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Returns the amount of time left in the current game.")]
-        private void Command_time(string commandName, string parameters, Player p, ITarget target)
+        private void Command_time(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -206,7 +206,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Resets a timed game for arenas using the Misc:TimedGame setting.")]
-        private void Command_timereset(string commandName, string parameters, Player p, ITarget target)
+        private void Command_timereset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -227,7 +227,7 @@ namespace SS.Core.Modules
             Args = null,
             Description = "Toggles the time between paused and unpaused.\n" +
             "The timer must have been created with ?timer.")]
-        private void Command_pausetimer(string commandName, string parameters, Player p, ITarget target)
+        private void Command_pausetimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             Arena arena = p.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))

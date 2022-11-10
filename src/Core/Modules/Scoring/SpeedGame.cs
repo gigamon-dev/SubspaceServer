@@ -158,7 +158,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Commands
 
-        private void Command_best(string commandName, string parameters, Player player, ITarget target)
+        private void Command_best(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = player;
@@ -179,7 +179,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Command_speedstats(string commandName, string parameters, Player player, ITarget target)
+        private void Command_speedstats(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;
             if (arena == null)

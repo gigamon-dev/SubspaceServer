@@ -119,7 +119,15 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Command_quickfix(string command, string parameters, Player p, ITarget target)
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<limiting text>",
+            Description = 
+            "Lets you quickly change arena settings. This will display some list of\n" +
+            "settings with their current values and allow you to change them. The\n" +
+            "argument to this command can be used to limit the list of settings\n" +
+            "displayed. (With no arguments, equivalent to ?getsettings in subgame.)")]
+        private void Command_quickfix(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
             {
@@ -137,7 +145,6 @@ namespace SS.Core.Modules
 
             try
             {
-
                 using FileStream fs = File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                 using StreamWriter writer = new StreamWriter(fs, StringUtils.DefaultEncoding);
 
@@ -196,17 +203,17 @@ namespace SS.Core.Modules
         }
 
         private void TryWriteSection(
-            string filter, 
+            ReadOnlySpan<char> filter, 
             IGrouping<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> sectionGrouping, 
             ConfigHandle configHandle, 
             StreamWriter writer, 
             string sectionName)
         {
-            bool sectionMatch = string.IsNullOrWhiteSpace(filter) || sectionName.Contains(filter, StringComparison.OrdinalIgnoreCase);
+            bool sectionMatch = filter.IsWhiteSpace() || sectionName.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
             foreach ((ConfigHelpAttribute attribute, string moduleTypeName) in sectionGrouping.OrderBy(item => item.Attr.Key))
             {
-                bool keyMatch = string.IsNullOrWhiteSpace(filter) || attribute.Key.Contains(filter, StringComparison.OrdinalIgnoreCase);
+                bool keyMatch = filter.IsWhiteSpace() || attribute.Key.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
                 if ((sectionMatch || keyMatch)
                     && attribute.Scope == ConfigScope.Arena

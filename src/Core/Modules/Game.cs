@@ -2341,7 +2341,7 @@ namespace SS.Core.Modules
             Description =
             "Displays players spectating you. When private, displays players\n" +
             "spectating the target.")]
-        private void Command_spec(string command, string parameters, Player p, ITarget target)
+        private void Command_spec(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = p;
@@ -2413,20 +2413,20 @@ namespace SS.Core.Modules
             "If {-t} is given, turns energy viewing on for teammates only.\n" +
             "If {-n} is given, turns energy viewing off.\n" +
             "If {-s} is given, turns energy viewing on/off for spectator mode.\n")]
-        private void Command_energy(string command, string parameters, Player p, ITarget target)
+        private void Command_energy(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             target.TryGetPlayerTarget(out Player targetPlayer);
 
             SeeEnergy nval = SeeEnergy.All;
             bool spec = false;
 
-            if (!string.IsNullOrEmpty(parameters) && parameters.Contains("-t"))
+            if (!parameters.IsEmpty && parameters.Contains("-t", StringComparison.OrdinalIgnoreCase))
                 nval = SeeEnergy.Team;
 
-            if (!string.IsNullOrEmpty(parameters) && parameters.Contains("-n"))
+            if (!parameters.IsEmpty && parameters.Contains("-n", StringComparison.OrdinalIgnoreCase))
                 nval = SeeEnergy.None;
 
-            if (!string.IsNullOrEmpty(parameters) && parameters.Contains("-s"))
+            if (!parameters.IsEmpty && parameters.Contains("-s", StringComparison.OrdinalIgnoreCase))
                 spec = true;
 
             if (targetPlayer != null)

@@ -733,7 +733,7 @@ namespace SS.Core.Modules
             "Displays the usage information (current hours and minutes logged in, and\n" +
             "total hours and minutes logged in), as well as the first login time, of\n" +
             "the target player, or you if no target.")]
-        private void Command_usage(string commandName, string parameters, Player p, ITarget target)
+        private void Command_usage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = p;
@@ -760,7 +760,7 @@ namespace SS.Core.Modules
             Args = null,
             Description =
             "Displays the user database id of the target player, or yours if no target.")]
-        private void Command_userid(string commandName, string parameters, Player p, ITarget target)
+        private void Command_userid(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = p;
@@ -784,16 +784,16 @@ namespace SS.Core.Modules
             "The subcommand 'status' reports the status of the user database server\n" +
             "connection. 'drop' disconnects the connection if it's up, and 'connect'\n" +
             "reconnects after dropping or failed login.")]
-        private void Command_userdbadm(string commandName, string parameters, Player p, ITarget target)
+        private void Command_userdbadm(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             lock (_lockObj)
             {
-                if (string.Equals(parameters, "drop", StringComparison.OrdinalIgnoreCase))
+                if (parameters.Equals("drop", StringComparison.OrdinalIgnoreCase))
                 {
                     DropConnection(BillingState.Disabled);
                     _chat.SendMessage(p, "User database connection disabled.");
                 }
-                else if (string.Equals(parameters, "connect", StringComparison.OrdinalIgnoreCase))
+                else if (parameters.Equals("connect", StringComparison.OrdinalIgnoreCase))
                 {
                     if (_state == BillingState.LoginFailed || _state == BillingState.Disabled || _state == BillingState.Retry)
                     {

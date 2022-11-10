@@ -167,7 +167,7 @@ namespace SS.Core.Modules
             Args = "<object id>",
             Description = "Toggles the specified object on.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objon(string commandName, string parameters, Player p, ITarget target)
+        private void Command_objon(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
                 Toggle(target, id, true);
@@ -178,7 +178,7 @@ namespace SS.Core.Modules
             Args = "<object id>",
             Description = "Toggles the specified object off.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objoff(string commandName, string parameters, Player p, ITarget target)
+        private void Command_objoff(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
                 Toggle(target, id, false);
@@ -189,9 +189,13 @@ namespace SS.Core.Modules
             Args = "[+|-]<object id 0> [+|-]<object id 1> ... [+|-]<object id N>",
             Description = "Toggles the specified objects on/off.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objset(string commandName, string parameters, Player p, ITarget target)
+        private void Command_objset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            int count = parameters.Count(c => c == '+' || c == '-');
+            int count = 0;
+            foreach (char c in parameters)
+                if (c == '+' || c == '-')
+                    count++;
+
             Span<LvzToggle> set = stackalloc LvzToggle[count]; // Note: count is limited to max the chat message length
 
             int i = 0;
@@ -226,7 +230,7 @@ namespace SS.Core.Modules
             Args = "<id>",
             Description = "Reports all known information about the object.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objinfo(string commandName, string parameters, Player p, ITarget target)
+        private void Command_objinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
@@ -268,7 +272,7 @@ namespace SS.Core.Modules
             Args = null,
             Description = "List all ServerControlled object id's. Use ?objinfo <id> for attributes\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objlist(string commandName, string parameters, Player p, ITarget target)
+        private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
             if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;

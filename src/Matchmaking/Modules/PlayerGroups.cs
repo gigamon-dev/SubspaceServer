@@ -140,12 +140,12 @@ namespace SS.Matchmaking.Modules
             "  disband - disbands the group ^\n" +
             "^ must be the group leader to use this command\n" +
             "For sub-commands that take a <player>, the command can be sent privately to that player (e.g. /?group invite), rather than having to type the player's name.")]
-        private void Command_group(string commandName, string parameters, Player player, ITarget target)
+        private void Command_group(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (string.IsNullOrWhiteSpace(parameters))
+            if (parameters.IsWhiteSpace())
             {
                 if (!target.TryGetPlayerTarget(out Player targetPlayer))
                     targetPlayer = player;
