@@ -575,7 +575,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = "<match type>",
             Description = "Loads (or reloads) a match type from configuration.")]
-        private void Command_loadmatchtype(string commandName, string parameters, Player player, ITarget target)
+        private void Command_loadmatchtype(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // TODO:
 
@@ -588,7 +588,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = "<match type>",
             Description = "Removes a match type.")]
-        private void Command_unloadmatchtype(string commandName, string parameters, Player player, ITarget target)
+        private void Command_unloadmatchtype(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // TODO: 
 
@@ -607,7 +607,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "For a player to request to be subbed out of their current match.")]
-        private void Command_requestsub(string commandName, string parameters, Player player, ITarget target)
+        private void Command_requestsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
@@ -632,7 +632,7 @@ namespace SS.Matchmaking.Modules
             "First, the player may need to be moved to the proper arena." +
             "Also, the slot may currently contain an active player (that requested to be subbed out), " +
             "in which case the active player needs to get to full energy to become eligible to be switched out.")]
-        private void Command_sub(string commandName, string parameters, Player player, ITarget target)
+        private void Command_sub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // TODO: maybe the sub command should be in the MatchMakingQueues module, and this method is an advisor method?
 
@@ -671,7 +671,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (slot.CanBeSubbed
                     && slot.SubPlayer is null // no sub in progress
-                    && (string.IsNullOrWhiteSpace(parameters) || string.Equals(parameters, slot.MatchData.Configuration.QueueName, StringComparison.OrdinalIgnoreCase))
+                    && (parameters.IsWhiteSpace() || parameters.Equals(slot.MatchData.Configuration.QueueName, StringComparison.OrdinalIgnoreCase))
                     && _queueDictionary.TryGetValue(slot.MatchData.Configuration.QueueName, out TeamVersusMatchmakingQueue queue)
                     && queue.ContainsSoloPlayer(player))
                 {
@@ -791,7 +791,7 @@ namespace SS.Matchmaking.Modules
             Args = null,
             Description = $"Cancels a ?{CommandNames.Sub} attempt that's in progress.\n" +
             "Use this if you no longer want to wait to be subbed in.")]
-        private void Command_cancelsub(string commandName, string parameters, Player player, ITarget target)
+        private void Command_cancelsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
@@ -832,7 +832,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Returns a player to their current match (e.g. after getting spec'd or disconnected).")]
-        private void Command_return(string commandName, string parameters, Player player, ITarget target)
+        private void Command_return(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Ship != ShipType.Spec
                 || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -918,7 +918,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Request that the game be restarted, needs a majority vote")]
-        private void Command_restart(string commandName, string parameters, Player player, ITarget target)
+        private void Command_restart(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             //_chat.SendMessage(, $"{player.Name} requested to restart the game. Vote using: ?restart [y|n]");
             //_chat.SendMessage(, $"{player.Name} [agreed with|vetoed] the restart request. (For:{forVotes}, Against:{againstVotes})");
@@ -931,7 +931,7 @@ namespace SS.Matchmaking.Modules
             Description = 
             "Request that teams be randomized and the game restarted, needs a majority vote.\n" +
             "Using this ignores player groups, all players in the match will be randomized.")]
-        private void Command_randomize(string commandName, string parameters, Player player, ITarget target)
+        private void Command_randomize(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             //_chat.SendMessage(, $"{player.Name} requests to re-randomize the teams and restart the game. To agree, type: ?randomize");
             //_chat.SendMessage(, $"{player.Name} agreed to ?randomize. ({forVotes}/5)");
@@ -945,7 +945,7 @@ namespace SS.Matchmaking.Modules
             "Request that the game be ended as a loss for the team, " +
             "if all remaining players on a team agree (type the command), " +
             "the game will end as a loss to that team without having to be killed out.")]
-        private void Command_end(string commandName, string parameters, Player player, ITarget target)
+        private void Command_end(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // To the opposing team (voting begin)
             //_chat.SendMessage(, $"{player.Name} has requested their team to surrender. Their team is now voting on it.");
@@ -974,7 +974,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Request that the game be ended as a draw by agreement (no winner), needs a majority vote across all remaining players.")]
-        private void Command_draw(string commandName, string parameters, Player player, ITarget target)
+        private void Command_draw(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
         }
 
@@ -982,7 +982,7 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = "<ship #>",
             Description = "Request a ship change. It will be allowed after death. Otherwise, it sets the next ship to use upon death.")]
-        private void Command_sc(string commandName, string parameters, Player player, ITarget target)
+        private void Command_sc(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
