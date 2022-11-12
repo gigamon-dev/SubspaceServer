@@ -38,7 +38,7 @@ This document provides an overview of the various server parts and their relatio
 | directory | SS.Core.Modules.DirectoryPublisher | |
 | enc_null | SS.Core.Modules.EncryptionNull | |
 | enc_vie | SS.Core.Modules.EncryptionVIE | |
-| enc_cont:enc_cont | - | Closed source: ASSS only provides the binary since it's not public knowledge. |
+| enc_cont:enc_cont | SS.EncryptionContinuum.EncryptionContinuum | Closed source<br>TODO: provide a native binary like ASSS does. |
 | enf_flagwin | - | No plans to add it. |
 | enf_legalship | SS.Core.Modules.Enforcers.LegalShip | |
 | enf_lockspec | SS.Core.Modules.Enforcers.LockSpec | |
@@ -84,7 +84,7 @@ This document provides an overview of the various server parts and their relatio
 | prng | SS.Core.Modules.Prng | |
 | pymod | n/a | Use IronPython? |
 | quickfix | SS.Core.Modules.Quickfix | |
-| funky:record | SS.Replay.ReplayModule | TODO: Enhance beyond ASSS functionality. Add: bricks, balls, flags, crowns, green/door sync. |
+| funky:record | SS.Replay.ReplayModule | |
 | redirect | SS.Core.Modules.Redirect | |
 | security | SS.Core.Modules.Security | |
 | sendfile | - | No plans to add it. |

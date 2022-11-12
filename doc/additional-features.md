@@ -105,3 +105,57 @@ The ASSS `stats` module stores a stat as an Int32. This is also true for its "ti
 In Subspace Server .NET the Stats module currently supports the following data types: Int32, Int64, UInt32, UInt64, DateTime, and TimeSpan (for "timer" stats). Since the "timer" stats use a TimeSpan, the granularity is no longer limited to seconds.
 
 Also, the stats module is using Google's [Protocol Buffers (protobuf)](https://developers.google.com/protocol-buffers) to serialize data. So it's possible that there is some size savings from the use of variable length encodings.
+
+---
+## Replay module - numerous enhancements
+In addition to the functionality of the ASSS `record` module, the `SS.Replay.ReplayModule` contains functionality for recording and playing back events for:
+- balls (based on the PowerBall Zone fork of the `record` module)
+- bricks (based on the PowerBall Zone fork of the `record` module)
+- flags (both static flags and carryable flags)
+- crowns
+- door & green seeds (door timings will be in sync, greens will gradually become in sync)
+- additional chat message types: public macros and team chat
+
+Also provided are the following arena configuration settings:<br>
+```ini
+[ Replay ]
+; Notification settings
+NotifyPlayback = Arena
+NotifyPlaybackError = Player
+NotifyRecording = Player
+NotifyRecordingError = Player
+
+; Playback settings
+PlaybackMapCheckEnabled = 1
+PlaybackSpecFreqCheckEnabled = 1
+PlaybackLockTeams = 0
+
+; Chat settings (recording)
+RecordPublicChat = 1
+RecordPublicMacroChat = 1
+RecordSpecChat = 1
+RecordTeamChat = 1
+RecordArenaChat = 1
+
+; Chat settings (playback)
+PlaybackPublicChat = 1
+PlaybackPublicMacroChat = 1
+PlaybackSpecChat = 1
+PlaybackTeamChat = 1
+PlaybackArenaChat = 1
+```
+Use the ?man command in-game for more details on these settings.
+> `?man Replay:`<br>
+> `?man Replay:NotifyPlayback`
+
+Underneath the scenes, the module does threading in a safer manner too.
+- All file operations (including opening of streams) are done on a worker thread. 
+- The playback thread queues up mainloop workitems.
+
+Use the ?replay command to control recording and playback. The basic commands are:
+> `?replay record <file>`<br>
+> `?replay play <file>`<br>
+> `?replay stop`
+
+Use the ?man command in-game for more information about the command:
+> `?man replay`

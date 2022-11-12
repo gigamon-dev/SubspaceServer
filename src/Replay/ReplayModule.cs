@@ -34,6 +34,7 @@ namespace SS.Replay
     /// - bricks (based on the PowerBall Zone fork of the 'record' module)
     /// - flags (both static flags and carryable flags)
     /// - crowns
+    /// - door & green seeds (door timings will be in sync, greens will gradually become in sync)
     ///
     /// Chat message functionality is also enhanced beyond that of ASSS.
     /// This module provides the ability to record and playback: public chat, public macro chat, spectator chat, team chat, and arena chat.
@@ -2285,11 +2286,11 @@ namespace SS.Replay
 
             [ConfigHelp("Replay", "NotifyPlayback", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Arena",
                 Description = $"Who gets notifications about playback (start, stop, pause, and resume). {NotifyPlaybackHelpOptions}")]
-            [ConfigHelp("Replay", "NotifyPlaybackError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Recorder",
+            [ConfigHelp("Replay", "NotifyPlaybackError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Player",
                 Description = $"Who gets notifications about playback errors. {NotifyPlaybackHelpOptions}")]
-            [ConfigHelp("Replay", "NotifyRecording", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Recorder",
+            [ConfigHelp("Replay", "NotifyRecording", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Player",
                 Description = $"Who gets notifications about recording (start and stop). {NotifyRecordingHelpOptions}")]
-            [ConfigHelp("Replay", "NotifyRecordingError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Recorder",
+            [ConfigHelp("Replay", "NotifyRecordingError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Player",
                 Description = $"Who gets notifications about recording errors. {NotifyRecordingHelpOptions}")]
             [ConfigHelp("Replay", "PlaybackMapCheckEnabled", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
                 Description = $"Whether to check if the map in the current arena matches the recording's map when starting a playback.")]
