@@ -5,7 +5,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
 #nullable enable
 
@@ -98,11 +97,11 @@ namespace SS.Utilities
     /// </summary>
     public class Trie<TValue> : IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>
     {
-        private static readonly ObjectPool<TrieNode<TValue>> CaseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode<TValue>>(new TrieNodePooledObjectPolicy<TValue>(true));
-        private static readonly ObjectPool<TrieNode<TValue>> CaseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode<TValue>>(new TrieNodePooledObjectPolicy<TValue>(false));
+        private static readonly ObjectPool<TrieNode> CaseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
+        private static readonly ObjectPool<TrieNode> CaseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(false));
 
-        private readonly ObjectPool<TrieNode<TValue>> _trieNodePool;
-        private readonly TrieNode<TValue> _root;
+        private readonly ObjectPool<TrieNode> _trieNodePool;
+        private readonly TrieNode _root;
 
         /// <summary>
         /// Initializes a new case sensitive instance of the <see cref="Trie{TValue}"/> class.
@@ -182,12 +181,12 @@ namespace SS.Utilities
 
             ThrowIfNotAsciiOrContainsControlCharacter(key);
 
-            TrieNode<TValue> current = _root;
+            TrieNode current = _root;
 
             for (int i = 0; i < key.Length; i++)
             {
                 char c = key[i];
-                if (!current.Children.TryGetValue(c, out TrieNode<TValue>? node))
+                if (!current.Children.TryGetValue(c, out TrieNode? node))
                 {
                     node = _trieNodePool.Get();
                     node.Symbol = c;
@@ -230,7 +229,7 @@ namespace SS.Utilities
             return RemoveFromNode(_root, key, out value);
 
 
-            bool RemoveFromNode(TrieNode<TValue> node, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
+            bool RemoveFromNode(TrieNode node, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
             {
                 if (key.IsEmpty)
                 {
@@ -250,7 +249,7 @@ namespace SS.Utilities
                     }
                 }
 
-                if (!node.Children.TryGetValue(key[0], out TrieNode<TValue>? child))
+                if (!node.Children.TryGetValue(key[0], out TrieNode? child))
                 {
                     value = default;
                     return false;
@@ -287,10 +286,10 @@ namespace SS.Utilities
 
             ThrowIfNotAsciiOrContainsControlCharacter(key);
 
-            TrieNode<TValue> current = _root;
+            TrieNode current = _root;
             for (int i = 0; i < key.Length; i++)
             {
-                if (current.Children.TryGetValue(key[i], out TrieNode<TValue>? node))
+                if (current.Children.TryGetValue(key[i], out TrieNode? node))
                 {
                     current = node;
                 }
@@ -319,10 +318,10 @@ namespace SS.Utilities
 
             ThrowIfNotAsciiOrContainsControlCharacter(key);
 
-            TrieNode<TValue> current = _root;
+            TrieNode current = _root;
             for (int i = 0; i < key.Length; i++)
             {
-                if (current.Children.TryGetValue(key[i], out TrieNode<TValue>? node))
+                if (current.Children.TryGetValue(key[i], out TrieNode? node))
                 {
                     current = node;
                 }
@@ -358,13 +357,13 @@ namespace SS.Utilities
                 yield return key;
             }
 
-            IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)> EnumerateKeys(TrieNode<TValue> node)
+            IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)> EnumerateKeys(TrieNode node)
             {
                 if (node.IsLeaf)
                 {
                     // Figure out how many characters are in the key.
                     int charCount = 0;
-                    TrieNode<TValue>? temp = node;
+                    TrieNode? temp = node;
                     while ((temp = temp.Parent) != null)
                     {
                         charCount++;
@@ -416,13 +415,13 @@ namespace SS.Utilities
                     yield return key;
                 }
 
-                IEnumerable<ReadOnlyMemory<char>> EnumerateKeys(TrieNode<TValue> node)
+                IEnumerable<ReadOnlyMemory<char>> EnumerateKeys(TrieNode node)
                 {
                     if (node.IsLeaf)
                     {
                         // Figure out how many characters are in the key.
                         int charCount = 0;
-                        TrieNode<TValue>? temp = node;
+                        TrieNode? temp = node;
                         while ((temp = temp.Parent) != null)
                         {
                             charCount++;
@@ -470,7 +469,7 @@ namespace SS.Utilities
                     yield return value;
                 }
 
-                IEnumerable<TValue?> EnumerateValues(TrieNode<TValue> node)
+                IEnumerable<TValue?> EnumerateValues(TrieNode node)
                 {
                     if (node.IsLeaf)
                     {
@@ -516,9 +515,9 @@ namespace SS.Utilities
         {
             RemoveAllChildren(_root);
 
-            void RemoveAllChildren(TrieNode<TValue> node)
+            void RemoveAllChildren(TrieNode node)
             {
-                foreach (TrieNode<TValue> childNode in node.Children.Values)
+                foreach (TrieNode childNode in node.Children.Values)
                 {
                     RemoveAllChildren(childNode);
                     _trieNodePool.Return(childNode);
@@ -548,10 +547,10 @@ namespace SS.Utilities
         }
 
         #region Types
-
-        private class TrieNode<TData>
+        
+        private class TrieNode
         {
-            public readonly Dictionary<char, TrieNode<TData>> Children;
+            public readonly Dictionary<char, TrieNode> Children;
 
             public TrieNode()
             {
@@ -564,9 +563,9 @@ namespace SS.Utilities
             }
 
             public char Symbol;
-            public TrieNode<TData>? Parent;
+            public TrieNode? Parent;
             public bool IsLeaf = false;
-            public TData? Value = default;
+            public TValue? Value = default;
         }
 
         private class CaseInsensitiveCharEqualityComparer : IEqualityComparer<char>
@@ -584,7 +583,7 @@ namespace SS.Utilities
             }
         }
 
-        private class TrieNodePooledObjectPolicy<TData> : IPooledObjectPolicy<TrieNode<TData>>
+        private class TrieNodePooledObjectPolicy : IPooledObjectPolicy<TrieNode>
         {
             private readonly bool _caseSensitive;
 
@@ -593,12 +592,12 @@ namespace SS.Utilities
                 _caseSensitive = caseSensitive;
             }
 
-            public TrieNode<TData> Create()
+            public TrieNode Create()
             {
                 return _caseSensitive ? new() : new(CaseInsensitiveCharEqualityComparer.Instance);
             }
 
-            public bool Return(TrieNode<TData> obj)
+            public bool Return(TrieNode obj)
             {
                 if (obj == null)
                     return false;
