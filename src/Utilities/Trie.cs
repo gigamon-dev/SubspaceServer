@@ -73,9 +73,14 @@ namespace SS.Utilities
         //{
         //}
 
-        public IEnumerator<ReadOnlyMemory<char>> GetEnumerator()
+        public Trie<byte>.KeyEnumerator GetEnumerator()
         {
             return _trie.Keys;
+        }
+
+        IEnumerator<ReadOnlyMemory<char>> IEnumerable<ReadOnlyMemory<char>>.GetEnumerator()
+        {
+            return GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -97,8 +102,9 @@ namespace SS.Utilities
     /// </summary>
     public class Trie<TValue> : IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>
     {
-        private static readonly ObjectPool<TrieNode> CaseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
-        private static readonly ObjectPool<TrieNode> CaseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(false));
+        private static readonly ObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
+        private static readonly ObjectPool<TrieNode> s_caseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(false));
+        private static readonly ObjectPool<LinkedNode> s_linkedNodePool = new NonTransientObjectPool<LinkedNode>(new LinkedNodePooledObjectPolicy());
 
         private readonly ObjectPool<TrieNode> _trieNodePool;
         private readonly TrieNode _root;
@@ -116,7 +122,7 @@ namespace SS.Utilities
         /// <param name="caseSensitive">Whether the trie is case sensitive.</param>
         public Trie(bool caseSensitive)
         {
-            _trieNodePool = caseSensitive ? CaseSensitiveTrieNodePool : CaseInsensitiveTrieNodePool;
+            _trieNodePool = caseSensitive ? s_caseSensitiveTrieNodePool : s_caseInsensitiveTrieNodePool;
             _root = _trieNodePool.Get();
         }
 
@@ -349,55 +355,14 @@ namespace SS.Utilities
         //{
         //}
 
-        // TODO: can this be made more efficient (no allocations) by using an enumerator struct?
-        public IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)> GetEnumerator()
+        public Enumerator GetEnumerator()
         {
-            foreach (var key in EnumerateKeys(_root))
-            {
-                yield return key;
-            }
+            return new Enumerator(this);
+        }
 
-            IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)> EnumerateKeys(TrieNode node)
-            {
-                if (node.IsLeaf)
-                {
-                    // Figure out how many characters are in the key.
-                    int charCount = 0;
-                    TrieNode? temp = node;
-                    while ((temp = temp.Parent) != null)
-                    {
-                        charCount++;
-                    }
-
-                    char[] keyArray = ArrayPool<char>.Shared.Rent(charCount);
-                    try
-                    {
-                        // Copy the characters to the rented array.
-                        int index = charCount - 1;
-                        temp = node;
-                        do
-                        {
-                            keyArray[index--] = temp.Symbol;
-                            temp = temp.Parent;
-                        }
-                        while (temp != null && temp.Parent != null);
-
-                        yield return (new ReadOnlyMemory<char>(keyArray, 0, charCount), node.Value);
-                    }
-                    finally
-                    {
-                        ArrayPool<char>.Shared.Return(keyArray);
-                    }
-                }
-
-                foreach (var childKVP in node.Children)
-                {
-                    foreach (var key in EnumerateKeys(childKVP.Value))
-                    {
-                        yield return key;
-                    }
-                }
-            }
+        IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)> IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>.GetEnumerator()
+        {
+            return GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -405,108 +370,15 @@ namespace SS.Utilities
             return GetEnumerator();
         }
 
-        // TODO: can this be made more efficient (no allocations) by using an enumerator struct?
-        public IEnumerator<ReadOnlyMemory<char>> Keys
-        {
-            get
-            {
-                foreach (ReadOnlyMemory<char> key in EnumerateKeys(_root))
-                {
-                    yield return key;
-                }
+        /// <summary>
+        /// Gets an enumerator for accessing all of the keys in the trie.
+        /// </summary>
+        public KeyEnumerator Keys => new(this);
 
-                IEnumerable<ReadOnlyMemory<char>> EnumerateKeys(TrieNode node)
-                {
-                    if (node.IsLeaf)
-                    {
-                        // Figure out how many characters are in the key.
-                        int charCount = 0;
-                        TrieNode? temp = node;
-                        while ((temp = temp.Parent) != null)
-                        {
-                            charCount++;
-                        }
-
-                        char[] keyArray = ArrayPool<char>.Shared.Rent(charCount);
-                        try
-                        {
-                            // Copy the characters to the rented array.
-                            int index = charCount - 1;
-                            temp = node;
-                            do
-                            {
-                                keyArray[index--] = temp.Symbol;
-                                temp = temp.Parent;
-                            }
-                            while (temp != null && temp.Parent != null);
-
-                            yield return new ReadOnlyMemory<char>(keyArray, 0, charCount);
-                        }
-                        finally
-                        {
-                            ArrayPool<char>.Shared.Return(keyArray);
-                        }
-                    }
-
-                    foreach (var childKVP in node.Children)
-                    {
-                        foreach (var key in EnumerateKeys(childKVP.Value))
-                        {
-                            yield return key;
-                        }
-                    }
-                }
-            }
-        }
-
-        // TODO: can this be made more efficient (no allocations) by using an enumerator struct?
-        public IEnumerable<TValue?> Values
-        {
-            get
-            {
-                foreach (var value in EnumerateValues(_root))
-                {
-                    yield return value;
-                }
-
-                IEnumerable<TValue?> EnumerateValues(TrieNode node)
-                {
-                    if (node.IsLeaf)
-                    {
-                        yield return node.Value;
-                    }
-
-                    foreach (var childKVP in node.Children)
-                    {
-                        foreach (var value in EnumerateValues(childKVP.Value))
-                        {
-                            yield return value;
-                        }
-                    }
-                }
-            }
-        }
-
-        /*
-        public ValueEnumerator<TValue> Values => new ValueEnumerator(this);
-
-        public struct ValueEnumerator<TData>
-        {
-            private readonly Trie<TData> _trie;
-            //private TrieNode<TData>
-
-            internal ValueEnumerator(Trie<TData> trie)
-            {
-                _trie = trie;
-            }
-
-            public TData? Current { get; private set; }
-
-            public bool MoveNext()
-            {
-            }
-        }
-        */
+        /// <summary>
+        /// Gets an enumerator for accessing all of the values in the trie.
+        /// </summary>
+        public ValueEnumerator Values => new(this);
 
         /// <summary>
         /// Removes all elements from the trie.
@@ -547,7 +419,7 @@ namespace SS.Utilities
         }
 
         #region Types
-        
+
         private class TrieNode
         {
             public readonly Dictionary<char, TrieNode> Children;
@@ -609,6 +481,236 @@ namespace SS.Utilities
                 obj.Value = default;
 
                 return true;
+            }
+        }
+
+        private class LinkedNode
+        {
+            public TrieNode? TrieNode { get; set; }
+            public LinkedNode? Next { get; set; }
+        }
+
+        private class LinkedNodePooledObjectPolicy : IPooledObjectPolicy<LinkedNode>
+        {
+            public Trie<TValue>.LinkedNode Create()
+            {
+                return new LinkedNode();
+            }
+
+            public bool Return(Trie<TValue>.LinkedNode obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.TrieNode = null;
+                obj.Next = null;
+                return true;
+            }
+        }
+
+        public struct KeyEnumerator : IEnumerator<ReadOnlyMemory<char>>
+        {
+            private Enumerator _enumerator;
+
+            internal KeyEnumerator(Trie<TValue> trie)
+            {
+                _enumerator = new Enumerator(trie);
+            }
+
+            public KeyEnumerator GetEnumerator() => this;
+
+            public ReadOnlyMemory<char> Current => _enumerator.Current.Key;
+
+            object? IEnumerator.Current => _enumerator.Current.Key;
+
+            public void Dispose()
+            {
+                _enumerator.Dispose();
+            }
+
+            public bool MoveNext()
+            {
+                return _enumerator.MoveNext();
+            }
+
+            void IEnumerator.Reset()
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        public struct ValueEnumerator : IEnumerator<TValue?>
+        {
+            private Enumerator _enumerator;
+
+            internal ValueEnumerator(Trie<TValue> trie)
+            {
+                _enumerator = new Enumerator(trie);
+            }
+
+            public ValueEnumerator GetEnumerator() => this;
+
+            public TValue? Current => _enumerator.Current.Value;
+
+            object? IEnumerator.Current => _enumerator.Current.Value;
+
+            public void Dispose()
+            {
+                _enumerator.Dispose();
+            }
+
+            public bool MoveNext()
+            {
+                return _enumerator.MoveNext();
+            }
+
+            void IEnumerator.Reset()
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        public struct Enumerator : IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)>
+        {
+            private readonly Trie<TValue> _trie;
+            private bool _started = false;
+
+            // stack implemented as a linked list
+            private LinkedNode? _first = null;
+            private LinkedNode? _last = null;
+
+            // current
+            private LinkedNode? _current = null;
+            private char[]? _currentKeyArray = null;
+            private int _currentKeyLength = 0;
+
+            internal Enumerator(Trie<TValue> trie)
+            {
+                _trie = trie ?? throw new ArgumentNullException(nameof(trie));
+            }
+
+            public Enumerator GetEnumerator() => this;
+
+            public (ReadOnlyMemory<char> Key, TValue? Value) Current
+            {
+                get
+                {
+                    if (_current is null)
+                        throw new InvalidOperationException();
+
+                    // Figure out how many characters are in the key.
+                    int charCount = 0;
+                    TrieNode? temp = _current.TrieNode!;
+                    while ((temp = temp.Parent) != null)
+                    {
+                        charCount++;
+                    }
+
+                    // Make sure we have an array large enough to hold it.
+                    if (_currentKeyArray is null || _currentKeyArray.Length < charCount)
+                    {
+                        if (_currentKeyArray is not null)
+                        {
+                            ArrayPool<char>.Shared.Return(_currentKeyArray);
+                        }
+
+                        _currentKeyArray = ArrayPool<char>.Shared.Rent(charCount);
+                    }
+
+                    // Copy the characters to the rented array.
+                    int index = charCount - 1;
+                    temp = _current.TrieNode!;
+                    do
+                    {
+                        _currentKeyArray[index--] = temp.Symbol;
+                        temp = temp.Parent;
+                    }
+                    while (temp != null && temp.Parent != null);
+
+                    _currentKeyLength = charCount;
+
+                    return (new ReadOnlyMemory<char>(_currentKeyArray, 0, _currentKeyLength), _current.TrieNode!.Value);
+                }
+            }
+
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                if (!_started)
+                {
+                    _started = true;
+                    _last = _first = Trie<TValue>.s_linkedNodePool.Get();
+                    _first.TrieNode = _trie._root;
+                    _first.Next = null;
+                }
+
+                if (_first is null)
+                {
+                    return false;
+                }
+
+                while (_first is not null)
+                {
+                    LinkedNode current = _first;
+
+                    // Add child nodes to the end.
+                    foreach (TrieNode child in current.TrieNode!.Children.Values)
+                    {
+                        LinkedNode childLink = Trie<TValue>.s_linkedNodePool.Get();
+                        childLink.TrieNode = child;
+                        childLink.Next = null;
+                        _last!.Next = childLink;
+                        _last = childLink;
+                    }
+
+                    // Remove the first node (the one we're working on).
+                    _first = _first.Next;
+                    if (_first is null)
+                    {
+                        _last = null;
+                    }
+
+                    if (current.TrieNode.IsLeaf)
+                    {
+                        if (_current is not null)
+                        {
+                            Trie<TValue>.s_linkedNodePool.Return(_current);
+                        }
+
+                        _current = current;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            public void Dispose()
+            {
+                while (_first is not null)
+                {
+                    LinkedNode? next = _first.Next;
+                    Trie<TValue>.s_linkedNodePool.Return(_first);
+                    _first = next;
+                }
+
+                if (_current is not null)
+                {
+                    Trie<TValue>.s_linkedNodePool.Return(_current);
+                    _current = null;
+                }
+
+                if (_currentKeyArray is not null)
+                {
+                    ArrayPool<char>.Shared.Return(_currentKeyArray);
+                    _currentKeyArray = null;
+                }
+            }
+
+            void IEnumerator.Reset()
+            {
+                throw new NotSupportedException();
             }
         }
 
