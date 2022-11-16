@@ -82,128 +82,128 @@ namespace SS.Core
     }
 
     /// <summary>
-    /// player status codes
+    /// Player status codes
     /// </summary>
     public enum PlayerState
     {
         /// <summary>
-        /// player was just created, and isn't ready to do anything yet
-        /// <para>transitions to: connected</para>
+        /// The player was just created, and isn't ready to do anything yet.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="Connected"/>.</remarks>
         Uninitialized = 0,
 
         /// <summary>
-        /// player is connected (key exchange completed) but has not logged in yet
-        /// <para>transitions to: need_auth or leaving_zone</para>
+        /// The player is connected (key exchange completed) but has not logged in yet.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="NeedAuth"/> or <see cref="LeavingZone"/>.</remarks>
         Connected,
 
         /// <summary>
-        /// player sent login, auth request will be sent
-        /// <para>transitions to: wait_auth</para>
+        /// The player sent login, auth request will be sent.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="WaitAuth"/>.</remarks>
         NeedAuth,
 
         /// <summary>
-        /// waiting for auth response
-        /// <para>transitions to: connected or need_global_sync</para>
+        /// Waiting for auth response.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="Connected"/> or <see cref="NeedGlobalSync"/>.</remarks>
         WaitAuth,
 
         /// <summary>
-        /// auth done, will request global sync
-        /// <para>transitions to: wait_global_sync1</para>
+        /// Auth done, will request global sync.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="WaitGlobalSync1"/>.</remarks>
         NeedGlobalSync,
 
         /// <summary>
-        /// waiting for sync global persistent data to complete
-        /// <para>transitions to: do_global_callbacks</para>
+        /// Waiting for sync global persistent data to complete.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="DoGlobalCallbacks"/>.</remarks>
         WaitGlobalSync1,
 
         /// <summary>
-        /// global sync done, will call global player connecting callbacks
-        /// <para>transitions to: send_login_response</para>
+        /// Global sync done, will call global player connecting callbacks.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="SendLoginResponse"/>.</remarks>
         DoGlobalCallbacks,
 
         /// <summary>
-        /// callbacks done, will send arena response
-        /// <para>transitions to: loggedin</para>
+        /// Callbacks done, will send arena response.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="LoggedIn"/>.</remarks>
         SendLoginResponse,
 
         /// <summary>
-        /// Player is finished logging in but is not in an arena yet.
+        /// The player is finished logging in but is not in an arena yet.
         /// Also, status returns here after leaving an arena.
-        /// <para>transitions to: do_freq_and_arena_sync or leaving_zone</para>
         /// </summary>
+        /// <remarks>Transitions to: <see cref="DoFreqAndArenaSync"/> (or <see cref="LeavingZone"/>).</remarks>
         LoggedIn,
 
-        // p->arena is valid starting here
+        // Player.Arena is valid starting here
 
         /// <summary>
-        /// player has requested entering an arena, needs to be assigned a freq and have arena data syched
-        /// <para>transitions to: wait_arena_sync1 (or loggedin)</para>
+        /// The player has requested entering an arena, needs to be assigned a freq and have arena data synced.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="WaitArenaSync1"/> (or <see cref="LoggedIn"/>).</remarks>
         DoFreqAndArenaSync,
 
         /// <summary>
-        /// waiting for scores sync
-        /// <para>transitions to: send_arena_response (or do_arena_sync2)</para>
+        /// Waiting for scores sync.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="ArenaRespAndCBS"/> (or <see cref="DoArenaSync2"/>).</remarks>
         WaitArenaSync1,
 
         /// <summary>
-        /// done with scores, needs to send arena response and run arena
+        /// Done with scores, needs to send arena response and run arena.
         /// entering callbacks
-        /// <para>transitions to: playing (or do_arena_sync2)</para>
         /// </summary>
+        /// <remarks>Transitions to: <see cref="Playing"/> (or <see cref="DoArenaSync2"/>).</remarks>
         ArenaRespAndCBS,
 
         /// <summary>
-        /// player is playing in an arena. typically the longest state
-        /// <para>transitions to: leaving_arena</para>
+        /// The player is playing in an arena. This is typically the longest state.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="LeavingArena"/>.</remarks>
         Playing,
 
         /// <summary>
-        /// player has left arena, callbacks need to be called
-        /// <para>transitions to: do_arena_sync2</para>
+        /// The player has left arena, callbacks need to be called.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="DoArenaSync2"/>.</remarks>
         LeavingArena,
 
         /// <summary>
-        /// need to sync in the other direction
-        /// <para>transitions to: wait_arena_sync2</para>
+        /// Need to sync in the other direction.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="WaitArenaSync2"/>.</remarks>
         DoArenaSync2,
 
         /// <summary>
-        /// waiting for scores sync, other direction
-        /// <para>transitions to: loggedin</para>
+        /// Waiting for scores sync, other direction.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="LoggedIn"/>.</remarks>
         WaitArenaSync2,
 
-        // p->arena is no longer valid after this point
+        // Player.Arena is no longer valid after this point
 
         /// <summary>
-        /// player is leaving zone, call disconnecting callbacks and start global sync
-        /// <para>transitions to: wait_global_sync2</para>
+        /// The player is leaving the zone, call disconnecting callbacks and start global sync.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="WaitGlobalSync2"/>.</remarks>
         LeavingZone,
 
         /// <summary>
-        /// waiting for global sync, other direction
-        /// <para>transitions to: timewait</para>
+        /// Waiting for global sync, other direction.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="TimeWait"/>.</remarks>
         WaitGlobalSync2,
 
         /// <summary>
-        /// the connection is all set to be ended. the network layer will free the player after this.
-        /// <para>transitions to: (none)</para>
+        /// The connection is all set to be ended. The network layer will free the player after this.
         /// </summary>
+        /// <remarks>Transitions to: <see cref="Uninitialized"/>.</remarks>
         TimeWait
     };
 

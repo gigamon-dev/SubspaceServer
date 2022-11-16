@@ -7,6 +7,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -106,6 +107,7 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(MainloopTimer_DoWork, 100, 100, null);
             _pendingAuths = _interruptedAuths = 0;
 
+            NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             ChatMessageCallback.Register(broker, Callback_ChatMessage);
             SetBannerCallback.Register(broker, Callback_SetBanner);
@@ -136,6 +138,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("userdbadm", Command_userdbadm);
             _commandManager.DefaultCommandReceived -= DefaultCommandReceived;
 
+            NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             ChatMessageCallback.Unregister(broker, Callback_ChatMessage);
             SetBannerCallback.Unregister(broker, Callback_SetBanner);
@@ -186,29 +189,28 @@ namespace SS.Core.Modules
 
         #region IAuth
 
-        void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
+        void IAuth.Authenticate(IAuthRequest authRequest)
         {
-            if (lplen < 0)
-            {
-                FallbackDone(p, BillingFallbackResult.NotFound);
+            if (authRequest is null)
                 return;
-            }
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            Player player = authRequest.Player;
+            if (player is null 
+                || !player.TryGetExtraData(_pdKey, out PlayerData pd)
+                || authRequest.LoginBytes.Length < LoginPacket.VIELength)
             {
-                FallbackDone(p, BillingFallbackResult.NotFound);
+                authRequest.Result.Code = AuthCode.CustomText;
+                authRequest.Result.SetCustomText("Internal server error.");
                 return;
             }
+            
+            ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
 
             // default to false
             pd.IsKnownToBiller = false;
 
-            // set up temporary login data struct
-            pd.LoginData = new LoginData()
-            {
-                DoneCallback = done,
-                Name = lp.Name,
-            };
+            // hold onto the state so that we can use it when authentication is complete
+            pd.AuthRequest = authRequest;
 
             if (_state == BillingState.LoggedIn)
             {
@@ -216,68 +218,70 @@ namespace SS.Core.Modules
                 {
                     uint ipAddress = 0;
                     Span<byte> ipBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ipAddress, 1));
-                    if (!p.IpAddress.TryWriteBytes(ipBytes, out int bytesWritten))
+                    if (!player.IpAddress.TryWriteBytes(ipBytes, out int bytesWritten))
                     {
-                        FallbackDone(p, BillingFallbackResult.NotFound);
+                        FallbackDone(player, BillingFallbackResult.NotFound);
                         return;
                     }
 
                     S2B_UserLogin packet = new(
-                        lp.Flags,
+                        loginPacket.Flags,
                         ipAddress,
-                        lp.NameBytes,
-                        lp.PasswordBytes,
-                        p.Id,
-                        lp.MacId,
-                        lp.TimeZoneBias,
-                        lp.CVersion);
+                        loginPacket.NameBytes,
+                        loginPacket.PasswordBytes,
+                        player.Id,
+                        loginPacket.MacId,
+                        loginPacket.TimeZoneBias,
+                        loginPacket.CVersion);
 
                     int packetLength = S2B_UserLogin.LengthWithoutClientExtraData;
 
-                    if (lplen > LoginPacket.VIELength)
+                    ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
+                    if (!extraBytes.IsEmpty)
                     {
                         // There is extra data at the end of the login packet.
                         // For Continuum, it's the ContId field of the login packet.
-                        int extraLength = lplen - LoginPacket.VIELength;
-                        if (extraLength > lp.ContId.Length)
-                            extraLength = lp.ContId.Length;
+                        if (extraBytes.Length > S2B_UserLogin.ClientExtraDataBytesLength)
+                        {
+                            extraBytes = extraBytes[..S2B_UserLogin.ClientExtraDataBytesLength];
+                        }
 
-                        // TODO: ASSS allows sending even more extra data bytes if the CFG_RELAX_LENGTH_CHECKS is defined.
-                        // To support that, LoginPacket would need to be changed or the IAuth.Auth method would need to pass a byte[] or Span<byte> instead.
-                        //if (extraLength > S2B_UserLogin.ClientExtraDataBytesLength)
-                        //    extraLength = S2B_UserLogin.ClientExtraDataBytesLength;
-
-                        lp.ContId.Slice(0, extraLength).CopyTo(packet.ClientExtraDataBytes);
-                        packetLength += extraLength;
+                        extraBytes.CopyTo(packet.ClientExtraDataBytes);
+                        packetLength += extraBytes.Length;
                     }
 
-                    ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)).Slice(0, packetLength);
+                    ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..packetLength];
                     _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
                     pd.IsKnownToBiller = true;
                     _pendingAuths++;
                 }
                 else
                 {
-                    // Tell the user to try again later.
-                    AuthData authData = new();
-                    authData.Code = AuthCode.ServerBusy;
-                    authData.Authenticated = false;
-                    done(p, authData);
+                    // Tell the user to try again later.                    
+                    authRequest.Result.Code = AuthCode.ServerBusy;
+                    authRequest.Result.Authenticated = false;
+                    authRequest.Done();
 
-                    pd.RemoveLoginData();
-                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, "Too many pending auths, try again later.");
+                    pd.AuthRequest = null;
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Too many pending auths, try again later.");
                 }
             }
             else if (_billingFallback != null)
             {
-                // biller isn't connected, use fallback
-                Span<byte> passwordBytes = lp.PasswordBytes.SliceNullTerminated();
+                // Biller isn't connected, use fallback.
+                Span<byte> nameBytes = loginPacket.NameBytes.SliceNullTerminated();
+                Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
+                Debug.Assert(nameBytes.Length == decodedByteCount);
+
+                Span<byte> passwordBytes = loginPacket.PasswordBytes.SliceNullTerminated();
                 Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
-                StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+                decodedByteCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+                Debug.Assert(passwordBytes.Length == decodedByteCount);
 
                 try
                 {
-                    _billingFallback.Check(p, pd.LoginData.Value.Name, passwordSpan, FallbackDone, p);
+                    _billingFallback.Check(player, nameSpan, passwordSpan, FallbackDone, player);
                 }
                 finally
                 {
@@ -287,7 +291,7 @@ namespace SS.Core.Modules
             else
             {
                 // act like not found in fallback
-                FallbackDone(p, BillingFallbackResult.NotFound);
+                FallbackDone(player, BillingFallbackResult.NotFound);
             }
         }
 
@@ -533,6 +537,17 @@ namespace SS.Core.Modules
 
         #region Callbacks
 
+        private void Callback_NewPlayer(Player player, bool isNew)
+        {
+            if (player is null || isNew)
+            {
+                return;
+            }
+
+            // The player is being removed.
+            CleanupPlayer(player);
+        }
+
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
             if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -542,39 +557,7 @@ namespace SS.Core.Modules
             {
                 if (action == PlayerAction.Disconnect)
                 {
-                    if (pd.LoginData != null)
-                    {
-                        // Disconnected while waiting for auth.
-                        if (pd.IsKnownToBiller)
-                        {
-                            _pendingAuths--;
-                            _interruptedAuths++;
-                        }
-
-                        pd.RemoveLoginData();
-                    }
-
-                    _bannerUploadDictionary.Remove(p.Id);
-
-                    if (pd.IsKnownToBiller)
-                    {
-                        S2B_UserLogoff packet = new(
-                            p.Id,
-                            0, // TODO: put real reason here
-                            0, 0, 0, 0); // TODO: get real latency numbers
-
-                        ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
-
-                        if (_savePublicPlayerScores && pd.SavedScore != null)
-                        {
-                            packet.Score = pd.SavedScore.Value;
-                            _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
-                        }
-                        else
-                        {
-                            _networkClient.SendPacket(_cc, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
-                        }
-                    }
+                    CleanupPlayer(p);
                 }
                 else if (action == PlayerAction.EnterArena && arena.IsPublic)
                 {
@@ -615,6 +598,51 @@ namespace SS.Core.Modules
                         (ushort)flagPickups,
                         (uint)killPoints,
                         (uint)flagPoints);
+                }
+            }
+        }
+
+        private void CleanupPlayer(Player player)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            lock (_lockObj)
+            {
+                if (playerData.AuthRequest is not null)
+                {
+                    // Disconnected while waiting for auth.
+                    if (playerData.IsKnownToBiller)
+                    {
+                        _pendingAuths--;
+                        _interruptedAuths++;
+                    }
+
+                    playerData.AuthRequest = null;
+                }
+
+                _bannerUploadDictionary.Remove(player.Id);
+
+                if (playerData.IsKnownToBiller)
+                {
+                    S2B_UserLogoff packet = new(
+                        player.Id,
+                        0, // TODO: put real reason here
+                        0, 0, 0, 0); // TODO: get real latency numbers
+
+                    ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
+
+                    if (_savePublicPlayerScores && playerData.SavedScore != null)
+                    {
+                        packet.Score = playerData.SavedScore.Value;
+                        _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
+                    }
+                    else
+                    {
+                        _networkClient.SendPacket(_cc, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
+                    }
+
+                    playerData.IsKnownToBiller = false;
                 }
             }
         }
@@ -994,46 +1022,62 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void FallbackDone(Player p, BillingFallbackResult result)
+        private void FallbackDone(Player player, BillingFallbackResult fallbackResult)
         {
-            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (pd.LoginData == null)
+            if (playerData.AuthRequest is null)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Unexpected billing fallback response.");
                 return;
             }
 
-            AuthData authData = new();
+            IAuthResult result = playerData.AuthRequest.Result;
 
-            if (result == BillingFallbackResult.Match)
+            if (fallbackResult == BillingFallbackResult.Match)
             {
                 // Correct password, player is ok and authenticated.
-                authData.Code = AuthCode.OK;
-                authData.Authenticated = true;
-                authData.Name = authData.SendName = pd.LoginData.Value.Name;
-                authData.Squad = null;
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, "Fallback: authenticated.");
+                result.Code = AuthCode.OK;
+                result.Authenticated = true;
+
+                Span<byte> nameBytes = playerData.AuthRequest.LoginPacket.NameBytes.SliceNullTerminated();
+                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+                Debug.Assert(nameBytes.Length == decodedByteCount);
+                result.SetName(nameChars);
+                result.SetSendName(nameChars);
+
+                result.SetSquad("");
+                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: authenticated.");
             }
-            else if (result == BillingFallbackResult.NotFound)
+            else if (fallbackResult == BillingFallbackResult.NotFound)
             {
                 // Add ^ in front of name and accept as unathenticated.
-                authData.Code = AuthCode.OK;
-                authData.Authenticated = false;
-                authData.Name = authData.SendName = '^' + pd.LoginData.Value.Name;
-                pd.IsKnownToBiller = false;
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, "Fallback: no entry for this player.");
+                result.Code = AuthCode.OK;
+                result.Authenticated = false;
+
+                Span<byte> nameBytes = playerData.AuthRequest.LoginPacket.NameBytes.SliceNullTerminated();
+                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)+1];
+                nameChars[0] = '^';
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
+                Debug.Assert(nameBytes.Length == decodedByteCount);
+                result.SetName(nameChars);
+                result.SetSendName(nameChars);
+
+                result.SetSquad("");
+                playerData.IsKnownToBiller = false;
+                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: no entry for this player.");
             }
             else // Mismatch or anything else
             {
-                authData.Code = AuthCode.BadPassword;
-                authData.Authenticated = false;
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, "Fallback: invalid password.");
+                result.Code = AuthCode.BadPassword;
+                result.Authenticated = false;
+                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: invalid password.");
             }
 
-            pd.LoginData.Value.DoneCallback(p, authData);
-            pd.RemoveLoginData();
+            playerData.AuthRequest.Done();
+            playerData.AuthRequest = null;
         }
 
         private void LoggedIn()
@@ -1050,7 +1094,7 @@ namespace SS.Core.Modules
 
         private void DropConnection(BillingState newState)
         {
-            // Only announce if changingg from LoggedIn
+            // Only announce if changing from LoggedIn
             if (_state == BillingState.LoggedIn)
             {
                 _chat.SendArenaMessage((Arena)null, "Notice: Connection to user database server lost.");
@@ -1113,13 +1157,13 @@ namespace SS.Core.Modules
             if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            if (pd.LoginData == null)
+            if (pd.AuthRequest is null)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), p, $"Unexpected {nameof(B2S_UserLogin)} response.");
                 return;
             }
 
-            AuthData authData = new();
+            IAuthResult result = pd.AuthRequest.Result;
 
             if (packet.Result == B2SUserLoginResult.Ok
                 || packet.Result == B2SUserLoginResult.DemoVersion
@@ -1139,11 +1183,22 @@ namespace SS.Core.Modules
                     pd.LoadedScore = null;
                 }
 
-                authData.DemoData = packet.Result == B2SUserLoginResult.AskDemographics || packet.Result == B2SUserLoginResult.DemoVersion;
-                authData.Code = authData.DemoData ? AuthCode.AskDemographics : AuthCode.OK;
-                authData.Authenticated = true;
-                authData.Name = authData.SendName = packet.NameBytes.ReadNullTerminatedString();
-                authData.Squad = packet.SquadBytes.ReadNullTerminatedString();
+                result.DemoData = packet.Result == B2SUserLoginResult.AskDemographics || packet.Result == B2SUserLoginResult.DemoVersion;
+                result.Code = result.DemoData ? AuthCode.AskDemographics : AuthCode.OK;
+                result.Authenticated = true;
+
+                Span<byte> nameBytes = packet.NameBytes.SliceNullTerminated();
+                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+                Debug.Assert(nameBytes.Length == decodedByteCount);
+                result.SetName(nameChars);
+                result.SetSendName(nameChars);
+
+                Span<byte> squadBytes = packet.SquadBytes.SliceNullTerminated();
+                Span<char> squadChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(squadBytes)];
+                decodedByteCount = StringUtils.DefaultEncoding.GetChars(squadBytes, squadChars);
+                Debug.Assert(squadBytes.Length == decodedByteCount);
+                result.SetSquad(squadChars);
 
                 if (packet.Banner.IsSet)
                 {
@@ -1165,9 +1220,9 @@ namespace SS.Core.Modules
             }
             else
             {
-                authData.DemoData = false;
+                result.DemoData = false;
 
-                authData.Code = packet.Result switch
+                result.Code = packet.Result switch
                 {
                     B2SUserLoginResult.NewUser => AuthCode.NewName,
                     B2SUserLoginResult.InvalidPw => AuthCode.BadPassword,
@@ -1178,13 +1233,13 @@ namespace SS.Core.Modules
                     _ => AuthCode.NoPermission,
                 };
 
-                authData.Authenticated = false;
+                result.Authenticated = false;
 
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, $"Player rejected ({packet.Result} / {authData.Code}).");
+                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), p, $"Player rejected ({packet.Result} / {result.Code}).");
             }
 
-            pd.LoginData.Value.DoneCallback(p, authData);
-            pd.RemoveLoginData();
+            pd.AuthRequest.Done();
+            pd.AuthRequest = null;
             _pendingAuths--;
         }
 
@@ -1597,37 +1652,16 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private struct LoginData
-        {
-            public AuthDoneDelegate DoneCallback;
-            public string Name;
-
-            public void Clear()
-            {
-                DoneCallback = null;
-                Name = null;
-            }
-        }
-
         private class PlayerData
         {
             public uint BillingUserId;
             public TimeSpan Usage;
             public bool IsKnownToBiller;
             public bool HasDemographics;
-            public LoginData? LoginData;
+            public IAuthRequest AuthRequest;
             public DateTime? FirstLogin;
             public PlayerScore? LoadedScore;
             public PlayerScore? SavedScore;
-
-            public void RemoveLoginData()
-            {
-                if (LoginData != null)
-                {
-                    LoginData.Value.Clear();
-                    LoginData = null;
-                }
-            }
 
             public void Reset()
             {
@@ -1635,7 +1669,7 @@ namespace SS.Core.Modules
                 Usage = TimeSpan.Zero;
                 IsKnownToBiller = false;
                 HasDemographics = false;
-                LoginData = null;
+                AuthRequest = null;
                 FirstLogin = null;
                 LoadedScore = null;
                 SavedScore = null;

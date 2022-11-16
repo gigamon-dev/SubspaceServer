@@ -3,6 +3,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
@@ -75,44 +76,75 @@ namespace SS.Core.Modules
 
         #endregion
 
-        void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
+        void IAuth.Authenticate(IAuthRequest authRequest)
         {
-            AuthData authData = null;
+            if (authRequest is null)
+                return;
+
+            Player player = authRequest.Player;
+            if (player is null
+                || authRequest.LoginBytes.Length < LoginPacket.VIELength)
+            {
+                authRequest.Result.Code = AuthCode.CustomText;
+                authRequest.Result.SetCustomText("Internal server error.");
+                return;
+            }
+
+            ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
+            bool handled = false;
 
             lock (_lockObj)
             {
-                if (p.IsStandard // only standard clients have a MacId
-                    && _banDictionary.TryGetValue(lp.MacId, out BanRecord ban))
+                if (player.IsStandard // only standard clients have a MacId
+                    && _banDictionary.TryGetValue(loginPacket.MacId, out BanRecord ban))
                 {
                     DateTime now = DateTime.UtcNow;
                     if (now < ban.Expire)
                     {
-                        authData = new()
-                        {
-                            Code = AuthCode.CustomText,
-                        };
+                        authRequest.Result.Code = AuthCode.CustomText;
 
-                        authData.CustomText = string.IsNullOrWhiteSpace(ban.Reason)
-                            ? $"You have been temporarily kicked. You may log in again in {ban.Expire - now}."
-                            : $"You have been temporarily kicked for {ban.Reason}. You may log in again in {ban.Expire - now}.";
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        try
+                        {
+                            if (string.IsNullOrWhiteSpace(ban.Reason))
+                                sb.Append($"You have been temporarily kicked. You may log in again in {ban.Expire - now}.");
+                            else
+                                sb.Append($"You have been temporarily kicked for {ban.Reason}. You may log in again in {ban.Expire - now}.");
+
+                            Span<char> text = stackalloc char[Math.Min(authRequest.Result.CustomText.Length, sb.Length)];
+                            sb.CopyTo(0, text, text.Length);
+                            authRequest.Result.SetCustomText(text);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
+
+                        handled = true;
+
                         ban.Count++;
 
-                        _logManager.LogM(LogLevel.Info, nameof(AuthBan), $"Player [{lp.Name}] tried to login (try {ban.Count}), banned for {ban.Expire - now} longer.");
+                        Span<byte> nameBytes = authRequest.LoginPacket.NameBytes.SliceNullTerminated();
+                        Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                        int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
+                        Debug.Assert(nameBytes.Length == decodedByteCount);
+
+                        _logManager.LogM(LogLevel.Info, nameof(AuthBan), $"Player [{name}] tried to login (try {ban.Count}), banned for {ban.Expire - now} longer.");
                     }
                     else
                     {
-                        _banDictionary.Remove(lp.MacId);
+                        _banDictionary.Remove(loginPacket.MacId);
                     }
                 }
             }
 
-            if (authData != null)
+            if (handled)
             {
-                done(p, authData);
+                authRequest.Done();
             }
             else
             {
-                _oldAuth.Authenticate(p, in lp, lplen, done);
+                _oldAuth.Authenticate(authRequest);
             }
         }
 

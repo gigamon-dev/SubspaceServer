@@ -1,9 +1,11 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -28,17 +30,18 @@ namespace SS.Core.Modules
         //private IChatNet _chatnet;
         private IConfigManager _configManager;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
-        private IMapNewsDownload _map;
-        private INetwork _net;
+        private IMapNewsDownload _mapNewsDownload;
+        private INetwork _network;
         private IPersistExecutor _persistExecutor;
         private IPlayerData _playerData;
         private IScoreStats _scoreStats;
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
-        private Pool<DataBuffer> _bufferPool = Pool<DataBuffer>.Default;
+        private readonly ObjectPool<AuthRequest> _authRequestPool = new NonTransientObjectPool<AuthRequest>(new AuthRequestPooledObjectPolicy());
 
-        private PlayerDataKey<CorePlayerData> _pdkey;
+        private PlayerDataKey<PlayerData> _pdkey;
 
         private const ushort ClientVersion_VIE = 134;
         private const ushort ClientVersion_Cont = 40;
@@ -49,63 +52,6 @@ namespace SS.Core.Modules
         private uint _continuumChecksum;
         private uint _codeChecksum;
 
-        private sealed class CorePlayerData : IDisposable
-        {
-            public AuthData AuthData;
-            public DataBuffer LoginPacketBuffer;
-            public Player ReplacedBy;
-
-            public bool HasDoneGlobalSync; // global sync
-            public bool HasDoneArenaSync; // arena sync
-            public bool HasDoneGlobalCallbacks; // global callbacks
-
-            public void Dispose()
-            {
-                if (LoginPacketBuffer != null)
-                {
-                    LoginPacketBuffer.Dispose();
-                    LoginPacketBuffer = null;
-                }
-            }
-        }
-
-        private uint GetChecksum(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
-
-            try
-            {
-                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
-                Ionic.Crc.CRC32 crc32 = new();
-                return (uint)crc32.GetCrc32(fs);
-            }
-            catch (Exception ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(Core), $"Error getting checksum to '{path}'. {ex.Message}");
-                return uint.MaxValue;
-            }
-        }
-
-        private uint GetUInt32(string path, int offset)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
-
-            try
-            {
-                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
-                using BinaryReader br = new(fs);
-                fs.Seek(offset, SeekOrigin.Begin);
-                return br.ReadUInt32();
-            }
-            catch (Exception ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(Core), $"Error getting UInt32 from '{path}' at offset {offset}. {ex.Message}");
-                return uint.MaxValue;
-            }
-        }
-
         #region Module Members
 
         internal bool Load(
@@ -114,9 +60,10 @@ namespace SS.Core.Modules
             ICapabilityManager capabilityManager,
             IConfigManager configManager,
             ILogManager logManager,
+            IMainloop mainloop,
             IMainloopTimer mainloopTimer,
-            IMapNewsDownload map,
-            INetwork net,
+            IMapNewsDownload mapNewsDownload,
+            INetwork network,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -124,43 +71,30 @@ namespace SS.Core.Modules
             _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(_mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _map = map ?? throw new ArgumentNullException(nameof(map));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _mapNewsDownload = mapNewsDownload ?? throw new ArgumentNullException(nameof(mapNewsDownload));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
-            IObjectPoolManager objectPoolManager = _broker.GetInterface<IObjectPoolManager>();
-            if (objectPoolManager != null)
-            {
-                try
-                {
-                    _bufferPool = objectPoolManager.GetPool<DataBuffer>();
-                }
-                finally
-                {
-                    _broker.ReleaseInterface(ref objectPoolManager);
-                }
-            }
 
             _continuumChecksum = GetChecksum(ContinuumExeFile);
             _codeChecksum = GetUInt32(ContinuumChecksumFile, 4);
 
-            _pdkey = _playerData.AllocatePlayerData<CorePlayerData>();
+            _pdkey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
 
-            // set up callbacks
-            _net.AddPacket(C2SPacketType.Login, Packet_Login);
-            _net.AddPacket(C2SPacketType.ContLogin, Packet_Login);
+            NewPlayerCallback.Register(broker, Callback_NewPlayer);
+
+            _network.AddPacket(C2SPacketType.Login, Packet_Login);
+            _network.AddPacket(C2SPacketType.ContLogin, Packet_Login);
 
             //if(_chatnet != null)
                 //_chatnet.AddHandler("LOGIN", chatLogin);
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerStates, 100, 100, null);
+            _mainloopTimer.SetTimer(MainloopTimer_SendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             // register default interface which may be replaced later
             _iAuthToken = broker.RegisterInterface<IAuth>(this);
-
-            // set up periodic events
-            _mainloopTimer.SetTimer(MainloopTimer_SendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             return true;
         }
@@ -196,18 +130,60 @@ namespace SS.Core.Modules
             _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessPlayerStates, null);
             
-            _net.RemovePacket(C2SPacketType.Login, Packet_Login);
-            _net.RemovePacket(C2SPacketType.ContLogin, Packet_Login);
+            _network.RemovePacket(C2SPacketType.Login, Packet_Login);
+            _network.RemovePacket(C2SPacketType.ContLogin, Packet_Login);
+
+            NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
 
             // TODO: chatnet
             //if (_chatnet != null)
-                //_chatnet.RemoveHandler("LOGIN", chatLogin);
+            //_chatnet.RemoveHandler("LOGIN", chatLogin);
 
             _playerData.FreePlayerData(_pdkey);
             return true;
         }
 
         #endregion
+
+        #region IAuth Members
+
+        void IAuth.Authenticate(IAuthRequest authRequest)
+        {
+            // Default Auth - allows everyone in, unauthenticated
+            IAuthResult result = authRequest.Result;
+            result.DemoData = false;
+            result.Code = AuthCode.OK;
+            result.Authenticated = false;
+
+            ref readonly LoginPacket lp = ref authRequest.LoginPacket;
+
+            Span<byte> nameBytes = lp.NameBytes.SliceNullTerminated();
+            Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
+            Debug.Assert(nameBytes.Length == decodedByteCount);
+
+            result.SetName(name);
+            result.SetSendName(name);
+            result.SetSquad("");
+
+            authRequest.Done();
+        }
+
+        #endregion
+
+        private void Callback_NewPlayer(Player player, bool isNew)
+        {
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+                return;
+
+            if (playerData.AuthRequest is not null)
+            {
+                _authRequestPool.Return(playerData.AuthRequest);
+                playerData.AuthRequest = null;
+            }
+        }
+
+        #region Timers
 
         private struct PlayerStateChange
         {
@@ -311,7 +287,7 @@ namespace SS.Core.Modules
                 Player player = action.Player;
                 PlayerState oldStatus = action.OldStatus;
 
-                if (!player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
+                if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                     continue;
 
                 switch (oldStatus)
@@ -319,26 +295,35 @@ namespace SS.Core.Modules
                     case PlayerState.NeedAuth:
                         {
                             IAuth auth = _broker.GetInterface<IAuth>();
+                            if (auth is null)
+                            {
+                                _logManager.LogP(LogLevel.Warn, nameof(Core), player, "Can't authenticate player. IAuth implementation not found.");
+                                _playerData.KickPlayer(player);
+                                break;
+                            }
+
                             try
                             {
-                                if (auth != null && pdata.LoginPacketBuffer != null && pdata.LoginPacketBuffer.NumBytes > 0)
+                                if (playerData.AuthRequest is null)
                                 {
-                                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"Authenticating with '{auth.GetType()}'.");
-                                    auth.Authenticate(player, MemoryMarshal.AsRef<LoginPacket>(pdata.LoginPacketBuffer.Bytes), pdata.LoginPacketBuffer.NumBytes, AuthDone);
-                                }
-                                else
-                                {
-                                    _logManager.LogM(LogLevel.Warn, nameof(Core), "Can't authenticate player!");
+                                    _logManager.LogP(LogLevel.Warn, nameof(Core), player, "Can't authenticate player. Missing AuthRequest.");
                                     _playerData.KickPlayer(player);
+                                    break;
                                 }
 
-                                pdata.LoginPacketBuffer?.Dispose();
-                                pdata.LoginPacketBuffer = null;
+                                if (playerData.AuthRequest.LoginBytes.IsEmpty)
+                                {
+                                    _logManager.LogP(LogLevel.Warn, nameof(Core), player, "Can't authenticate player. AuthRequest is missing LoginBytes.");
+                                    _playerData.KickPlayer(player);
+                                    break;
+                                }
+
+                                _logManager.LogP(LogLevel.Drivel, nameof(Core), player, $"Authenticating with '{auth.GetType()}'.");
+                                auth.Authenticate(playerData.AuthRequest);
                             }
                             finally
                             {
-                                if (auth != null)
-                                    _broker.ReleaseInterface(ref auth);
+                                _broker.ReleaseInterface(ref auth);
                             }
                         }
                         break;
@@ -349,12 +334,12 @@ namespace SS.Core.Modules
                         else
                             PlayerSyncDone(player);
 
-                        pdata.HasDoneGlobalSync = true;
+                        playerData.HasDoneGlobalSync = true;
                         break;
 
                     case PlayerState.DoGlobalCallbacks:
                         FirePlayerActionEvent(player, PlayerAction.Connect, null);
-                        pdata.HasDoneGlobalCallbacks = true;
+                        playerData.HasDoneGlobalCallbacks = true;
                         break;
 
                     case PlayerState.SendLoginResponse:
@@ -401,7 +386,7 @@ namespace SS.Core.Modules
                         else
                             PlayerSyncDone(player);
 
-                        pdata.HasDoneArenaSync = true;
+                        playerData.HasDoneArenaSync = true;
                         break;
 
                     case PlayerState.ArenaRespAndCBS:
@@ -435,24 +420,24 @@ namespace SS.Core.Modules
                         break;
 
                     case PlayerState.DoArenaSync2:
-                        if (_persistExecutor != null && pdata.HasDoneArenaSync)
+                        if (_persistExecutor != null && playerData.HasDoneArenaSync)
                             _persistExecutor.PutPlayer(player, player.Arena, PlayerSyncDone);
                         else
                             PlayerSyncDone(player);
 
-                        pdata.HasDoneArenaSync = false;
+                        playerData.HasDoneArenaSync = false;
                         break;
 
                     case PlayerState.LeavingZone:
-                        if (pdata.HasDoneGlobalCallbacks)
+                        if (playerData.HasDoneGlobalCallbacks)
                             FirePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
-                        if (_persistExecutor != null && pdata.HasDoneGlobalSync)
+                        if (_persistExecutor != null && playerData.HasDoneGlobalSync)
                             _persistExecutor.PutPlayer(player, null, PlayerSyncDone);
                         else
                             PlayerSyncDone(player);
 
-                        pdata.HasDoneGlobalSync = false;
+                        playerData.HasDoneGlobalSync = false;
                         break;
                 }
             }
@@ -461,83 +446,44 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void FirePlayerActionEvent(Player p, PlayerAction action, Arena arena)
+        private bool MainloopTimer_SendKeepAlive()
         {
-            if (p == null)
-                return;
+            if (_network != null)
+            {
+                ReadOnlySpan<byte> keepAlive = stackalloc byte[1] { (byte)S2CPacketType.KeepAlive };
+                _network.SendToArena(null, null, keepAlive, NetSendFlags.Reliable);
+            }
 
-            if (arena != null)
-                PlayerActionCallback.Fire(arena, p, action, arena);
-            else
-                PlayerActionCallback.Fire(_broker, p, action, arena);
+            return true;
         }
 
-        private void FailLoginWith(Player p, AuthCode authCode, string text, string logmsg)
+        #endregion
+
+        private void Packet_Login(Player player, byte[] data, int len)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            // Calling this method means we're bypassing PlayerState.NeedAuth, so do some cleanup.
-            if (p.TryGetExtraData(_pdkey, out CorePlayerData pdata)
-                && pdata.LoginPacketBuffer != null)
-            {
-                pdata.LoginPacketBuffer.Dispose();
-                pdata.LoginPacketBuffer = null;
-            }
-
-            AuthData auth = new();
-
-            if (p.Type == ClientType.Continuum && !string.IsNullOrWhiteSpace(text))
-            {
-                auth.Code = AuthCode.CustomText;
-                auth.CustomText = text;
-            }
-            else
-            {
-                auth.Code = authCode;
-            }
-
-            _playerData.WriteLock();
-
-            try
-            {
-                p.Status = PlayerState.WaitAuth;
-            }
-            finally
-            {
-                _playerData.WriteUnlock();
-            }
-
-            AuthDone(p, auth);
-
-            _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={p.Id}] Login request denied: {logmsg}.");
-        }
-
-        private void Packet_Login(Player p, byte[] data, int len)
-        {
-            if (p == null)
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return;
 
-            if (!p.TryGetExtraData(_pdkey, out CorePlayerData pdata))
-                return;
-
-            if (!p.IsStandard)
+            if (!player.IsStandard)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={p.Id}] Login packet from wrong client type ({p.Type}).");
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={player.Id}] Login packet from wrong client type ({player.Type}).");
             }
 #if CFG_RELAX_LENGTH_CHECKS
             else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) 
                 || (p.Type == ClientType.Continuum && len < LoginPacket.LengthContinuum))
 #else
-            else if ((p.Type == ClientType.VIE && len != LoginPacket.VIELength)
-                || (p.Type == ClientType.Continuum && len != LoginPacket.ContinuumLength))
+            else if ((player.Type == ClientType.VIE && len != LoginPacket.VIELength)
+                || (player.Type == ClientType.Continuum && len != LoginPacket.ContinuumLength))
 #endif
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={p.Id}] Bad login packet length ({len}).");
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={player.Id}] Bad login packet length ({len}).");
             }
-            else if (p.Status != PlayerState.Connected)
+            else if (player.Status != PlayerState.Connected)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={p.Id}] Login request from wrong stage: {p.Status}.");
+                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={player.Id}] Login request from wrong stage: {player.Status}.");
             }
             else
             {
@@ -546,9 +492,9 @@ namespace SS.Core.Modules
 #if !CFG_RELAX_LENGTH_CHECKS
                 // VIE clients can only have one version. 
                 // Continuum clients will need to ask for an update.
-                if (p.Type == ClientType.VIE && pkt.CVersion != ClientVersion_VIE)
+                if (player.Type == ClientType.VIE && pkt.CVersion != ClientVersion_VIE)
                 {
-                    FailLoginWith(p, AuthCode.LockedOut, null, "Bad VIE client version");
+                    FailLoginWith(player, AuthCode.LockedOut, null, "Bad VIE client version");
                     return;
                 }
 #endif
@@ -557,27 +503,35 @@ namespace SS.Core.Modules
                 if (len > 512)
                     len = 512;
 
-                pdata.LoginPacketBuffer?.Dispose(); // just in case there already is one, get a brand new one zero'd out
-                pdata.LoginPacketBuffer = _bufferPool.Get();
-                Array.Copy(data, pdata.LoginPacketBuffer.Bytes, len);
-                pdata.LoginPacketBuffer.NumBytes = len;
-                pkt = ref MemoryMarshal.AsRef<LoginPacket>(pdata.LoginPacketBuffer.Bytes);
+                if (playerData.AuthRequest is not null)
+                {
+                    _authRequestPool.Return(playerData.AuthRequest);
+                }
+
+                playerData.AuthRequest = _authRequestPool.Get();
+                playerData.AuthRequest.SetRequestInfo(player, data.AsSpan(0, len), AuthDone);
+                
+                pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
                 // name
                 CleanupName(pkt.NameBytes); // first, manipulate name as bytes (fewer string object allocations)
-                string name = pkt.Name;
+
+                Span<byte> nameBytes = pkt.NameBytes.SliceNullTerminated();
+                Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
+                Debug.Assert(nameBytes.Length == decodedByteCount);
 
                 // if nothing could be salvaged from their name, disconnect them
-                if (string.IsNullOrWhiteSpace(name))
+                if (MemoryExtensions.IsWhiteSpace(name))
                 {
-                    FailLoginWith(p, AuthCode.BadName, "Your player name contains no valid characters.", "all invalid chars");
+                    FailLoginWith(player, AuthCode.BadName, "Your player name contains no valid characters.", "all invalid chars");
                     return;
                 }
 
                 // must start with number or letter
                 if (!char.IsLetterOrDigit(name[0]))
                 {
-                    FailLoginWith(p, AuthCode.BadName, "Your player name must start with a letter or number.", "name doesn't start with alphanumeric");
+                    FailLoginWith(player, AuthCode.BadName, "Your player name must start with a letter or number.", "name doesn't start with alphanumeric");
                     return;
                 }
 
@@ -585,26 +539,26 @@ namespace SS.Core.Modules
                 pkt.PasswordBytes[^1] = 0;
 
                 // fill misc data
-                p.MacId = pkt.MacId;
-                p.PermId = pkt.D2;
+                player.MacId = pkt.MacId;
+                player.PermId = pkt.D2;
 
-                if (p.Type == ClientType.VIE)
-                    p.ClientName = $"<ss/vie client, v. {pkt.CVersion}>";
-                else if (p.Type == ClientType.Continuum)
-                    p.ClientName = $"<continuum, v. {pkt.CVersion}>";
+                if (player.Type == ClientType.VIE)
+                    player.ClientName = $"<ss/vie client, v. {pkt.CVersion}>";
+                else if (player.Type == ClientType.Continuum)
+                    player.ClientName = $"<continuum, v. {pkt.CVersion}>";
 
                 // set up status
                 _playerData.WriteLock();
                 try
                 {
-                    p.Status = PlayerState.NeedAuth;
+                    player.Status = PlayerState.NeedAuth;
                 }
                 finally
                 {
                     _playerData.WriteUnlock();
                 }
 
-                _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={p.Id}] Login request: '{name}'.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Core), player, $"Login request: '{name}'.");
             }
 
             static void CleanupName(Span<byte> nameSpan)
@@ -639,49 +593,106 @@ namespace SS.Core.Modules
             }
         }
 
-        private void AuthDone(Player player, AuthData auth)
+        private void FailLoginWith(Player player, AuthCode authCode, string text, string logmsg)
         {
-            if (player == null || auth == null || !player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
+            if (player == null)
+                return;
+
+            // Calling this method means we're bypassing PlayerState.NeedAuth, so do some cleanup.
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+                return;
+
+            playerData.AuthRequest ??= _authRequestPool.Get();
+
+            AuthResult authResult = playerData.AuthRequest.Result;
+
+            if (player.Type == ClientType.Continuum && !string.IsNullOrWhiteSpace(text))
+            {
+                authResult.Code = AuthCode.CustomText;
+                authResult.SetCustomText(text);
+            }
+            else
+            {
+                authResult.Code = authCode;
+            }
+
+            _playerData.WriteLock();
+
+            try
+            {
+                player.Status = PlayerState.WaitAuth;
+            }
+            finally
+            {
+                _playerData.WriteUnlock();
+            }
+
+            AuthDone(player);
+
+            _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[pid={player.Id}] Login request denied: {logmsg}.");
+        }
+
+        private void AuthDone(Player player)
+        {
+            if (player is null)
+                return;
+
+            // Ensure this is done on the mainloop thread (just in case an authentication module calls it from a different thread).
+            if (!_mainloop.IsMainloop)
+            {
+                _mainloop.QueueMainWorkItem(AuthDone, player);
+                return;
+            }
+
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return;
 
             if (player.Status != PlayerState.WaitAuth)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={player.Id}] AuthDone called from wrong stage: {player.Status}");
+                _logManager.LogM(LogLevel.Warn, nameof(Core), $"[pid={player.Id}] {nameof(AuthDone)} called from wrong stage: {player.Status}");
                 return;
             }
 
-            // copy the authdata
-            pdata.AuthData = auth;
-
-            player.Flags.Authenticated = auth.Authenticated;
-
-            if (auth.Code.AuthIsOK())
+            AuthResult authResult = playerData.AuthRequest.Result;
+            if (authResult.Code is null)
             {
-                // login succeeded
+                // Getting here means an authentication module is malfunctioning.
+                _logManager.LogP(LogLevel.Error, nameof(Core), player, $"{nameof(AuthDone)} called but the AuthCode was not set.");
 
-                // try to locate existing player with the same name
-                Player oldPlayer = _playerData.FindPlayer(auth.Name);
+                authResult.Code = AuthCode.CustomText;
+                authResult.SetCustomText("Internal Server Error");
+            }
 
-                // set new player's name
-                player.Packet.Name = auth.SendName; // TODO: if SendName != Name, then wouldn't that break remote chat messages?
-                player.Name = auth.Name;
-                player.Packet.Squad = auth.Squad; // this can truncate
-                player.Squad = auth.Squad;
+            bool loginSuccess = authResult.Code.Value.IsOK();
+            player.Flags.Authenticated = loginSuccess && authResult.Authenticated;
 
-                // make sure we don't have two identical players. if so, do not
-                // increment stage yet. we'll do it when the other player leaves
+            if (loginSuccess)
+            {
+                // Login succeeded
+
+                // Try to locate an existing player with the same name.
+                Player oldPlayer = _playerData.FindPlayer(authResult.Name);
+
+                // Set new player's name.
+                player.Packet.SetName(authResult.SendName); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
+                player.Name = authResult.Name.ToString(); // TODO: string allocation
+                player.Packet.SetSquad(authResult.Squad); // this can truncate
+                player.Squad = authResult.Squad.ToString(); // TODO: string allocation
+
+                // Make sure we don't have two identical players.
+                // If so, do not increment stage yet. We'll do it when the other player leaves.
                 if (oldPlayer != null && oldPlayer != player)
                 {
-                    if (!oldPlayer.TryGetExtraData(_pdkey, out CorePlayerData oldPlayerData))
+                    if (!oldPlayer.TryGetExtraData(_pdkey, out PlayerData oldPlayerData))
                         return;
 
-                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{auth.Name}] Player already on, kicking him off (pid {player.Id} replacing {oldPlayer.Id}).");
+                    _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{authResult.Name}] Player already on, kicking him off (pid {player.Id} replacing {oldPlayer.Id}).");
                     oldPlayerData.ReplacedBy = player;
                     _playerData.KickPlayer(oldPlayer);
                 }
                 else
                 {
-                    // increment stage
+                    // Increment the stage.
                     _playerData.WriteLock();
                     try
                     {
@@ -695,8 +706,8 @@ namespace SS.Core.Modules
             }
             else
             {
-                // if the login didn't succeed status should go to PlayerState.Connected
-                // instead of moving forward, and send the login response now, since we won't do it later.
+                // If the login didn't succeed, the status should go to PlayerState.Connected instead of moving forward,
+                // and the login response should be sent now, since we won't do it later.
                 SendLoginResponse(player);
 
                 _playerData.WriteLock();
@@ -708,6 +719,90 @@ namespace SS.Core.Modules
                 {
                     _playerData.WriteUnlock();
                 }
+            }
+        }
+
+        private void SendLoginResponse(Player player)
+        {
+            if (player == null)
+                return;
+
+            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+                return;
+
+            AuthResult authResult = playerData.AuthRequest?.Result;
+
+            if (authResult is null)
+            {
+                _logManager.LogP(LogLevel.Error, nameof(Core), player, "Missing AuthData.");
+                _playerData.KickPlayer(player);
+                return;
+            }
+
+            try
+            {
+                if (player.IsStandard)
+                {
+                    S2C_LoginResponse lr = new();
+                    lr.Initialize();
+                    lr.Code = (byte)authResult.Code;
+                    lr.DemoData = authResult.DemoData ? (byte)1 : (byte)0;
+                    lr.NewsChecksum = _mapNewsDownload.GetNewsChecksum();
+
+                    if (player.Type == ClientType.Continuum)
+                    {
+                        S2C_ContinuumVersion pkt = new();
+                        pkt.Type = (byte)S2CPacketType.ContVersion;
+                        pkt.ContVersion = ClientVersion_Cont;
+                        pkt.Checksum = _continuumChecksum;
+
+                        _network.SendToOne(player, ref pkt, NetSendFlags.Reliable);
+
+                        lr.ExeChecksum = _continuumChecksum;
+                        lr.CodeChecksum = _codeChecksum;
+                    }
+                    else
+                    {
+                        // old VIE exe checksums
+                        lr.ExeChecksum = 0xF1429CE8;
+                        lr.CodeChecksum = 0x281CC948;
+                    }
+
+                    if (_capabiltyManager != null && _capabiltyManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
+                    {
+                        // to make the client think it's a mod
+                        lr.ExeChecksum = uint.MaxValue;
+                        lr.CodeChecksum = uint.MaxValue;
+                    }
+
+                    if (lr.Code == (byte)AuthCode.CustomText)
+                    {
+                        if (player.Type == ClientType.Continuum)
+                        {
+                            // send custom rejection text
+                            Span<byte> customSpan = stackalloc byte[256];
+                            customSpan[0] = (byte)S2CPacketType.LoginText;
+                            int bytes = customSpan[1..].WriteNullTerminatedString(authResult.CustomText.TruncateForEncodedByteLimit(254));
+                            _network.SendToOne(player, customSpan[..(1 + bytes)], NetSendFlags.Reliable);
+                        }
+                        else
+                        {
+                            // VIE doesn't understand that packet
+                            lr.Code = (byte)AuthCode.LockedOut;
+                        }
+                    }
+
+                    _network.SendToOne(player, ref lr, NetSendFlags.Reliable);
+                }
+                else if (player.IsChat)
+                {
+                    // TODO: chatnet
+                }
+            }
+            finally
+            {
+                _authRequestPool.Return(playerData.AuthRequest);
+                playerData.AuthRequest = null;
             }
         }
 
@@ -733,7 +828,7 @@ namespace SS.Core.Modules
                     player.Status = PlayerState.DoGlobalCallbacks;
                 else if (player.Status == PlayerState.WaitGlobalSync2)
                 {
-                    if (!player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
+                    if (!player.TryGetExtraData(_pdkey, out PlayerData pdata))
                         return;
                     
                     Player replacedBy = pdata.ReplacedBy;
@@ -763,6 +858,14 @@ namespace SS.Core.Modules
             }
         }
 
+        private void FirePlayerActionEvent(Player player, PlayerAction action, Arena arena)
+        {
+            if (player == null)
+                return;
+
+            PlayerActionCallback.Fire(arena ?? _broker, player, action, arena);
+        }
+
         private static string GetAuthCodeMessage(AuthCode code) => code switch
         {
             AuthCode.OK => "ok",
@@ -787,117 +890,251 @@ namespace SS.Core.Modules
             _ => "???",
         };
 
-        private void SendLoginResponse(Player player)
+        private uint GetChecksum(string path)
         {
-            if (player == null)
-                return;
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            if (!player.TryGetExtraData(_pdkey, out CorePlayerData pdata))
-                return;
-
-            AuthData auth = pdata.AuthData;
-
-            if (auth == null)
+            try
             {
-                _logManager.LogM(LogLevel.Error, nameof(Core), $"Missing AuthData for pid {player.Id}");
-                _playerData.KickPlayer(player);
+                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+                Ionic.Crc.CRC32 crc32 = new();
+                return (uint)crc32.GetCrc32(fs);
             }
-            else if (player.IsStandard)
+            catch (Exception ex)
             {
-                S2C_LoginResponse lr = new();
-                lr.Initialize();
-                lr.Code = (byte)auth.Code;
-                lr.DemoData = auth.DemoData ? (byte)1 : (byte)0;
-                lr.NewsChecksum = _map.GetNewsChecksum();
-
-                if (player.Type == ClientType.Continuum)
-                {
-                    S2C_ContinuumVersion pkt = new();
-                    pkt.Type = (byte)S2CPacketType.ContVersion;
-                    pkt.ContVersion = ClientVersion_Cont;
-                    pkt.Checksum = _continuumChecksum;
-
-                    _net.SendToOne(
-                        player,
-                        ref pkt,
-                        NetSendFlags.Reliable);
-
-                    lr.ExeChecksum = _continuumChecksum;
-                    lr.CodeChecksum = _codeChecksum;
-                }
-                else
-                {
-                    // old VIE exe checksums
-                    lr.ExeChecksum = 0xF1429CE8;
-                    lr.CodeChecksum = 0x281CC948;
-                }
-
-                if (_capabiltyManager != null && _capabiltyManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
-                {
-                    // to make the client think it's a mod
-                    lr.ExeChecksum = uint.MaxValue;
-                    lr.CodeChecksum = uint.MaxValue;
-                }
-
-                if (lr.Code == (byte)AuthCode.CustomText)
-                {
-                    if (player.Type == ClientType.Continuum)
-                    {
-                        // send custom rejection text
-                        Span<byte> customSpan = stackalloc byte[256];
-                        customSpan[0] = (byte)S2CPacketType.LoginText;
-                        int bytes = customSpan[1..].WriteNullTerminatedASCII(auth.CustomText.TruncateForEncodedByteLimit(254));
-                        _net.SendToOne(player, customSpan.Slice(0, 1 + bytes), NetSendFlags.Reliable);
-                    }
-                    else
-                    {
-                        // VIE doesn't understand that packet
-                        lr.Code = (byte)AuthCode.LockedOut;
-                    }
-                }
-
-                _net.SendToOne(
-                    player, 
-                    ref lr, 
-                    NetSendFlags.Reliable);
+                _logManager.LogM(LogLevel.Error, nameof(Core), $"Error getting checksum to '{path}'. {ex.Message}");
+                return uint.MaxValue;
             }
-            else if (player.IsChat)
-            {
-                // TODO: chatnet
-            }
-
-            pdata.AuthData = null;
         }
 
-        #region IAuth Members
-
-        void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
+        private uint GetUInt32(string path, int offset)
         {
-            // Default Auth - allows everyone in, unauthenticated
-            AuthData auth = new();
-            auth.DemoData = false;
-            auth.Code = AuthCode.OK;
-            auth.Authenticated = false;
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            string name = lp.Name;
-            auth.Name = name.Length > 23 ? name.Substring(0, 23) : name;
-            auth.SendName = name.Length > 19 ? name.Substring(0, 19) : name;
-            auth.Squad = null;
+            try
+            {
+                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+                using BinaryReader br = new(fs);
+                fs.Seek(offset, SeekOrigin.Begin);
+                return br.ReadUInt32();
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Core), $"Error getting UInt32 from '{path}' at offset {offset}. {ex.Message}");
+                return uint.MaxValue;
+            }
+        }
 
-            done(p, auth);
+        #region Helper types
+
+        private class PlayerData
+        {
+            public AuthRequest AuthRequest;
+            public Player ReplacedBy;
+
+            public bool HasDoneGlobalSync; // global sync
+            public bool HasDoneArenaSync; // arena sync
+            public bool HasDoneGlobalCallbacks; // global callbacks
+        }
+
+        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
+        {
+            public PlayerData Create()
+            {
+                return new PlayerData();
+            }
+
+            public bool Return(PlayerData obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.AuthRequest = null;
+                obj.ReplacedBy = null;
+                obj.HasDoneGlobalSync = false;
+                obj.HasDoneArenaSync = false;
+                obj.HasDoneGlobalCallbacks = false;
+                return true;
+            }
+        }
+
+        private class AuthRequest : IAuthRequest
+        {
+            private readonly byte[] _loginBytes = new byte[512];
+            private int _loginLength = 0;
+            private Action<Player> _doneCallback;
+            private readonly AuthResult _result = new();
+
+            public AuthRequest()
+            {
+                Reset();
+            }
+
+            public Player Player { get; private set; }
+
+            public Span<byte> LoginBytes => _loginBytes.AsSpan(0, _loginLength);
+
+            ReadOnlySpan<byte> IAuthRequest.LoginBytes => new(_loginBytes, 0, _loginLength);
+
+            ref readonly LoginPacket IAuthRequest.LoginPacket
+            {
+                get
+                {
+                    if (_loginLength < LoginPacket.VIELength)
+                        throw new InvalidOperationException($"The length of {nameof(LoginBytes)} is insufficent.");
+
+                    return ref MemoryMarshal.AsRef<LoginPacket>(LoginBytes);
+                }
+            }
+
+            ReadOnlySpan<byte> IAuthRequest.ExtraBytes
+            {
+                get
+                {
+                    var loginBytes = ((IAuthRequest)this).LoginBytes;
+                    return (loginBytes.Length > LoginPacket.VIELength) ? loginBytes[LoginPacket.VIELength..] : ReadOnlySpan<byte>.Empty;
+                }
+            }
+
+            public AuthResult Result => _result;
+            IAuthResult IAuthRequest.Result => _result;
+
+            public void SetRequestInfo(Player player, Span<byte> loginBytes, Action<Player> doneCallback)
+            {
+                Player = player ?? throw new ArgumentNullException(nameof(player));
+
+                if (loginBytes.Length > _loginBytes.Length)
+                    throw new ArgumentException($"Legnth is greater than {_loginBytes.Length}.", nameof(loginBytes));
+
+                loginBytes.CopyTo(_loginBytes);
+                _loginLength = loginBytes.Length;
+                _doneCallback = doneCallback ?? throw new ArgumentNullException(nameof(doneCallback));
+            }
+
+            public void Done()
+            {
+                _doneCallback(Player);
+            }
+
+            public void Reset()
+            {
+                Player = null;
+                _loginBytes.Initialize();
+                _loginLength = 0;
+                _doneCallback = null;
+                _result.Reset();
+            }
+        }
+
+        private class AuthRequestPooledObjectPolicy : IPooledObjectPolicy<AuthRequest>
+        {
+            public AuthRequest Create()
+            {
+                return new AuthRequest();
+            }
+
+            public bool Return(AuthRequest obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Reset();
+                return true;
+            }
+        }
+
+        private class AuthResult : IAuthResult
+        {
+            public bool DemoData { get; set; }
+            public AuthCode? Code { get; set; }
+            public bool Authenticated { get; set; }
+
+            #region Name
+
+            private readonly char[] _nameChars = new char[24]; // B2S 0x01 (UserLogin) limits name to 24 bytes
+            private int _nameLength;
+
+            public ReadOnlySpan<char> Name => new(_nameChars, 0, _nameLength);
+
+            public void SetName(ReadOnlySpan<char> value)
+            {
+                if (value.Length > _nameChars.Length)
+                    value = value[.._nameChars.Length]; // truncate
+
+                value.CopyTo(_nameChars);
+                _nameLength = value.Length;
+            }
+
+            #endregion
+
+            #region SendName
+
+            private readonly char[] _sendNameChars = new char[20]; // S2C 0x03 (PlayerEntering) limits name to 20 bytes.
+            private int _sendNameLength;
+
+            public ReadOnlySpan<char> SendName => new(_sendNameChars, 0, _sendNameLength);
+
+            public void SetSendName(ReadOnlySpan<char> value)
+            {
+                if (value.Length > _sendNameChars.Length)
+                    value = value[.._sendNameChars.Length]; // truncate
+
+                value.CopyTo(_sendNameChars);
+                _sendNameLength = value.Length;
+            }
+
+            #endregion
+
+            #region Squad
+
+            private readonly char[] _squadChars = new char[24]; // B2S 0x01 (UserLogin) limits squad to 24 bytes
+            private int _squadLength;
+
+            public ReadOnlySpan<char> Squad => new(_squadChars, 0, _squadLength);
+
+            public void SetSquad(ReadOnlySpan<char> value)
+            {
+                if (value.Length > _squadChars.Length)
+                    value = value[.._squadChars.Length]; // truncate
+
+                value.CopyTo(_squadChars);
+                _squadLength = value.Length;
+            }
+
+            #endregion
+
+            #region CustomText
+
+            private char[] _customTextChars = new char[256];
+            private int _customTextLength;
+
+            public ReadOnlySpan<char> CustomText => new(_customTextChars, 0, _customTextLength);
+
+            public void SetCustomText(ReadOnlySpan<char> value)
+            {
+                if (value.Length > _customTextChars.Length)
+                    value = value[.._customTextChars.Length]; // truncate
+
+                value.CopyTo(_customTextChars);
+                _customTextLength = value.Length;
+            }
+
+            #endregion
+
+            public void Reset()
+            {
+                DemoData = false;
+                Code = null;
+                Authenticated = false;
+                SetName("");
+                SetSendName("");
+                SetSquad("");
+                SetCustomText("");
+            }
         }
 
         #endregion
-
-        private bool MainloopTimer_SendKeepAlive()
-        {
-            if (_net != null)
-            {
-                ReadOnlySpan<byte> keepAlive = stackalloc byte[1] { (byte)S2CPacketType.KeepAlive };
-                _net.SendToArena(null, null, keepAlive, NetSendFlags.Reliable);
-            }
-
-            return true;
-        }
     }
 }

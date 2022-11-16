@@ -67,7 +67,10 @@ namespace SS.Packets.Billing
             this.clientVersion = LittleEndianConverter.Convert(clientVersion);
 
             name.CopyTo(NameBytes);
+            NameBytes[name.Length..].Fill(0);
+
             password.CopyTo(PasswordBytes);
+            PasswordBytes[password.Length..].Fill(0);
         }
     }
 }

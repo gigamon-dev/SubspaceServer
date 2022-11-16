@@ -63,7 +63,7 @@ namespace SS.Core.Modules
 
         private void Command_makefake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            CreateFakePlayer(parameters.ToString(), p.Arena, ShipType.Spec, 9999);
+            CreateFakePlayer(parameters, p.Arena, ShipType.Spec, 9999);
         }
 
         private void Command_killfake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
@@ -76,14 +76,16 @@ namespace SS.Core.Modules
 
         #endregion
 
-        public Player CreateFakePlayer(string name, Arena arena, ShipType ship, short freq)
+        public Player CreateFakePlayer(ReadOnlySpan<char> name, Arena arena, ShipType ship, short freq)
         {
             Player player = _playerData.NewPlayer(ClientType.Fake);
             if (player == null)
                 return null;
 
-            player.Packet.Name = player.Name = name;
-            player.Packet.Squad = player.Squad = string.Empty;
+            player.Packet.SetName(name);
+            player.Name = name.ToString(); // TODO: string allocation
+            player.Packet.SetSquad("");
+            player.Squad = string.Empty;
             player.ClientName = "<internal fake player>";
             player.Ship = ship;
             player.Freq = freq;

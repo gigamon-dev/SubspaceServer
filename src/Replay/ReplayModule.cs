@@ -1683,10 +1683,15 @@ namespace SS.Replay
                         case EventType.Enter:
                             ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
 
-                            string name = $"~{enter.Name}";
+                            Span<byte> nameBytes = enter.NameBytes.SliceNullTerminated();
+                            Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)+1];
+                            name[0] = '~';
+                            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name[1..]);
+                            Debug.Assert(decodedByteCount == nameBytes.Length);
+
                             if (ad.PlayerIdMap.ContainsKey(enter.PlayerId))
                             {
-                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Duplicate Enter event for player {enter.PlayerId} '{enter.Name}'.");
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Duplicate Enter event for player {enter.PlayerId} '{name}'.");
                                 break;
                             }
 

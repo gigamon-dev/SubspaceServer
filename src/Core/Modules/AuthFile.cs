@@ -2,6 +2,7 @@
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace SS.Core.Modules
@@ -22,7 +23,7 @@ namespace SS.Core.Modules
         private ConfigHandle pwdFile;
         private HashAlgorithm hashAlgorithm;
         private HashEncoding hashEncoding;
-        private readonly object hashLock = new object();
+        private readonly object hashLock = new();
         private bool allowUnknown;
         private PlayerDataKey<PlayerData> pdKey;
 
@@ -123,76 +124,83 @@ namespace SS.Core.Modules
             return true;
         }
 
-        void IAuth.Authenticate(Player p, in LoginPacket lp, int lplen, AuthDoneDelegate done)
+        void IAuth.Authenticate(IAuthRequest authRequest)
         {
-            if (!p.TryGetExtraData(pdKey, out PlayerData pd))
+            Player player = authRequest.Player;
+            if (player is null
+                || !player.TryGetExtraData(pdKey, out PlayerData playerData)
+                || authRequest.LoginBytes.Length < LoginPacket.VIELength)
+            {
+                authRequest.Result.Code = AuthCode.CustomText;
+                authRequest.Result.SetCustomText("Internal server error.");
                 return;
+            }
+
+            ref readonly LoginPacket lp = ref authRequest.LoginPacket;
 
             Span<byte> nameBytes = lp.NameBytes.SliceNullTerminated();
             Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-            StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
-            string name = nameSpan.ToString(); // TODO: investigate reducing allocations
+            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
+            Debug.Assert(decodedByteCount == nameBytes.Length);
 
             Span<byte> passwordBytes = lp.PasswordBytes.SliceNullTerminated();
             Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
-            StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+            decodedByteCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+            Debug.Assert(decodedByteCount == passwordBytes.Length);
 
-            pd.PasswordHash = GetPasswordHash(nameSpan, passwordSpan); // TODO: maybe not create strings and instead use a pool of byte[] or IMemoryOwner<byte>
+            playerData.PasswordHash = GetPasswordHash(nameSpan, passwordSpan); // TODO: maybe not create strings and instead use a pool of byte[] or IMemoryOwner<byte>
 
-            AuthData authData = new AuthData()
-            {
-                Authenticated = false,
-                Name = name,
-                SendName = name,
-            };
+            IAuthResult result = authRequest.Result;
+            result.Authenticated = false;
+            result.SetName(nameSpan);
+            result.SetSendName(nameSpan);
 
-            string line = config.GetStr(pwdFile, "users", name);
+            string line = config.GetStr(pwdFile, "users", nameSpan);
 
             if (line != null)
             {
                 if (string.Equals(line, "lock"))
                 {
-                    authData.Code = AuthCode.NoPermission;
+                    result.Code = AuthCode.NoPermission;
                 }
                 else if (string.Equals(line, "any"))
                 {
-                    authData.Code = AuthCode.OK;
+                    result.Code = AuthCode.OK;
                 }
                 else
                 {
-                    if (!string.Equals(pd.PasswordHash, line))
+                    if (!string.Equals(playerData.PasswordHash, line))
                     {
-                        authData.Code = AuthCode.BadPassword;
+                        result.Code = AuthCode.BadPassword;
                     }
                     else
                     {
                         // only a correct password gets marked as authenticated
-                        authData.Authenticated = true;
-                        authData.Code = AuthCode.OK;
+                        result.Authenticated = true;
+                        result.Code = AuthCode.OK;
                     }
                 }
             }
             else
             {
                 // no match found
-                authData.Code = allowUnknown ? AuthCode.OK : AuthCode.NoPermission;
+                result.Code = allowUnknown ? AuthCode.OK : AuthCode.NoPermission;
             }
 
-            done(p, authData);
+            authRequest.Done();
         }
 
-        void IBillingFallback.Check<T>(Player p, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state)
+        void IBillingFallback.Check<T>(Player player, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state)
         {
-            if (name.Length == 0 || !p.TryGetExtraData(pdKey, out PlayerData pd))
+            if (name.Length == 0 || !player.TryGetExtraData(pdKey, out PlayerData playerData))
             {
                 done(state, BillingFallbackResult.Mismatch);
                 return;
             }
 
-            string nameStr = name.ToString(); // TODO: investigate reducing allocations
-            pd.PasswordHash = GetPasswordHash(name, password);
+            playerData.PasswordHash = GetPasswordHash(name, password);
 
-            string line = config.GetStr(pwdFile, "users", nameStr);
+            string line = config.GetStr(pwdFile, "users", name);
             if (line != null)
             {
                 if (string.Equals(line, "lock", StringComparison.OrdinalIgnoreCase))
@@ -207,7 +215,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (string.Equals(pd.PasswordHash, line, StringComparison.Ordinal))
+                if (string.Equals(playerData.PasswordHash, line, StringComparison.Ordinal))
                 {
                     done(state, BillingFallbackResult.Match);
                     return;
@@ -349,14 +357,14 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!targetPlayer.TryGetExtraData(pdKey, out PlayerData pd)
-                || string.IsNullOrWhiteSpace(pd.PasswordHash))
+            if (!targetPlayer.TryGetExtraData(pdKey, out PlayerData targetPlayerData)
+                || string.IsNullOrWhiteSpace(targetPlayerData.PasswordHash))
             {
                 chat.SendMessage(p, "Hashed password missing.");
                 return;
             }
 
-            config.SetStr(pwdFile, "users", targetPlayer.Name, pd.PasswordHash, $"added by {p.Name} on {DateTime.UtcNow}", true);
+            config.SetStr(pwdFile, "users", targetPlayer.Name, targetPlayerData.PasswordHash, $"added by {p.Name} on {DateTime.UtcNow}", true);
             chat.SendMessage(p, $"Set local password for {targetPlayer.Name}");
             chat.SendMessage(targetPlayer, $"Your password has been set as a local password by {p.Name}.");
         }

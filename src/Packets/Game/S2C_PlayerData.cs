@@ -40,6 +40,8 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2C_PlayerData
     {
+        #region Static members
+
         /// <summary>
         /// Number of bytes in a packet.
         /// </summary>
@@ -50,18 +52,13 @@ namespace SS.Packets.Game
             Length = Marshal.SizeOf<S2C_PlayerData>();
         }
 
-        private byte _type;
+        #endregion
+
+        public byte Type;
         public sbyte Ship;
         public byte AcceptAudio;
-
-        public const int NameBytesLength = 20;
         private fixed byte nameBytes[NameBytesLength];
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
-
-        public const int SquadBytesLength = 20;
         private fixed byte squadBytes[SquadBytesLength];
-        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], SquadBytesLength);
-
         private int killPoints;
         private int flagPoints;
         private short playerId;
@@ -72,25 +69,22 @@ namespace SS.Packets.Game
         private short flagsCarried;
         private byte miscBitfield;
 
-        private const byte HasCrownMask = 0b00000001;
-        private const byte SendDamageMask = 0b00000010;
+        #region Helper properties
 
-        public byte Type
+        public const int NameBytesLength = 20;
+        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
+
+        public void SetName(ReadOnlySpan<char> value)
         {
-            get { return _type; }
-            init { _type = value; }
+            NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameBytesLength), false);
         }
 
-        public string Name
-        {
-            get { return NameBytes.ReadNullTerminatedString(); }
-            set { NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameBytesLength), false); }
-        }
+        public const int SquadBytesLength = 20;
+        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], SquadBytesLength);
 
-        public string Squad
+        public void SetSquad(ReadOnlySpan<char> value)
         {
-            get { return SquadBytes.ReadNullTerminatedString(); }
-            set { SquadBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(SquadBytesLength), false); }
+            SquadBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(SquadBytesLength), false);
         }
 
         public int KillPoints
@@ -141,6 +135,9 @@ namespace SS.Packets.Game
             set { flagsCarried = LittleEndianConverter.Convert(value); }
         }
 
+        private const byte HasCrownMask = 0b00000001;
+        private const byte SendDamageMask = 0b00000010;
+
         /// <summary>
         /// Whether the player has a crown.
         /// </summary>
@@ -174,5 +171,7 @@ namespace SS.Packets.Game
         //            miscBitfield = (byte)(miscBitfield & ~SendDamageMask);
         //    }
         //}
+
+        #endregion
     }
 }

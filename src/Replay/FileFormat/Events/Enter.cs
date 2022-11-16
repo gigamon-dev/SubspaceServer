@@ -25,14 +25,14 @@ namespace SS.Replay.FileFormat.Events
         private short ship;
         private short freq;
 
-        public Enter(ServerTick ticks, short playerId, string name, string squad, ShipType ship, short freq)
+        public Enter(ServerTick ticks, short playerId, ReadOnlySpan<char> name, ReadOnlySpan<char> squad, ShipType ship, short freq)
         {
             Header = new EventHeader(ticks, EventType.Enter);
             this.playerId = LittleEndianConverter.Convert(playerId);
             this.ship = LittleEndianConverter.Convert((short)ship);
             this.freq = LittleEndianConverter.Convert(freq);
-            Name = name;
-            Squad = squad;
+            SetName(name);
+            SetSquad(squad);
         }
 
         #region Helper properties
@@ -44,21 +44,19 @@ namespace SS.Replay.FileFormat.Events
         }
 
         private const int nameBytesLength = 24;
-        private Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], nameBytesLength);
+        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], nameBytesLength);
 
-        private const int squadBytesLength = 24;
-        private Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], squadBytesLength);
-
-        public string Name
+        public void SetName(ReadOnlySpan<char> value)
         {
-            get => StringUtils.ReadNullTerminatedString(NameBytes);
-            set => StringUtils.WriteNullPaddedString(NameBytes, value, true);
+            StringUtils.WriteNullPaddedString(NameBytes, value, true);
         }
 
-        public string Squad
+        private const int squadBytesLength = 24;
+        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], squadBytesLength);
+
+        public void SetSquad(ReadOnlySpan<char> value)
         {
-            get => StringUtils.ReadNullTerminatedString(SquadBytes);
-            set => StringUtils.WriteNullPaddedString(SquadBytes, value, true);
+            StringUtils.WriteNullPaddedString(SquadBytes, value, true);
         }
 
         public ShipType Ship

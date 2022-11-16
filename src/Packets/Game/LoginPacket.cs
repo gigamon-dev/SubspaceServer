@@ -14,8 +14,8 @@ namespace SS.Packets.Game
 
         static LoginPacket()
         {
-            ContinuumLength = Marshal.SizeOf<LoginPacket>();
-            VIELength = ContinuumLength - 64;
+            VIELength = Marshal.SizeOf<LoginPacket>();
+            ContinuumLength = VIELength + 64;
         }
 
         #endregion
@@ -33,18 +33,16 @@ namespace SS.Packets.Game
         private int field555;
         private uint d2;
         private fixed byte blah2[12];
-        private fixed byte contIdBytes[contIdBytesLength]; // continuum only
-        // TODO: maybe move contIdBytes out of the struct? potentially another client could send a different length of extra data (that could be passed to the biller)?
+        // The continuum login packet (0x24) has 64 more bytes (continuum id field) that come next (not included in this struct).
+        // The zone server doesn't know how to interpret the bytes. It just passes them to the billing server.
 
         #region Helper properties
 
         private const int NameBytesLength = 32;
         public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
-        public string Name => NameBytes.ReadNullTerminatedString(); // TODO: remove string allocation
 
         private const int PasswordBytesLength = 32;
         public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
-        public string Password => PasswordBytes.ReadNullTerminatedString(); // TODO: remove string allocation
 
         public uint MacId => LittleEndianConverter.Convert(macId);
 
@@ -53,9 +51,6 @@ namespace SS.Packets.Game
         public ushort CVersion => LittleEndianConverter.Convert(cVersion);
 
         public uint D2 => LittleEndianConverter.Convert(d2);
-
-        private const int contIdBytesLength = 64;
-        public Span<byte> ContId => MemoryMarshal.CreateSpan(ref contIdBytes[0], contIdBytesLength);
 
         #endregion
     }

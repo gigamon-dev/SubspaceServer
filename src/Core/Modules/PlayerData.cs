@@ -417,27 +417,22 @@ namespace SS.Core.Modules
 
         #region Helper Types
 
-        private class FreePlayerInfo
+        private readonly struct FreePlayerInfo
         {
             /// <summary>
             /// The time the associated player object (predominantly its Id) will be available.
             /// </summary>
-            public DateTime AvailableTimestamp;
+            public readonly DateTime AvailableTimestamp;
 
             /// <summary>
             /// The player object
             /// </summary>
-            public Player Player;
+            public readonly Player Player;
 
             public FreePlayerInfo(Player player)
             {
-                Player = player;
-                SetAvailableTimestampFromNow();
-            }
-
-            public void SetAvailableTimestampFromNow()
-            {
                 AvailableTimestamp = DateTime.UtcNow + PlayerReuseDelay;
+                Player = player;
             }
         }
 
