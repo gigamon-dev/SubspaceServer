@@ -3561,7 +3561,7 @@ namespace SS.Core.Modules
             conn.whichSock = ld.GameSocket;
             p.ConnectAs = ld.ConnectAs;
 
-            p.IpAddress = remoteEndpoint.Address;
+            p.IPAddress = remoteEndpoint.Address;
 
             p.ClientName = clientType switch
             {

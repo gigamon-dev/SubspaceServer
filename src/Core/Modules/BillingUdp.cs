@@ -218,7 +218,7 @@ namespace SS.Core.Modules
                 {
                     uint ipAddress = 0;
                     Span<byte> ipBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ipAddress, 1));
-                    if (!player.IpAddress.TryWriteBytes(ipBytes, out int bytesWritten))
+                    if (!player.IPAddress.TryWriteBytes(ipBytes, out int bytesWritten))
                     {
                         FallbackDone(player, BillingFallbackResult.NotFound);
                         return;

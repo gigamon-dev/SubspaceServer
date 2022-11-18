@@ -325,46 +325,39 @@ namespace SS.Core
             }
         }
 
-        public const int MaxNameLength = 24; // TODO: find out why ASSS allows longer than can fit in a PlayerDataPacket
-
         private string _name;
 
         /// <summary>
         /// The player's name.
         /// </summary>
-        /// <exception cref="ArgumentException">Value cannot be null or white-space.</exception>
-        /// <exception cref="ArgumentException">Value is too long.</exception>
         public string Name
         {
             get => _name;
             internal set
             {
-                if (string.IsNullOrWhiteSpace(value))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(value));
-
-                if (StringUtils.DefaultEncoding.GetByteCount(value) > MaxNameLength - 1) // -1 for null-terminator
-                    throw new ArgumentException($"Does not fit into {MaxNameLength - 1} bytes when encoded.", nameof(value));
+                if (value is not null && value.Length > Constants.MaxPlayerNameLength)
+                {
+                    value = value[..Constants.MaxPlayerNameLength];
+                }
 
                 _name = value;
             }
         }
-
-        public const int MaxSquadLength = 24; // TODO: find out why ASSS allows longer than can fit in a PlayerDataPacket
 
         private string _squad;
 
         /// <summary>
         /// The player's squad.
         /// </summary>
-        /// <exception cref="ArgumentException">Value cannot be null or white-space.</exception>
-        /// <exception cref="ArgumentException">Value is too long.</exception>
         public string Squad
         {
             get => _squad;
             internal set
             {
-                if (value != null && StringUtils.DefaultEncoding.GetByteCount(value) > MaxSquadLength - 1) // -1 for null-terminator
-                    throw new ArgumentException($"Does not fit into {MaxSquadLength - 1} bytes when encoded.", nameof(value));
+                if (value is not null && value.Length > Constants.MaxSquadNameLength)
+                {
+                    value = value[..Constants.MaxSquadNameLength];
+                }
 
                 _squad = value;
             }
@@ -492,7 +485,7 @@ namespace SS.Core
         /// <summary>
         /// IP address the player is connecting from.
         /// </summary>
-        public IPAddress IpAddress { get; internal set; }
+        public IPAddress IPAddress { get; internal set; }
 
         /// <summary>
         /// If the player has connected through a port that sets a default arena, that will be stored here.
@@ -671,7 +664,7 @@ namespace SS.Core
             WhenLoggedIn = PlayerState.Uninitialized;
             Arena = null;
             NewArena = null;
-            _name = null;
+            Name = null;
             Squad = null;
             Xres = 0;
             Yres = 0;
@@ -680,7 +673,7 @@ namespace SS.Core
             Position.Initialize();
             MacId = 0;
             PermId = 0;
-            IpAddress = IPAddress.None;
+            IPAddress = IPAddress.None;
             ConnectAs = null;
             ClientName = null;
             LastDeath = 0;

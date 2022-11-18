@@ -78,12 +78,21 @@ namespace SS.Core.Modules
 
         public Player CreateFakePlayer(ReadOnlySpan<char> name, Arena arena, ShipType ship, short freq)
         {
+            name = name.Trim();
+            if (name.IsEmpty)
+                return null;
+
             Player player = _playerData.NewPlayer(ClientType.Fake);
             if (player == null)
                 return null;
 
+            if (name.Length > Constants.MaxPlayerNameLength)
+            {
+                name = name[..Constants.MaxPlayerNameLength];
+            }
+
             player.Packet.SetName(name);
-            player.Name = name.ToString(); // TODO: string allocation
+            player.Name = name.ToString();
             player.Packet.SetSquad("");
             player.Squad = string.Empty;
             player.ClientName = "<internal fake player>";

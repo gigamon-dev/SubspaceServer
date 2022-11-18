@@ -344,7 +344,7 @@ namespace SS.Core.Modules
 
                     case PlayerState.SendLoginResponse:
                         SendLoginResponse(player);
-                        _logManager.LogM(LogLevel.Info, nameof(Core), $"[{player.Name}] [pid={player.Id}] Player logged in from ip={player.IpAddress} macid={player.MacId:X}.");
+                        _logManager.LogM(LogLevel.Info, nameof(Core), $"[{player.Name}] [pid={player.Id}] Player logged in from ip={player.IPAddress} macid={player.MacId:X}.");
                         break;
 
                     case PlayerState.DoFreqAndArenaSync:
@@ -674,10 +674,10 @@ namespace SS.Core.Modules
                 Player oldPlayer = _playerData.FindPlayer(authResult.Name);
 
                 // Set new player's name.
-                player.Packet.SetName(authResult.SendName); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
-                player.Name = authResult.Name.ToString(); // TODO: string allocation
+                player.Packet.SetName(authResult.SendName); // this can truncate
+                player.Name = Truncate(authResult.Name, Constants.MaxPlayerNameLength).ToString(); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
                 player.Packet.SetSquad(authResult.Squad); // this can truncate
-                player.Squad = authResult.Squad.ToString(); // TODO: string allocation
+                player.Squad = Truncate(authResult.Squad, Constants.MaxSquadNameLength).ToString();
 
                 // Make sure we don't have two identical players.
                 // If so, do not increment stage yet. We'll do it when the other player leaves.
@@ -719,6 +719,16 @@ namespace SS.Core.Modules
                 {
                     _playerData.WriteUnlock();
                 }
+            }
+
+            static ReadOnlySpan<char> Truncate(ReadOnlySpan<char> value, int maxLength)
+            {
+                if (value.Length > maxLength)
+                {
+                    return value[..maxLength];
+                }
+
+                return value;
             }
         }
 

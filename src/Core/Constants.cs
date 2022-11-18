@@ -4,10 +4,15 @@ using System.Collections.ObjectModel;
 namespace SS.Core
 {
     /// <summary>
-    /// equivalent of param.h
+    /// Constants.
     /// </summary>
+    /// <remarks>
+    /// This is the equivalent of param.h in ASSS.
+    /// </remarks>
     public static class Constants
     {
+        #region Search Paths
+
         /// <summary>
         /// Search paths for config files with placeholders:
         /// <list type="table">
@@ -55,6 +60,10 @@ namespace SS.Core
                 ":arenas/(default)/{0}",
             });
 
+        #endregion
+
+        #region Network related
+
         /// <summary>
         /// how many incoming rel packets to buffer for a client
         /// </summary>
@@ -80,13 +89,10 @@ namespace SS.Core
         /// </summary>
         public const int MaxConnInitPacket = 2048;
 
-        public const int MaxLvzFiles = 16;
-
         /// <summary>
-        /// Maximum size of a "big packet" allowed to receive.
+        /// Maximum size of a "big packet" in bytes.
         /// </summary>
-        public const int CFG_MAX_BIG_PACKET = 65536;
-        public const int MaxBigPacket = CFG_MAX_BIG_PACKET;
+        public const int MaxBigPacket = 65536;
 
         /// <summary>
         /// how many bytes to 'chunk' data into when sending "big packets"
@@ -94,25 +100,49 @@ namespace SS.Core
         /// </summary>
         public const int ChunkSize = 480;
 
+        #endregion
+
+        public const int MaxLvzFiles = 16;
+
         public const int RandMax = 0x7fff;
 
         /// <summary>
-        /// The maximum # of characters an arena name can contain.
+        /// The maximum length of an arena name. Since Subspace uses a single-byte character encoding, this maximum is both the # of bytes and # of characters.
         /// </summary>
         /// <remarks>
-        /// The arena name field of the C2S 0x01 (Go Arena) packet has a limit of 16 bytes, with the last byte required to be a null terminator.
-        /// Subspace uses a single-byte character encoding.
+        /// The arena name field of the C2S 0x01 (Go Arena) packet is 16 bytes, with the last byte required to be a null-terminator.
         /// </remarks>
         public const int MaxArenaNameLength = 15;
 
         /// <summary>
-        /// The maximum # of characters a player name can contain.
+        /// The maximum length of a player name. Since Subspace uses a single-byte character encoding, this maximum is both the # of bytes and # of characters.
         /// </summary>
         /// <remarks>
-        /// The player name field of the C2C 0x03 (Player Entering) packet has a limit of 20 bytes, with the last byte required to be a null terminator.
-        /// Subspace uses a single-byte character encoding.
+        /// The Subspace game protocol's S2C 0x03 (Player Entering) packet has player name as 20 bytes (not necessarily null-terminated).
+        /// <para>
+        /// The UDP billing protocol's 0x01 (User Login) packet has a field size of 24 bytes.
+        /// In ASSS the Player struct's "name" field is also 24 bytes.
+        /// However, looking VERY closely at the ASSS logic reveals it will store up to 20 characters + 1 byte for the null-terminator.
+        /// <code>astrncpy(p->name, auth->name, 21);</code>
+        /// In other words, ASSS truncates to 20 characters.
+        /// </para>
         /// </remarks>
-        public const int MaxPlayerNameLength = 19;
+        public const int MaxPlayerNameLength = 20;
+
+        /// <summary>
+        /// The maximum length of a squad name. Since Subspace uses a single-byte character encoding, this maximum is both the # of bytes and # of characters.
+        /// </summary>
+        /// <remarks>
+        /// The Subspace game protocol's S2C 0x03 (Player Entering) packet has squad name as 20 bytes (not necessarily null-terminated).
+        /// <para>
+        /// The UDP billing protocol's 0x01 (User Login) packet, which has a field size of 24 bytes.
+        /// In ASSS the Player struct's "squad" field is also 24 bytes.
+        /// However, looking VERY closely at the ASSS logic reveals it will store up to 20 characters + 1 byte for the null-terminator.
+        /// <code>astrncpy(p->squad, auth->squad, 21);</code>
+        /// In other words, ASSS truncates to 20 characters.
+        /// </para>
+        /// </remarks>
+        public const int MaxSquadNameLength = 20;
 
         /// <summary>
         /// Represents all public arenas.
@@ -213,7 +243,7 @@ namespace SS.Core
             public const string IsStaff = "isstaff";
 
             /// <summary>
-            /// if a player can sees all non-group-default players even if they lack isstaff
+            /// if a player can see all non-group-default players even if they lack isstaff
             /// </summary>
             public const string SeeAllStaff = "seeallstaff";
 
