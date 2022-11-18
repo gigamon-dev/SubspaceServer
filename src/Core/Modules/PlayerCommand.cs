@@ -2265,58 +2265,32 @@ namespace SS.Core.Modules
             bool canSeePrivateArenas = _capabilityManager.HasCapability(p, Constants.Capabilities.SeePrivArena);
             bool canSeeAllStaff = _capabilityManager.HasCapability(p, Constants.Capabilities.SeeAllStaff);
 
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            _playerData.Lock();
 
             try
             {
-                _playerData.Lock();
-
-                try
+                foreach (Player player in _playerData.Players)
                 {
-                    foreach (Player player in _playerData.Players)
+                    if (player.Status != PlayerState.Playing)
+                        continue;
+
+                    string group = _groupManager.GetGroup(player);
+
+                    if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
                     {
-                        if (player.Status != PlayerState.Playing)
-                            continue;
-
-                        string group = _groupManager.GetGroup(player);
-                        string format;
-
-                        if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
-                        {
-                            format = ": {0,20} {1,10} {2}";
-                        }
-                        else if (canSeeAllStaff
-                            && !string.Equals(group, "default", StringComparison.Ordinal)
-                            && !string.Equals(group, "none", StringComparison.Ordinal))
-                        {
-                            format = ": {0,20} {1,10} ({2})";
-                        }
-                        else
-                        {
-                            format = null;
-                        }
-
-                        if (format != null)
-                        {
-                            sb.Clear();
-                            sb.AppendFormat(
-                                format,
-                                player.Name,
-                                (!player.Arena.IsPrivate || canSeePrivateArenas || p.Arena == player.Arena) ? player.Arena.Name : "(private)",
-                                group);
-
-                            _chat.SendMessage(p, sb);                                
-                        }
+                        _chat.SendMessage(p, $": {player.Name,20} {((!player.Arena.IsPrivate || canSeePrivateArenas || p.Arena == player.Arena) ? player.Arena.Name : "(private)"),10} {group}");
                     }
-                }
-                finally
-                {
-                    _playerData.Unlock();
+                    else if (canSeeAllStaff
+                        && !string.Equals(group, "default", StringComparison.Ordinal)
+                        && !string.Equals(group, "none", StringComparison.Ordinal))
+                    {
+                        _chat.SendMessage(p, $": {player.Name,20} {((!player.Arena.IsPrivate || canSeePrivateArenas || p.Arena == player.Arena) ? player.Arena.Name : "(private)"),10} ({group})");
+                    }
                 }
             }
             finally
             {
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                _playerData.Unlock();
             }
         }
 
