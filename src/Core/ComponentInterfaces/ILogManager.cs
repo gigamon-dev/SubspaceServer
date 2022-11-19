@@ -41,7 +41,8 @@ namespace SS.Core.ComponentInterfaces
         public LogLevel Level;
         public string Module;
         public Arena Arena;
-        public Player Player;
+        public string PlayerName;
+        public int? PlayerId;
         public StringBuilder LogText;
     }
 

@@ -460,7 +460,8 @@ namespace SS.Core.Modules
                         Level = level,
                         Module = module,
                         Arena = arena,
-                        Player = player,
+                        PlayerName = player?.Name,
+                        PlayerId = player?.Id,
                         LogText = sb,
                     });
             }
@@ -493,7 +494,8 @@ namespace SS.Core.Modules
                         Level = level,
                         Module = module,
                         Arena = arena,
-                        Player = player,
+                        PlayerName = player?.Name,
+                        PlayerId = player?.Id,
                         LogText = sb,
                     });
             }
@@ -526,7 +528,8 @@ namespace SS.Core.Modules
                         Level = level,
                         Module = module,
                         Arena = arena,
-                        Player = player,
+                        PlayerName = player?.Name,
+                        PlayerId = player?.Id,
                         LogText = sb,
                     });
             }
@@ -559,7 +562,8 @@ namespace SS.Core.Modules
                         Level = level,
                         Module = module,
                         Arena = arena,
-                        Player = player,
+                        PlayerName = player?.Name,
+                        PlayerId = player?.Id,
                         LogText = sb,
                     });
             }
