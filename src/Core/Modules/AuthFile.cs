@@ -30,7 +30,7 @@ namespace SS.Core.Modules
         private const string ConfigFileName = "passwd.conf";
 
         [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5", 
-            Description = "The algorithm to use for hashing passwords. See .NET documentation on 'HashAlgorithm.Create'.")]
+            Description = "The algorithm to use for hashing passwords. Supported algorithms include: MD5, SHA256, and SHA512.")]
         [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex", 
             Description = "How password hashes are encoded in the password file. hex|Base64")]
         [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1", 
@@ -57,15 +57,26 @@ namespace SS.Core.Modules
             }
 
             string hashAlgoritmName = config.GetStr(pwdFile, "General", "HashAlgorithm");
-            hashAlgorithm = string.IsNullOrWhiteSpace(hashAlgoritmName)
-                ? MD5.Create()
-                : HashAlgorithm.Create(hashAlgoritmName);
+            if (string.IsNullOrWhiteSpace(hashAlgoritmName))
+            {
+                hashAlgorithm = MD5.Create();
+            }
+            else
+            {
+                hashAlgorithm = hashAlgoritmName switch
+                {
+                    "MD5" => MD5.Create(),
+                    "SHA256" => SHA256.Create(),
+                    "SHA512" => SHA512.Create(),
+                    _ => null,
+                };
+            }
 
-            if (hashAlgorithm == null)
+            if (hashAlgorithm is null)
             {
                 hashAlgorithm = MD5.Create();
 
-                if (hashAlgorithm == null)
+                if (hashAlgorithm is null)
                 {
                     log.LogM(LogLevel.Error, nameof(AuthFile), "Invalid General:HashAlgorithm specified, unable to proceed.");
                     return false;
@@ -290,7 +301,7 @@ namespace SS.Core.Modules
             Args = "<new password>",
             Description =
             "Changes your local server password. Note that this command only changes\n" +
-            "the password used by the auth_file authentication mechanism (used when the\n" +
+            $"the password used by the {nameof(AuthFile)} authentication mechanism (used when the\n" +
             "billing server is disconnected). This command does not involve the billing\n" +
             "server.\n")]
         [ConfigHelp("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",

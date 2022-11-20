@@ -783,8 +783,6 @@ namespace SS.Core.Modules
             }
         }
 
-        private delegate void oohandler(SubspaceBuffer buffer);
-
         /// <summary>
         /// Handlers for 'core' packets (ss protocol's network/transport layer).
         /// </summary>
@@ -792,7 +790,7 @@ namespace SS.Core.Modules
         /// The first byte of these packets is 0x00.
         /// The second byte identifies the type and is the index into this array.
         /// </remarks>
-        private readonly oohandler[] _oohandlers;
+        private readonly Action<SubspaceBuffer>[] _oohandlers;
 
         private const int MAXTYPES = 64;
 
@@ -883,7 +881,7 @@ namespace SS.Core.Modules
             mainloopWork_CallPacketHandlersAction = MainloopWork_CallPacketHandlers;
             mainloopWork_InvokeReliableCallbackAction = MainloopWork_InvokeReliableCallback;
 
-            _oohandlers = new oohandler[20];
+            _oohandlers = new Action<SubspaceBuffer>[20];
 
             _oohandlers[0] = null; //00 - nothing
             _oohandlers[1] = null; //01 - key initiation
