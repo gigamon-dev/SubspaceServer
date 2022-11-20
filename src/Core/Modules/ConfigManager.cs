@@ -433,6 +433,12 @@ namespace SS.Core.Modules
             {
                 return 1;
             }
+            else if (valueSpan.Equals("N", StringComparison.OrdinalIgnoreCase)
+                || valueSpan.Equals("No", StringComparison.OrdinalIgnoreCase)
+                || valueSpan.Equals(bool.FalseString, StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
 
             return defaultValue; // Note: This differs from ASSS which returns 0.
         }
