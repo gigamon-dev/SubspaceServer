@@ -29,8 +29,8 @@ namespace SS.Core.Configuration
     /// </remarks>
     public sealed class PreprocessorReader : IDisposable
     {
-        private readonly IConfFileProvider fileProvider;
-        private readonly IConfigLogger logger = null;
+        private readonly IConfFileProvider _fileProvider;
+        private readonly IConfigLogger _logger = null;
 
         public PreprocessorReader(
             IConfFileProvider fileProvider,
@@ -46,9 +46,9 @@ namespace SS.Core.Configuration
             if (baseFile == null)
                 throw new ArgumentNullException(nameof(baseFile));
 
-            this.fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
+            _fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
             CurrentFile = new FileEntry(baseFile, null);
-            this.logger = logger;
+            _logger = logger;
 
             Processing = true;
         }
@@ -97,7 +97,7 @@ namespace SS.Core.Configuration
         /// </summary>
         private Dictionary<string, string> Defs { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        private readonly HashSet<ConfFile> processedFiles = new HashSet<ConfFile>();
+        private readonly HashSet<ConfFile> processedFiles = new();
         public IReadOnlySet<ConfFile> ProcessedFiles => processedFiles;
 
         /// <summary>
@@ -140,9 +140,9 @@ namespace SS.Core.Configuration
         /// <param name="cond"></param>
         private void PushIf(bool cond)
         {
-            IfBlock i = new IfBlock();
-            i.Cond = cond ? IfBlock.CondType.is_true : IfBlock.CondType.is_false;
-            i.Where = IfBlock.WhereType.in_if;
+            IfBlock i = new();
+            i.Cond = cond ? IfBlock.CondType.IsTrue : IfBlock.CondType.IsFalse;
+            i.Where = IfBlock.WhereType.InIf;
             i.Prev = Ifs;
             Ifs = i;
 
@@ -173,9 +173,9 @@ namespace SS.Core.Configuration
         {
             if (Ifs != null)
             {
-                if (Ifs.Where == IfBlock.WhereType.in_if)
+                if (Ifs.Where == IfBlock.WhereType.InIf)
                 {
-                    Ifs.Where = IfBlock.WhereType.in_else;
+                    Ifs.Where = IfBlock.WhereType.InElse;
                 }
                 else
                 {
@@ -283,7 +283,7 @@ namespace SS.Core.Configuration
                     else if (rawLine.LineType == ConfLineType.PreprocessorInclude)
                     {
                         RawPreprocessorInclude include = (RawPreprocessorInclude)rawLine;
-                        ConfFile includeFile = fileProvider.GetFile(include.FilePath);
+                        ConfFile includeFile = _fileProvider.GetFile(include.FilePath);
                         if (includeFile != null)
                         {
                             PushFile(includeFile);
@@ -316,7 +316,7 @@ namespace SS.Core.Configuration
 
         private void ReportError(string message)
         {
-            logger?.Log(LogLevel.Warn, message);
+            _logger?.Log(LogLevel.Warn, message);
         }
 
         #region Helper classes
@@ -325,16 +325,16 @@ namespace SS.Core.Configuration
         {
             public enum WhereType
             {
-                in_if = 0,
-                in_else = 1
+                InIf = 0,
+                InElse = 1
             }
 
             public WhereType Where;
 
             public enum CondType
             {
-                is_false = 0,
-                is_true = 1
+                IsFalse = 0,
+                IsTrue = 1
             }
 
             public CondType Cond;

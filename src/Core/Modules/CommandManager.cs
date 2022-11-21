@@ -11,6 +11,9 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality for dispatching commands run by players in chat messages.
+    /// </summary>
     [CoreModuleInfo]
     public class CommandManager : IModule, ICommandManager, IModuleLoaderAware
     {
@@ -22,68 +25,15 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<ICommandManager> _iCommandManagerToken;
 
-        private ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new CommandSummaryListPooledObjectPolicy());
-
         private IChat _chat;
 
-        #region Helper classes
-
-        private abstract class CommandData
-        {
-            public readonly Arena Arena;
-            public readonly string HelpText; // TODO: change to be CommandHelpAttribute?
-
-            public CommandData(
-                Arena arena,
-                string helpText)
-            {
-                Arena = arena;
-                HelpText = helpText;
-            }
-
-            public virtual bool IsHandler(CommandDelegate handler) => false;
-            public virtual bool IsHandler(CommandWithSoundDelegate handler) => false;
-        }
-
-        private class BasicCommandData : CommandData
-        {
-            public readonly CommandDelegate Handler;
-
-            public BasicCommandData(
-                CommandDelegate handler,
-                Arena arena,
-                string helpText)
-                : base(arena, helpText)
-            {
-                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-            }
-
-            public override bool IsHandler(CommandDelegate handler) => Handler == handler;
-        }
-
-        private class SoundCommandData : CommandData
-        {
-            public readonly CommandWithSoundDelegate Handler;
-
-            public SoundCommandData(
-                CommandWithSoundDelegate handler,
-                Arena arena,
-                string helpText)
-                : base(arena, helpText)
-            {
-                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-            }
-
-            public override bool IsHandler(CommandWithSoundDelegate handler) => Handler == handler;
-        }
-
-        #endregion
+        private readonly ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new CommandSummaryListPooledObjectPolicy());
 
         private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
         private readonly Trie<LinkedList<CommandData>> _cmdLookup = new(false);
         private readonly Trie _unloggedCommands = new(false);
 
-        private readonly object _lockObj = new();
+        private readonly object _defaultCommandLock = new();
         private event DefaultCommandDelegate DefaultCommandEvent;
 
         #region IModule Members
@@ -116,7 +66,7 @@ namespace SS.Core.Modules
 
             InitializeUnloggedCommands();
 
-            lock (_lockObj)
+            lock (_defaultCommandLock)
             {
                 DefaultCommandEvent = null;
             }
@@ -162,7 +112,7 @@ namespace SS.Core.Modules
                 _rwLock.ExitWriteLock();
             }
 
-            lock (_lockObj)
+            lock (_defaultCommandLock)
             {
                 DefaultCommandEvent = null;
             }
@@ -341,7 +291,7 @@ namespace SS.Core.Modules
         {
             add
             {
-                lock (_lockObj)
+                lock (_defaultCommandLock)
                 {
                     if (DefaultCommandEvent != null)
                     {
@@ -356,7 +306,7 @@ namespace SS.Core.Modules
 
             remove
             {
-                lock (_lockObj)
+                lock (_defaultCommandLock)
                 {
                     DefaultCommandEvent -= value;
                 }
@@ -400,8 +350,7 @@ namespace SS.Core.Modules
             // = makes sense for ?chat=first,second,third or ?password=newpassword etc...
             // where is # used?
 
-            ReadOnlySpan<char> parameters;
-            ReadOnlySpan<char> cmd = typedLine.GetToken(" =", out parameters);
+            ReadOnlySpan<char> cmd = typedLine.GetToken(" =", out ReadOnlySpan<char> parameters);
             if (cmd.IsEmpty)
                 return;
 
@@ -732,27 +681,27 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (var kvp in _cmdLookup)
+                foreach (var (commandName, commandDataList) in _cmdLookup)
                 {
-                    var commandSpan = kvp.Key.Span;
-                    bool canArena = Allowed(p, commandSpan, "cmd", null);
-                    bool canPriv = Allowed(p, commandSpan, "privcmd", null);
-                    bool canRemotePriv = Allowed(p, commandSpan, "rprivcmd", null);
+                    var commandNameSpan = commandName.Span;
+                    bool canArena = Allowed(p, commandNameSpan, "cmd", null);
+                    bool canPriv = Allowed(p, commandNameSpan, "privcmd", null);
+                    bool canRemotePriv = Allowed(p, commandNameSpan, "rprivcmd", null);
 
                     if (excludeNoAccess && !canArena && !canPriv && !canRemotePriv)
                         continue;
 
-                    foreach (var commandData in kvp.Value)
+                    foreach (var commandData in commandDataList)
                     {
                         List<CommandSummary> list = null;
-                        if (commandData.Arena == null)
+                        if (commandData.Arena is null)
                         {
                             if (!excludeGlobal)
                             {
                                 list = globalCommands;
                             }
                         }
-                        else
+                        else if (commandData.Arena == arena)
                         {
                             list = arenaCommands;
                         }
@@ -762,7 +711,7 @@ namespace SS.Core.Modules
                             list?.Add(
                                 new CommandSummary()
                                 {
-                                    Command = new MutableStringBuffer(commandSpan), // can't hold onto kvp.Key, create a copy of the string
+                                    Command = new MutableStringBuffer(commandNameSpan), // can't hold onto kvp.Key, create a copy of the string
                                     CanArena = canArena,
                                     CanPriv = canPriv,
                                     CanRemotePriv = canRemotePriv,
@@ -843,6 +792,55 @@ namespace SS.Core.Modules
 
         #region Helper types
 
+        private abstract class CommandData
+        {
+            public readonly Arena Arena;
+            public readonly string HelpText; // TODO: change to be CommandHelpAttribute?
+
+            public CommandData(
+                Arena arena,
+                string helpText)
+            {
+                Arena = arena;
+                HelpText = helpText;
+            }
+
+            public virtual bool IsHandler(CommandDelegate handler) => false;
+            public virtual bool IsHandler(CommandWithSoundDelegate handler) => false;
+        }
+
+        private class BasicCommandData : CommandData
+        {
+            public readonly CommandDelegate Handler;
+
+            public BasicCommandData(
+                CommandDelegate handler,
+                Arena arena,
+                string helpText)
+                : base(arena, helpText)
+            {
+                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+            }
+
+            public override bool IsHandler(CommandDelegate handler) => Handler == handler;
+        }
+
+        private class SoundCommandData : CommandData
+        {
+            public readonly CommandWithSoundDelegate Handler;
+
+            public SoundCommandData(
+                CommandWithSoundDelegate handler,
+                Arena arena,
+                string helpText)
+                : base(arena, helpText)
+            {
+                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+            }
+
+            public override bool IsHandler(CommandWithSoundDelegate handler) => Handler == handler;
+        }
+
         private struct CommandSummary
         {
             public MutableStringBuffer Command { get; set; }
@@ -873,7 +871,7 @@ namespace SS.Core.Modules
             public static readonly CommandSummaryComparer Ordinal = new(StringComparison.Ordinal);
             public static readonly CommandSummaryComparer OrdinalIgnoreCase = new(StringComparison.OrdinalIgnoreCase);
 
-            private StringComparison _stringComparison;
+            private readonly StringComparison _stringComparison;
 
             private CommandSummaryComparer(StringComparison stringComparison)
             {

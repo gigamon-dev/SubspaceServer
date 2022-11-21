@@ -15,36 +15,36 @@ namespace SS.Core.Configuration
     /// </summary>
     public class ConfDocument
     {
-        private readonly string name;
-        private readonly IConfFileProvider fileProvider;
-        private readonly IConfigLogger logger = null;
+        private readonly string _name;
+        private readonly IConfFileProvider _fileProvider;
+        private readonly IConfigLogger _logger = null;
 
         /// <summary>
         /// The base (root) file.
         /// </summary>
-        private ConfFile baseFile = null;
+        private ConfFile _baseFile = null;
 
         /// <summary>
         /// All of the files that the document consists of.
         /// </summary>
-        private readonly HashSet<ConfFile> files = new();
+        private readonly HashSet<ConfFile> _files = new();
 
         /// <summary>
         /// Active lines
         /// </summary>
-        private readonly List<LineReference> lines = new();
+        private readonly List<LineReference> _lines = new();
 
         /// <summary>
         /// Active Properties
         /// </summary>
-        private readonly Trie<PropertyInfo> propertyLookup = new(false);
+        private readonly Trie<PropertyInfo> _propertyLookup = new(false);
 
         /// <summary>
         /// The file currently being updated.
         /// The purpose of this is to detect changes made by a document itself to one of its files, 
         /// such that the change isn't considered to be one that requires the document to be fully reloaded.
         /// </summary>
-        private ConfFile updatingFile = null;
+        private ConfFile _updatingFile = null;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ConfDocument"/> class.
@@ -58,11 +58,6 @@ namespace SS.Core.Configuration
         }
 
         /// <summary>
-        /// Whether the document needs to be reloaded because one of the files it depends on has changed.
-        /// </summary>
-        public bool IsReloadNeeded { get; private set; } = false;
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="ConfDocument"/> class.
         /// </summary>
         /// <param name="name">Name of the base .conf file.</param>
@@ -73,10 +68,15 @@ namespace SS.Core.Configuration
             IConfFileProvider fileProvider,
             IConfigLogger logger)
         {
-            this.name = name;
-            this.fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
-            this.logger = logger;
+            _name = name;
+            _fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
+            _logger = logger;
         }
+
+        /// <summary>
+        /// Whether the document needs to be reloaded because one of the files it depends on has changed.
+        /// </summary>
+        public bool IsReloadNeeded { get; private set; } = false;
 
         /// <summary>
         /// Loads the document. Subsequent calls reload the document.
@@ -87,33 +87,33 @@ namespace SS.Core.Configuration
             // reset data members
             //
 
-            baseFile = null;
+            _baseFile = null;
 
-            foreach (var file in files)
+            foreach (var file in _files)
             {
                 file.Changed -= File_Changed;
             }
 
-            files.Clear();
-            lines.Clear();
-            propertyLookup.Clear();
-            updatingFile = null;
+            _files.Clear();
+            _lines.Clear();
+            _propertyLookup.Clear();
+            _updatingFile = null;
             IsReloadNeeded = false;
 
             //
             // read and pre-process
             //
 
-            baseFile = fileProvider.GetFile(name);
-            if (baseFile == null)
+            _baseFile = _fileProvider.GetFile(_name);
+            if (_baseFile == null)
             {
-                logger.Log(ComponentInterfaces.LogLevel.Error, $"Failed to load base conf file '{name}'.");
+                _logger?.Log(ComponentInterfaces.LogLevel.Error, $"Failed to load base conf file '{_name}'.");
                 return; // can't do anything without a file to start with
             }
 
-            AddFile(baseFile);
+            AddFile(_baseFile);
 
-            using (PreprocessorReader reader = new(fileProvider, baseFile, logger))
+            using (PreprocessorReader reader = new(_fileProvider, _baseFile, _logger))
             {
                 LineReference lineReference;
                 while ((lineReference = reader.ReadLine()) != null)
@@ -123,7 +123,7 @@ namespace SS.Core.Configuration
                     if (rawLine.LineType == ConfLineType.Section
                         || rawLine.LineType == ConfLineType.Property)
                     {
-                        lines.Add(lineReference);
+                        _lines.Add(lineReference);
                     }
                 }
 
@@ -139,7 +139,7 @@ namespace SS.Core.Configuration
 
             string currentSection = null;
 
-            foreach (LineReference lineRef in lines)
+            foreach (LineReference lineRef in _lines)
             {
                 if (lineRef.Line.LineType == ConfLineType.Section)
                 {
@@ -168,13 +168,13 @@ namespace SS.Core.Configuration
             if (file == null)
                 throw new ArgumentNullException(nameof(file));
 
-            files.Add(file);
+            _files.Add(file);
             file.Changed += File_Changed;
         }
 
         private void File_Changed(object sender, EventArgs e)
         {
-            if (updatingFile != sender)
+            if (_updatingFile != sender)
             {
                 IsReloadNeeded = true;
             }
@@ -203,8 +203,8 @@ namespace SS.Core.Configuration
                 key.CopyTo(trieKey);
             }
 
-            propertyLookup.Remove(trieKey, out _);
-            propertyLookup.TryAdd(trieKey, propertyInfo);    
+            _propertyLookup.Remove(trieKey, out _);
+            _propertyLookup.TryAdd(trieKey, propertyInfo);    
         }
 
         private bool PropertyLookup_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out PropertyInfo propertyInfo)
@@ -227,7 +227,7 @@ namespace SS.Core.Configuration
                 key.CopyTo(trieKey);
             }
 
-            return propertyLookup.TryGetValue(trieKey, out propertyInfo);
+            return _propertyLookup.TryGetValue(trieKey, out propertyInfo);
         }
 
         /// <summary>
@@ -256,7 +256,7 @@ namespace SS.Core.Configuration
                 // try to find an existing section to insert it into
                 (ConfFile file, int docIndex)? lastMatchingSection = null;
 
-                foreach (LineReference lineReference in lines)
+                foreach (LineReference lineReference in _lines)
                 {
                     if (lineReference.Line.LineType != ConfLineType.Section
                         || lineReference.Line is not RawSection rawSection
@@ -265,7 +265,7 @@ namespace SS.Core.Configuration
                         continue;
                     }
 
-                    int docIndex = lines.IndexOf(lineReference);
+                    int docIndex = _lines.IndexOf(lineReference);
                     if (docIndex == -1) // sanity
                     {
                         continue;
@@ -279,17 +279,17 @@ namespace SS.Core.Configuration
                     var (file, docIndex) = lastMatchingSection.Value;
 
                     // find the last property in the section, as long as it's in the same file
-                    for (int i = docIndex + 1; i < lines.Count; i++)
+                    for (int i = docIndex + 1; i < _lines.Count; i++)
                     {
-                        if (lines[i].File != file || lines[i].Line.LineType == ConfLineType.Section)
+                        if (_lines[i].File != file || _lines[i].Line.LineType == ConfLineType.Section)
                             break;
 
-                        if (lines[i].Line.LineType == ConfLineType.Property)
+                        if (_lines[i].Line.LineType == ConfLineType.Property)
                             docIndex = i;
                     }
 
                     // find the spot in the file to insert the property
-                    int fileIndex = file.Lines.IndexOf(lines[docIndex].Line);
+                    int fileIndex = file.Lines.IndexOf(_lines[docIndex].Line);
                     if (fileIndex != -1)
                     {
                         var propertyToInsert =
@@ -300,7 +300,7 @@ namespace SS.Core.Configuration
                                 hasDelimiter: value != null);
 
                         // change the file
-                        updatingFile = file;
+                        _updatingFile = file;
 
                         if (!string.IsNullOrWhiteSpace(comment))
                         {
@@ -312,7 +312,7 @@ namespace SS.Core.Configuration
                         file.Lines.Insert(++fileIndex, propertyToInsert);
                         file.SetDirty();
 
-                        updatingFile = null;
+                        _updatingFile = null;
 
                         // add it to the lines we consider active
                         LineReference lineReference = new()
@@ -321,7 +321,7 @@ namespace SS.Core.Configuration
                             File = file,
                         };
 
-                        lines.Insert(docIndex + 1, lineReference);
+                        _lines.Insert(docIndex + 1, lineReference);
 
                         // add it to the properties we know about
                         PropertyLookup_AddOrReplace(
@@ -345,25 +345,25 @@ namespace SS.Core.Configuration
                         value: value,
                         hasDelimiter: value != null);
 
-                updatingFile = baseFile;
+                _updatingFile = _baseFile;
 
                 if (!string.IsNullOrWhiteSpace(comment))
                 {
-                    baseFile.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
+                    _baseFile.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
                 }
 
-                baseFile.Lines.Add(propertyToAdd);
-                baseFile.SetDirty();
+                _baseFile.Lines.Add(propertyToAdd);
+                _baseFile.SetDirty();
                 
-                updatingFile = null;
+                _updatingFile = null;
 
                 LineReference lineRef = new()
                 {
                     Line = propertyToAdd,
-                    File = baseFile,
+                    File = _baseFile,
                 };
 
-                lines.Add(lineRef);
+                _lines.Add(lineRef);
 
                 PropertyLookup_AddOrReplace(
                     section,
@@ -415,10 +415,10 @@ namespace SS.Core.Configuration
 
             if (permanent)
             {
-                updatingFile = propertyInfo.PropertyReference.File;
+                _updatingFile = propertyInfo.PropertyReference.File;
 
-                int fileIndex = updatingFile.Lines.IndexOf(propertyInfo.PropertyReference.Line);
-                int docIndex = lines.IndexOf(propertyInfo.PropertyReference);
+                int fileIndex = _updatingFile.Lines.IndexOf(propertyInfo.PropertyReference.Line);
+                int docIndex = _lines.IndexOf(propertyInfo.PropertyReference);
 
                 if (fileIndex != -1 && docIndex != -1)
                 {
@@ -429,36 +429,36 @@ namespace SS.Core.Configuration
                         value: value,
                         hasDelimiter: value != null || old.HasDelimiter);
 
-                    updatingFile.Lines[fileIndex] = replacement;
+                    _updatingFile.Lines[fileIndex] = replacement;
 
                     LineReference lineReference = new()
                     {
-                        File = updatingFile,
+                        File = _updatingFile,
                         Line = replacement,
                     };
 
-                    lines[docIndex] = lineReference;
+                    _lines[docIndex] = lineReference;
                     propertyInfo.PropertyReference = lineReference;
 
                     // update comment line(s)
                     if (!string.IsNullOrWhiteSpace(comment))
                     {
-                        updatingFile.Lines.Insert(
+                        _updatingFile.Lines.Insert(
                             fileIndex,
                             new RawComment(RawComment.DefaultCommentChar, comment));
 
                         // remove old comments (comment lines immediately before the property line)
                         int commentIndex = fileIndex;
-                        while (--commentIndex >= 0 && updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
+                        while (--commentIndex >= 0 && _updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
                         {
-                            updatingFile.Lines.RemoveAt(commentIndex);
+                            _updatingFile.Lines.RemoveAt(commentIndex);
                         }
                     }
 
-                    updatingFile.SetDirty();
+                    _updatingFile.SetDirty();
                 }
 
-                updatingFile = null;
+                _updatingFile = null;
             }
 
             return true;

@@ -11,23 +11,23 @@ namespace SS.Core.Modules
     /// </summary>
     public class Prng : IModule, IPrng
     {
-        private InterfaceRegistrationToken<IPrng> iPrngToken;
+        private InterfaceRegistrationToken<IPrng> _iPrngToken;
 
-        private readonly object randomLock = new object();
-        private readonly Random random = new Random();
+        private readonly object _randomLock = new();
+        private readonly Random _random = new();
 
-        private readonly object rngLock = new object();
-        private readonly RandomNumberGenerator rng = RandomNumberGenerator.Create();
+        private readonly object _rngLock = new();
+        private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
 
         public bool Load(ComponentBroker broker)
         {
-            iPrngToken = broker.RegisterInterface<IPrng>(this);
+            _iPrngToken = broker.RegisterInterface<IPrng>(this);
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface(ref iPrngToken) != 0)
+            if (broker.UnregisterInterface(ref _iPrngToken) != 0)
                 return false;
 
             return true;
@@ -35,49 +35,49 @@ namespace SS.Core.Modules
 
         void IPrng.GoodFillBuffer(Span<byte> data)
         {
-            lock (rngLock)
+            lock (_rngLock)
             {
-                rng.GetBytes(data);
+                _rng.GetBytes(data);
             }
         }
 
         void IPrng.FillBuffer(Span<byte> data)
         {
-            lock (randomLock)
+            lock (_randomLock)
             {
-                random.NextBytes(data);
+                _random.NextBytes(data);
             }
         }
 
         uint IPrng.Get32()
         {
-            lock (randomLock)
+            lock (_randomLock)
             {
-                return (uint)random.Next();
+                return (uint)_random.Next();
             }
         }
 
         int IPrng.Number(int start, int end)
         {
-            lock (randomLock)
+            lock (_randomLock)
             {
-                return random.Next(start, end + 1);
+                return _random.Next(start, end + 1);
             }
         }
 
         int IPrng.Rand()
         {
-            lock (randomLock)
+            lock (_randomLock)
             {
-                return random.Next(Constants.RandMax + 1);
+                return _random.Next(Constants.RandMax + 1);
             }
         }
 
         double IPrng.Uniform()
         {
-            lock (randomLock)
+            lock (_randomLock)
             {
-                return random.NextDouble();
+                return _random.NextDouble();
             }
         }
     }

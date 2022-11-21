@@ -14,11 +14,11 @@ namespace SS.Core.Configuration
     /// </summary>
     public class ConfFile
     {
-        private static readonly ObjectPool<StringBuilder> stringBuilderPool;
+        private static readonly ObjectPool<StringBuilder> s_stringBuilderPool;
 
         static ConfFile()
         {
-            stringBuilderPool = new DefaultObjectPoolProvider().CreateStringBuilderPool(1024, 1024 * 8);
+            s_stringBuilderPool = new DefaultObjectPoolProvider().CreateStringBuilderPool(1024, 1024 * 8);
         }
 
         /// <summary>
@@ -47,7 +47,7 @@ namespace SS.Core.Configuration
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
             Path = path;
-            this.logger = logger;
+            _logger = logger;
         }
 
         private string _path;
@@ -98,8 +98,8 @@ namespace SS.Core.Configuration
 
         public event EventHandler Changed;
 
-        private int lineNumber = 0;
-        private readonly IConfigLogger logger = null;
+        private int _lineNumber = 0;
+        private readonly IConfigLogger _logger = null;
 
         /// <summary>
         /// Loads or reloads from the <see cref="Path"/>.
@@ -112,7 +112,7 @@ namespace SS.Core.Configuration
             LastModified = null;
             Lines.Clear();
             IsDirty = false;
-            lineNumber = 0;
+            _lineNumber = 0;
 
             using FileStream fileStream = File.OpenRead(Path);
             using StreamReader reader = new(fileStream, StringUtils.DefaultEncoding, true);
@@ -120,14 +120,14 @@ namespace SS.Core.Configuration
             RefreshLastModified();
 
             string line;
-            StringBuilder lineBuilder = stringBuilderPool.Get();
-            StringBuilder rawBuilder = stringBuilderPool.Get(); // the original
+            StringBuilder lineBuilder = s_stringBuilderPool.Get();
+            StringBuilder rawBuilder = s_stringBuilderPool.Get(); // the original
 
             try
             {
                 while ((line = reader.ReadLine()) != null)
                 {
-                    lineNumber++;
+                    _lineNumber++;
 
                     lineBuilder.Append(line);
 
@@ -159,8 +159,8 @@ namespace SS.Core.Configuration
             }
             finally
             {
-                stringBuilderPool.Return(lineBuilder);
-                stringBuilderPool.Return(rawBuilder);
+                s_stringBuilderPool.Return(lineBuilder);
+                s_stringBuilderPool.Return(rawBuilder);
             }
 
             OnChanged();
@@ -241,7 +241,7 @@ namespace SS.Core.Configuration
                         {
                             ReportError(
                                 $"{RawPreprocessor.DirectiveChar}{(isNot ? RawPreprocessorIfndef.Directive : RawPreprocessorIfdef.Directive)} " +
-                                $"is missing an identifier ({Path}:{lineNumber}).");
+                                $"is missing an identifier ({Path}:{_lineNumber}).");
                         }
                     }
                 }
@@ -279,7 +279,7 @@ namespace SS.Core.Configuration
                         }
                         else
                         {
-                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorDefine.Directive} is missing a name ({Path}:{lineNumber}).");
+                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorDefine.Directive} is missing a name ({Path}:{_lineNumber}).");
                         }
                     }
                 }
@@ -300,7 +300,7 @@ namespace SS.Core.Configuration
                         }
                         else
                         {
-                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorUndef.Directive} is missing a name ({Path}:{lineNumber}).");
+                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorUndef.Directive} is missing a name ({Path}:{_lineNumber}).");
                         }
                     }
                 }
@@ -326,7 +326,7 @@ namespace SS.Core.Configuration
                         }
                         else
                         {
-                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorInclude.Directive} is missing a file name ({Path}:{lineNumber}).");
+                            ReportError($"{RawPreprocessor.DirectiveChar}{RawPreprocessorInclude.Directive} is missing a file name ({Path}:{_lineNumber}).");
                         }
                     }
                 }
@@ -339,7 +339,7 @@ namespace SS.Core.Configuration
                 }
                 else
                 {
-                    ReportError($"Section is missing '{RawSection.EndChar}' ({Path}:{lineNumber})");
+                    ReportError($"Section is missing '{RawSection.EndChar}' ({Path}:{_lineNumber})");
 
                     // use the remainder of the line as the section name
                     line = line[1..].Trim();
@@ -391,7 +391,7 @@ namespace SS.Core.Configuration
             out ReadOnlySpan<char> value,
             out bool hasValueDelimiter)
         {
-            StringBuilder sb = stringBuilderPool.Get();
+            StringBuilder sb = s_stringBuilderPool.Get();
             int i;
 
             try
@@ -417,7 +417,7 @@ namespace SS.Core.Configuration
             }
             finally
             {
-                stringBuilderPool.Return(sb);
+                s_stringBuilderPool.Return(sb);
             }
 
             line = line[i..];
@@ -479,7 +479,7 @@ namespace SS.Core.Configuration
 
         private void ReportError(string message)
         {
-            logger?.Log(LogLevel.Warn, message);
+            _logger?.Log(LogLevel.Warn, message);
         }
 
         protected virtual void OnChanged()

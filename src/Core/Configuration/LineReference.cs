@@ -1,11 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace SS.Core.Configuration
+﻿namespace SS.Core.Configuration
 {
+    /// <summary>
+    /// A configuration line and the file it came from.
+    /// </summary>
     public class LineReference
     {
         /// <summary>

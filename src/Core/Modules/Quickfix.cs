@@ -17,14 +17,14 @@ namespace SS.Core.Modules
     /// </summary>
     public class Quickfix : IModule
     {
-        private ICommandManager commandManager;
-        private ICapabilityManager capabilityManager;
-        private IChat chat;
-        private IConfigHelp configHelp;
-        private IConfigManager configManager;
-        private IFileTransfer fileTransfer;
-        private ILogManager log;
-        private INetwork net;
+        private ICommandManager _commandManager;
+        private ICapabilityManager _capabilityManager;
+        private IChat _chat;
+        private IConfigHelp _configHelp;
+        private IConfigManager _configManager;
+        private IFileTransfer _fileTransfer;
+        private ILogManager _logManager;
+        private INetwork _network;
 
         public bool Load(
             ComponentBroker broker,
@@ -34,19 +34,19 @@ namespace SS.Core.Modules
             IConfigHelp configHelp,
             IConfigManager configManager,
             IFileTransfer fileTransfer,
-            ILogManager log,
-            INetwork net)
+            ILogManager logManager,
+            INetwork network)
         {
-            this.capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            this.commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            this.configHelp = configHelp ?? throw new ArgumentNullException(nameof(configHelp));
-            this.configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            this.fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
-            this.log = log ?? throw new ArgumentNullException(nameof(log));
-            this.net = net ?? throw new ArgumentNullException(nameof(net));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _configHelp = configHelp ?? throw new ArgumentNullException(nameof(configHelp));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
 
-            net.AddPacket(C2SPacketType.SettingChange, Packet_SettingChange);
+            network.AddPacket(C2SPacketType.SettingChange, Packet_SettingChange);
             commandManager.AddCommand("quickfix", Command_quickfix);
             commandManager.AddCommand("getsettings", Command_quickfix);
 
@@ -55,17 +55,17 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            net.RemovePacket(C2SPacketType.SettingChange, Packet_SettingChange);
-            commandManager.RemoveCommand("quickfix", Command_quickfix);
-            commandManager.RemoveCommand("getsettings", Command_quickfix);
+            _network.RemovePacket(C2SPacketType.SettingChange, Packet_SettingChange);
+            _commandManager.RemoveCommand("quickfix", Command_quickfix);
+            _commandManager.RemoveCommand("getsettings", Command_quickfix);
             return true;
         }
 
         private void Packet_SettingChange(Player p, byte[] data, int length)
         {
-            if (!capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
+            if (!_capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
             {
-                chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
+                _chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
                 return;
             }
 
@@ -90,7 +90,7 @@ namespace SS.Core.Modules
 
                     if (tokens.Length != 3)
                     {
-                        log.LogP(LogLevel.Malicious, nameof(Quickfix), p, "Badly formatted setting change.");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Quickfix), p, "Badly formatted setting change.");
                         return;
                     }
 
@@ -110,8 +110,8 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        log.LogP(LogLevel.Info, nameof(Quickfix), p, $"Setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
-                        configManager.SetStr(arenaConfigHandle, tokens[0], tokens[1], tokens[2], comment, permanent);
+                        _logManager.LogP(LogLevel.Info, nameof(Quickfix), p, $"Setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
+                        _configManager.SetStr(arenaConfigHandle, tokens[0], tokens[1], tokens[2], comment, permanent);
                     }
                 }
 
@@ -129,9 +129,9 @@ namespace SS.Core.Modules
             "displayed. (With no arguments, equivalent to ?getsettings in subgame.)")]
         private void Command_quickfix(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            if (!capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
+            if (!_capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
             {
-                chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
+                _chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
                 return;
             }
 
@@ -146,9 +146,9 @@ namespace SS.Core.Modules
             try
             {
                 using FileStream fs = File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                using StreamWriter writer = new StreamWriter(fs, StringUtils.DefaultEncoding);
+                using StreamWriter writer = new(fs, StringUtils.DefaultEncoding);
 
-                foreach (var sectionGrouping in configHelp.Sections.OrderBy(s => s.Key))
+                foreach (var sectionGrouping in _configHelp.Sections.OrderBy(s => s.Key))
                 {
                     if (string.Equals(sectionGrouping.Key, "All", StringComparison.OrdinalIgnoreCase))
                     {
@@ -169,7 +169,7 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                log.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to create temporary server.set file '{path}'. {ex.Message}");
+                _logManager.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to create temporary server.set file '{path}'. {ex.Message}");
                 
                 if (File.Exists(path))
                 {
@@ -180,12 +180,12 @@ namespace SS.Core.Modules
 
             if (hasData)
             {
-                chat.SendMessage(p, "Sending settings...");
-                fileTransfer.SendFile(p, path, "server.set", true);
+                _chat.SendMessage(p, "Sending settings...");
+                _fileTransfer.SendFile(p, path, "server.set", true);
             }
             else
             {
-                chat.SendMessage(p, "No settings matches your query.");
+                _chat.SendMessage(p, "No settings matches your query.");
                 DeleteTempFile(path);
             }
 
@@ -197,7 +197,7 @@ namespace SS.Core.Modules
                 }
                 catch (Exception ex)
                 {
-                    log.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to delete temporary server.set file '{path}'. {ex.Message}");
+                    _logManager.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to delete temporary server.set file '{path}'. {ex.Message}");
                 }
             }
         }
@@ -219,9 +219,8 @@ namespace SS.Core.Modules
                     && attribute.Scope == ConfigScope.Arena
                     && string.IsNullOrWhiteSpace(attribute.FileName))
                 {
-                    string value = configManager.GetStr(configHandle, sectionName, attribute.Key);
-                    if (value == null)
-                        value = "<unset>";
+                    string value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
+                    value ??= "<unset>";
 
                     if (!string.IsNullOrWhiteSpace(attribute.Range))
                     {

@@ -36,30 +36,30 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Security : IModule, ISecuritySeedSync
     {
-        private ComponentBroker broker;
-        private IArenaManager arenaManager;
-        private ICapabilityManager capabilityManager;
-        private IClientSettings clientSettings;
-        private IConfigManager configManager;
-        private ILagCollect lagCollect;
-        private ILogManager logManager;
-        private IMainloopTimer mainloopTimer;
-        private IMapData mapData;
-        private INetwork network;
-        private IPlayerData playerData;
-        private IPrng prng;
+        private ComponentBroker _broker;
+        private IArenaManager _arenaManager;
+        private ICapabilityManager _capabilityManager;
+        private IClientSettings _clientSettings;
+        private IConfigManager _configManager;
+        private ILagCollect _lagCollect;
+        private ILogManager _logManager;
+        private IMainloopTimer _mainloopTimer;
+        private IMapData _mapData;
+        private INetwork _network;
+        private IPlayerData _playerData;
+        private IPrng _prng;
 
-        private InterfaceRegistrationToken<ISecuritySeedSync> iSecuritySeedSyncRegisrationToken;
+        private InterfaceRegistrationToken<ISecuritySeedSync> _iSecuritySeedSyncRegisrationToken;
 
         /// <summary>
         /// Arena data key for accessing <see cref="ArenaData"/>.
         /// </summary>
-        private ArenaDataKey<ArenaData> adKey;
+        private ArenaDataKey<ArenaData> _adKey;
 
         /// <summary>
         /// Player data key for accessing <see cref="PlayerData"/>.
         /// </summary>
-        private PlayerDataKey<PlayerData> pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
 
         /// <summary>
         /// The expected length of the scrty data.
@@ -79,31 +79,31 @@ namespace SS.Core.Modules
         /// scrty[4] and scrty[5] are the 2nd pair, and so on...
         /// </para>
         /// </summary>
-        private uint[] scrty;
+        private uint[] _scrty;
 
         /// <summary>
         /// The packet to send to players.
         /// </summary>
-        private S2C_Security packet = new();
+        private S2C_Security _packet = new();
 
         /// <summary>
-        /// The continuum exe checksum from <see cref="scrty"/>.
+        /// The continuum exe checksum from <see cref="_scrty"/>.
         /// </summary>
-        private uint continuumExeChecksum;
+        private uint _continuumExeChecksum;
 
         /// <summary>
         /// The VIE exe checksum. See <see cref="GetVieExeChecksum(uint)"/>.
         /// </summary>
-        private uint vieExeChecksum;
+        private uint _vieExeChecksum;
 
         /// <summary>
         /// For synchronizing access to this class' data.
         /// </summary>
-        private readonly object lockObj = new();
+        private readonly object _lockObj = new();
 
         [ConfigHelp("Security", "SecurityKickoff", ConfigScope.Global, typeof(bool), DefaultValue = "false", 
             Description = "Whether to kick players off of the server for violating security checks.")]
-        private bool cfg_SecurityKickoff;
+        private bool _securityKickoff;
 
         public bool Load(
             ComponentBroker broker,
@@ -119,25 +119,25 @@ namespace SS.Core.Modules
             IPlayerData playerData,
             IPrng prng)
         {
-            this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            this.arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            this.capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            this.clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
-            this.configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            this.lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
-            this.logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            this.mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            this.mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            this.network = network ?? throw new ArgumentNullException(nameof(network));
-            this.playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            this.prng = prng ?? throw new ArgumentNullException(nameof(prng));
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
-            adKey = arenaManager.AllocateArenaData<ArenaData>();
-            pdKey = playerData.AllocatePlayerData<PlayerData>();
+            _adKey = arenaManager.AllocateArenaData<ArenaData>();
+            _pdKey = playerData.AllocatePlayerData<PlayerData>();
 
             LoadScrty();
 
-            cfg_SecurityKickoff = configManager.GetInt(configManager.Global, "Security", "SecurityKickoff", 0) != 0;
+            _securityKickoff = configManager.GetInt(configManager.Global, "Security", "SecurityKickoff", 0) != 0;
 
             SwitchChecksums();
 
@@ -147,22 +147,22 @@ namespace SS.Core.Modules
 
             network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
 
-            iSecuritySeedSyncRegisrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
+            _iSecuritySeedSyncRegisrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
 
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface(ref iSecuritySeedSyncRegisrationToken) != 0)
+            if (broker.UnregisterInterface(ref _iSecuritySeedSyncRegisrationToken) != 0)
                 return false;
 
-            network.RemovePacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
-            mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
-            mainloopTimer.ClearTimer(MainloopTimer_Check, null);
+            _network.RemovePacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
+            _mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            arenaManager.FreeArenaData(adKey);
-            playerData.FreePlayerData(pdKey);
+            _arenaManager.FreeArenaData(_adKey);
+            _playerData.FreePlayerData(_pdKey);
 
             return true;
         }
@@ -171,29 +171,29 @@ namespace SS.Core.Modules
 
         void ISecuritySeedSync.GetCurrentSeedInfo(out uint greenSeed, out uint doorSeed, out uint timestamp)
         {
-            greenSeed = packet.GreenSeed;
-            doorSeed = packet.DoorSeed;
-            timestamp = packet.Timestamp;
+            greenSeed = _packet.GreenSeed;
+            doorSeed = _packet.DoorSeed;
+            timestamp = _packet.Timestamp;
         }
 
         void ISecuritySeedSync.OverrideArenaSeedInfo(Arena arena, uint greenSeed, uint doorSeed, uint timestamp)
         {
-            if (arena == null || !arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             S2C_Security overridePacket = new(greenSeed, doorSeed, timestamp, 0);
             ad.OverridePacket = overridePacket;
 
             // Send the packet without a key (just syncing the client, not requesting the client to respond).
-            network.SendToArena(arena, null, ref overridePacket, NetSendFlags.Reliable);
+            _network.SendToArena(arena, null, ref overridePacket, NetSendFlags.Reliable);
 
-            logManager.LogA(LogLevel.Drivel, nameof(Security), arena,
+            _logManager.LogA(LogLevel.Drivel, nameof(Security), arena,
                 $"Sent seeds (override): green={overridePacket.GreenSeed:X}, door={overridePacket.DoorSeed:X}, timestamp={overridePacket.Timestamp:X}.");
         }
 
         bool ISecuritySeedSync.RemoveArenaOverride(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return false;
 
             if (ad.OverridePacket == null)
@@ -202,11 +202,11 @@ namespace SS.Core.Modules
             ad.OverridePacket = null;
 
             // Send the packet without a key (just syncing the client, not requesting the client to respond).
-            S2C_Security securityPacket = packet;
+            S2C_Security securityPacket = _packet;
             securityPacket.Key = 0;
-            network.SendToArena(arena, null, ref securityPacket, NetSendFlags.Reliable);
+            _network.SendToArena(arena, null, ref securityPacket, NetSendFlags.Reliable);
 
-            logManager.LogA(LogLevel.Drivel, nameof(Security), arena,
+            _logManager.LogA(LogLevel.Drivel, nameof(Security), arena,
                 $"Sent seeds (de-override): green={securityPacket.GreenSeed:X}, door={securityPacket.DoorSeed:X}, timestamp={securityPacket.Timestamp:X}.");
 
             return true;
@@ -218,54 +218,54 @@ namespace SS.Core.Modules
         {
             try
             {
-                scrty = new uint[ScrtyLength];
+                _scrty = new uint[ScrtyLength];
 
                 using FileStream fs = File.OpenRead("scrty");
                 using BinaryReader br = new(fs);
 
                 for (int i = 0; i < ScrtyLength; i++)
                 {
-                    scrty[i] = br.ReadUInt32(); // reads bytes as little-endian
+                    _scrty[i] = br.ReadUInt32(); // reads bytes as little-endian
                 }
             }
             catch (Exception ex)
             {
-                logManager.LogM(LogLevel.Info, nameof(Security), $"Unable to read scrty file. {ex.Message}");
-                scrty = null;
+                _logManager.LogM(LogLevel.Info, nameof(Security), $"Unable to read scrty file. {ex.Message}");
+                _scrty = null;
             }
         }
 
         private void SwitchChecksums()
         {
-            packet.GreenSeed = prng.Get32();
-            packet.DoorSeed = prng.Get32();
-            packet.Timestamp = ServerTick.Now;
+            _packet.GreenSeed = _prng.Get32();
+            _packet.DoorSeed = _prng.Get32();
+            _packet.Timestamp = ServerTick.Now;
 
-            if (scrty != null)
+            if (_scrty != null)
             {
-                int i = prng.Number(1, scrty.Length / 2 - 1) * 2;
-                packet.Key = scrty[i];
-                continuumExeChecksum = scrty[i + 1];
+                int i = _prng.Number(1, _scrty.Length / 2 - 1) * 2;
+                _packet.Key = _scrty[i];
+                _continuumExeChecksum = _scrty[i + 1];
             }
             else
             {
-                packet.Key = prng.Get32();
-                continuumExeChecksum = 0;
+                _packet.Key = _prng.Get32();
+                _continuumExeChecksum = 0;
             }
 
             // calculate new checksums
-            arenaManager.Lock();
+            _arenaManager.Lock();
 
             try
             {
-                foreach (Arena arena in arenaManager.Arenas)
+                foreach (Arena arena in _arenaManager.Arenas)
                 {
-                    if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                         continue;
 
                     if (arena.Status == ArenaState.Running)
                     {
-                        ad.MapChecksum = mapData.GetChecksum(arena, packet.Key);
+                        ad.MapChecksum = _mapData.GetChecksum(arena, _packet.Key);
                     }
                     else
                     {
@@ -275,12 +275,12 @@ namespace SS.Core.Modules
             }
             finally
             {
-                arenaManager.Unlock();
+                _arenaManager.Unlock();
             }
 
-            vieExeChecksum = GetVieExeChecksum(packet.Key);
+            _vieExeChecksum = GetVieExeChecksum(_packet.Key);
 
-            SecuritySeedChangedCallback.Fire(broker, packet.GreenSeed, packet.DoorSeed, packet.Timestamp);
+            SecuritySeedChangedCallback.Fire(_broker, _packet.GreenSeed, _packet.DoorSeed, _packet.Timestamp);
         }
 
         // straight from ASSS, dont know what's going on with all the magic numbers
@@ -391,26 +391,26 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
         {
-            lock (lockObj)
+            lock (_lockObj)
             {
                 if (action == PlayerAction.EnterArena)
                 {
-                    if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                         return;
 
                     bool isOverride = ad.OverridePacket != null;
-                    S2C_Security toSend = isOverride ? ad.OverridePacket.Value : packet;
+                    S2C_Security toSend = isOverride ? ad.OverridePacket.Value : _packet;
                     toSend.Key = 0; // no key
 
-                    logManager.LogP(LogLevel.Drivel, nameof(Security), p,
+                    _logManager.LogP(LogLevel.Drivel, nameof(Security), p,
                         $"Sent seeds{(isOverride ? " (override)" : "")}: green={toSend.GreenSeed:X}, door={toSend.DoorSeed:X}, timestamp={toSend.Timestamp:X}.");
 
                     // Send the packet without a key (just syncing the client, not requesting the client to respond).
-                    network.SendToOne(p, ref toSend, NetSendFlags.Reliable);
+                    _network.SendToOne(p, ref toSend, NetSendFlags.Reliable);
                 }
                 else if (action == PlayerAction.LeaveArena)
                 {
-                    if (p.TryGetExtraData(pdKey, out PlayerData pd))
+                    if (p.TryGetExtraData(_pdKey, out PlayerData pd))
                     {
                         if (pd.Sent)
                         {
@@ -430,23 +430,23 @@ namespace SS.Core.Modules
 
             sendPlayerSet.Clear();
 
-            lock (lockObj)
+            lock (_lockObj)
             {
                 //
                 // Determine which players to check/sync
                 //
 
-                playerData.Lock();
+                _playerData.Lock();
 
                 try
                 {
-                    foreach (Player p in playerData.Players)
+                    foreach (Player p in _playerData.Players)
                     {
                         // TODO: could check, but would need to send the overriden seeds along with the key
-                        if (p.Arena == null || !p.Arena.TryGetExtraData(adKey, out ArenaData ad) || ad.OverridePacket != null) // don't do a check for arenas that have an override
+                        if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData ad) || ad.OverridePacket != null) // don't do a check for arenas that have an override
                             continue;
 
-                        if (!p.TryGetExtraData(pdKey, out PlayerData pd))
+                        if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                             continue;
 
                         if (p.Status == PlayerState.Playing
@@ -454,7 +454,7 @@ namespace SS.Core.Modules
                             && p.Flags.SentPositionPacket) // having sent a position packet means the player has the map and settings
                         {
                             sendPlayerSet.Add(p);
-                            pd.SettingsChecksum = clientSettings.GetChecksum(p, packet.Key);
+                            pd.SettingsChecksum = _clientSettings.GetChecksum(p, _packet.Key);
                             pd.Sent = true;
                             pd.Cancelled = false;
                         }
@@ -466,46 +466,46 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    playerData.Unlock();
+                    _playerData.Unlock();
                 }
 
                 //
                 // Send the requests
                 //
 
-                network.SendToSet(sendPlayerSet, ref packet, NetSendFlags.Reliable);
+                _network.SendToSet(sendPlayerSet, ref _packet, NetSendFlags.Reliable);
             }
 
-            logManager.LogM(LogLevel.Drivel, nameof(Security),
-                $"Sent security packet to {sendPlayerSet.Count} players: green={packet.GreenSeed:X}, door={packet.DoorSeed:X}, timestamp={packet.Timestamp:X}.");
+            _logManager.LogM(LogLevel.Drivel, nameof(Security),
+                $"Sent security packet to {sendPlayerSet.Count} players: green={_packet.GreenSeed:X}, door={_packet.DoorSeed:X}, timestamp={_packet.Timestamp:X}.");
 
             sendPlayerSet.Clear();
 
             // Set a timer to check in 15 seconds.
-            mainloopTimer.SetTimer(MainloopTimer_Check, 15000, Timeout.Infinite, null);
+            _mainloopTimer.SetTimer(MainloopTimer_Check, 15000, Timeout.Infinite, null);
 
             return true;
         }
 
         private bool MainloopTimer_Check()
         {
-            lock (lockObj)
+            lock (_lockObj)
             {
-                playerData.Lock();
+                _playerData.Lock();
 
                 try
                 {
-                    foreach (Player p in playerData.Players)
+                    foreach (Player p in _playerData.Players)
                     {
-                        if (!p.TryGetExtraData(pdKey, out PlayerData pd))
+                        if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                             continue;
 
                         if (pd.Sent)
                         {
                             // Did not get a response to the security packet we sent.
-                            if (capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                            if (_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                             {
-                                logManager.LogP(LogLevel.Malicious, nameof(Security), p, "No security packet response.");
+                                _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "No security packet response.");
                             }
 
                             KickPlayer(p);
@@ -514,7 +514,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    playerData.Unlock();
+                    _playerData.Unlock();
                 }
             }
 
@@ -526,12 +526,12 @@ namespace SS.Core.Modules
             if (p == null)
                 throw new ArgumentNullException(nameof(p));
 
-            if (cfg_SecurityKickoff)
+            if (_securityKickoff)
             {
-                if (!capabilityManager.HasCapability(p, Constants.Capabilities.BypassSecurity))
+                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.BypassSecurity))
                 {
-                    logManager.LogP(LogLevel.Info, nameof(Security), p, "Kicking off for security violation.");
-                    playerData.KickPlayer(p);
+                    _logManager.LogP(LogLevel.Info, nameof(Security), p, "Kicking off for security violation.");
+                    _playerData.KickPlayer(p);
                 }
             }
         }
@@ -546,9 +546,9 @@ namespace SS.Core.Modules
 
             if (length < 0 || length < C2S_Security.Length)
             {
-                if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                 {
-                    logManager.LogP(LogLevel.Malicious, nameof(Security), p, $"Got a security response with a bad packet length={length}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), p, $"Got a security response with a bad packet length={length}.");
                 }
 
                 return;
@@ -558,25 +558,25 @@ namespace SS.Core.Modules
 
             if (arena == null)
             {
-                if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                 {
-                    logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but is not in an arena.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but is not in an arena.");
                 }
 
                 return;
             }
 
-            logManager.LogP(LogLevel.Drivel, nameof(Security), p, "Got a security response.");
+            _logManager.LogP(LogLevel.Drivel, nameof(Security), p, "Got a security response.");
 
-            if (!p.TryGetExtraData(pdKey, out PlayerData pd))
+            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(new Span<byte>(data, 0, length));
 
-            lock (lockObj)
+            lock (_lockObj)
             {
                 if (!pd.Sent)
                 {
@@ -586,9 +586,9 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                         {
-                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but wasn't expecting one.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but wasn't expecting one.");
                         }
                     }
                 }
@@ -600,9 +600,9 @@ namespace SS.Core.Modules
 
                     if (pd.SettingsChecksum != 0 && pkt.SettingChecksum != pd.SettingsChecksum)
                     {
-                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                         {
-                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Settings checksum mismatch.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Settings checksum mismatch.");
                         }
 
                         kick = true;
@@ -610,9 +610,9 @@ namespace SS.Core.Modules
 
                     if (ad.MapChecksum != 0 && pkt.MapChecksum != ad.MapChecksum)
                     {
-                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                         {
-                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Map checksum mismatch.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Map checksum mismatch.");
                         }
 
                         kick = true;
@@ -622,16 +622,16 @@ namespace SS.Core.Modules
 
                     if (p.Type == ClientType.VIE)
                     {
-                        if (vieExeChecksum == pkt.ExeChecksum)
+                        if (_vieExeChecksum == pkt.ExeChecksum)
                         {
                             exeOk = true;
                         }
                     }
                     else if (p.Type == ClientType.Continuum)
                     {
-                        if (continuumExeChecksum != 0)
+                        if (_continuumExeChecksum != 0)
                         {
-                            if (continuumExeChecksum == pkt.ExeChecksum)
+                            if (_continuumExeChecksum == pkt.ExeChecksum)
                             {
                                 exeOk = true;
                             }
@@ -648,9 +648,9 @@ namespace SS.Core.Modules
 
                     if (!exeOk)
                     {
-                        if (!capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
                         {
-                            logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Exe checksum mismatch.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Exe checksum mismatch.");
                         }
 
                         kick = true;
@@ -678,7 +678,7 @@ namespace SS.Core.Modules
                 HighestPing = pkt.HighestPing,
             };
 
-            lagCollect.ClientLatency(p, in cld);
+            _lagCollect.ClientLatency(p, in cld);
         }
 
         /// <summary>

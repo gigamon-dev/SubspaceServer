@@ -12,7 +12,7 @@ namespace SS.Core.Configuration
     {
         public const char ContinueChar = '\\';
 
-        public readonly static RawEmptyLine Empty = new RawEmptyLine();
+        public readonly static RawEmptyLine Empty = new();
 
         /// <summary>
         /// Constructor for a line that was not read from a file.
@@ -239,8 +239,8 @@ namespace SS.Core.Configuration
     {
         public const char DirectiveChar = '#';
 
-        public static readonly RawPreprocessorElse Else = new RawPreprocessorElse();
-        public static readonly RawPreprocessorEndif Endif = new RawPreprocessorEndif();
+        public static readonly RawPreprocessorElse Else = new();
+        public static readonly RawPreprocessorEndif Endif = new();
     }
 
     /// <summary>

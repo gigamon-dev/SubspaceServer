@@ -10,12 +10,14 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class AdminCommand : IModule
     {
-        private ICapabilityManager capabilityManager;
-        private IChat chat;
-        private ICommandManager commandManager;
-        private IFileTransfer fileTransfer;
-        private ILogFile logFile;
-        private ILogManager logManager;
+        private ICapabilityManager _capabilityManager;
+        private IChat _chat;
+        private ICommandManager _commandManager;
+        private IFileTransfer _fileTransfer;
+        private ILogFile _logFile;
+        private ILogManager _logManager;
+
+        #region Module members
 
         public bool Load(
             ComponentBroker broker,
@@ -26,12 +28,12 @@ namespace SS.Core.Modules
             ILogFile logFile,
             ILogManager logManager)
         {
-            this.capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            this.chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            this.commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            this.fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
-            this.logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
-            this.logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
+            _logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
             commandManager.AddCommand("admlogfile", Command_admlogfile);
             commandManager.AddCommand("getfile", Command_getfile);
@@ -44,14 +46,18 @@ namespace SS.Core.Modules
 
         public bool Unload(ComponentBroker broker)
         {
-            commandManager.RemoveCommand("admlogfile", Command_admlogfile);
-            commandManager.RemoveCommand("getfile", Command_getfile);
-            commandManager.RemoveCommand("putfile", Command_putfile);
-            commandManager.RemoveCommand("cd", Command_cd);
-            commandManager.RemoveCommand("pwd", Command_pwd);
+            _commandManager.RemoveCommand("admlogfile", Command_admlogfile);
+            _commandManager.RemoveCommand("getfile", Command_getfile);
+            _commandManager.RemoveCommand("putfile", Command_putfile);
+            _commandManager.RemoveCommand("cd", Command_cd);
+            _commandManager.RemoveCommand("pwd", Command_pwd);
 
             return true;
         }
+
+        #endregion
+
+        #region Commands
 
         [CommandHelp(
             Targets = CommandTarget.None,
@@ -65,13 +71,13 @@ namespace SS.Core.Modules
         {
             if (parameters.Equals("flush", StringComparison.OrdinalIgnoreCase))
             {
-                logFile.Flush();
-                chat.SendMessage(p, "Log file flushed.");
+                _logFile.Flush();
+                _chat.SendMessage(p, "Log file flushed.");
             }
             else if (parameters.Equals("reopen", StringComparison.OrdinalIgnoreCase))
             {
-                logFile.Reopen();
-                chat.SendMessage(p, "Log file reopened.");
+                _logFile.Reopen();
+                _chat.SendMessage(p, "Log file reopened.");
             }
         }
 
@@ -85,11 +91,11 @@ namespace SS.Core.Modules
         {
             if (!p.IsStandard)
             {
-                chat.SendMessage(p, "Your client does not support file transfers.");
+                _chat.SendMessage(p, "Your client does not support file transfers.");
                 return;
             }
 
-            string workingDir = fileTransfer.GetWorkingDirectory(p);
+            string workingDir = _fileTransfer.GetWorkingDirectory(p);
             string path = Path.Join(workingDir, parameters);
 
             string fullPath = Path.GetFullPath(path);
@@ -97,19 +103,19 @@ namespace SS.Core.Modules
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
-                chat.SendMessage(p, "Invalid path.");
+                _chat.SendMessage(p, "Invalid path.");
             }
             else
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
 
-                if (!fileTransfer.SendFile(
+                if (!_fileTransfer.SendFile(
                     p,
                     relativePath,
                     Path.GetFileName(fullPath),
                     false))
                 {
-                    chat.SendMessage(p, $"Error sending '{relativePath}'.");
+                    _chat.SendMessage(p, $"Error sending '{relativePath}'.");
                 }
             }
         }
@@ -126,11 +132,11 @@ namespace SS.Core.Modules
         {
             if (!p.IsStandard)
             {
-                chat.SendMessage(p, "Your client does not support file transfers.");
+                _chat.SendMessage(p, "Your client does not support file transfers.");
                 return;
             }
 
-            string workingDir = fileTransfer.GetWorkingDirectory(p);
+            string workingDir = _fileTransfer.GetWorkingDirectory(p);
             ReadOnlySpan<char> clientFilename;
             ReadOnlySpan<char> serverFilename;
 
@@ -152,11 +158,11 @@ namespace SS.Core.Modules
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
-                chat.SendMessage(p, "Invalid server path.");
+                _chat.SendMessage(p, "Invalid server path.");
             }
             else
             {
-                fileTransfer.RequestFile(
+                _fileTransfer.RequestFile(
                     p, 
                     clientFilename.ToString(), 
                     FileUploaded,
@@ -183,16 +189,16 @@ namespace SS.Core.Modules
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
-                chat.SendMessage(p, "Invalid path.");
+                _chat.SendMessage(p, "Invalid path.");
             }
             else if (!Directory.Exists(parametersStr))
             {
-                chat.SendMessage(p, "The specified path doesn't exist.");
+                _chat.SendMessage(p, "The specified path doesn't exist.");
             }
             else
             {
-                fileTransfer.SetWorkingDirectory(p, Path.GetRelativePath(currentDir, fullPath));
-                chat.SendMessage(p, "Changed working directory.");
+                _fileTransfer.SetWorkingDirectory(p, Path.GetRelativePath(currentDir, fullPath));
+                _chat.SendMessage(p, "Changed working directory.");
             }
         }
 
@@ -204,8 +210,10 @@ namespace SS.Core.Modules
                 "A working directory of \".\" indicates the server's root directory.")]
         private void Command_pwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
         {
-            chat.SendMessage(p, $"Current working directory: {fileTransfer.GetWorkingDirectory(p)}");
+            _chat.SendMessage(p, $"Current working directory: {_fileTransfer.GetWorkingDirectory(p)}");
         }
+
+        #endregion
 
         private void FileUploaded(string filename, UploadContext context)
         {
@@ -223,10 +231,10 @@ namespace SS.Core.Modules
                 }
                 catch (Exception ex)
                 {
-                    logManager.LogP(LogLevel.Warn, nameof(AdminCommand), context.Player,
+                    _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), context.Player,
                         $"Couldn't move file '{filename}' to '{context.ServerPath}'. {ex.Message}");
 
-                    chat.SendMessage(context.Player, $"Couldn't upload file to '{context.ServerPath}'.");
+                    _chat.SendMessage(context.Player, $"Couldn't upload file to '{context.ServerPath}'.");
 
                     try
                     {
@@ -239,9 +247,11 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                chat.SendMessage(context.Player, $"File received: {context.ServerPath}");
+                _chat.SendMessage(context.Player, $"File received: {context.ServerPath}");
             }   
         }
+
+        #region Helper types
 
         private class UploadContext
         {
@@ -259,5 +269,7 @@ namespace SS.Core.Modules
             public string ServerPath { get; }
             public bool Unzip { get; }
         }
+
+        #endregion
     }
 }

@@ -31,36 +31,36 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class ConfigManager : IModule, IModuleLoaderAware, IConfigManager, IConfigLogger
     {
-        private ComponentBroker broker;
-        private ILogManager logManager;
-        private IMainloop mainloop;
-        private IServerTimer serverTimer;
+        private ComponentBroker _broker;
+        private ILogManager _logManager;
+        private IMainloop _mainloop;
+        private IServerTimer _serverTimer;
 
         private InterfaceRegistrationToken<IConfigManager> _iConfigManagerToken;
 
         /// <summary>
         /// Path --> ConfFile
         /// </summary>
-        private readonly Dictionary<string, ConfFile> files = new Dictionary<string, ConfFile>();
+        private readonly Dictionary<string, ConfFile> _files = new();
 
         /// <summary>
         /// Path --> ConfDocument
         /// </summary>
-        private readonly Dictionary<string, DocumentInfo> documents = new Dictionary<string, DocumentInfo>();
+        private readonly Dictionary<string, DocumentInfo> _documents = new();
 
         // Lock that synchronizes access.  Many can read at the same time.  Only one can write or modify the collections and objects within them at a given time.
-        private readonly ReaderWriterLockSlim rwLock = new ReaderWriterLockSlim();
+        private readonly ReaderWriterLockSlim _rwLock = new();
 
-        private readonly DefaultObjectPool<List<DocumentInfo>> documentInfoListPool = new(new DocumentInfoListPooledObjectPolicy());
+        private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new DocumentInfoListPooledObjectPolicy());
 
         public bool Load(
             ComponentBroker broker, 
             IMainloop mainloop,
             IServerTimer serverTimer)
         {
-            this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            this.mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            this.serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
             Global = OpenConfigFile(null, null, GlobalChanged);
             if (Global == null)
@@ -88,14 +88,14 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            logManager = broker.GetInterface<ILogManager>();
+            _logManager = broker.GetInterface<ILogManager>();
             return true;
         }
 
         bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
-            if (logManager != null)
-                broker.ReleaseInterface(ref logManager);
+            if (_logManager != null)
+                broker.ReleaseInterface(ref _logManager);
 
             return true;
         }
@@ -109,23 +109,23 @@ namespace SS.Core.Modules
         private void SetTimers()
         {
             int dirty = GetInt(Global, "Config", "FlushDirtyValuesInterval", 500);
-            serverTimer.ClearTimer(ServerTimer_SaveChanges, null);
-            serverTimer.SetTimer(ServerTimer_SaveChanges, 700, dirty * 10, null);
+            _serverTimer.ClearTimer(ServerTimer_SaveChanges, null);
+            _serverTimer.SetTimer(ServerTimer_SaveChanges, 700, dirty * 10, null);
 
             int files = GetInt(Global, "Config", "CheckModifiedFilesInterval", 1500);
-            serverTimer.ClearTimer(ServerTimer_ReloadModified, null);
-            serverTimer.SetTimer(ServerTimer_ReloadModified, 1500, files * 10, null);
+            _serverTimer.ClearTimer(ServerTimer_ReloadModified, null);
+            _serverTimer.SetTimer(ServerTimer_ReloadModified, 1500, files * 10, null);
         }
 
         private bool ServerTimer_ReloadModified()
         {
             bool IsReloadNeeded()
             {
-                foreach(DocumentInfo documentInfo in documents.Values)
+                foreach(DocumentInfo documentInfo in _documents.Values)
                     if (documentInfo.Document.IsReloadNeeded)
                         return true;
 
-                foreach(ConfFile file in files.Values)
+                foreach(ConfFile file in _files.Values)
                     if (file.IsReloadNeeded)
                         return true;
 
@@ -134,7 +134,7 @@ namespace SS.Core.Modules
 
             List<DocumentInfo> notifyList = null;
 
-            rwLock.EnterUpgradeableReadLock();
+            _rwLock.EnterUpgradeableReadLock();
 
             try
             {
@@ -143,14 +143,14 @@ namespace SS.Core.Modules
                 // note: checking files second since it requires I/O
                 if (IsReloadNeeded())
                 {
-                    rwLock.EnterWriteLock();
+                    _rwLock.EnterWriteLock();
 
                     try
                     {
                         // reload files that have been modified on disk
                         // note: this is done first, because it affects documents
                         // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
-                        foreach (ConfFile file in files.Values)
+                        foreach (ConfFile file in _files.Values)
                         {
                             if (file.IsReloadNeeded)
                             {
@@ -170,7 +170,7 @@ namespace SS.Core.Modules
                         // reload each document that needs to be reloaded
                         // note: a document may need to be reloaded if any of the files it consists of was reloaded
                         // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
-                        foreach (var docInfo in documents.Values)
+                        foreach (var docInfo in _documents.Values)
                         {
                             if (docInfo.Document.IsReloadNeeded)
                             {
@@ -181,9 +181,7 @@ namespace SS.Core.Modules
 
                             if (docInfo.IsChangeNotificationPending)
                             {
-                                if (notifyList == null)
-                                    notifyList = documentInfoListPool.Get();
-
+                                notifyList ??= _documentInfoListPool.Get();
                                 notifyList.Add(docInfo);
                             }
                         }
@@ -194,19 +192,19 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        rwLock.ExitWriteLock();
+                        _rwLock.ExitWriteLock();
                     }
                 }
             }
             finally
             {
-                rwLock.ExitUpgradeableReadLock();
+                _rwLock.ExitUpgradeableReadLock();
             }
 
             // notify of changes (outside of reader/writer lock)
             if (notifyList != null)
             {
-                mainloop.QueueMainWorkItem(MainloopWork_NotifyChanged, notifyList);
+                _mainloop.QueueMainWorkItem(MainloopWork_NotifyChanged, notifyList);
             }
 
             return true;
@@ -223,7 +221,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                documentInfoListPool.Return(notifyList);
+                _documentInfoListPool.Return(notifyList);
             }
         }
 
@@ -231,24 +229,24 @@ namespace SS.Core.Modules
         {
             bool IsAnyFileDirty()
             {
-                foreach (ConfFile file in files.Values)
+                foreach (ConfFile file in _files.Values)
                     if (file.IsDirty)
                         return true;
 
                 return false;
             }
 
-            rwLock.EnterUpgradeableReadLock();
+            _rwLock.EnterUpgradeableReadLock();
 
             try
             {
                 if (IsAnyFileDirty())
                 {
-                    rwLock.EnterWriteLock();
+                    _rwLock.EnterWriteLock();
 
                     try
                     {
-                        foreach (ConfFile file in files.Values)
+                        foreach (ConfFile file in _files.Values)
                         {
                             if (file.IsDirty)
                             {
@@ -269,13 +267,13 @@ namespace SS.Core.Modules
                     }
                     finally
                     {
-                        rwLock.ExitWriteLock();
+                        _rwLock.ExitWriteLock();
                     }
                 }
             }
             finally
             {
-                rwLock.ExitUpgradeableReadLock();
+                _rwLock.ExitUpgradeableReadLock();
             }
 
             return true;
@@ -286,8 +284,8 @@ namespace SS.Core.Modules
         private void GlobalChanged()
         {
             // fire the callback on the mainloop thread
-            mainloop.QueueMainWorkItem<object>(
-                _ => { GlobalConfigChangedCallback.Fire(broker); }, 
+            _mainloop.QueueMainWorkItem<object>(
+                _ => { GlobalConfigChangedCallback.Fire(_broker); }, 
                 null);            
         }
 
@@ -336,25 +334,25 @@ namespace SS.Core.Modules
                 return null;
             }
 
-            rwLock.EnterWriteLock();
+            _rwLock.EnterWriteLock();
 
             try
             {
-                if (!documents.TryGetValue(path, out DocumentInfo documentInfo))
+                if (!_documents.TryGetValue(path, out DocumentInfo documentInfo))
                 {
-                    ConfFileProvider fileProvider = new ConfFileProvider(this, arena);
-                    ConfDocument document = new ConfDocument(name, fileProvider, this);
+                    ConfFileProvider fileProvider = new(this, arena);
+                    ConfDocument document = new(name, fileProvider, this);
                     document.Load();
 
                     documentInfo = new DocumentInfo(path, document);
-                    documents.Add(path, documentInfo);
+                    _documents.Add(path, documentInfo);
                 }
 
                 return createHandle(documentInfo);
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                _rwLock.ExitWriteLock();
             }
         }
 
@@ -366,7 +364,7 @@ namespace SS.Core.Modules
             if (handle is not DocumentHandle documentHandle)
                 throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
 
-            rwLock.EnterWriteLock();
+            _rwLock.EnterWriteLock();
 
             try
             {
@@ -374,7 +372,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                rwLock.ExitWriteLock();
+                _rwLock.ExitWriteLock();
             }
         }
 
@@ -392,7 +390,7 @@ namespace SS.Core.Modules
                 return result;
 
             // Check if there's a ConfigHelp attribute for it being an enum type.
-            IConfigHelp configHelp = broker.GetInterface<IConfigHelp>();
+            IConfigHelp configHelp = _broker.GetInterface<IConfigHelp>();
             if (configHelp != null)
             {
                 try
@@ -422,7 +420,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    broker.ReleaseInterface(ref configHelp);
+                    _broker.ReleaseInterface(ref configHelp);
                 }
             }
 
@@ -465,7 +463,7 @@ namespace SS.Core.Modules
 
             if (documentHandle.DocumentInfo != null)
             {
-                rwLock.EnterReadLock();
+                _rwLock.EnterReadLock();
 
                 try
                 {
@@ -483,7 +481,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    rwLock.ExitReadLock();
+                    _rwLock.ExitReadLock();
                 }
             }
 
@@ -510,7 +508,7 @@ namespace SS.Core.Modules
 
             if (documentHandle.DocumentInfo != null)
             {
-                rwLock.EnterWriteLock();
+                _rwLock.EnterWriteLock();
 
                 try
                 {
@@ -526,7 +524,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    rwLock.ExitWriteLock();
+                    _rwLock.ExitWriteLock();
                 }
             }
 
@@ -540,9 +538,9 @@ namespace SS.Core.Modules
 
         private void Log(LogLevel level, string message)
         {
-            if (logManager != null)
+            if (_logManager != null)
             {
-                logManager.LogM(level, nameof(ConfigManager), message);
+                _logManager.LogM(level, nameof(ConfigManager), message);
             }
             else
             {
@@ -553,7 +551,7 @@ namespace SS.Core.Modules
         // This is called by the ConfigFileProvider which will only be used when a write lock is already held.
         private ConfFile GetConfFile(string arena, string name)
         {
-            if (!rwLock.IsWriteLockHeld)
+            if (!_rwLock.IsWriteLockHeld)
                 return null;
 
             // determine the path of the file
@@ -565,7 +563,7 @@ namespace SS.Core.Modules
             }
 
             // check if we already have it loaded
-            if (files.TryGetValue(path, out ConfFile file))
+            if (_files.TryGetValue(path, out ConfFile file))
             {
                 return file;
             }
@@ -582,7 +580,7 @@ namespace SS.Core.Modules
                 return null;
             }
 
-            files.Add(path, file);
+            _files.Add(path, file);
             return file;
         }
 
@@ -596,22 +594,24 @@ namespace SS.Core.Modules
             return PathUtil.FindFileOnPath(Constants.ConfigSearchPaths, name, arena);
         }
 
+        #region Helper types
+
         /// <summary>
         /// Helper class that also keeps track of additional context, an optional arena,
         /// for which files are to be retrieved.
         /// </summary>
         private class ConfFileProvider : IConfFileProvider
         {
-            private readonly ConfigManager manager;
-            private readonly string arena;
+            private readonly ConfigManager _manager;
+            private readonly string _arena;
 
             public ConfFileProvider(ConfigManager manager, string arena)
             {
-                this.manager = manager ?? throw new ArgumentNullException(nameof(manager));
-                this.arena = arena;
+                _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+                _arena = arena;
             }
 
-            public ConfFile GetFile(string name) => manager.GetConfFile(arena, name);
+            public ConfFile GetFile(string name) => _manager.GetConfFile(_arena, name);
         }
 
         private interface IConfigChangedInvoker
@@ -621,39 +621,39 @@ namespace SS.Core.Modules
 
         private class ConfigChangedInvoker : IConfigChangedInvoker
         {
-            private readonly ConfigChangedDelegate callback;
+            private readonly ConfigChangedDelegate _callback;
 
             public ConfigChangedInvoker(ConfigChangedDelegate callback)
             {
-                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
             }
 
             public void Invoke()
             {
-                callback();
+                _callback();
             }
         }
 
         private class ConfigChangedInvoker<T> : IConfigChangedInvoker
         {
-            private readonly ConfigChangedDelegate<T> callback;
-            private readonly T state;
+            private readonly ConfigChangedDelegate<T> _callback;
+            private readonly T _state;
 
             public ConfigChangedInvoker(ConfigChangedDelegate<T> callback, T state)
             {
-                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
-                this.state = state;
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                _state = state;
             }
 
             public void Invoke()
             {
-                callback?.Invoke(state);
+                _callback?.Invoke(_state);
             }
         }
 
         private class DocumentHandle : ConfigHandle
         {
-            private readonly IConfigChangedInvoker invoker;
+            private readonly IConfigChangedInvoker _invoker;
 
             public DocumentHandle(
                 DocumentInfo documentInfo,
@@ -664,7 +664,7 @@ namespace SS.Core.Modules
                 DocumentInfo = documentInfo ?? throw new ArgumentNullException(nameof(documentInfo));
                 Scope = scope;
                 FileName = filename;
-                this.invoker = invoker; // can be null
+                _invoker = invoker; // can be null
             }
 
             public DocumentInfo DocumentInfo { get; internal set; }
@@ -675,14 +675,14 @@ namespace SS.Core.Modules
 
             public void NotifyConfigChanged()
             {
-                invoker?.Invoke();
+                _invoker?.Invoke();
             }
         }
 
         private class DocumentInfo
         {
-            private readonly LinkedList<DocumentHandle> handles = new LinkedList<DocumentHandle>();
-            private readonly object lockObj = new object();
+            private readonly LinkedList<DocumentHandle> _handles = new();
+            private readonly object _lockObj = new();
 
             public DocumentInfo(string path, ConfDocument document)
             {
@@ -694,34 +694,36 @@ namespace SS.Core.Modules
             }
 
             public string Path { get; }
+
             public ConfDocument Document { get; }
-            private bool isChangeNotificationPending = false;
+
+            private bool _isChangeNotificationPending = false;
             public bool IsChangeNotificationPending
             {
                 get
                 {
-                    lock (lockObj)
+                    lock (_lockObj)
                     {
-                        return isChangeNotificationPending;
+                        return _isChangeNotificationPending;
                     }
                 }
 
                 set
                 {
-                    lock (lockObj)
+                    lock (_lockObj)
                     {
-                        isChangeNotificationPending = value;
+                        _isChangeNotificationPending = value;
                     }
                 }
             }
 
             public DocumentHandle CreateHandle(ConfigScope scope, string fileName)
             {
-                DocumentHandle handle = new DocumentHandle(this, scope, fileName,  null);
+                DocumentHandle handle = new(this, scope, fileName,  null);
 
-                lock (lockObj)
+                lock (_lockObj)
                 {
-                    handles.AddLast(handle);
+                    _handles.AddLast(handle);
                 }
 
                 return handle;
@@ -729,15 +731,15 @@ namespace SS.Core.Modules
 
             public DocumentHandle CreateHandle(ConfigScope scope, string fileName, ConfigChangedDelegate callback)
             {
-                DocumentHandle handle = new DocumentHandle(
+                DocumentHandle handle = new(
                     this,
                     scope,
                     fileName,
                     callback != null ? new ConfigChangedInvoker(callback) : null);
 
-                lock (lockObj)
+                lock (_lockObj)
                 {
-                    handles.AddLast(handle);
+                    _handles.AddLast(handle);
                 }
 
                 return handle;
@@ -745,15 +747,15 @@ namespace SS.Core.Modules
 
             public DocumentHandle CreateHandle<TState>(ConfigScope scope, string fileName, ConfigChangedDelegate<TState> callback, TState state)
             {
-                DocumentHandle handle = new DocumentHandle(
+                DocumentHandle handle = new(
                     this,
                     scope,
                     fileName,
                     callback != null ? new ConfigChangedInvoker<TState>(callback, state) : null);
 
-                lock (lockObj)
+                lock (_lockObj)
                 {
-                    handles.AddLast(handle);
+                    _handles.AddLast(handle);
                 }
 
                 return handle;
@@ -769,17 +771,17 @@ namespace SS.Core.Modules
 
                 handle.DocumentInfo = null;
 
-                lock (lockObj)
+                lock (_lockObj)
                 {
-                    return handles.Remove(handle);
+                    return _handles.Remove(handle);
                 }
             }
 
             public void NotifyChanged()
             {
-                lock (lockObj)
+                lock (_lockObj)
                 {
-                    foreach (DocumentHandle handle in handles)
+                    foreach (DocumentHandle handle in _handles)
                     {
                         handle.NotifyConfigChanged();
                     }
@@ -805,5 +807,7 @@ namespace SS.Core.Modules
                 return true;
             }
         }
+
+        #endregion
     }
 }

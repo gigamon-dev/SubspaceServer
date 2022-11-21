@@ -43,8 +43,8 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class BandwidthDefault : IModule, IBandwidthLimiterProvider
     {
-        private IConfigManager config;
-        private InterfaceRegistrationToken<IBandwidthLimiterProvider> iBandwidthLimiterProviderToken;
+        private IConfigManager _configManager;
+        private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
 
         private Settings _settings;
         private NonTransientObjectPool<DefaultBandwidthLimiter> _bandwidthLimiterPool;
@@ -53,36 +53,36 @@ namespace SS.Core.Modules
 
         public bool Load(ComponentBroker broker, IConfigManager configManager)
         {
-            config = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
             _settings = new()
             {
-                LimitLow = config.GetInt(config.Global, "Net", "LimitMinimum", 2500),
-                LimitHigh = config.GetInt(config.Global, "Net", "LimitMaximum", 102400),
-                LimitInitial = config.GetInt(config.Global, "Net", "LimitInitial", 5000),
-                ClientCanBuffer = config.GetInt(config.Global, "Net", "SendAtOnce", 255),
-                LimitScale = config.GetInt(config.Global, "Net", "LimitScale", Constants.MaxPacket * 1),
-                MaxAvail = config.GetInt(config.Global, "Net", "Burst", Constants.MaxPacket * 4),
-                UseHitLimit = config.GetInt(config.Global, "Net", "UseHitLimit", 0) != 0,
+                LimitLow = _configManager.GetInt(_configManager.Global, "Net", "LimitMinimum", 2500),
+                LimitHigh = _configManager.GetInt(_configManager.Global, "Net", "LimitMaximum", 102400),
+                LimitInitial = _configManager.GetInt(_configManager.Global, "Net", "LimitInitial", 5000),
+                ClientCanBuffer = _configManager.GetInt(_configManager.Global, "Net", "SendAtOnce", 255),
+                LimitScale = _configManager.GetInt(_configManager.Global, "Net", "LimitScale", Constants.MaxPacket * 1),
+                MaxAvail = _configManager.GetInt(_configManager.Global, "Net", "Burst", Constants.MaxPacket * 4),
+                UseHitLimit = _configManager.GetInt(_configManager.Global, "Net", "UseHitLimit", 0) != 0,
                 PriorityLimits = new[]
                 {
-                    config.GetInt(config.Global, "Net", "PriLimit0", 20), // low pri unrel
-                    config.GetInt(config.Global, "Net", "PriLimit1", 40), // reg pri unrel
-                    config.GetInt(config.Global, "Net", "PriLimit2", 20), // high pri unrel
-                    config.GetInt(config.Global, "Net", "PriLimit3", 15), // rel
-                    config.GetInt(config.Global, "Net", "PriLimit4", 5),  // ack
+                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit0", 20), // low pri unrel
+                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit1", 40), // reg pri unrel
+                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit2", 20), // high pri unrel
+                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit3", 15), // rel
+                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit4", 5),  // ack
                 }
             };
 
             _bandwidthLimiterPool = new(new BandwidthLimiterPooledObjectPolicy(_settings));
 
-            iBandwidthLimiterProviderToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this);
+            _iBandwidthLimiterProviderToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this);
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (broker.UnregisterInterface(ref iBandwidthLimiterProviderToken) != 0)
+            if (broker.UnregisterInterface(ref _iBandwidthLimiterProviderToken) != 0)
                 return false;
 
             return true;
@@ -191,12 +191,12 @@ namespace SS.Core.Modules
             private readonly Settings _settings;
 
             private int _limit;
-            private int[] _avail = new int[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
+            private readonly int[] _avail = new int[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
             private bool _hitLimit;
             private DateTime _sinceTime;
 
             private const int Granularity = 8;
-            private static readonly TimeSpan _sliceTimeSpan = TimeSpan.FromMilliseconds(1000 / Granularity);
+            private static readonly TimeSpan s_sliceTimeSpan = TimeSpan.FromMilliseconds(1000 / Granularity);
 
             public DefaultBandwidthLimiter(Settings settings)
             {
@@ -226,8 +226,8 @@ namespace SS.Core.Modules
 
             public void Iter(DateTime now)
             {
-                int slices = (int)((now - _sinceTime).Duration() / _sliceTimeSpan);
-                _sinceTime += _sliceTimeSpan * slices;
+                int slices = (int)((now - _sinceTime).Duration() / s_sliceTimeSpan);
+                _sinceTime += s_sliceTimeSpan * slices;
 
                 for (int pri = 0; pri < _avail.Length; pri++)
                 {
