@@ -120,7 +120,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IRedirect.ArenaRequest(Player player, string arenaName)
+        bool IRedirect.ArenaRequest(Player player, ReadOnlySpan<char> arenaName)
         {
             if (player == null)
                 return false;

@@ -2,10 +2,12 @@ using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
+using SS.Utilities;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -1523,7 +1525,8 @@ namespace SS.Core.Modules
             }
 
             // make a name from the request
-            string name;
+            Span<char> nameBuffer = stackalloc char[Constants.MaxArenaNameLength];
+            scoped ReadOnlySpan<char> name;
             int spx = 0;
             int spy = 0;
 
@@ -1532,7 +1535,12 @@ namespace SS.Core.Modules
                 if (!HasCapGo(p))
                     return;
 
-                name = go.ArenaName;
+                Span<byte> nameBytes = go.ArenaNameBytes[..Constants.MaxArenaNameLength].SliceNullTerminated();
+                int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
+                Debug.Assert(charCount <= Constants.MaxArenaNameLength);
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameBuffer);
+                Debug.Assert(decodedByteCount == nameBytes.Length);
+                name = nameBuffer[..charCount];
             }
             else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
             {
@@ -1542,7 +1550,11 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        if (!ap.Place(out name, ref spx, ref spy, p))
+                        if (ap.Place(out string nameStr, ref spx, ref spy, p))
+                        {
+                            name = nameStr;
+                        }
+                        else
                         {
                             name = "0";
                         }
@@ -1562,7 +1574,8 @@ namespace SS.Core.Modules
                 if (!HasCapGo(p))
                     return;
 
-                name = go.ArenaType.ToString();
+                go.ArenaType.TryFormat(nameBuffer, out int charsWritten, "d", CultureInfo.InvariantCulture);
+                name = nameBuffer[..charsWritten];
             }
             else
             {

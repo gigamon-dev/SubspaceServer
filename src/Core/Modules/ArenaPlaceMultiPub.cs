@@ -94,7 +94,7 @@ namespace SS.Core.Modules
         {
             string delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
             if (string.IsNullOrEmpty(delimitedArenaNames))
-                _pubNames = new string[0];
+                _pubNames = Array.Empty<string>();
             else
                 _pubNames = delimitedArenaNames.Split(new char[] { ' ', ',', ':', ';' }, StringSplitOptions.RemoveEmptyEntries);
         }

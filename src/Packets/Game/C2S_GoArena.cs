@@ -7,6 +7,8 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct C2S_GoArena
     {
+        #region Static members
+
         public static readonly int LengthVIE;
         public static readonly int LengthContinuum;
 
@@ -16,6 +18,8 @@ namespace SS.Packets.Game
             LengthVIE = LengthContinuum - 1;
         }
 
+        #endregion
+
         public readonly byte Type;
         public readonly byte ShipType;
         public readonly sbyte WavMsg;
@@ -23,12 +27,23 @@ namespace SS.Packets.Game
         private readonly short xRes;
         private readonly short yRes;
         private readonly short arenaType;
-
-        private const int ArenaNameBytesLength = 16;
         private fixed byte arenaNameBytes[ArenaNameBytesLength];
-        public Span<byte> ArenaNameBytes => MemoryMarshal.CreateSpan(ref arenaNameBytes[0], ArenaNameBytesLength);
-
         public readonly byte OptionalGraphics; // continuum
+
+        public C2S_GoArena(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()
+        {
+            Type = (byte)C2SPacketType.GotoArena;
+            ShipType = shipType;
+            ObscenityFilter = obscenityFilter;
+            WavMsg = wavMsg;
+            this.xRes = LittleEndianConverter.Convert(xRes);
+            this.yRes = LittleEndianConverter.Convert(yRes);
+            this.arenaType = LittleEndianConverter.Convert(arenaType);
+            SetArenaName(arenaName);
+            OptionalGraphics = optionalGraphics;
+        }
+
+        #region Helpers
 
         public short XRes
         {
@@ -48,23 +63,14 @@ namespace SS.Packets.Game
             init => arenaType = LittleEndianConverter.Convert(value);
         }
 
-        public string ArenaName
+        private const int ArenaNameBytesLength = 16;
+        public Span<byte> ArenaNameBytes => MemoryMarshal.CreateSpan(ref arenaNameBytes[0], ArenaNameBytesLength);
+
+        public void SetArenaName(ReadOnlySpan<char> value)
         {
-            get => ArenaNameBytes.ReadNullTerminatedString();
-            init => ArenaNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ArenaNameBytesLength - 1));
+            ArenaNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ArenaNameBytesLength - 1));
         }
 
-        public C2S_GoArena(byte shipType, sbyte obscenityFilter, sbyte wavMsg, short xRes, short yRes, short arenaType, string arenaName, byte optionalGraphics) : this()
-        {
-            Type = (byte)C2SPacketType.GotoArena;
-            ShipType = shipType;
-            ObscenityFilter = obscenityFilter;
-            WavMsg = wavMsg;
-            this.xRes = LittleEndianConverter.Convert(xRes);
-            this.yRes = LittleEndianConverter.Convert(yRes);
-            this.arenaType = LittleEndianConverter.Convert(arenaType);
-            ArenaName = arenaName;
-            OptionalGraphics = optionalGraphics;
-        }
+        #endregion
     }
 }

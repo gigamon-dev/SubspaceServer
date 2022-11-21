@@ -32,6 +32,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to redirect.</param>
         /// <param name="arenaName">The arena name to look for a redirect on.</param>
         /// <returns>True if a redirect was sent to the <paramref name="player"/>. Otherwise, false.</returns>
-        bool ArenaRequest(Player player, string arenaName);
+        bool ArenaRequest(Player player, ReadOnlySpan<char> arenaName);
     }
 }
