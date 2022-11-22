@@ -1,8 +1,6 @@
 ﻿using SS.Core.ComponentInterfaces;
 using System;
-using System.Collections.Generic;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -13,8 +11,7 @@ namespace SS.Core.Modules
     {
         private InterfaceRegistrationToken<IPrng> _iPrngToken;
 
-        private readonly object _randomLock = new();
-        private readonly Random _random = new();
+        private readonly Random _random = Random.Shared; // thread-safe instance
 
         private readonly object _rngLock = new();
         private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
@@ -43,42 +40,27 @@ namespace SS.Core.Modules
 
         void IPrng.FillBuffer(Span<byte> data)
         {
-            lock (_randomLock)
-            {
-                _random.NextBytes(data);
-            }
+            _random.NextBytes(data);
         }
 
         uint IPrng.Get32()
         {
-            lock (_randomLock)
-            {
-                return (uint)_random.Next();
-            }
+            return (uint)_random.Next();
         }
 
         int IPrng.Number(int start, int end)
         {
-            lock (_randomLock)
-            {
-                return _random.Next(start, end + 1);
-            }
+            return _random.Next(start, end + 1);
         }
 
         int IPrng.Rand()
         {
-            lock (_randomLock)
-            {
-                return _random.Next(Constants.RandMax + 1);
-            }
+            return _random.Next(Constants.RandMax + 1);
         }
 
         double IPrng.Uniform()
         {
-            lock (_randomLock)
-            {
-                return _random.NextDouble();
-            }
+            return _random.NextDouble();
         }
     }
 }
