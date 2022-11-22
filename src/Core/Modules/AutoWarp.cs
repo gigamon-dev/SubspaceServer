@@ -14,13 +14,19 @@ namespace SS.Core.Modules
     {
         private IArenaManager _arenaManager;
         private IGame _game;
+        private IPrng _prng;
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IArenaManager arenaManager, IGame game)
+        public bool Load(
+            ComponentBroker broker, 
+            IArenaManager arenaManager, 
+            IGame game,
+            IPrng prng)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
+            _prng = prng?? throw new ArgumentNullException(nameof(prng));
 
             MapRegionCallback.Register(broker, Callback_MapRegion);
             return true;
@@ -34,28 +40,27 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_MapRegion(Player p, MapRegion region, short x, short y, bool entering)
+        private void Callback_MapRegion(Player player, MapRegion region, short x, short y, bool entering)
         {
-            if (p == null)
-                return;
-
-            if (region == null)
-                return;
-
-            if (!entering)
-                return;
-
-            var aw = region.AutoWarp;
-            if (aw == null)
-                return;
-
-            if (string.IsNullOrEmpty(aw.ArenaName))
+            if (player is null
+                || region is null
+                || !entering
+                || region.AutoWarpDestinations.Count <= 0)
             {
-                _game.WarpTo(p, aw.X, aw.Y);
+                return;
+            }
+
+            var destination = region.AutoWarpDestinations.Count == 1
+                ? region.AutoWarpDestinations[0]
+                : region.AutoWarpDestinations[_prng.Number(0, region.AutoWarpDestinations.Count - 1)];
+
+            if (string.IsNullOrWhiteSpace(destination.ArenaName))
+            {
+                _game.WarpTo(player, destination.X, destination.Y);
             }
             else
             {
-                _arenaManager.SendToArena(p, aw.ArenaName, aw.X, aw.Y);
+                _arenaManager.SendToArena(player, destination.ArenaName, destination.X, destination.Y);
             }
         }
     }

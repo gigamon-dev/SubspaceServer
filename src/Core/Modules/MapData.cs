@@ -340,22 +340,6 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IMapData.FindEmptyTileInRegion(Arena arena, MapRegion region)
-        {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            if (region == null)
-                throw new ArgumentNullException(nameof(region));
-
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
-
-            // TODO
-
-            return false;
-        }
-
         uint IMapData.GetChecksum(Arena arena, uint key)
         {
             if (arena == null)

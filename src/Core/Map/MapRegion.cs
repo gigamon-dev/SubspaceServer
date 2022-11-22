@@ -2,6 +2,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
@@ -27,14 +28,14 @@ namespace SS.Core.Map
             private set;
         }
 
-        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new MultiDictionary<uint, ReadOnlyMemory<byte>>();
+        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new();
 
         /// <summary>
         /// To get chunk data that was not processed.
         /// </summary>
         /// <remarks>Similar to asss' Imapdata.RegionChunk, except this will allow you enumerate over all matching chunks instead of just one.</remarks>
         /// <param name="chunkType">The type of chunk to get.</param>
-        /// <returns>Enumeration containing chunk payloads (header not included).</returns>
+        /// <returns>Enumerable containing chunk payloads (header not included).</returns>
         public IEnumerable<ReadOnlyMemory<byte>> ChunkData(uint chunkType)
         {
             if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>> matches))
@@ -102,11 +103,13 @@ namespace SS.Core.Map
             public string ArenaName { get; }
         }
 
-        public AutoWarpDestination AutoWarp
-        {
-            get;
-            private set;
-        }
+        private readonly List<AutoWarpDestination> _autoWarpDestinations = new();
+        private readonly ReadOnlyCollection<AutoWarpDestination> _readOnlyAutoWarpDestinations;
+
+        /// <summary>
+        /// Destinations that a player entering this region should be warped to.
+        /// </summary>
+        public ReadOnlyCollection<AutoWarpDestination> AutoWarpDestinations => _readOnlyAutoWarpDestinations;
 
         /// <summary>
         /// A rectangle based off of data from the run length encoded region data
@@ -119,12 +122,14 @@ namespace SS.Core.Map
             public short Height;
         }
 
-        // random point generation info
-        private readonly LinkedList<RleEntry> _rleData = new LinkedList<RleEntry>();
-        private readonly Random random = new Random();
+        /// <summary>
+        /// Collection of run length encoded records that describes the coordinates the region contains.
+        /// </summary>
+        private readonly LinkedList<RleEntry> _rleData = new();
 
         internal MapRegion()
         {
+            _readOnlyAutoWarpDestinations = _autoWarpDestinations.AsReadOnly();
         }
 
         /// <summary>
@@ -161,8 +166,8 @@ namespace SS.Core.Map
             while (node != null)
             {
                 RleEntry entry = node.Value;
-                System.Drawing.Rectangle rectangle = new System.Drawing.Rectangle(entry.X, entry.Y, entry.Width, entry.Height);
-                if (rectangle.Contains(x, y))
+
+                if (x >= entry.X && x < entry.X + entry.Width && y >= entry.Y && y < entry.Y + entry.Height)
                     return true;
 
                 node = node.Next;
@@ -195,8 +200,7 @@ namespace SS.Core.Map
                 return;
             }
 
-            int index = (short)random.Next(0, TileCount);
-
+            int index = Random.Shared.Next(0, TileCount);
             LinkedListNode<RleEntry> node = _rleData.First;
 
             while (node != null)
@@ -277,29 +281,49 @@ namespace SS.Core.Map
             }
             else if (chunkType == RegionMetadataChunkType.Autowarp)
             {
-                byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-                try
+                if (length >= RegionAutoWarpChunk.Length)
                 {
-                    va.ReadArray(position, buffer, 0, length);
+                    // Read the destination.
+                    va.Read(position, out RegionAutoWarpChunk destination);
 
-                    RegionAutoWarpChunk autoWarpChunk = new RegionAutoWarpChunk(buffer.AsSpan(0, length));
-                    AutoWarp = new AutoWarpDestination(
-                        autoWarpChunk.X,
-                        autoWarpChunk.Y,
-                        autoWarpChunk.ArenaName?.Trim());
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(buffer);
+                    // Arena name is optional.
+                    string arenaName = null;
+                    if (length - RegionAutoWarpChunk.Length >= 16)
+                    {
+                        // Read the arena name.
+                        byte[] buffer = ArrayPool<byte>.Shared.Rent(16);
+                        try
+                        {
+                            int bytesRead = va.ReadArray(position + RegionAutoWarpChunk.Length, buffer, 0, 16);
+                            if (bytesRead > 0)
+                            {
+                                Span<byte> arenaNameBytes = buffer.AsSpan(0, bytesRead).SliceNullTerminated();
+                                Span<char> arenaNameChars = stackalloc char[Encoding.ASCII.GetCharCount(arenaNameBytes)];
+                                int decodedBytes = Encoding.ASCII.GetChars(arenaNameBytes, arenaNameChars);
+                                Debug.Assert(decodedBytes == arenaNameBytes.Length);
+
+                                arenaNameChars = arenaNameChars.Trim();
+                                if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
+                                {
+                                    arenaName = arenaNameChars.ToString();
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<byte>.Shared.Return(buffer);
+                        }
+                    }
+
+                    _autoWarpDestinations.Add(new AutoWarpDestination(destination.X, destination.Y, arenaName));
                 }
             }
             else
             {
-                //string typeStr = Encoding.ASCII.GetString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref chunkType, 1)));
+                // Unhandled chunk type, store it.
                 byte[] buffer = new byte[length];
                 va.ReadArray(position, buffer, 0, length);
-
-                // store chunkType and buffer
+                _chunks.AddLast(chunkType, buffer);
             }
         }
 
@@ -313,7 +337,7 @@ namespace SS.Core.Map
                 cy = 0,
                 n;
 
-            LinkedList<RleEntry> lastRowData = new LinkedList<RleEntry>();
+            LinkedList<RleEntry> lastRowData = new();
 
             while (i < source.Length)
             {
@@ -353,7 +377,7 @@ namespace SS.Core.Map
                             lastRow = cy;
                         }
                         {
-                            RleEntry entry = new RleEntry
+                            RleEntry entry = new()
                             {
                                 X = cx,
                                 Y = cy,

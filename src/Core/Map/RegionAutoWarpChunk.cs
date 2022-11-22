@@ -1,37 +1,42 @@
 ﻿using SS.Utilities;
-using System;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Map
 {
-    public readonly ref struct RegionAutoWarpChunk
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct RegionAutoWarpChunk
     {
+        #region Static members
+
+        public static readonly int Length;
+
         static RegionAutoWarpChunk()
         {
-            DataLocationBuilder locationBuilder = new DataLocationBuilder();
-            x = locationBuilder.CreateInt16DataLocation();
-            y = locationBuilder.CreateInt16DataLocation();
-            LengthWithoutArena = locationBuilder.NumBytes;
-            arenaName = locationBuilder.CreateDataLocation(16);
-            LengthWithArena = locationBuilder.NumBytes;
+            Length = Marshal.SizeOf<RegionAutoWarpChunk>();
         }
 
-        private static readonly Int16DataLocation x;
-        private static readonly Int16DataLocation y;
-        public static readonly int LengthWithoutArena;
-        private static readonly DataLocation arenaName;
-        public static readonly int LengthWithArena;
+        #endregion
 
-        private readonly ReadOnlySpan<byte> _data;
+        private short x;
+        private short y;
+        // This can be followed by an optional 16 bytes containing the destination arena name.
+        // If the warp does not cross arenas it can be excluded.
+        // Therefore, it's not included in this struct, but read separately.
 
-        public RegionAutoWarpChunk(ReadOnlySpan<byte> data)
+        #region Helpers
+
+        public short X
         {
-            _data = data;
+            get => LittleEndianConverter.Convert(x);
+            set => x = LittleEndianConverter.Convert(value);
         }
 
-        public short X => x.GetValue(_data);
+        public short Y
+        {
+            get => LittleEndianConverter.Convert(y);
+            set => y = LittleEndianConverter.Convert(value);
+        }
 
-        public short Y => y.GetValue(_data);
-
-        public string ArenaName => _data.Length == LengthWithArena ? arenaName.Slice(_data).ReadNullTerminatedASCII() : null;
+        #endregion
     }
 }

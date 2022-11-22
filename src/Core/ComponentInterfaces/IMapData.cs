@@ -96,8 +96,6 @@ namespace SS.Core.ComponentInterfaces
         /// </returns>
         bool TryFindEmptyTileNear(Arena arena, ref short x, ref short y);
 
-        bool FindEmptyTileInRegion(Arena arena, MapRegion region);
-
         /// <summary>
         /// Get the map checksum.
         /// </summary>
