@@ -8,6 +8,17 @@ namespace SS.Packets.Billing
     {
         public readonly byte Type;
         private uint bitField;
+
+        public S2B_ServerCapabilities(bool multiCastChat, bool supportDemographics)
+        {
+            Type = (byte)S2BPacketType.ServerCapabilities;
+            bitField = 0;
+            MultiCastChat = multiCastChat;
+            SupportDemographics = supportDemographics;
+        }
+
+        #region Helpers
+
         private uint BitField
         {
             get => LittleEndianConverter.Convert(bitField);
@@ -41,12 +52,6 @@ namespace SS.Packets.Billing
             }
         }
 
-        public S2B_ServerCapabilities(bool multiCastChat, bool supportDemographics)
-        {
-            Type = (byte)S2BPacketType.ServerCapabilities;
-            bitField = 0;
-            MultiCastChat = multiCastChat;
-            SupportDemographics = supportDemographics;
-        }
+        #endregion
     }
 }

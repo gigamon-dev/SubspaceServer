@@ -6,6 +6,8 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct PlayerScore
     {
+        #region Static members
+
         public static readonly int Length;
 
         static PlayerScore()
@@ -13,40 +15,13 @@ namespace SS.Packets.Billing
             Length = Marshal.SizeOf<PlayerScore>();
         }
 
+        #endregion
+
         private ushort kills;
-        public ushort Kills
-        {
-            get => LittleEndianConverter.Convert(kills);
-            set => kills = LittleEndianConverter.Convert(value);
-        }
-
         private ushort deaths;
-        public ushort Deaths
-        {
-            get => LittleEndianConverter.Convert(deaths);
-            set => deaths = LittleEndianConverter.Convert(value);
-        }
-
         private ushort flags;
-        public ushort Flags
-        {
-            get => LittleEndianConverter.Convert(flags);
-            set => flags = LittleEndianConverter.Convert(value);
-        }
-
         private uint points;
-        public uint Points
-        {
-            get => LittleEndianConverter.Convert(points);
-            set => points = LittleEndianConverter.Convert(value);
-        }
-
         private uint flagPoints;
-        public uint FlagPoints
-        {
-            get => LittleEndianConverter.Convert(flagPoints);
-            set => flagPoints = LittleEndianConverter.Convert(value);
-        }
 
         public PlayerScore(ushort kills, ushort deaths, ushort flags, uint points, uint flagPoints)
         {
@@ -56,5 +31,39 @@ namespace SS.Packets.Billing
             this.points = LittleEndianConverter.Convert(points);
             this.flagPoints = LittleEndianConverter.Convert(flagPoints);
         }
+
+        #region Helpers
+
+        public ushort Kills
+        {
+            get => LittleEndianConverter.Convert(kills);
+            set => kills = LittleEndianConverter.Convert(value);
+        }
+
+        public ushort Deaths
+        {
+            get => LittleEndianConverter.Convert(deaths);
+            set => deaths = LittleEndianConverter.Convert(value);
+        }
+
+        public ushort Flags
+        {
+            get => LittleEndianConverter.Convert(flags);
+            set => flags = LittleEndianConverter.Convert(value);
+        }
+
+        public uint Points
+        {
+            get => LittleEndianConverter.Convert(points);
+            set => points = LittleEndianConverter.Convert(value);
+        }
+
+        public uint FlagPoints
+        {
+            get => LittleEndianConverter.Convert(flagPoints);
+            set => flagPoints = LittleEndianConverter.Convert(value);
+        }
+
+        #endregion
     }
 }

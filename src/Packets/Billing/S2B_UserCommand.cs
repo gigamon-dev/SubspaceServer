@@ -7,19 +7,40 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2B_UserCommand
     {
+        #region Static members
+
+        /// <summary>
+        /// The # of bytes of the packet, excluding the text portion.
+        /// </summary>
+        public static readonly int LengthWithoutText;
+
         /// <summary>
         /// The maximum # of characters that can be encoded or decoded from the text portion.
         /// </summary>
-        public static int MaxTextChars => StringUtils.DefaultEncoding.GetMaxCharCount(textBytesLength);
+        public static readonly int MaxTextChars;
 
-        public const int HeaderLength = 5;
+        static S2B_UserCommand()
+        {
+            LengthWithoutText = Marshal.SizeOf<S2B_UserCommand>() - TextBytesLength;
+            MaxTextChars = StringUtils.DefaultEncoding.GetMaxCharCount(TextBytesLength - 1); // -1 for the null-terminator
+        }
+
+        #endregion
 
         public readonly byte Type;
         private int connectionId;
+        private fixed byte textBytes[TextBytesLength];
 
-        private const int textBytesLength = 250;
-        private fixed byte textBytes[textBytesLength];
-        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], textBytesLength);
+        public S2B_UserCommand(int connectionId)
+        {
+            Type = (byte)S2BPacketType.UserCommand;
+            this.connectionId = LittleEndianConverter.Convert(connectionId);
+        }
+
+        #region Helpers
+
+        private const int TextBytesLength = 250;
+        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], TextBytesLength);
 
         public int SetText(ReadOnlySpan<char> value, bool addCommandChar)
         {
@@ -34,13 +55,9 @@ namespace SS.Packets.Billing
             }
 
             bytesWritten += textSpan.WriteNullTerminatedString(value.TruncateForEncodedByteLimit(textSpan.Length - 1));
-            return HeaderLength + bytesWritten;
+            return bytesWritten;
         }
 
-        public S2B_UserCommand(int connectionId)
-        {
-            Type = (byte)S2BPacketType.UserCommand;
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-        }
+        #endregion
     }
 }

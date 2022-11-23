@@ -6,6 +6,8 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2B_UserLogoff
     {
+        #region Static members
+
         /// <summary>
         /// # of bytes with <see cref="Score"/>.
         /// </summary>
@@ -22,15 +24,15 @@ namespace SS.Packets.Billing
             LengthWithoutScore = LengthWithScore - PlayerScore.Length;
         }
 
+        #endregion
+
         public readonly byte Type;
         private int connectionId;
         private ushort disconnectReason;
-
         private ushort latency;
         private ushort ping;
         private ushort packetlossS2C;
         private ushort packetlossC2S;
-
         public PlayerScore Score;
 
         public S2B_UserLogoff(

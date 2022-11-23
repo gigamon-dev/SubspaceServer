@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2B_UserBanner
+    public struct S2B_UserBanner
     {
         public readonly byte Type;
         private int connectionId;

@@ -7,6 +7,8 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct B2S_UserCommandChat
     {
+        #region Static members
+
         public static readonly int MinLength;
         public static readonly int MaxLength;
         public static readonly int LengthWithoutText;
@@ -14,19 +16,25 @@ namespace SS.Packets.Billing
         static B2S_UserCommandChat()
         {
             MaxLength = Marshal.SizeOf<B2S_UserCommandChat>();
-            LengthWithoutText = MaxLength - textBytesLength;
+            LengthWithoutText = MaxLength - TextBytesLength;
             MinLength = LengthWithoutText + 1;
         }
 
-        public byte Type;
+        #endregion
 
+        public byte Type;
         private int connectionId;
+        private fixed byte textBytes[TextBytesLength];
+
+        #region Helpers
+
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
-        private const int textBytesLength = 250;
-        private fixed byte textBytes[textBytesLength];
-        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], textBytesLength);
+        private const int TextBytesLength = 250;
+        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], TextBytesLength);
 
-        public Span<byte> GetTextBytes(int packetLength) => TextBytes.Slice(0, Math.Min(packetLength - LengthWithoutText, textBytesLength));
+        public Span<byte> GetTextBytes(int packetLength) => TextBytes[..Math.Min(packetLength - LengthWithoutText, TextBytesLength)];
+
+        #endregion
     }
 }

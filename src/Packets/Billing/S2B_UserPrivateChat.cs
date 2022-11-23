@@ -7,23 +7,32 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2B_UserPrivateChat
     {
+        #region Static members
+
+        /// <summary>
+        /// The # of bytes of the packet, excluding the text portion.
+        /// </summary>
+        public static readonly int LengthWithoutText;
+
         /// <summary>
         /// The maximum # of characters that can be encoded or decoded from the text portion.
         /// </summary>
-        public static int MaxTextChars => StringUtils.DefaultEncoding.GetMaxCharCount(textBytesLength);
+        public static readonly int MaxTextChars;
 
-        public static int GetLength(int textLength) => 11 + textLength;
+        static S2B_UserPrivateChat()
+        {
+            LengthWithoutText = Marshal.SizeOf<S2B_UserPrivateChat>() - TextBytesLength;
+            MaxTextChars = StringUtils.DefaultEncoding.GetMaxCharCount(TextBytesLength - 1); // -1 for the null-terminator
+        }
+
+        #endregion
 
         public readonly byte Type;
         private int connectionId;
         private uint groupId;
         public byte SubType;
         public byte Sound;
-
-        private const int textBytesLength = 250;
-        private fixed byte textBytes[textBytesLength];
-        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], textBytesLength);
-        public int SetText(ReadOnlySpan<char> value) => TextBytes.WriteNullTerminatedString(value.TruncateForEncodedByteLimit(textBytesLength - 1));
+        private fixed byte textBytes[TextBytesLength];
 
         public S2B_UserPrivateChat(int connectionId, uint groupId, byte subType, byte sound)
         {
@@ -33,5 +42,13 @@ namespace SS.Packets.Billing
             SubType = subType;
             Sound = sound;
         }
+
+        #region Helpers
+
+        private const int TextBytesLength = 250;
+        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], TextBytesLength);
+        public int SetText(ReadOnlySpan<char> value) => TextBytes.WriteNullTerminatedString(value.TruncateForEncodedByteLimit(TextBytesLength - 1));
+
+        #endregion
     }
 }

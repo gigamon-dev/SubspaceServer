@@ -6,6 +6,8 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct B2S_UserKickout
     {
+        #region Static members
+
         public static readonly int Length;
 
         static B2S_UserKickout()
@@ -13,12 +15,18 @@ namespace SS.Packets.Billing
             Length = Marshal.SizeOf<B2S_UserKickout>();
         }
 
-        public byte Type;
+        #endregion
 
+        public byte Type;
         private int connectionId;
+        private ushort reason;
+
+        #region Helpers
+
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
-        private ushort reason;
         public ushort Reason => LittleEndianConverter.Convert(reason);
+
+        #endregion
     }
 }

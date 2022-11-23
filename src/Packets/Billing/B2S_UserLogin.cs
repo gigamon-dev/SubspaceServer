@@ -20,6 +20,8 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct B2S_UserLogin
     {
+        #region Static members
+
         /// <summary>
         /// # of bytes with <see cref="Score"/>.
         /// </summary>
@@ -34,42 +36,44 @@ namespace SS.Packets.Billing
         {
             LengthWithScore = Marshal.SizeOf<B2S_UserLogin>();
             LengthWithoutScore = LengthWithScore - PlayerScore.Length;
-        }   
+        }
+
+        #endregion
 
         public readonly byte Type;
-
         private byte result;
-        public B2SUserLoginResult Result => (B2SUserLoginResult)result;
-
         private int connectionId;
-        public int ConnectionId => LittleEndianConverter.Convert(connectionId);
-
-        private const int nameBytesLength = 24;
-        private fixed byte nameBytes[nameBytesLength];
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], nameBytesLength);
-
-        private const int squadBytesLength = 24;
-        private fixed byte squadBytes[squadBytesLength];
-        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], squadBytesLength);
-
+        private fixed byte nameBytes[NameBytesLength];
+        private fixed byte squadBytes[SquadBytesLength];
         public Banner Banner;
-
         private uint secondsPlayed;
-        public TimeSpan Usage => TimeSpan.FromSeconds(LittleEndianConverter.Convert(secondsPlayed));
-
         public FirstLogin FirstLogin;
-
         private uint Unused0;
-
         private uint userId;
-        public uint UserId => LittleEndianConverter.Convert(userId);
-
         private uint Unused1;
 
         /// <summary>
         /// Only if <see cref="Result"/> = <see cref="B2SUserLoginResult.Ok"/>.
         /// </summary>
         public PlayerScore Score;
+
+        #region Helpers
+
+        public B2SUserLoginResult Result => (B2SUserLoginResult)result;
+
+        public int ConnectionId => LittleEndianConverter.Convert(connectionId);
+
+        private const int NameBytesLength = 24;
+        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
+
+        private const int SquadBytesLength = 24;
+        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], SquadBytesLength);
+
+        public TimeSpan Usage => TimeSpan.FromSeconds(LittleEndianConverter.Convert(secondsPlayed));
+
+        public uint UserId => LittleEndianConverter.Convert(userId);
+
+        #endregion
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

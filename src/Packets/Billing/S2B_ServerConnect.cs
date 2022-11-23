@@ -7,6 +7,8 @@ namespace SS.Packets.Billing
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2B_ServerConnect
     {
+        #region Static members
+
         /// <summary>
         /// Number of bytes in a packet.
         /// </summary>
@@ -17,20 +19,15 @@ namespace SS.Packets.Billing
             Length = Marshal.SizeOf<S2B_ServerConnect>();
         }
 
+        #endregion
+
         public readonly byte Type;
         private uint serverId;
         private uint groupId;
         private uint scoreId;
-
-        private const int serverNameBytesLength = 126;
-        private fixed byte serverNameBytes[serverNameBytesLength];
-        public Span<byte> ServerNameBytes => MemoryMarshal.CreateSpan(ref serverNameBytes[0], serverNameBytesLength);
-
+        private fixed byte serverNameBytes[ServerNameBytesLength];
         private ushort port;
-
-        private const int passwordBytesLength = 32;
-        private fixed byte passwordBytes[passwordBytesLength];
-        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], passwordBytesLength);
+        private fixed byte passwordBytes[PasswordBytesLength];
 
         public S2B_ServerConnect(uint serverId, uint groupId, uint scoreId, ReadOnlySpan<char> serverName, ushort port, ReadOnlySpan<char> password)
         {
@@ -39,8 +36,19 @@ namespace SS.Packets.Billing
             this.groupId = LittleEndianConverter.Convert(groupId);
             this.scoreId = LittleEndianConverter.Convert(scoreId);
             this.port = LittleEndianConverter.Convert(port);
-            ServerNameBytes.WriteNullPaddedString(serverName.TruncateForEncodedByteLimit(serverNameBytesLength - 1));
-            PasswordBytes.WriteNullPaddedString(password.TruncateForEncodedByteLimit(passwordBytesLength - 1));
+            ServerNameBytes.WriteNullPaddedString(serverName.TruncateForEncodedByteLimit(ServerNameBytesLength - 1));
+            PasswordBytes.WriteNullPaddedString(password.TruncateForEncodedByteLimit(PasswordBytesLength - 1));
         }
+
+        #region Helpers
+
+        private const int ServerNameBytesLength = 126;
+        public Span<byte> ServerNameBytes => MemoryMarshal.CreateSpan(ref serverNameBytes[0], ServerNameBytesLength);
+
+
+        private const int PasswordBytesLength = 32;
+        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
+
+        #endregion
     }
 }
