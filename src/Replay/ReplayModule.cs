@@ -154,9 +154,7 @@ namespace SS.Replay
 
         ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
         {
-            if (errorMessage != null)
-                errorMessage.Append("Ships are disabled for playback.");
-
+            errorMessage?.Append("Ships are disabled for playback.");
             return ShipMask.None;
         }
 
@@ -168,9 +166,7 @@ namespace SS.Replay
 
             if (ad.Settings.PlaybackLockTeams)
             {
-                if (errorMessage != null)
-                    errorMessage.Append("Teams are locked for playback.");
-
+                errorMessage?.Append("Teams are locked for playback.");
                 return false;
             }
             else
@@ -914,18 +910,20 @@ namespace SS.Replay
                 int commentsLength = comments != null ? StringUtils.DefaultEncoding.GetByteCount(comments) + 1 : 0;
 
                 // Write the file header (though only have partial data and will have to update it at the end).
-                FileHeader fileHeader = new();
-                fileHeader.Header = "ass$game"; // The $ temporary, we will update it at the end.
-                fileHeader.Version = ReplayFileVersion;
-                fileHeader.Offset = (uint)FileHeader.Length + (uint)commentsLength;
-                fileHeader.Events = 0; // This will be updated at the end.
-                fileHeader.EndTime = 0; // This will be updated at the end.
-                fileHeader.MaxPlayerId = 0; // This will be updated at the end.
-                fileHeader.SpecFreq = (uint)arena.SpecFreq;
-                fileHeader.Recorded = DateTimeOffset.UtcNow;
-                fileHeader.MapChecksum = _mapData.GetChecksum(arena, MapChecksumKey);
-                fileHeader.Recorder = ad.StartedBy;
-                fileHeader.ArenaName = arena.Name;
+                FileHeader fileHeader = new()
+                {
+                    Header = "ass$game", // The $ temporary, we will update it at the end.
+                    Version = ReplayFileVersion,
+                    Offset = (uint)FileHeader.Length + (uint)commentsLength,
+                    Events = 0, // This will be updated at the end.
+                    EndTime = 0, // This will be updated at the end.
+                    MaxPlayerId = 0, // This will be updated at the end.
+                    SpecFreq = (uint)arena.SpecFreq,
+                    Recorded = DateTimeOffset.UtcNow,
+                    MapChecksum = _mapData.GetChecksum(arena, MapChecksumKey),
+                    Recorder = ad.StartedBy,
+                    ArenaName = arena.Name
+                };
 
                 Span<byte> fileHeaderBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref fileHeader, 1));
 
@@ -1204,11 +1202,12 @@ namespace SS.Replay
                 }
 
                 // Try to read the file header.
-                Span<byte> headerBytes = new byte[FileHeader.Length];
+                FileHeader fileHeader = new();
 
                 try
                 {
-                    if (ReadFromStream(fileStream, headerBytes) != headerBytes.Length)
+                    Span<byte> fileHeaderBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref fileHeader, 1));
+                    if (ReadFromStream(fileStream, fileHeaderBytes) != fileHeaderBytes.Length)
                     {
                         LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
                         return;
@@ -1220,8 +1219,12 @@ namespace SS.Replay
                     return;
                 }
 
-                ref FileHeader fileHeader = ref MemoryMarshal.AsRef<FileHeader>(headerBytes);
-                if (!string.Equals(fileHeader.Header, "asssgame", StringComparison.Ordinal))
+                ReadOnlySpan<byte> headerBytes = fileHeader.HeaderBytes.SliceNullTerminated();
+                Span<char> headerChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(headerBytes)];
+                int decodedBytes = StringUtils.DefaultEncoding.GetChars(headerBytes, headerChars);
+                Debug.Assert(decodedBytes == headerBytes.Length);
+
+                if (!MemoryExtensions.Equals(headerChars, "asssgame", StringComparison.Ordinal))
                 {
                     LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
                     return;
@@ -1279,11 +1282,21 @@ namespace SS.Replay
                         {
                             sb.Append($"Starting playback of '{path}' recorded ");
 
-                            if (!string.IsNullOrWhiteSpace(fileHeader.ArenaName))
-                                sb.Append($"in arena {fileHeader.ArenaName} ");
+                            ReadOnlySpan<byte> arenaNameBytes = fileHeader.ArenaNameBytes.SliceNullTerminated();
+                            Span<char> arenaNameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(arenaNameBytes)];
+                            decodedBytes = StringUtils.DefaultEncoding.GetChars(arenaNameBytes, arenaNameChars);
+                            Debug.Assert(decodedBytes == arenaNameBytes.Length);
 
-                            if (!string.IsNullOrWhiteSpace(fileHeader.Recorder))
-                                sb.Append($"by {fileHeader.Recorder} ");
+                            if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
+                                sb.Append($"in arena {arenaNameChars} ");
+
+                            ReadOnlySpan<byte> recorderBytes = fileHeader.RecorderBytes.SliceNullTerminated();
+                            Span<char> recorderChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(recorderBytes)];
+                            decodedBytes = StringUtils.DefaultEncoding.GetChars(recorderBytes, recorderChars);
+                            Debug.Assert(decodedBytes == recorderBytes.Length);
+
+                            if (!MemoryExtensions.IsWhiteSpace(recorderChars))
+                                sb.Append($"by {recorderChars} ");
 
                             sb.Append($"on {fileHeader.Recorded}");
 

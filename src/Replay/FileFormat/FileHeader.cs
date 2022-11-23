@@ -33,12 +33,12 @@ namespace SS.Replay.FileFormat
 
         private const int HeaderBytesLength = 8;
         public Span<byte> HeaderBytes => MemoryMarshal.CreateSpan(ref headerBytes[0], HeaderBytesLength);
+
         /// <summary>
         /// Always "asssgame".
         /// </summary>
-        public string Header
+        public ReadOnlySpan<char> Header
         {
-            get => StringUtils.ReadNullTerminatedString(HeaderBytes);
             set => StringUtils.WriteNullPaddedString(HeaderBytes, value, false);
         }
 
@@ -116,23 +116,23 @@ namespace SS.Replay.FileFormat
 
         private const int RecorderBytesLength = 24;
         public Span<byte> RecorderBytes => MemoryMarshal.CreateSpan(ref recorderBytes[0], RecorderBytesLength);
+
         /// <summary>
         /// The name of the player who recorded it.
         /// </summary>
-        public string Recorder
+        public ReadOnlySpan<char> Recorder
         {
-            get => StringUtils.ReadNullTerminatedString(RecorderBytes);
             set => StringUtils.WriteNullPaddedString(RecorderBytes, value, false);
         }
 
         private const int ArenaNameBytesLength = 24;
         public Span<byte> ArenaNameBytes => MemoryMarshal.CreateSpan(ref arenaNameBytes[0], ArenaNameBytesLength);
+
         /// <summary>
         /// The name of the arena that was recorded.
         /// </summary>
-        public string ArenaName
+        public ReadOnlySpan<char> ArenaName
         {
-            get => StringUtils.ReadNullTerminatedString(ArenaNameBytes);
             set => StringUtils.WriteNullPaddedString(ArenaNameBytes, value, false);
         }
 
