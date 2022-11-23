@@ -31,11 +31,6 @@ namespace SS.Packets.Game
 
         private const int ArenaNameBytesLength = 16;
         private Span<byte> ArenaNameBytes => MemoryMarshal.CreateSpan(ref arenaNameBytes[0], ArenaNameBytesLength);
-        public string ArenaName
-        {
-            get => ArenaNameBytes.ReadNullTerminatedString();
-            set => ArenaNameBytes.WriteNullPaddedString(value, false);
-        }
 
         #endregion
     }

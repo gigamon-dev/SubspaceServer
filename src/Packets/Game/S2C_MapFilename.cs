@@ -75,9 +75,8 @@ namespace SS.Packets.Game
             private const int FileNameBytesLength = 16;
             private fixed byte fileNameBytes[FileNameBytesLength];
             public Span<byte> FileNameBytes => MemoryMarshal.CreateSpan(ref fileNameBytes[0], FileNameBytesLength);
-            public string FileName
+            public ReadOnlySpan<char> FileName
             {
-                get => FileNameBytes.ReadNullTerminatedString();
                 set => FileNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FileNameBytesLength), false);
             }
 

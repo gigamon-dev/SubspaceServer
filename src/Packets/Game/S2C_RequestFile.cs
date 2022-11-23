@@ -20,15 +20,13 @@ namespace SS.Packets.Game
         private fixed byte filenameBytes[FilenameBytesLength];
         public Span<byte> FilenameBytes => MemoryMarshal.CreateSpan(ref filenameBytes[0], FilenameBytesLength);
 
-        public string Path
+        public ReadOnlySpan<char> Path
         {
-            get { return PathBytes.ReadNullTerminatedString(); }
             set { PathBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PathBytesLength - 1)); }
         }
 
-        public string Filename
+        public ReadOnlySpan<char> Filename
         {
-            get { return FilenameBytes.ReadNullTerminatedString(); }
             set { FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameBytesLength - 1)); }
         }
 
