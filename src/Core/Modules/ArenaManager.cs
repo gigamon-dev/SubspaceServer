@@ -64,77 +64,132 @@ namespace SS.Core.Modules
         private readonly TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
         private readonly object _populationRefreshLock = new();
 
-        private class SpawnLoc
-        {
-            // TODO: consider using the System.Drawing.Point struct, it might have useful operators/methods
-            public short X, Y;
-
-            public SpawnLoc() : this(0, 0)
-            {
-            }
-
-            public SpawnLoc(short x, short y)
-            {
-                X = x;
-                Y = y;
-            }
-        }
-
         /// <summary>
-        /// per player data key (SpawnLoc) 
+        /// Per player data key (<see cref="SpawnLoc"/>) 
         /// </summary>
         private PlayerDataKey<SpawnLoc> _spawnkey;
 
-        private class ArenaData
-        {
-            /// <summary>
-            /// Whether the arena's config file is being loaded on a worker thread.
-            /// </summary>
-            public bool IsLoadingConfig = false;
-
-            /// <summary>
-            /// counter for the # of holds on the arena
-            /// </summary>
-            public int Holds = 0;
-
-            /// <summary>
-            /// whether the arena should be recreated after it is destroyed
-            /// </summary>
-            public bool Resurrect = false;
-
-            public bool Reap = false;
-        }
-
         /// <summary>
-        /// per arena data key (ArenaData) 
+        /// Per arena data key (<see cref="ArenaData"/>) 
         /// </summary>
         private ArenaDataKey<ArenaData> _adkey;
 
-        #region Locks
+        #region Module members
 
-        private void ReadLock()
+        public bool Load(
+            ComponentBroker broker,
+            IConfigManager configManager,
+            ILogManager logManager,
+            IMainloop mainloop,
+            IMainloopTimer mainloopTimer,
+            IModuleManager moduleManager,
+            INetwork network,
+            IObjectPoolManager objectPoolManager,
+            IPlayerData playerData,
+            IServerTimer serverTimer)
         {
-            _arenaLock.EnterReadLock();
+            Broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+            _moduleManager = moduleManager ?? throw new ArgumentNullException(nameof(moduleManager));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+
+            _spawnkey = _playerData.AllocatePlayerData(new SpawnLocPooledObjectPolicy());
+
+            _adkey = ((IArenaManager)this).AllocateArenaData(new ArenaDataPooledObjectPolicy());
+
+            _network.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
+            _network.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+
+            // TODO: 
+            //_chatnet = Broker.GetInterface<IChatNet>();
+            //if(_chatnet)
+            //{
+            //}
+
+            _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
+            _mainloopTimer.SetTimer(MainloopTimer_ReapArenas, 1700, 1700, null);
+            _mainloopTimer.SetTimer(MainloopTimer_DoArenaMaintenance, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, null);
+            _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
+
+            _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
+            _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
+
+            return true;
         }
 
-        private void ReadUnlock()
+        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, typeof(string),
+            "A list of the names of arenas to permanently set up when the server is started.")]
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            _arenaLock.ExitReadLock();
+            _persistExecutor = broker.GetInterface<IPersistExecutor>();
+
+            string permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
+            if (!string.IsNullOrWhiteSpace(permanentArenas))
+            {
+                int totalCreated = 0;
+
+                foreach (string name in permanentArenas.Split(new char[] { ',', ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    ++totalCreated;
+                    _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Creating permanent arena '{name}'.");
+                    CreateArena(name, true);
+                }
+
+                _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Created {totalCreated} permanent arena(s).");
+            }
+
+            return true;
         }
 
-        private void WriteLock()
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
         {
-            _arenaLock.EnterWriteLock();
+            if (_persistExecutor is not null)
+            {
+                broker.ReleaseInterface(ref _persistExecutor);
+            }
+
+            return true;
         }
 
-        private void WriteUnlock()
+        bool IModule.Unload(ComponentBroker broker)
         {
-            _arenaLock.ExitWriteLock();
+            if (broker.UnregisterInterface(ref _iArenaManagerToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
+                return false;
+
+            _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
+            _network.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+
+            // TODO: 
+            //if(_chatnet)
+            //{
+            //}
+
+            _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_ProcessArenaStates, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_ReapArenas, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_DoArenaMaintenance, null);
+
+            _playerData.FreePlayerData(_spawnkey);
+
+            ((IArenaManager)this).FreeArenaData(_adkey);
+
+            _arenaDictionary.Clear();
+
+            return true;
         }
 
         #endregion
 
-        #region IArenaManager and IArenaManagerInternal Members
+        #region IArenaManager
 
         void IArenaManager.Lock()
         {
@@ -147,215 +202,6 @@ namespace SS.Core.Modules
         }
 
         Dictionary<string, Arena>.ValueCollection IArenaManager.Arenas => _arenaDictionary.Values;
-
-        void IArenaManagerInternal.SendArenaResponse(Player player)
-        {
-            if (player == null)
-                return;
-
-            Arena arena = player.Arena;
-
-            if (arena == null)
-            {
-                _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, "Bad arena in SendArenaResponse.");
-                return;
-            }
-
-            _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "Entering arena.");
-
-            if (player.IsStandard)
-            {
-                // send whoami packet
-                S2C_WhoAmI whoAmI = new((short)player.Id);
-                _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
-                
-                // send settings
-                IClientSettings clientset = Broker.GetInterface<IClientSettings>();
-                if (clientset != null)
-                {
-                    try
-                    {
-                        clientset.SendClientSettings(player);
-                    }
-                    finally
-                    {
-                        Broker.ReleaseInterface(ref clientset);
-                    }
-                }
-            }
-            else if (player.IsChat)
-            {
-                // TODO: 
-                //_chatnet.SendToOne(player, "INARENA:%s:%d", a.Name, player.Freq);
-            }
-
-            HashSet<Player> enterPlayerSet = _objectPoolManager.PlayerSetPool.Get();
-
-            try
-            {
-                _playerData.Lock();
-                try
-                {
-                    foreach (Player otherPlayer in _playerData.Players)
-                    {
-                        if (otherPlayer.Status == PlayerState.Playing
-                            && otherPlayer.Arena == arena
-                            && otherPlayer != player)
-                        {
-                            // Add to the collection of players, we'll send later.
-                            enterPlayerSet.Add(otherPlayer);
-                            
-                            // Tell others already in the arena, that the player is entering.
-                            SendEnter(player, otherPlayer, false);
-                        }
-                    }
-                }
-                finally
-                {
-                    _playerData.Unlock();
-                }
-
-                if (player.IsStandard)
-                {
-                    enterPlayerSet.Add(player); // include the player's own packet too
-
-                    //
-                    // Send all the player entering packets as one large packet.
-                    //
-
-                    int packetLength = enterPlayerSet.Count * S2C_PlayerData.Length;
-                    byte[] buffer = ArrayPool<byte>.Shared.Rent(packetLength);
-
-                    try
-                    {
-                        Span<byte> bufferSpan = buffer.AsSpan(0, packetLength); // only the part we are going to use (Rent can return a larger array)
-
-                        int index = 0;
-                        S2C_PlayerDataBuilder builder = new(bufferSpan);
-                        foreach (Player enteringPlayer in enterPlayerSet)
-                        {
-                            builder.Set(index++, ref enteringPlayer.Packet);
-                        }
-
-                        _network.SendToOne(player, bufferSpan, NetSendFlags.Reliable);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer, true);
-                    }
-                }
-                else if (player.IsChat)
-                {
-                    foreach (Player enteringPlayer in enterPlayerSet)
-                    {
-                        SendEnter(enteringPlayer, player, true);
-                    }
-                }
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(enterPlayerSet);
-            }
-
-            if (player.IsStandard)
-            {
-                IMapNewsDownload mapNewDownload = Broker.GetInterface<IMapNewsDownload>();
-                if (mapNewDownload != null)
-                {
-                    try
-                    {
-                        mapNewDownload.SendMapFilename(player);
-                    }
-                    finally
-                    {
-                        Broker.ReleaseInterface(ref mapNewDownload);
-                    }
-                }
-
-                Span<byte> span = stackalloc byte[1];
-
-                // ASSS sends what it calls a "brick clear" packet here. Which is an empty, 1 byte brick packet (0x21).
-                // However, there actually is no such mechanism to clear bricks on the client side. (would be nice to have though)
-                // ASSS probably included it to emulate what subgame sends when there are no active bricks.
-                // The Bricks module sends brick data on PlayerAction.EnterArena, which happens immediately after this method is called.
-                //span[0] = (byte)S2CPacketType.Brick;
-                //_network.SendToOne(player, span, NetSendFlags.Reliable);
-
-                // send entering arena finisher
-                span[0] = (byte)S2CPacketType.EnteringArena;
-                _network.SendToOne(player, span, NetSendFlags.Reliable);
-
-                if (player.TryGetExtraData(_spawnkey, out SpawnLoc sp))
-                {
-                    if ((sp.X > 0) && (sp.Y > 0) && (sp.X < 1024) && (sp.Y < 1024))
-                    {
-                        S2C_WarpTo warpTo = new(sp.X, sp.Y);
-                        _network.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
-                    }
-                }
-            }
-        }
-
-        void IArenaManagerInternal.LeaveArena(Player player)
-        {
-            LeaveArena(player);
-        }
-
-        private bool InitiateLeaveArena(Player player)
-        {
-            bool notify = false;
-
-            /* this messy logic attempts to deal with players who haven't fully
-             * entered an arena yet. it will try to insert them at the proper
-             * stage of the arena leaving process so things that have been done
-             * get undone, and things that haven't been done _don't_ get undone. */
-            switch (player.Status)
-            {
-                case PlayerState.LoggedIn:
-                case PlayerState.DoFreqAndArenaSync:
-                    //for these 2, nothing much has been done. just go back to loggedin.
-                    player.Status = PlayerState.LoggedIn;
-                    break;
-
-                case PlayerState.WaitArenaSync1:
-                    /* this is slightly tricky: we want to wait until persist is
-                     * done loading the scores before changing the state, or
-                     * things will get screwed up. so mark it here and let core
-                     * take care of it. this is really messy and it would be
-                     * nice to find a better way to handle it. */
-                    player.Flags.LeaveArenaWhenDoneWaiting = true;
-                    break;
-
-                case PlayerState.ArenaRespAndCBS:
-                    // in these, stuff has come out of the database. put it back in
-                    player.Status = PlayerState.DoArenaSync2;
-                    break;
-
-                case PlayerState.Playing:
-                    // do all of the above, plus call leaving callbacks.
-                    player.Status = PlayerState.LeavingArena;
-                    notify = true;
-                    break;
-
-                case PlayerState.LeavingArena:
-                case PlayerState.DoArenaSync2:
-                case PlayerState.WaitArenaSync2:
-                case PlayerState.LeavingZone:
-                case PlayerState.WaitGlobalSync2:
-                    //no problem, player is already on the way out
-                    break;
-
-                default:
-                    // something's wrong here
-                    _logManager.LogP(LogLevel.Error, nameof(ArenaManager), player, $"Player has an arena, but is in a bad state ({player.Status}).");
-                    notify = true;
-                    break;
-            }
-
-            return notify;
-        }
-
-        #endregion
 
         bool IArenaManager.RecycleArena(Arena arena)
         {
@@ -426,20 +272,20 @@ namespace SS.Core.Modules
 
         void IArenaManager.SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnx, int spawny)
         {
-            switch(player.Type)
+            switch (player.Type)
             {
                 case ClientType.Continuum:
                 case ClientType.VIE:
                     CompleteGo(
-                        player, 
-                        arenaName, 
-                        player.Ship, 
-                        player.Xres, 
-                        player.Yres, 
-                        player.Flags.WantAllLvz, 
-                        player.Packet.AcceptAudio != 0, 
-                        player.Flags.ObscenityFilter, 
-                        spawnx, 
+                        player,
+                        arenaName,
+                        player.Ship,
+                        player.Xres,
+                        player.Yres,
+                        player.Flags.WantAllLvz,
+                        player.Packet.AcceptAudio != 0,
+                        player.Flags.ObscenityFilter,
+                        spawnx,
                         spawny);
                     break;
 
@@ -459,12 +305,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private Arena FindArena(string name)
+        Arena IArenaManager.FindArena(string name)
         {
             ReadLock();
             try
             {
-                return DoFindArena(name, ArenaState.Running, ArenaState.Running);
+                return FindArena(name, ArenaState.Running, ArenaState.Running);
             }
             finally
             {
@@ -472,16 +318,11 @@ namespace SS.Core.Modules
             }
         }
 
-        Arena IArenaManager.FindArena(string name)
-        {
-            return FindArena(name);
-        }
-
         Arena IArenaManager.FindArena(string name, out int totalCount, out int playing)
         {
-            Arena arena = FindArena(name);
+            Arena arena = ((IArenaManager)this).FindArena(name);
 
-            if (arena != null)
+            if (arena is not null)
             {
                 CountPlayers(arena, out totalCount, out playing);
             }
@@ -492,217 +333,35 @@ namespace SS.Core.Modules
             }
 
             return arena;
-        }
 
-        private Arena DoFindArena(string name, ArenaState? minState, ArenaState? maxState)
-        {
-            ReadLock();
-            try
+            void CountPlayers(Arena arena, out int total, out int playing)
             {
-                if (_arenaDictionary.TryGetValue(name, out Arena arena) == false)
-                    return null;
+                int totalCount = 0;
+                int playingCount = 0;
 
-                if (minState != null && arena.Status < minState)
-                    return null;
-
-                if (maxState != null && arena.Status > maxState)
-                    return null;
-
-                return arena;
-            }
-            finally
-            {
-                ReadUnlock();
-            }
-        }
-
-        private void CountPlayers(Arena arena, out int total, out int playing)
-        {
-            int totalCount = 0;
-            int playingCount = 0;
-
-            _playerData.Lock();
-            try
-            {
-                foreach (Player player in _playerData.Players)
-                {
-                    if (player.Status == PlayerState.Playing &&
-                        player.Arena == arena &&
-                        player.Type != ClientType.Fake)
-                    {
-                        totalCount++;
-
-                        if (player.Ship != ShipType.Spec)
-                            playingCount++;
-                    }
-                }
-            }
-            finally
-            {
-                _playerData.Unlock();
-            }
-
-            total = totalCount;
-            playing = playingCount;
-        }
-
-        private void CompleteGo(Player player, ReadOnlySpan<char> reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
-        {
-            // status should be LoggedIn or Playing at this point
-            if (player.Status != PlayerState.LoggedIn && player.Status != PlayerState.Playing && player.Status != PlayerState.LeavingArena)
-            {
-                _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, $"State sync problem: Sent arena request from bad status ({player.Status}).");
-                return;
-            }
-
-
-            // remove all illegal characters and make lowercase
-            string name;
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-            try
-            {
-                sb.Append(reqName);
-                for (int x = 0; x < sb.Length; x++)
-                {
-                    if (x == 0 && sb[x] == '#')
-                        continue;
-                    else if (!char.IsLetterOrDigit(sb[x]))
-                        sb[x] = 'x';
-                    else if (char.IsUpper(sb[x]))
-                        sb[x] = char.ToLower(sb[x]);
-                }
-
-                if (sb.Length == 0)
-                {
-                    // this might occur when a player is redirected to us from another zone
-                    IArenaPlace ap = Broker.GetInterface<IArenaPlace>();
-                    if (ap != null)
-                    {
-                        try
-                        {
-                            int spx = 0, spy = 0;
-                            if (!ap.Place(out name, ref spx, ref spy, player))
-                            {
-                                name = "0";
-                            }
-                        }
-                        finally
-                        {
-                            Broker.ReleaseInterface(ref ap);
-                        }
-                    }
-                    else
-                    {
-                        name = "0";
-                    }
-                }
-                else
-                {
-                    name = sb.ToString();
-                }
-            }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(sb);
-            }
-
-            if (player.Arena != null)
-                LeaveArena(player);
-
-            // try to locate an existing arena
-            WriteLock();
-            try
-            {
-                Arena arena = DoFindArena(name, ArenaState.DoInit0, ArenaState.DoDestroy2);
-                if (arena == null)
-                {
-                    // create a non-permanent arena
-                    arena = CreateArena(name, false);
-                    if (arena == null)
-                    {
-                        // if it fails, dump in first available
-                        foreach (Arena a in _arenaDictionary.Values)
-                        {
-                            arena = a;
-                            break;
-                        }
-
-                        if (arena == null)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(ArenaManager), "Internal error: No running arenas but cannot create new one.");
-                            return;
-                        }
-                    }
-                    else if (arena.Status > ArenaState.Running)
-                    {
-                        // arena is on it's way out
-                        // this isn't a problem, just make sure that it will come back
-                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
-                            return;
-
-                        arenaData.Resurrect = true;
-                    }
-                }
-
-                // set up player info
-                _playerData.WriteLock();
+                _playerData.Lock();
                 try
                 {
-                    player.NewArena = arena;
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.Status == PlayerState.Playing &&
+                            player.Arena == arena &&
+                            player.Type != ClientType.Fake)
+                        {
+                            totalCount++;
+
+                            if (player.Ship != ShipType.Spec)
+                                playingCount++;
+                        }
+                    }
                 }
                 finally
                 {
-                    _playerData.WriteUnlock();
+                    _playerData.Unlock();
                 }
-                player.Ship = ship;
-                player.Xres = (short)xRes;
-                player.Yres = (short)yRes;
-                player.Flags.WantAllLvz = gfx;
-                player.Packet.AcceptAudio = voices ? (byte)1 : (byte)0;
-                player.Flags.ObscenityFilter = obscene;
 
-                if (player.TryGetExtraData(_spawnkey, out SpawnLoc sp))
-                {
-                    sp.X = (short)spawnX;
-                    sp.Y = (short)spawnY;
-                }
-            }
-            finally
-            {
-                WriteUnlock();
-            }
-
-            // don't mess with player status yet, let him stay in S_LOGGEDIN.
-            // it will be incremented when the arena is ready.
-        }
-
-        private void LeaveArena(Player player)
-        {
-            bool notify;
-            Arena arena;
-
-            _playerData.WriteLock();
-            try
-            {
-                arena = player.Arena;
-                if (arena == null)
-                    return;
-
-                notify = InitiateLeaveArena(player);
-            }
-            finally
-            {
-                _playerData.WriteUnlock();
-            }
-
-            if (notify)
-            {
-                S2C_PlayerLeaving packet = new((short)player.Id);
-                _network.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
-                //chatnet.SendToArena(
-
-                _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "Leaving arena.");
+                total = totalCount;
+                playing = playingCount;
             }
         }
 
@@ -723,7 +382,7 @@ namespace SS.Core.Modules
                     if (RefreshNeeded())
                     {
                         // refresh population stats
-                        ICapabilityManager capman = Broker.GetInterface<ICapabilityManager>();
+                        ICapabilityManager capabilityManager = Broker.GetInterface<ICapabilityManager>();
 
                         try
                         {
@@ -742,8 +401,8 @@ namespace SS.Core.Modules
                                 {
                                     if (p.Status == PlayerState.Playing
                                         && p.Type != ClientType.Fake
-                                        && p.Arena != null
-                                        && (capman == null || !capman.HasCapability(p, Constants.Capabilities.ExcludePopulation)))
+                                        && p.Arena is not null
+                                        && (capabilityManager is null || !capabilityManager.HasCapability(p, Constants.Capabilities.ExcludePopulation)))
                                     {
                                         _playersTotal++;
                                         p.Arena.Total++;
@@ -763,8 +422,8 @@ namespace SS.Core.Modules
                         }
                         finally
                         {
-                            if (capman != null)
-                                Broker.ReleaseInterface(ref capman);
+                            if (capabilityManager is not null)
+                                Broker.ReleaseInterface(ref capabilityManager);
                         }
 
                         _populationLastRefreshed = DateTime.UtcNow;
@@ -778,22 +437,6 @@ namespace SS.Core.Modules
             bool RefreshNeeded() => _populationLastRefreshed == null || (DateTime.UtcNow - _populationLastRefreshed.Value) >= _populationRefreshThreshold;
         }
 
-        private bool ServerTimer_UpdateKnownArenas()
-        {
-            WriteLock();
-
-            try
-            {
-                // TODO: is this really needed? 
-            }
-            finally
-            {
-                WriteUnlock();
-            }
-
-            return true; // keep running
-        }
-
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
@@ -805,53 +448,11 @@ namespace SS.Core.Modules
 
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>(IPooledObjectPolicy<T> policy)
         {
-            if (policy == null)
+            if (policy is null)
                 throw new ArgumentNullException(nameof(policy));
 
             // It's the policy's job to clear/reset an object when it's returned to the pool.
             return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
-        }
-
-        private int AllocateArenaData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
-        {
-            if (createExtraDataFactoryFunc == null)
-                throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
-
-            WriteLock();
-
-            try
-            {
-                //
-                // Register
-                //
-
-                int keyId;
-
-                // find next available
-                for (keyId = 1; keyId <= _extraDataRegistrations.Keys.Count; keyId++)
-                {
-                    if (_extraDataRegistrations.Keys[keyId-1] != keyId)
-                        break;
-                }
-
-                ExtraDataFactory factory = createExtraDataFactoryFunc();
-                _extraDataRegistrations[keyId] = factory;
-            
-                //
-                // Add the data to each arena.
-                //
-
-                foreach (Arena arena in _arenaDictionary.Values)
-                {
-                    arena.SetExtraData(keyId, factory.Get());
-                }
-
-                return keyId;
-            }
-            finally
-            {
-                WriteUnlock();
-            }
         }
 
         void IArenaManager.FreeArenaData<T>(ArenaDataKey<T> key)
@@ -862,11 +463,6 @@ namespace SS.Core.Modules
                 return;
             }
 
-            FreeArenaData(key.Id);
-        }
-
-        private void FreeArenaData(int keyId)
-        {
             WriteLock();
 
             try
@@ -875,7 +471,7 @@ namespace SS.Core.Modules
                 // Unregister
                 //
 
-                if (!_extraDataRegistrations.Remove(keyId, out ExtraDataFactory factory))
+                if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
                     return;
 
                 //
@@ -884,7 +480,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    if (arena.TryRemoveExtraData(keyId, out object data))
+                    if (arena.TryRemoveExtraData(key.Id, out object data))
                     {
                         factory.Return(data);
                     }
@@ -903,7 +499,7 @@ namespace SS.Core.Modules
             WriteLock();
             try
             {
-                switch(arena.Status)
+                switch (arena.Status)
                 {
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
@@ -955,94 +551,342 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, typeof(string), 
-            Description = "This is a list of modules that you want to take effect in this" +
-            "arena. Not all modules need to be attached to arenas to function, but some do.")]
-        private void DoAttach(Arena a)
+        #endregion
+
+        #region IArenaManagerInternal
+
+        void IArenaManagerInternal.SendArenaResponse(Player player)
         {
-            string attachMods = _configManager.GetStr(a.Cfg, "Modules", "AttachModules");
-            if (string.IsNullOrWhiteSpace(attachMods))
+            if (player is null)
                 return;
 
-            string[] attachModsArray = attachMods.Split(" \t:;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            Arena arena = player.Arena;
 
-            foreach (string moduleToAttach in attachModsArray)
+            if (arena is null)
             {
-                _moduleManager.AttachModule(moduleToAttach, a);
-            }
-        }
-
-        private void ArenaConfChanged(Arena arena)
-        {
-            if (arena == null)
+                _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, "Bad arena in SendArenaResponse.");
                 return;
+            }
 
-            ReadLock();
+            _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "Entering arena.");
+
+            if (player.IsStandard)
+            {
+                // send whoami packet
+                S2C_WhoAmI whoAmI = new((short)player.Id);
+                _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+
+                // send settings
+                IClientSettings clientSettings = Broker.GetInterface<IClientSettings>();
+                if (clientSettings is not null)
+                {
+                    try
+                    {
+                        clientSettings.SendClientSettings(player);
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref clientSettings);
+                    }
+                }
+            }
+            else if (player.IsChat)
+            {
+                // TODO: 
+                //_chatnet.SendToOne(player, "INARENA:%s:%d", a.Name, player.Freq);
+            }
+
+            HashSet<Player> enterPlayerSet = _objectPoolManager.PlayerSetPool.Get();
+
             try
             {
-                // only running arenas should receive confchanged events
-                if (arena.Status == ArenaState.Running)
+                _playerData.Lock();
+                try
                 {
-                    OnArenaAction(arena, ArenaAction.ConfChanged);
+                    foreach (Player otherPlayer in _playerData.Players)
+                    {
+                        if (otherPlayer.Status == PlayerState.Playing
+                            && otherPlayer.Arena == arena
+                            && otherPlayer != player)
+                        {
+                            // Add to the collection of players, we'll send later.
+                            enterPlayerSet.Add(otherPlayer);
+
+                            // Tell others already in the arena, that the player is entering.
+                            SendEnter(player, otherPlayer, false);
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                if (player.IsStandard)
+                {
+                    enterPlayerSet.Add(player); // include the player's own packet too
+
+                    //
+                    // Send all the player entering packets as one large packet.
+                    //
+
+                    int packetLength = enterPlayerSet.Count * S2C_PlayerData.Length;
+                    byte[] buffer = ArrayPool<byte>.Shared.Rent(packetLength);
+
+                    try
+                    {
+                        Span<byte> bufferSpan = buffer.AsSpan(0, packetLength); // only the part we are going to use (Rent can return a larger array)
+
+                        int index = 0;
+                        S2C_PlayerDataBuilder builder = new(bufferSpan);
+                        foreach (Player enteringPlayer in enterPlayerSet)
+                        {
+                            builder.Set(index++, ref enteringPlayer.Packet);
+                        }
+
+                        _network.SendToOne(player, bufferSpan, NetSendFlags.Reliable);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer, true);
+                    }
+                }
+                else if (player.IsChat)
+                {
+                    foreach (Player enteringPlayer in enterPlayerSet)
+                    {
+                        SendEnter(enteringPlayer, player, true);
+                    }
                 }
             }
             finally
             {
-                ReadUnlock();
+                _objectPoolManager.PlayerSetPool.Return(enterPlayerSet);
             }
-        }
 
-        private void SendEnter(Player player, Player playerTo, bool already)
-        {
-            if (playerTo.IsStandard)
+            if (player.IsStandard)
             {
-                _network.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
-            }
-            else if (playerTo.IsChat)
-            {
-                //_chatNet.SendToOne(
-            }
-        }
-
-        
-        /// <summary>
-        /// This is called when the persistent data retrieval or saving has completed.
-        /// </summary>
-        /// <param name="arena"></param>
-        private void ArenaSyncDone(Arena arena)
-        {
-            WriteLock();
-
-            try
-            {
-                if (arena.Status == ArenaState.WaitSync1)
+                IMapNewsDownload mapNewsDownload = Broker.GetInterface<IMapNewsDownload>();
+                if (mapNewsDownload is not null)
                 {
-                    // persistent data has been retrieved from the database
-                    arena.Status = ArenaState.Running;
+                    try
+                    {
+                        mapNewsDownload.SendMapFilename(player);
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref mapNewsDownload);
+                    }
                 }
-                else if (arena.Status == ArenaState.WaitSync2)
+
+                Span<byte> span = stackalloc byte[1];
+
+                // ASSS sends what it calls a "brick clear" packet here. Which is an empty, 1 byte brick packet (0x21).
+                // However, there actually is no such mechanism to clear bricks on the client side. (would be nice to have though)
+                // ASSS probably included it to emulate what subgame sends when there are no active bricks.
+                // The Bricks module sends brick data on PlayerAction.EnterArena, which happens immediately after this method is called.
+                //span[0] = (byte)S2CPacketType.Brick;
+                //_network.SendToOne(player, span, NetSendFlags.Reliable);
+
+                // send entering arena finisher
+                span[0] = (byte)S2CPacketType.EnteringArena;
+                _network.SendToOne(player, span, NetSendFlags.Reliable);
+
+                if (player.TryGetExtraData(_spawnkey, out SpawnLoc spawnLoc))
                 {
-                    // persistent data has been saved to the database
-                    arena.Status = ArenaState.DoDestroy1;
+                    if ((spawnLoc.X > 0) && (spawnLoc.Y > 0) && (spawnLoc.X < 1024) && (spawnLoc.Y < 1024))
+                    {
+                        S2C_WarpTo warpTo = new(spawnLoc.X, spawnLoc.Y);
+                        _network.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
+                    }
+                }
+            }
+
+            void SendEnter(Player player, Player playerTo, bool already)
+            {
+                if (playerTo.IsStandard)
+                {
+                    _network.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
+                }
+                else if (playerTo.IsChat)
+                {
+                    //_chatNet.SendToOne(
+                }
+            }
+        }
+
+        void IArenaManagerInternal.LeaveArena(Player player)
+        {
+            LeaveArena(player);
+        }
+
+        #endregion
+
+        #region Packet handlers
+
+        [ConfigHelp("Chat", "ForceFilter", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+            Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
+        private void Packet_GotoArena(Player player, byte[] data, int len)
+        {
+            if (player is null)
+                return;
+
+            if (data is null)
+                return;
+
+            if (len != C2S_GoArena.LengthVIE && len != C2S_GoArena.LengthContinuum)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena packet len={len}.");
+                return;
+            }
+
+            ref C2S_GoArena go = ref MemoryMarshal.AsRef<C2S_GoArena>(data);
+
+            if (go.ShipType > (byte)ShipType.Spec)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, "Bad shiptype in arena request.");
+                return;
+            }
+
+            // make a name from the request
+            Span<char> nameBuffer = stackalloc char[Constants.MaxArenaNameLength];
+            scoped ReadOnlySpan<char> name;
+            int spx = 0;
+            int spy = 0;
+
+            if (go.ArenaType == -3) // private arena
+            {
+                if (!HasCapGo(player))
+                    return;
+
+                Span<byte> nameBytes = go.ArenaNameBytes[..Constants.MaxArenaNameLength].SliceNullTerminated();
+                int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
+                Debug.Assert(charCount <= Constants.MaxArenaNameLength);
+                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameBuffer);
+                Debug.Assert(decodedByteCount == nameBytes.Length);
+                name = nameBuffer[..charCount];
+            }
+            else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
+            {
+                IArenaPlace arenaPlace = Broker.GetInterface<IArenaPlace>();
+
+                if (arenaPlace is not null)
+                {
+                    try
+                    {
+                        if (arenaPlace.Place(out string nameStr, ref spx, ref spy, player))
+                        {
+                            name = nameStr;
+                        }
+                        else
+                        {
+                            name = "0";
+                        }
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref arenaPlace);
+                    }
                 }
                 else
                 {
-                    _logManager.LogA(LogLevel.Warn, nameof(ArenaManager), arena, $"ArenaSyncDone called from the wrong state ({arena.Status}).");
+                    name = "0";
                 }
             }
-            finally
+            else if (go.ArenaType >= 0) // specific public arena
             {
-                WriteUnlock();
+                if (!HasCapGo(player))
+                    return;
+
+                go.ArenaType.TryFormat(nameBuffer, out int charsWritten, "d", CultureInfo.InvariantCulture);
+                name = nameBuffer[..charsWritten];
+            }
+            else
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, "Bad arena type in arena request.");
+                return;
+            }
+
+            if (player.Type == ClientType.Continuum)
+            {
+                // Peer redirects
+                IPeer peer = Broker.GetInterface<IPeer>();
+                if (peer is not null)
+                {
+                    try
+                    {
+                        if (peer.ArenaRequest(player, go.ArenaType, name))
+                            return;
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref peer);
+                    }
+                }
+
+                // General redirects
+                IRedirect redirect = Broker.GetInterface<IRedirect>();
+                if (redirect is not null)
+                {
+                    try
+                    {
+                        if (redirect.ArenaRequest(player, name))
+                            return;
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref redirect);
+                    }
+                }
+            }
+
+            CompleteGo(
+                player,
+                name,
+                (ShipType)go.ShipType,
+                go.XRes,
+                go.YRes,
+                (len >= C2S_GoArena.LengthContinuum) && go.OptionalGraphics != 0,
+                go.WavMsg != 0,
+                (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
+                spx,
+                spy);
+
+            bool HasCapGo(Player player)
+            {
+                if (player is null)
+                    return false;
+
+                ICapabilityManager capabilityManager = Broker.GetInterface<ICapabilityManager>();
+
+                try
+                {
+                    return capabilityManager is null || capabilityManager.HasCapability(player, "cmd_go");
+                }
+                finally
+                {
+                    if (capabilityManager is not null)
+                    {
+                        Broker.ReleaseInterface(ref capabilityManager);
+                    }
+                }
             }
         }
 
-        protected virtual void OnArenaAction(Arena arena, ArenaAction action)
+        private void Packet_LeaveArena(Player player, byte[] data, int len)
         {
-            if (arena != null)
-                ArenaActionCallback.Fire(arena, arena, action);
-            else
-                ArenaActionCallback.Fire(Broker, arena, action);
+#if !CFG_RELAX_LENGTH_CHECKS
+            if (len != 1)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena leaving packet len={len}.");
+            }
+#endif
+            LeaveArena(player);
         }
+
+        #endregion
+
+        #region Timers
 
         private bool MainloopTimer_ProcessArenaStates()
         {
@@ -1094,18 +938,18 @@ namespace SS.Core.Modules
                             arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq);
                             arena.Status = ArenaState.WaitHolds0;
                             Debug.Assert(arenaData.Holds == 0);
-                            OnArenaAction(arena, ArenaAction.PreCreate);
+                            FireArenaActionCallback(arena, ArenaAction.PreCreate);
                             break;
 
                         case ArenaState.DoInit1:
                             DoAttach(arena);
                             arena.Status = ArenaState.WaitHolds1;
                             Debug.Assert(arenaData.Holds == 0);
-                            OnArenaAction(arena, ArenaAction.Create);
+                            FireArenaActionCallback(arena, ArenaAction.Create);
                             break;
 
                         case ArenaState.DoInit2:
-                            if (_persistExecutor != null)
+                            if (_persistExecutor is not null)
                             {
                                 arena.Status = ArenaState.WaitSync1;
                                 _persistExecutor.GetArena(arena, ArenaSyncDone);
@@ -1137,7 +981,7 @@ namespace SS.Core.Modules
 
                             if (hasPlayers == false)
                             {
-                                if (_persistExecutor != null)
+                                if (_persistExecutor is not null)
                                 {
                                     arena.Status = ArenaState.WaitSync2;
                                     _persistExecutor.PutArena(arena, ArenaSyncDone);
@@ -1158,7 +1002,7 @@ namespace SS.Core.Modules
                         case ArenaState.DoDestroy1:
                             arena.Status = ArenaState.WaitHolds2;
                             Debug.Assert(arenaData.Holds == 0);
-                            OnArenaAction(arena, ArenaAction.Destroy);
+                            FireArenaActionCallback(arena, ArenaAction.Destroy);
                             break;
 
                         case ArenaState.DoDestroy2:
@@ -1166,7 +1010,7 @@ namespace SS.Core.Modules
                             {
                                 _configManager.CloseConfigFile(arena.Cfg);
                                 arena.Cfg = null;
-                                OnArenaAction(arena, ArenaAction.PostDestroy);
+                                FireArenaActionCallback(arena, ArenaAction.PostDestroy);
 
                                 if (arenaData.Resurrect)
                                 {
@@ -1264,37 +1108,83 @@ namespace SS.Core.Modules
                 {
                     WriteUnlock();
                 }
-            }
-        }
 
-        // call with writeLock held
-        private Arena CreateArena(string name, bool permanent)
-        {
-            Arena arena = new(Broker, name, this);
-            arena.KeepAlive = permanent;
-
-            WriteLock();
-
-            try
-            {
-                foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
+                void ArenaConfChanged(Arena arena)
                 {
-                    arena.SetExtraData(keyId, factory.Get());
+                    if (arena is null)
+                        return;
+
+                    ReadLock();
+                    try
+                    {
+                        // only running arenas should receive confchanged events
+                        if (arena.Status == ArenaState.Running)
+                        {
+                            FireArenaActionCallback(arena, ArenaAction.ConfChanged);
+                        }
+                    }
+                    finally
+                    {
+                        ReadUnlock();
+                    }
                 }
-            
-                _arenaDictionary.Add(name, arena);
             }
-            finally
+
+            [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, typeof(string),
+            Description = "This is a list of modules that you want to take effect in this" +
+            "arena. Not all modules need to be attached to arenas to function, but some do.")]
+            void DoAttach(Arena arena)
             {
-                WriteUnlock();
+                string attachMods = _configManager.GetStr(arena.Cfg, "Modules", "AttachModules");
+                if (string.IsNullOrWhiteSpace(attachMods))
+                    return;
+
+                string[] attachModsArray = attachMods.Split(" \t:;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (string moduleToAttach in attachModsArray)
+                {
+                    _moduleManager.AttachModule(moduleToAttach, arena);
+                }
             }
 
-            _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, "Created arena.");
+            /// <summary>
+            /// This is called when the persistent data retrieval or saving has completed.
+            /// </summary>
+            /// <param name="arena"></param>
+            void ArenaSyncDone(Arena arena)
+            {
+                WriteLock();
 
-            return arena;
+                try
+                {
+                    if (arena.Status == ArenaState.WaitSync1)
+                    {
+                        // persistent data has been retrieved from the database
+                        arena.Status = ArenaState.Running;
+                    }
+                    else if (arena.Status == ArenaState.WaitSync2)
+                    {
+                        // persistent data has been saved to the database
+                        arena.Status = ArenaState.DoDestroy1;
+                    }
+                    else
+                    {
+                        _logManager.LogA(LogLevel.Warn, nameof(ArenaManager), arena, $"ArenaSyncDone called from the wrong state ({arena.Status}).");
+                    }
+                }
+                finally
+                {
+                    WriteUnlock();
+                }
+            }
+
+            void FireArenaActionCallback(Arena arena, ArenaAction action)
+            {
+                ArenaActionCallback.Fire(arena ?? Broker, arena, action);
+            }
         }
 
-        private bool ReapArenas()
+        private bool MainloopTimer_ReapArenas()
         {
             ReadLock();
             try
@@ -1306,20 +1196,20 @@ namespace SS.Core.Modules
                     {
                         if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                             continue;
-                        
+
                         arenaData.Reap = arena.Status == ArenaState.Running || arena.Status == ArenaState.Closing;
                     }
 
                     foreach (Player player in _playerData.Players)
                     {
-                        if (player.Arena != null
+                        if (player.Arena is not null
                             && player.Arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                         {
 
                             arenaData.Reap = false;
                         }
 
-                        if (player.NewArena != null 
+                        if (player.NewArena is not null
                             && player.Arena != player.NewArena
                             && player.NewArena.TryGetExtraData(_adkey, out arenaData))
                         {
@@ -1341,7 +1231,7 @@ namespace SS.Core.Modules
 
                         if (arenaData.Reap && (arena.Status == ArenaState.Closing || !arena.KeepAlive))
                         {
-                            _logManager.LogA(LogLevel.Drivel, nameof(ArenaManager), arena, 
+                            _logManager.LogA(LogLevel.Drivel, nameof(ArenaManager), arena,
                                 $"Arena being {((arena.Status == ArenaState.Running) ? "destroyed" : "recycled")}.");
 
                             // set its status so that the arena processor will do appropriate things
@@ -1358,55 +1248,6 @@ namespace SS.Core.Modules
             {
                 ReadUnlock();
             }
-
-            return true;
-        }
-
-        #region IModule Members
-
-        public bool Load(
-            ComponentBroker broker,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IMainloop mainloop,
-            IMainloopTimer mainloopTimer,
-            IModuleManager moduleManager,
-            INetwork network,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData,
-            IServerTimer serverTimer)
-        {
-            Broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _moduleManager = moduleManager ?? throw new ArgumentNullException(nameof(moduleManager));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-            _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
-
-            _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
-
-            _adkey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
-
-            _network.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _network.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
-
-            // TODO: 
-            //_chatnet = Broker.GetInterface<IChatNet>();
-            //if(_chatnet)
-            //{
-            //}
-
-            _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
-            _mainloopTimer.SetTimer(ReapArenas, 1700, 1700, null);
-            _mainloopTimer.SetTimer(MainloopTimer_DoArenaMaintenance, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, null);
-            _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
-
-            _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
-            _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
 
             return true;
         }
@@ -1430,234 +1271,427 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        private bool ServerTimer_UpdateKnownArenas()
         {
-            if (broker.UnregisterInterface(ref _iArenaManagerToken) != 0)
-                return false;
+            WriteLock();
 
-            if (broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
-                return false;
+            try
+            {
+                // TODO: is this really needed? 
+            }
+            finally
+            {
+                WriteUnlock();
+            }
 
-            _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _network.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
-
-            // TODO: 
-            //if(_chatnet)
-            //{
-            //}
-
-            _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
-            _mainloopTimer.ClearTimer(MainloopTimer_ProcessArenaStates, null);
-            _mainloopTimer.ClearTimer(ReapArenas, null);
-            _mainloopTimer.ClearTimer(MainloopTimer_DoArenaMaintenance, null);
-
-            _playerData.FreePlayerData(_spawnkey);
-
-            ((IArenaManager)this).FreeArenaData(_adkey);
-
-            _arenaDictionary.Clear();
-
-            return true;
+            return true; // keep running
         }
 
         #endregion
 
-        #region IModuleLoaderAware Members
+        #region Locks
 
-        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, typeof(string), 
-            "A list of the names of arenas to permanently set up when the server is started.")]
-        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        private void ReadLock()
         {
-            _persistExecutor = broker.GetInterface<IPersistExecutor>();
+            _arenaLock.EnterReadLock();
+        }
 
-            string permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
-            if (!string.IsNullOrWhiteSpace(permanentArenas))
+        private void ReadUnlock()
+        {
+            _arenaLock.ExitReadLock();
+        }
+
+        private void WriteLock()
+        {
+            _arenaLock.EnterWriteLock();
+        }
+
+        private void WriteUnlock()
+        {
+            _arenaLock.ExitWriteLock();
+        }
+
+        #endregion
+
+        private void CompleteGo(Player player, ReadOnlySpan<char> reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
+        {
+            // status should be LoggedIn or Playing at this point
+            if (player.Status != PlayerState.LoggedIn && player.Status != PlayerState.Playing && player.Status != PlayerState.LeavingArena)
             {
-                int totalCreated = 0;
+                _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, $"State sync problem: Sent arena request from bad status ({player.Status}).");
+                return;
+            }
 
-                foreach (string name in permanentArenas.Split(new char[] { ',', ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            // remove all illegal characters and make lowercase
+            string name;
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                sb.Append(reqName);
+                for (int x = 0; x < sb.Length; x++)
                 {
-                    ++totalCreated;
-                    _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Creating permanent arena '{name}'.");
-                    CreateArena(name, true);
+                    if (x == 0 && sb[x] == '#')
+                        continue;
+                    else if (!char.IsLetterOrDigit(sb[x]))
+                        sb[x] = 'x';
+                    else if (char.IsUpper(sb[x]))
+                        sb[x] = char.ToLower(sb[x]);
                 }
 
-                _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Created {totalCreated} permanent arena(s).");
-            }
-
-            return true;
-        }
-
-        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
-        {
-            if (_persistExecutor != null)
-            {
-                broker.ReleaseInterface(ref _persistExecutor);
-            }
-
-            return true;
-        }
-
-        #endregion
-
-        [ConfigHelp("Chat", "ForceFilter", ConfigScope.Global, typeof(bool), DefaultValue = "0",
-            Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
-        private void Packet_GotoArena(Player p, byte[] data, int len)
-        {
-            if (p == null)
-                return;
-
-            if (data == null)
-                return;
-
-            if (len != C2S_GoArena.LengthVIE && len != C2S_GoArena.LengthContinuum)
-            {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, $"Bad arena packet len={len}.");
-                return;
-            }
-
-            ref C2S_GoArena go = ref MemoryMarshal.AsRef<C2S_GoArena>(data);
-
-            if (go.ShipType > (byte)ShipType.Spec)
-            {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "Bad shiptype in arena request.");
-                return;
-            }
-
-            // make a name from the request
-            Span<char> nameBuffer = stackalloc char[Constants.MaxArenaNameLength];
-            scoped ReadOnlySpan<char> name;
-            int spx = 0;
-            int spy = 0;
-
-            if (go.ArenaType == -3) // private arena
-            {
-                if (!HasCapGo(p))
-                    return;
-
-                Span<byte> nameBytes = go.ArenaNameBytes[..Constants.MaxArenaNameLength].SliceNullTerminated();
-                int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
-                Debug.Assert(charCount <= Constants.MaxArenaNameLength);
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameBuffer);
-                Debug.Assert(decodedByteCount == nameBytes.Length);
-                name = nameBuffer[..charCount];
-            }
-            else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
-            {
-                IArenaPlace ap = Broker.GetInterface<IArenaPlace>();
-
-                if (ap != null)
+                if (sb.Length == 0)
                 {
-                    try
+                    // this might occur when a player is redirected to us from another zone
+                    IArenaPlace arenaPlace = Broker.GetInterface<IArenaPlace>();
+                    if (arenaPlace is not null)
                     {
-                        if (ap.Place(out string nameStr, ref spx, ref spy, p))
+                        try
                         {
-                            name = nameStr;
+                            int spx = 0, spy = 0;
+                            if (!arenaPlace.Place(out name, ref spx, ref spy, player))
+                            {
+                                name = "0";
+                            }
                         }
-                        else
+                        finally
                         {
-                            name = "0";
+                            Broker.ReleaseInterface(ref arenaPlace);
                         }
                     }
-                    finally
+                    else
                     {
-                        Broker.ReleaseInterface(ref ap);
+                        name = "0";
                     }
                 }
                 else
                 {
-                    name = "0";
+                    name = sb.ToString();
                 }
-            }
-            else if (go.ArenaType >= 0) // specific public arena
-            {
-                if (!HasCapGo(p))
-                    return;
-
-                go.ArenaType.TryFormat(nameBuffer, out int charsWritten, "d", CultureInfo.InvariantCulture);
-                name = nameBuffer[..charsWritten];
-            }
-            else
-            {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, "Bad arena type in arena request.");
-                return;
-            }
-
-            if (p.Type == ClientType.Continuum)
-            {
-                // Peer redirects
-                IPeer peer = Broker.GetInterface<IPeer>();
-                if (peer is not null)
-                {
-                    try
-                    {
-                        if (peer.ArenaRequest(p, go.ArenaType, name))
-                            return;
-                    }
-                    finally
-                    {
-                        Broker.ReleaseInterface(ref peer);
-                    }
-                }
-
-                // General redirects
-                IRedirect redirect = Broker.GetInterface<IRedirect>();
-                if (redirect != null)
-                {
-                    try
-                    {
-                        if (redirect.ArenaRequest(p, name))
-                            return;
-                    }
-                    finally
-                    {
-                        Broker.ReleaseInterface(ref redirect);
-                    }
-                }
-            }
-
-            CompleteGo(
-                p,
-                name,
-                (ShipType)go.ShipType,
-                go.XRes,
-                go.YRes,
-                (len >= C2S_GoArena.LengthContinuum) && go.OptionalGraphics != 0,
-                go.WavMsg != 0,
-                (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
-                spx,
-                spy);
-        }
-
-        private void Packet_LeaveArena(Player p, byte[] data, int len)
-        {
-#if !CFG_RELAX_LENGTH_CHECKS
-            if (len != 1)
-            {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), p, $"Bad arena leaving packet len={len}.");
-            }
-#endif
-            LeaveArena(p);
-        }
-
-        private bool HasCapGo(Player p)
-        {
-            if (p == null)
-                return false;
-
-            ICapabilityManager capabilityManager = Broker.GetInterface<ICapabilityManager>();
-
-            try
-            {
-                return capabilityManager == null || capabilityManager.HasCapability(p, "cmd_go");
             }
             finally
             {
-                if (capabilityManager != null)
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
+
+            if (player.Arena is not null)
+                LeaveArena(player);
+
+            // try to locate an existing arena
+            WriteLock();
+            try
+            {
+                Arena arena = FindArena(name, ArenaState.DoInit0, ArenaState.DoDestroy2);
+                if (arena is null)
                 {
-                    Broker.ReleaseInterface(ref capabilityManager);
+                    // create a non-permanent arena
+                    arena = CreateArena(name, false);
+                    if (arena is null)
+                    {
+                        // if it fails, dump in first available
+                        foreach (Arena otherArena in _arenaDictionary.Values)
+                        {
+                            arena = otherArena;
+                            break;
+                        }
+
+                        if (arena is null)
+                        {
+                            _logManager.LogM(LogLevel.Error, nameof(ArenaManager), "Internal error: No running arenas but cannot create new one.");
+                            return;
+                        }
+                    }
+                    else if (arena.Status > ArenaState.Running)
+                    {
+                        // arena is on it's way out
+                        // this isn't a problem, just make sure that it will come back
+                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                            return;
+
+                        arenaData.Resurrect = true;
+                    }
+                }
+
+                // set up player info
+                _playerData.WriteLock();
+                try
+                {
+                    player.NewArena = arena;
+                }
+                finally
+                {
+                    _playerData.WriteUnlock();
+                }
+                player.Ship = ship;
+                player.Xres = (short)xRes;
+                player.Yres = (short)yRes;
+                player.Flags.WantAllLvz = gfx;
+                player.Packet.AcceptAudio = voices ? (byte)1 : (byte)0;
+                player.Flags.ObscenityFilter = obscene;
+
+                if (player.TryGetExtraData(_spawnkey, out SpawnLoc spawnLoc))
+                {
+                    spawnLoc.X = (short)spawnX;
+                    spawnLoc.Y = (short)spawnY;
                 }
             }
+            finally
+            {
+                WriteUnlock();
+            }
+
+            // don't mess with player status yet, let him stay in S_LOGGEDIN.
+            // it will be incremented when the arena is ready.
         }
+
+        private Arena FindArena(string name, ArenaState? minState, ArenaState? maxState)
+        {
+            ReadLock();
+            try
+            {
+                if (_arenaDictionary.TryGetValue(name, out Arena arena) == false)
+                    return null;
+
+                if (minState != null && arena.Status < minState)
+                    return null;
+
+                if (maxState != null && arena.Status > maxState)
+                    return null;
+
+                return arena;
+            }
+            finally
+            {
+                ReadUnlock();
+            }
+        }
+
+        private Arena CreateArena(string name, bool permanent)
+        {
+            Arena arena = new(Broker, name, this);
+            arena.KeepAlive = permanent;
+
+            WriteLock();
+
+            try
+            {
+                foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
+                {
+                    arena.SetExtraData(keyId, factory.Get());
+                }
+
+                _arenaDictionary.Add(name, arena);
+            }
+            finally
+            {
+                WriteUnlock();
+            }
+
+            _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, "Created arena.");
+
+            return arena;
+        }
+
+        private void LeaveArena(Player player)
+        {
+            bool notify;
+            Arena arena;
+
+            _playerData.WriteLock();
+            try
+            {
+                arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                notify = InitiateLeaveArena(player);
+            }
+            finally
+            {
+                _playerData.WriteUnlock();
+            }
+
+            if (notify)
+            {
+                S2C_PlayerLeaving packet = new((short)player.Id);
+                _network.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
+                //chatnet.SendToArena(
+
+                _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "Leaving arena.");
+            }
+        }
+
+        private bool InitiateLeaveArena(Player player)
+        {
+            bool notify = false;
+
+            /* this messy logic attempts to deal with players who haven't fully
+             * entered an arena yet. it will try to insert them at the proper
+             * stage of the arena leaving process so things that have been done
+             * get undone, and things that haven't been done _don't_ get undone. */
+            switch (player.Status)
+            {
+                case PlayerState.LoggedIn:
+                case PlayerState.DoFreqAndArenaSync:
+                    //for these 2, nothing much has been done. just go back to loggedin.
+                    player.Status = PlayerState.LoggedIn;
+                    break;
+
+                case PlayerState.WaitArenaSync1:
+                    /* this is slightly tricky: we want to wait until persist is
+                     * done loading the scores before changing the state, or
+                     * things will get screwed up. so mark it here and let core
+                     * take care of it. this is really messy and it would be
+                     * nice to find a better way to handle it. */
+                    player.Flags.LeaveArenaWhenDoneWaiting = true;
+                    break;
+
+                case PlayerState.ArenaRespAndCBS:
+                    // in these, stuff has come out of the database. put it back in
+                    player.Status = PlayerState.DoArenaSync2;
+                    break;
+
+                case PlayerState.Playing:
+                    // do all of the above, plus call leaving callbacks.
+                    player.Status = PlayerState.LeavingArena;
+                    notify = true;
+                    break;
+
+                case PlayerState.LeavingArena:
+                case PlayerState.DoArenaSync2:
+                case PlayerState.WaitArenaSync2:
+                case PlayerState.LeavingZone:
+                case PlayerState.WaitGlobalSync2:
+                    //no problem, player is already on the way out
+                    break;
+
+                default:
+                    // something's wrong here
+                    _logManager.LogP(LogLevel.Error, nameof(ArenaManager), player, $"Player has an arena, but is in a bad state ({player.Status}).");
+                    notify = true;
+                    break;
+            }
+
+            return notify;
+        }
+
+        private int AllocateArenaData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        {
+            if (createExtraDataFactoryFunc is null)
+                throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
+
+            WriteLock();
+
+            try
+            {
+                //
+                // Register
+                //
+
+                int keyId;
+
+                // find next available
+                for (keyId = 1; keyId <= _extraDataRegistrations.Keys.Count; keyId++)
+                {
+                    if (_extraDataRegistrations.Keys[keyId-1] != keyId)
+                        break;
+                }
+
+                ExtraDataFactory factory = createExtraDataFactoryFunc();
+                _extraDataRegistrations[keyId] = factory;
+            
+                //
+                // Add the data to each arena.
+                //
+
+                foreach (Arena arena in _arenaDictionary.Values)
+                {
+                    arena.SetExtraData(keyId, factory.Get());
+                }
+
+                return keyId;
+            }
+            finally
+            {
+                WriteUnlock();
+            }
+        }
+
+        #region Helper types
+
+        private class SpawnLoc
+        {
+            public short X;
+            public short Y;
+
+            public SpawnLoc() : this(0, 0)
+            {
+            }
+
+            public SpawnLoc(short x, short y)
+            {
+                X = x;
+                Y = y;
+            }
+        }
+
+        private class SpawnLocPooledObjectPolicy : IPooledObjectPolicy<SpawnLoc>
+        {
+            public SpawnLoc Create()
+            {
+                return new SpawnLoc();
+            }
+
+            public bool Return(SpawnLoc obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.X = 0;
+                obj.Y = 0;
+                return true;
+            }
+        }
+
+        private class ArenaData
+        {
+            /// <summary>
+            /// Whether the arena's config file is being loaded on a worker thread.
+            /// </summary>
+            public bool IsLoadingConfig = false;
+
+            /// <summary>
+            /// counter for the # of holds on the arena
+            /// </summary>
+            public int Holds = 0;
+
+            /// <summary>
+            /// whether the arena should be recreated after it is destroyed
+            /// </summary>
+            public bool Resurrect = false;
+
+            public bool Reap = false;
+        }
+
+        private class ArenaDataPooledObjectPolicy : IPooledObjectPolicy<ArenaData>
+        {
+            public ArenaData Create()
+            {
+                return new ArenaData();
+            }
+
+            public bool Return(ArenaData obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.IsLoadingConfig = false;
+                obj.Holds = 0;
+                obj.Resurrect = false;
+                obj.Reap = false;
+                return true;
+            }
+        }
+
+        #endregion
     }
 }
