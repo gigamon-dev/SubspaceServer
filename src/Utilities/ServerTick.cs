@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 
 namespace SS.Utilities
 {
@@ -18,6 +19,8 @@ namespace SS.Utilities
     /// </summary>
     public readonly struct ServerTick : IEquatable<ServerTick>, IComparable<ServerTick>
     {
+        private static readonly long s_centisecondFrequency = Stopwatch.Frequency / 100;
+
         private readonly uint tickcount;
 
         public ServerTick(uint tickcount) => this.tickcount = tickcount & 0x7fffffff;
@@ -25,7 +28,9 @@ namespace SS.Utilities
         /// <summary>
         /// Gets the current server time in ticks (1/100ths of a second).
         /// </summary>
-        public static ServerTick Now => new((uint)Environment.TickCount / 10);
+        public static ServerTick Now => Stopwatch.IsHighResolution
+            ? new((uint)(Stopwatch.GetTimestamp() / s_centisecondFrequency))
+            : new((uint)Environment.TickCount / 10);
 
         public static bool operator >(ServerTick a, ServerTick b) => (a - b) > 0;
 
