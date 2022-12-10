@@ -333,7 +333,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class PlayerLagStats
+        private class PlayerLagStats : IPooledExtraData
         {
             public PingStats PositionPacketPing = new();
             public PingStats ReliablePing = new();

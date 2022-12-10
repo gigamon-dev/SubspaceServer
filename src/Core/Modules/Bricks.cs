@@ -555,7 +555,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        public class ArenaBrickData
+        public class ArenaBrickData : IPooledExtraData
         {
             /// <summary>
             /// Whether bricks should snap to the edges of other bricks
@@ -602,6 +602,21 @@ namespace SS.Core.Modules
             public readonly Queue<BrickData> Bricks = new(MaxActiveBricks);
 
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    CountBricksAsWalls = false;
+                    BrickSpan = 0;
+                    BrickMode = BrickMode.VIE;
+                    BrickTime = 0;
+                    WallResendCount = 0;
+                    CurrentBrickId = 0;
+                    LastTime = 0;
+                    Bricks.Clear();
+                }
+            }
         }
 
         public enum BrickMode

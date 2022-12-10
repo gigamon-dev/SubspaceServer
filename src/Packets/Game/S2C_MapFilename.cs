@@ -7,8 +7,15 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2C_MapFilename
     {
+        /// <summary>
+        /// The maximum # of lvz files a <see cref="S2C_MapFilename"/> packet can represent.
+        /// </summary>
         public const int MaxLvzFiles = 16;
-        private const int MaxFiles = MaxLvzFiles + 1; // +1 for map file
+
+        /// <summary>
+        /// The maximum # of files (lvl and lvz files) a <see cref="S2C_MapFilename"/> packet can represent.
+        /// </summary>
+        public const int MaxFiles = MaxLvzFiles + 1; // +1 for map file
 
         // Type
         public byte Type;

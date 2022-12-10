@@ -585,7 +585,7 @@ namespace SS.Core.Modules.FlagGame
             public DateTime LastSendTimestamp;
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
             public InterfaceRegistrationToken<IStaticFlagGame> StaticFlagGameRegistrationToken;
@@ -593,6 +593,15 @@ namespace SS.Core.Modules.FlagGame
             public bool IsPersistEnabled = false;
             public readonly TimeSpan SendFlagUpdateCooldown = TimeSpan.FromMilliseconds(500); // TODO: make this configurable?
             public FlagData[] Flags = null;
+
+            public void Reset()
+            {
+                FlagGameRegistrationToken = null;
+                StaticFlagGameRegistrationToken = null;
+                IsPersistEnabled = false;
+                //SendFlagUpdateCooldown
+                Flags = null;
+            }
         }
 
         #endregion

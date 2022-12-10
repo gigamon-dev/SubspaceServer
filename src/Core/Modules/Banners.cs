@@ -186,6 +186,8 @@ namespace SS.Core.Modules
 
         private bool IsAllowedBanner(Player p) => p != null && _capabilityManager.HasCapability(p, Constants.Capabilities.SetBanner);
 
+        #region Helper types
+
         private enum BannerStatus
         {
             NoBanner = 0,
@@ -193,12 +195,20 @@ namespace SS.Core.Modules
             Good,
         }
 
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             public Banner Banner;
             public BannerStatus Status;
 
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                Banner = default;
+                Status = BannerStatus.NoBanner;
+            }
         }
+
+        #endregion
     }
 }

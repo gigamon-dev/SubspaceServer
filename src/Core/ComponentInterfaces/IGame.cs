@@ -32,26 +32,26 @@ namespace SS.Core.ComponentInterfaces
         /// Changes a player's freq.
         /// This is an unconditional change; it doesn't go through the freq manager.
         /// </summary>
-        /// <param name="p">the player to change</param>
+        /// <param name="player">the player to change</param>
         /// <param name="freq">the freq to change to</param>
-        void SetFreq(Player p, short freq);
+        void SetFreq(Player player, short freq);
 
         /// <summary>
         /// Changes a player's ship.
         /// This is an unconditional change; it doesn't go through the freq manager.
         /// </summary>
-        /// <param name="p">the player to change</param>
+        /// <param name="player">the player to change</param>
         /// <param name="ship">the ship to change to</param>
-        void SetShip(Player p, ShipType ship);
+        void SetShip(Player player, ShipType ship);
 
         /// <summary>
         /// Changes a player's ship and freq together.
         /// This is an unconditional change; it doesn't go through the freq manager.
         /// </summary>
-        /// <param name="p">the player to change</param>
+        /// <param name="player">the player to change</param>
         /// <param name="ship">the ship to change to</param>
         /// <param name="freq">the freq to change to</param>
-        void SetShipAndFreq(Player p, ShipType ship, short freq);
+        void SetShipAndFreq(Player player, ShipType ship, short freq);
 
         /// <summary>
         /// Moves a set of players to a specific location.
@@ -94,9 +94,9 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Checks if a player is locked to their ship/freq.
         /// </summary>
-        /// <param name="p">The player to check.</param>
+        /// <param name="player">The player to check.</param>
         /// <returns>Whether the player is locked.</returns>
-        bool HasLock(Player p);
+        bool HasLock(Player player);
 
         /// <summary>
         /// Locks all players in the arena to spectator mode, or to their current ships.
@@ -105,7 +105,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">the arena to apply changes to</param>
         /// <param name="notify">whether to notify affected players of their change in state</param>
         /// <param name="onlyArenaState">whether to apply changes to the default arena lock state only, and not change the state of current players</param>
-        /// <param name="initial">whether entering players are only locked to their inital ships, rather than being forced into spectator mode and then being locked</param>
+        /// <param name="initial">whether entering players are only locked to their initial ships, rather than being forced into spectator mode and then being locked</param>
         /// <param name="spec">whether to force all current players into spec before locking them</param>
         void LockArena(Arena arena, bool notify, bool onlyArenaState, bool initial, bool spec);
 
@@ -118,29 +118,29 @@ namespace SS.Core.ComponentInterfaces
         void UnlockArena(Arena arena, bool notify, bool onlyArenaState);
 
         /// <summary>
-        /// Checks if thre is arena-wide ship/freq lock in affect.
+        /// Checks if there is an arena-wide ship/freq lock in effect.
         /// </summary>
         /// <param name="arena">The arena to check.</param>
         /// <returns>Whether there is an arena-wide lock.</returns>
         bool HasLock(Arena arena);
 
         // TODO: more
-        void FakePosition(Player p, ref C2S_PositionPacket pos, int len);
+        void FakePosition(Player player, ref C2S_PositionPacket pos, int len);
         void FakeKill(Player killer, Player killed, short pts, short flags);
 
         /// <summary>
         /// Gets the percentage of weapons that are being ignored for a given player.
         /// </summary>
-        /// <param name="p">player to get info about</param>
+        /// <param name="player">player to get info about</param>
         /// <returns></returns>
-        double GetIgnoreWeapons(Player p);
+        double GetIgnoreWeapons(Player player);
 
         /// <summary>
         /// Sets the percentage of weapons to ignore for a given player.
         /// </summary>
-        /// <param name="p">player to set</param>
+        /// <param name="player">player to set</param>
         /// <param name="proportion">percentage of weapons packets to ignore</param>
-        void SetIgnoreWeapons(Player p, double proportion);
+        void SetIgnoreWeapons(Player player, double proportion);
 
         /// <summary>
         /// Resets the target's ship(s).
@@ -148,12 +148,12 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">the players to shipreset</param>
         void ShipReset(ITarget target);
 
-        void IncrementWeaponPacketCount(Player p, int packets);
+        void IncrementWeaponPacketCount(Player player, int packets);
 
-        void SetPlayerEnergyViewing(Player p, SeeEnergy value);
-        void SetSpectatorEnergyViewing(Player p, SeeEnergy value);
-        void ResetPlayerEnergyViewing(Player p);
-        void ResetSpectatorEnergyViewing(Player p);
+        void SetPlayerEnergyViewing(Player player, SeeEnergy value);
+        void SetSpectatorEnergyViewing(Player player, SeeEnergy value);
+        void ResetPlayerEnergyViewing(Player player);
+        void ResetSpectatorEnergyViewing(Player player);
 
         // TODO: more
         //IncrementWeaponPacketCount
@@ -161,17 +161,17 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Gets whether a player is being antiwarped by another player.
         /// </summary>
-        /// <param name="p">The player to check.</param>
+        /// <param name="player">The player to check.</param>
         /// <param name="playersAntiwarping">An optional list to populate with the players that are antiwarping.</param>
         /// <returns>True if antiwarped, false otherwise.</returns>
-        bool IsAntiwarped(Player p, HashSet<Player> playersAntiwarping);
+        bool IsAntiwarped(Player player, HashSet<Player> playersAntiwarping);
 
         /// <summary>
         /// Forcefully attach a player to another player.
         /// </summary>
         /// <remarks>Note that continuum is not able to handle going over the TurretLimit.</remarks>
-        /// <param name="p">The attacher.</param>
+        /// <param name="player">The attacher.</param>
         /// <param name="to">The player to attach to.</param>
-        void Attach(Player p, Player to);
+        void Attach(Player player, Player to);
     }
 }

@@ -1173,7 +1173,7 @@ namespace SS.Core.Modules.Scoring
             All = 3,
         }
 
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             public readonly Dictionary<PersistInterval, SortedDictionary<int, BaseStatInfo>> CurrentArenaStats = new()
             {
@@ -1190,6 +1190,22 @@ namespace SS.Core.Modules.Scoring
             };
 
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    foreach (var dictionary in CurrentArenaStats.Values)
+                    {
+                        dictionary.Clear();
+                    }
+
+                    foreach (var dictionary in GlobalStats.Values)
+                    {
+                        dictionary.Clear();
+                    }
+                }
+            }
         }
 
         private abstract class BaseStatInfo

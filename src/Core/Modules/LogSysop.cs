@@ -261,9 +261,14 @@ namespace SS.Core.Modules
             All,
         }
 
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             public SeeWhat SeeWhat;
+
+            public void Reset()
+            {
+                SeeWhat = SeeWhat.None;
+            }
         }
 
         #endregion

@@ -417,7 +417,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        public class ArenaData
+        public class ArenaData : IPooledExtraData
         {
             /// <summary>
             /// Duration for timed games (Misc:TimedGame setting). Otherwise, <see cref="TimeSpan.Zero"/>.
@@ -531,6 +531,16 @@ namespace SS.Core.Modules
 
                 remaining = default;
                 return false;
+            }
+
+            public void Reset()
+            {
+                GameLength = TimeSpan.Zero;
+                IsEnabled = false;
+                EndingTimestamp = null;
+                PausedRemaining = null;
+                WarningAt.Clear();
+                NextWarningIndex = -1;
             }
         }
 

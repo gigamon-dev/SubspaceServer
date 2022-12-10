@@ -639,7 +639,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Helper types
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public AdvisorRegistrationToken<IBallsAdvisor> BallsAdvisorToken;
 
@@ -656,6 +656,21 @@ namespace SS.Core.Modules.Scoring
 
             // state
             public readonly int[] TeamScores = new int[MaxTeams];
+
+            public void Reset()
+            {
+                BallsAdvisorToken = null;
+                Mode = SoccerMode.All;
+                CapturePoints = 0;
+                IsStealPoints = false;
+                Reward = 0;
+                WinBy = 0;
+                MinPlayers = 0;
+                MinTeams = 0;
+                IsFrequencyShipTypes = false;
+                IsCustomGame = false;
+                Array.Clear(TeamScores);
+            }
         }
 
         #endregion

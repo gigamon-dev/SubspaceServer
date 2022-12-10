@@ -29,21 +29,6 @@ namespace SS.Core.Modules
 
         private readonly object _setMtx = new();
 
-        private class ArenaClientSettingsData
-        {
-            public S2C_ClientSettings cs = new();
-
-            /// <summary>
-            /// prizeweight partial sums. 1-28 are used for now, representing prizes 1 to 28.
-            /// 0 = null prize
-            /// </summary>
-            public ushort[] pwps = new ushort[32];
-        }
-
-        private class PlayerClientSettingsData
-        {
-        }
-
         #region IModule Members
 
         public bool Load(
@@ -91,12 +76,12 @@ namespace SS.Core.Modules
 
         #region IClientSettings Members
 
-        void IClientSettings.SendClientSettings(Player p)
+        void IClientSettings.SendClientSettings(Player player)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -105,16 +90,16 @@ namespace SS.Core.Modules
 
             lock (_setMtx)
             {
-                SendOneSettings(p, ad);
+                SendOneSettings(player, ad);
             }
         }
 
-        uint IClientSettings.GetChecksum(Player p, uint key)
+        uint IClientSettings.GetChecksum(Player player, uint key)
         {
-            if (p == null)
+            if (player == null)
                 return 0;
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return 0;
 
@@ -164,15 +149,17 @@ namespace SS.Core.Modules
 
         //void IClientSettings.ArenaOverride(Arena arena, ClientSettingOverrideKey key, int val)
         //{
-            
+
         //}
 
-        //void IClientSettings.PlayerOverride(Player p, ClientSettingOverrideKey key)
+        //void IClientSettings.PlayerOverride(Player player, ClientSettingOverrideKey key)
         //{
-            
+
         //}
 
         #endregion
+
+        #region Callbacks
 
         [ConfigHelp("Misc", "SendUpdatedSettings", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
             Description ="Whether to send updates to players when the arena settings change.")]
@@ -231,6 +218,20 @@ namespace SS.Core.Modules
                 }
             }
         }
+
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        {
+            if (player == null)
+                return;
+
+            if (action == PlayerAction.LeaveArena || action == PlayerAction.Disconnect)
+            {
+                // reset/free player overrides on any arena change
+                // TODO
+            }
+        }
+
+        #endregion
 
         [ConfigHelp("Bullet", "ExactDamage", ConfigScope.Arena, typeof(bool), DefaultValue ="0", Description = "Whether to use exact bullet damage (Cont .36+)")]
         [ConfigHelp("Spectator", "HideFlags", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to show dropped flags to spectators (Cont .36+)")]
@@ -399,21 +400,9 @@ namespace SS.Core.Modules
             cs.Int32Settings[16] *= 1000; // InactiveShrapDamage
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void SendOneSettings(Player player, ArenaClientSettingsData ad)
         {
-            if (p == null)
-                return;
-
-            if (action == PlayerAction.LeaveArena || action == PlayerAction.Disconnect)
-            {
-                // reset/free player overrides on any arena change
-                // TODO
-            }
-        }
-
-        private void SendOneSettings(Player p, ArenaClientSettingsData ad)
-        {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (ad == null)
@@ -425,10 +414,43 @@ namespace SS.Core.Modules
             if (ad.cs.Type == (byte)S2CPacketType.Settings)
             {
                 _net.SendToOne(
-                    p,
+                    player,
                     ref ad.cs,
                     NetSendFlags.Reliable);
             }
         }
+
+        #region Helper types
+
+        private class ArenaClientSettingsData : IPooledExtraData
+        {
+            public S2C_ClientSettings cs = new();
+
+            // TODO: arena overrides
+
+            /// <summary>
+            /// prizeweight partial sums. 1-28 are used for now, representing prizes 1 to 28.
+            /// 0 = null prize
+            /// </summary>
+            public ushort[] pwps = new ushort[32];
+
+            public void Reset()
+            {
+                cs = default;
+                Array.Clear(pwps);
+            }
+        }
+
+        private class PlayerClientSettingsData : IPooledExtraData
+        {
+            // TODO: player overrides
+
+            public void Reset()
+            {
+                
+            }
+        }
+
+        #endregion
     }
 }

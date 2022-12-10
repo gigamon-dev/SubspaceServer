@@ -360,10 +360,16 @@ namespace SS.Core.Modules.Scoring
 
         #region Helper types
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public Settings Settings;
             public bool TimerRunning;
+
+            public void Reset()
+            {
+                Settings = default;
+                TimerRunning = false;
+            }
         }
 
         private class Settings : IPeriodicRewardPoints.ISettings

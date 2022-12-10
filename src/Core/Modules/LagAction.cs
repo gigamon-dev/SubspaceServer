@@ -413,7 +413,7 @@ namespace SS.Core.Modules
             public double NoFlags;
         }
 
-        private class ArenaLagLimits
+        private class ArenaLagLimits : IPooledExtraData
         {
             /// <summary>
             /// Limits for average ping.
@@ -446,9 +446,22 @@ namespace SS.Core.Modules
             public short SpecFreq;
 
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    Ping = default;
+                    S2CLoss = default;
+                    WeaponLoss = default;
+                    C2SLoss = default;
+                    SpikeForceSpec = default;
+                    SpecFreq = default;
+                }
+            }
         }
 
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             /// <summary>
             /// When the last lag check was performed.
@@ -464,6 +477,15 @@ namespace SS.Core.Modules
             /// Lock to hold before accessing any of the data members of this class.
             /// </summary>
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    LastCheck = DateTime.MinValue;
+                    IsChecking = false;
+                }
+            }
         }
     }
 }

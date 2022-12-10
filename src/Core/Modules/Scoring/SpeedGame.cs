@@ -560,13 +560,21 @@ namespace SS.Core.Modules.Scoring
             Running,
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public Settings Settings;
             public GameState GameState = GameState.Stopped;
             public DateTime? StartAfter;
 
             public readonly List<Player> Rank = new();
+
+            public void Reset()
+            {
+                Settings = default;
+                GameState = GameState.Stopped;
+                StartAfter = null;
+                Rank.Clear();
+            }
         }
 
         #endregion

@@ -183,7 +183,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private sealed class EncData : IDisposable
+        private sealed class EncData : IPooledExtraData, IDisposable
         {
             private enum EncDataStatus
             {

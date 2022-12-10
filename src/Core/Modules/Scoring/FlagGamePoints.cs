@@ -284,7 +284,7 @@ namespace SS.Core.Modules.Scoring
             OwnAllDropped = 1,
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             // settings
             public FlagMode FlagMode;
@@ -294,6 +294,15 @@ namespace SS.Core.Modules.Scoring
 
             // state
             public bool IsMusicPlaying = false;
+
+            public void Reset()
+            {
+                FlagMode = FlagMode.None;
+                FlagRewardRatio = 0;
+                SplitPoints = false;
+                IsVictoryMusicEnabled = false;
+                IsMusicPlaying = false;
+            }
         }
     }
 }

@@ -153,7 +153,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Helper types
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             // settings
             public int FixedKillReward;
@@ -164,6 +164,16 @@ namespace SS.Core.Modules.Scoring
             public bool TeamKillPoints;
 
             public AdvisorRegistrationToken<IKillAdvisor> KillAdvisorRegistrationToken;
+
+            public void Reset()
+            {
+                FixedKillReward = 0;
+                FlagMinimumBounty = 0;
+                PointsPerKilledFlag = 0;
+                PointsPerCarriedFlag = 0;
+                PointsPerTeamFlag = 0;
+                TeamKillPoints = false;
+            }
         }
 
         #endregion

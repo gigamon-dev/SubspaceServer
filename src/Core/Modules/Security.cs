@@ -684,20 +684,30 @@ namespace SS.Core.Modules
         /// <summary>
         /// Per arena data
         /// </summary>
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             /// <summary>
             /// Shared checksums
             /// </summary>
             public uint MapChecksum;
 
+            /// <summary>
+            /// The S2C security packet for when seeds are overridden.
+            /// E.g., during playback of a replay to synchronize door timings to match what was recorded.
+            /// </summary>
             public S2C_Security? OverridePacket;
+
+            public void Reset()
+            {
+                MapChecksum = 0;
+                OverridePacket = null;
+            }
         }
 
         /// <summary>
         /// Per player data
         /// </summary>
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             /// <summary>
             /// Whether a security request was sent and is still pending (hasn't been fulfilled with a valid response yet).
@@ -714,6 +724,13 @@ namespace SS.Core.Modules
             /// individual checksums
             /// </summary>
             public uint SettingsChecksum;
+
+            public void Reset()
+            {
+                Sent = false;
+                Cancelled = false;
+                SettingsChecksum = 0;
+            }
         }
 
         /// <summary>

@@ -923,7 +923,7 @@ namespace SS.Core.Modules.FlagGame
             public short Freq { get; set; }
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
             public InterfaceRegistrationToken<ICarryFlagGame> CarryFlagGameRegistrationToken;
@@ -934,6 +934,17 @@ namespace SS.Core.Modules.FlagGame
             public readonly List<FlagInfo> Flags = new(MaxFlags);
             public GameState GameState = GameState.Stopped;
             public DateTime StartTimestamp;
+
+            public void Reset()
+            {
+                FlagGameRegistrationToken = null;
+                CarryFlagGameRegistrationToken = null;
+                Settings = default;
+                CarryFlagBehavior = null;
+                Flags.Clear();
+                GameState = GameState.Stopped;
+                StartTimestamp = default;
+            }
         }
 
         private class FlagInfoPooledObjectPolicy : PooledObjectPolicy<FlagInfo>

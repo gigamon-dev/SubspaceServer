@@ -23,12 +23,6 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private InterfaceRegistrationToken<IMapData> _iMapDataToken;
 
-        private class ArenaData
-        {
-            public ExtendedLvl Lvl = null;
-            public readonly ReaderWriterLockSlim Lock = new();
-        }
-
         private ArenaDataKey<ArenaData> adKey;
 
         #region IModule Members
@@ -565,5 +559,29 @@ namespace SS.Core.Modules
 
             return lvl;
         }
+
+        #region Helper types
+
+        private class ArenaData : IPooledExtraData
+        {
+            public ExtendedLvl Lvl = null;
+            public readonly ReaderWriterLockSlim Lock = new();
+
+            public void Reset()
+            {
+                Lock.EnterWriteLock();
+
+                try
+                {
+                    Lvl = null;
+                }
+                finally
+                {
+                    Lock.ExitWriteLock();
+                }
+            }
+        }
+
+        #endregion
     }
 }

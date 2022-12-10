@@ -285,7 +285,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private sealed class ConnData : IDisposable
+        private sealed class ConnData : IPooledExtraData, IDisposable
         {
             /// <summary>
             /// The player this connection is for, or <see langword="null"/> for a client connection.
@@ -480,6 +480,75 @@ namespace SS.Core.Modules
                 }
 
                 UnsentRelOutList.Clear();
+            }
+
+            public void Reset()
+            {
+                p = null;
+                cc = null;
+                RemoteEndpoint = null;
+                whichSock = null;
+                s2cn = 0;
+                c2sn = 0;
+                lastPkt = default;
+                pktSent = 0;
+                pktReceived = 0;
+                bytesSent = 0;
+                bytesReceived = 0;
+                relDups = 0;
+                retries = 0;
+                pktdropped = 0;
+                HitMaxRetries = false;
+                HitMaxOutlist = false;
+                avgrtt = 0;
+                rttdev = 0;
+                enc = null;
+                iEncryptName = null;
+
+                lock (bigmtx)
+                {
+                    sizedrecv.type = 0;
+                    sizedrecv.totallen = 0;
+                    sizedrecv.offset = 0;
+
+                    if (BigRecv is not null)
+                    {
+                        BigRecv.Dispose();
+                        BigRecv = null;
+                    }
+                }
+
+                BandwidthLimiter = null;
+
+                lock (olmtx)
+                {
+                    sizedsends.Clear();
+
+                    for (int i = 0; i < outlist.Length; i++)
+                    {
+                        foreach (SubspaceBuffer buffer in outlist[i])
+                            buffer.Dispose();
+
+                        outlist[i].Clear();
+                    }
+
+                    foreach (SubspaceBuffer buffer in UnsentRelOutList)
+                        buffer.Dispose();
+
+                    UnsentRelOutList.Clear();
+                }
+
+                lock (relmtx)
+                {
+                    for (int i = 0; i < relbuf.Length; i++)
+                    {
+                        if (relbuf[i] is not null)
+                        {
+                            relbuf[i].Dispose();
+                            relbuf[i] = null;
+                        }
+                    }
+                }
             }
 
             public void Dispose()

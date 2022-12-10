@@ -735,20 +735,36 @@ namespace SS.Core.Modules.Scoring
             Running,
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public Settings Settings;
             public InterfaceRegistrationToken<ICrownsBehavior> ICrownsBehaviorRegistrationToken;
             public GameState GameState = GameState.Stopped;
             public DateTime? StartAfter;
             public int InitialPlayerCount;
+
+            public void Reset()
+            {
+                Settings = default;
+                ICrownsBehaviorRegistrationToken = null;
+                GameState = GameState.Stopped;
+                StartAfter = null;
+                InitialPlayerCount = 0;
+            }
         }
 
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             public DateTime? ExpireTimestamp;
             public int Deaths;
             public int CrownKills;
+
+            public void Reset()
+            {
+                ExpireTimestamp = null;
+                Deaths = 0;
+                CrownKills = 0;
+            }
         }
 
         #endregion

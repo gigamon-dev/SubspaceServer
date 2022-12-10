@@ -1346,7 +1346,7 @@ namespace SS.Core.Modules
             public ServerTick KillerValidPickupTime;
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             /// <summary>
             /// The # of balls currently in play. 0 if the arena has no ball game.
@@ -1394,6 +1394,22 @@ namespace SS.Core.Modules
             #endregion
 
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    BallCount = 0;
+                    Array.Clear(Balls);
+                    Array.Clear(Previous);
+
+                    Array.Clear(Spawns);
+                    Array.Clear(ExtraBallStateInfo);
+                    LastSendTime = default;
+                    Settings = default;
+                    BallCountOverridden = false;
+                }
+            }
         }
 
         #endregion

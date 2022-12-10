@@ -118,30 +118,30 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sends a green message to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="handler">The message to send.</param>
-        void SendMessage(Player p, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendMessage(Player player, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green message to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="message">The message to send.</param>
-        void SendMessage(Player p, ReadOnlySpan<char> message);
+        void SendMessage(Player player, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a green message to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="message">The message to send.</param>
-        void SendMessage(Player p, string message);
+        void SendMessage(Player player, string message);
 
         /// <summary>
         /// Sends a green message to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="message">The message to send.</param>
-        void SendMessage(Player p, StringBuilder message);
+        void SendMessage(Player player, StringBuilder message);
 
         #endregion
 
@@ -150,34 +150,34 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="handler">The message to send.</param>
-        void SendMessage(Player p, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendMessage(Player player, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendMessage(Player p, ChatSound sound, ReadOnlySpan<char> message);
+        void SendMessage(Player player, ChatSound sound, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendMessage(Player p, ChatSound sound, string message);
+        void SendMessage(Player player, ChatSound sound, string message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendMessage(Player p, ChatSound sound, StringBuilder message);
+        void SendMessage(Player player, ChatSound sound, StringBuilder message);
 
         #endregion
 
@@ -421,25 +421,25 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Gets the chat mask for a player.
         /// </summary>
-        /// <param name="p">The player to get the chat mask for.</param>
+        /// <param name="player">The player to get the chat mask for.</param>
         /// <returns>The chat mask.</returns>
-        ChatMask GetPlayerChatMask(Player p);
+        ChatMask GetPlayerChatMask(Player player);
 
         /// <summary>
         /// Gets the chat mask for a player, including the remaining time for the mask.
         /// </summary>
-        /// <param name="p">The player to get the chat mask for.</param>
+        /// <param name="player">The player to get the chat mask for.</param>
         /// <param name="mask">The chat mask.</param>
         /// <param name="remaining">The remaining time on the mask. <see langword="null"/> means there is no expiration (valid until the next arena change).</param>
-        void GetPlayerChatMask(Player p, out ChatMask mask, out TimeSpan? remaining);
+        void GetPlayerChatMask(Player player, out ChatMask mask, out TimeSpan? remaining);
 
         /// <summary>
         /// Sets the chat mask for a player.
         /// </summary>
-        /// <param name="p">The player to set the mask for.</param>
+        /// <param name="player">The player to set the mask for.</param>
         /// <param name="mask">The chat mask to set.</param>
         /// <param name="timeout">Zero to set a session mask (valid until the next arena change), or a number of seconds for the mask to be valid.</param>
-        void SetPlayerChatMask(Player p, ChatMask mask, int timeout);
+        void SetPlayerChatMask(Player player, ChatMask mask, int timeout);
 
         #endregion
 
@@ -448,16 +448,16 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// A utility function for sending lists of items in a chat message.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="text">The message to send.</param>
-        void SendWrappedText(Player p, string text);
+        void SendWrappedText(Player player, string text);
 
         /// <summary>
         /// A utility function for sending lists of items in a chat message.
         /// </summary>
-        /// <param name="p">The player to send the message to.</param>
+        /// <param name="player">The player to send the message to.</param>
         /// <param name="sb">The message to send.</param>
-        void SendWrappedText(Player p, StringBuilder sb);
+        void SendWrappedText(Player player, StringBuilder sb);
 
         #endregion
 

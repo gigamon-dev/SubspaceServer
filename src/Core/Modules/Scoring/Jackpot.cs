@@ -198,7 +198,7 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             // setting
             public double BountyRatio;
@@ -207,6 +207,15 @@ namespace SS.Core.Modules.Scoring
             public int Jackpot;
 
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    BountyRatio = 0;
+                    Jackpot = 0;
+                }
+            }
         }
     }
 }

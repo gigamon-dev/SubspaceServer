@@ -665,7 +665,7 @@ namespace SS.Core.Modules
             public ObjectData Current;
         }
 
-        private class ArenaData
+        private class ArenaData : IPooledExtraData
         {
             public readonly List<LvzData> List = new();
 
@@ -687,11 +687,26 @@ namespace SS.Core.Modules
                     return null;
                 }
             }
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    List.Clear();
+                    ToggleDifferences = 0;
+                    ExtraDifferences = 0;
+                }
+            }
         }
 
-        private class PlayerData
+        private class PlayerData : IPooledExtraData
         {
             public BroadcastAuthorization Permission = BroadcastAuthorization.None;
+
+            public void Reset()
+            {
+                Permission = BroadcastAuthorization.None;
+            }
         }
 
         public class LvzDataPooledObjectPolicy : PooledObjectPolicy<LvzData>

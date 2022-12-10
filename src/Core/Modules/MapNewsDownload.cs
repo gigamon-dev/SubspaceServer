@@ -29,7 +29,7 @@ namespace SS.Core.Modules
         private IMapData _mapData;
         private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
 
-        private ArenaDataKey<LinkedList<MapDownloadData>> _dlKey;
+        private ArenaDataKey<List<MapDownloadData>> _dlKey;
 
         /// <summary>
         /// Map that's used if the configured one cannot be read.
@@ -73,7 +73,7 @@ namespace SS.Core.Modules
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
 
-            _dlKey = _arenaManager.AllocateArenaData(new MapDownloadLinkedListPooledObjectPolicy());
+            _dlKey = _arenaManager.AllocateArenaData(new MapDownloadDataListPooledObjectPolicy());
 
             _net.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
             _net.AddPacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
@@ -113,54 +113,54 @@ namespace SS.Core.Modules
 
         #region IMapNewsDownload Members
 
-        void IMapNewsDownload.SendMapFilename(Player p)
+        void IMapNewsDownload.SendMapFilename(Player player)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
+            if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
                 return;
 
-            if (dls.Count == 0)
+            if (downloadList.Count == 0)
             {
                 _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Missing map data.");
                 return;
             }
 
-            S2C_MapFilename mf = new();
+            S2C_MapFilename packet = new();
 
             int len = 0;
 
             // allow vie clients that specifically ask for them to get all the
             // lvz data, to support bots.
-            if (p.Type == ClientType.Continuum || p.Flags.WantAllLvz)
+            if (player.Type == ClientType.Continuum || player.Flags.WantAllLvz)
             {
                 int idx = 0;
 
-                foreach (MapDownloadData data in dls)
+                foreach (MapDownloadData data in downloadList)
                 {
-                    if (!data.optional || p.Flags.WantAllLvz)
+                    if (!data.optional || player.Flags.WantAllLvz)
                     {
-                        len = mf.SetFileInfo(idx, data.filename, data.checksum, data.cmplen);
+                        len = packet.SetFileInfo(idx, data.filename, data.checksum, data.cmplen);
                         idx++;
                     }
                 }
             }
             else
             {
-                MapDownloadData data = dls.First.Value;
-                len = mf.SetFileInfo(data.filename, data.checksum);
+                MapDownloadData data = downloadList[0]; // index 0 always has the lvl
+                len = packet.SetFileInfo(data.filename, data.checksum);
             }
 
             Debug.Assert(len > 0);
 
             _net.SendToOne(
-                p, 
-                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref mf, 1))[..len], 
+                player, 
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..len], 
                 NetSendFlags.Reliable);
         }
 
@@ -181,64 +181,66 @@ namespace SS.Core.Modules
             }
             else if (action == ArenaAction.Destroy)
             {
-                if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
+                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
                     return;
 
-                dls.Clear();
+                downloadList.Clear();
             }
-        }
 
-        private void ArenaActionWork(Arena arena)
-        {
-            if (arena == null)
-                return;
-
-            try
+            void ArenaActionWork(Arena arena)
             {
-                if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
+                if (arena == null)
                     return;
 
-                MapDownloadData data = null;
-
-                string filename = _mapData.GetMapFilename(arena, null);
-                if (!string.IsNullOrEmpty(filename))
+                try
                 {
-                    data = CompressMap(filename, true);
-                }
+                    if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+                        return;
 
-                if (data == null)
-                {
-                    _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
-                    data = new MapDownloadData();
-                    data.checksum = 0x5643ef8a;
-                    data.uncmplen = 4;
-                    data.cmplen = (uint)_emergencyMap.Length;
-                    data.cmpmap = _emergencyMap;
-                    data.filename = "tinymap.lvl";
-                }
+                    downloadList.Clear();
 
-                dls.AddLast(data);
+                    MapDownloadData data = null;
 
-                // now look for lvzs
-                foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
-                {
-                    data = CompressMap(lvzInfo.Filename, false);
-
-                    if (data != null)
+                    string filename = _mapData.GetMapFilename(arena, null);
+                    if (!string.IsNullOrEmpty(filename))
                     {
-                        data.optional = lvzInfo.IsOptional;
-                        dls.AddLast(data);
+                        data = CompressMap(filename, true);
+                    }
+
+                    if (data == null)
+                    {
+                        _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
+                        data = new MapDownloadData();
+                        data.checksum = 0x5643ef8a;
+                        data.uncmplen = 4;
+                        data.cmplen = (uint)_emergencyMap.Length;
+                        data.cmpmap = _emergencyMap;
+                        data.filename = "tinymap.lvl";
+                    }
+
+                    downloadList.Add(data);
+
+                    // now look for lvzs
+                    foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
+                    {
+                        data = CompressMap(lvzInfo.Filename, false);
+
+                        if (data != null)
+                        {
+                            data.optional = lvzInfo.IsOptional;
+                            downloadList.Add(data);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                _arenaManager.UnholdArena(arena);
+                finally
+                {
+                    _arenaManager.UnholdArena(arena);
+                }
             }
         }
 
         private MapDownloadData CompressMap(string filename, bool docomp)
-        {
+        { 
             if (string.IsNullOrWhiteSpace(filename))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
 
@@ -308,9 +310,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UpdateRequest(Player p, byte[] pkt, int len)
+        private void Packet_UpdateRequest(Player player, byte[] pkt, int len)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (pkt == null)
@@ -318,7 +320,7 @@ namespace SS.Core.Modules
 
             if (len != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, $"Bad update req packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad update req packet len={len}.");
                 return;
             }
 
@@ -327,7 +329,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    if (!fileTransfer.SendFile(p, "clients/update.exe", string.Empty, false))
+                    if (!fileTransfer.SendFile(player, "clients/update.exe", string.Empty, false))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "Update request, but error setting up to be sent.");
                     }
@@ -339,9 +341,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_MapNewsRequest(Player p, byte[] pkt, int len)
+        private void Packet_MapNewsRequest(Player player, byte[] pkt, int len)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (pkt == null)
@@ -351,42 +353,42 @@ namespace SS.Core.Modules
             {
                 if (len != 1 && len != 3)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, $"Bad map/LVZ req packet len={len}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad map/LVZ req packet len={len}.");
                     return;
                 }
 
-                Arena arena = p.Arena;
+                Arena arena = player.Arena;
                 if (arena == null)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, "Map request before entering arena.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, "Map request before entering arena.");
                     return;
                 }
 
                 ushort lvznum = (len == 3) ? (ushort)(pkt[1] | pkt[2] << 8) : (ushort)0;
-                bool wantOpt = p.Flags.WantAllLvz;
+                bool wantOpt = player.Flags.WantAllLvz;
 
                 MapDownloadData mdd = GetMap(arena, lvznum, wantOpt);
 
                 if (mdd == null)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(MapNewsDownload), p, $"Can't find lvl/lvz {lvznum}.");
+                    _logManager.LogP(LogLevel.Warn, nameof(MapNewsDownload), player, $"Can't find lvl/lvz {lvznum}.");
                     return;
                 }
 
-                _net.SendSized(p, (int)mdd.cmplen, GetData, new MapDownloadContext(p, mdd));
+                _net.SendSized(player, (int)mdd.cmplen, GetData, new MapDownloadContext(player, mdd));
 
-                _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, $"Sending map/lvz {lvznum} ({mdd.cmplen} bytes) (transfer '{mdd.filename}').");
+                _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), player, $"Sending map/lvz {lvznum} ({mdd.cmplen} bytes) (transfer '{mdd.filename}').");
 
                 // if we're getting these requests, it's too late to set their ship
                 // and team directly, we need to go through the in-game procedures
-                if (p.IsStandard && (p.Ship != ShipType.Spec || p.Freq != arena.SpecFreq))
+                if (player.IsStandard && (player.Ship != ShipType.Spec || player.Freq != arena.SpecFreq))
                 {
                     IGame game = _broker.GetInterface<IGame>();
                     if (game != null)
                     {
                         try
                         {
-                            game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
+                            game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
                         }
                         finally
                         {
@@ -399,14 +401,14 @@ namespace SS.Core.Modules
             {
                 if (len != 1)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), p, $"Bad news req packet len={len}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad news req packet len={len}.");
                     return;
                 }
 
                 if (_newsManager.TryGetNews(out byte[] compressedNewsData, out _))
                 {
-                    _net.SendSized(p, compressedNewsData.Length, GetData, new NewsDownloadContext(p, compressedNewsData));
-                    _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), p, $"Sending news.txt ({compressedNewsData.Length} bytes).");
+                    _net.SendSized(player, compressedNewsData.Length, GetData, new NewsDownloadContext(player, compressedNewsData));
+                    _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), player, $"Sending news.txt ({compressedNewsData.Length} bytes).");
                 }
                 else
                 {
@@ -417,11 +419,11 @@ namespace SS.Core.Modules
 
         private MapDownloadData GetMap(Arena arena, int lvznum, bool wantOpt)
         {
-            if (!arena.TryGetExtraData(_dlKey, out LinkedList<MapDownloadData> dls))
+            if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
                 return null;
 
             int idx=lvznum;
-            foreach(MapDownloadData mdd in dls)
+            foreach(MapDownloadData mdd in downloadList)
             {
                 if (!mdd.optional || wantOpt)
                 {
@@ -500,11 +502,10 @@ namespace SS.Core.Modules
 
         public void Dispose()
         {
-            if (_newsManager != null)
-            {
-                _newsManager.Dispose();
-            }
+            _newsManager?.Dispose();
         }
+
+        #region Helper types
 
         private class NewsDownloadContext
         {
@@ -745,16 +746,16 @@ namespace SS.Core.Modules
             }
         }
 
-        private class MapDownloadLinkedListPooledObjectPolicy : PooledObjectPolicy<LinkedList<MapDownloadData>>
+        private class MapDownloadDataListPooledObjectPolicy : PooledObjectPolicy<List<MapDownloadData>>
         {
-            public int InitialCapacity { get; set; } = 8;
+            public int InitialCapacity { get; set; } = S2C_MapFilename.MaxFiles;
 
-            public override LinkedList<MapDownloadData> Create()
+            public override List<MapDownloadData> Create()
             {
-                return new LinkedList<MapDownloadData>();
+                return new List<MapDownloadData>(InitialCapacity);
             }
 
-            public override bool Return(LinkedList<MapDownloadData> obj)
+            public override bool Return(List<MapDownloadData> obj)
             {
                 if (obj == null)
                     return false;
@@ -763,5 +764,7 @@ namespace SS.Core.Modules
                 return true;
             }
         }
+
+        #endregion
     }
 }

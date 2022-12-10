@@ -2371,7 +2371,7 @@ namespace SS.Replay
             }
         }
 
-        private sealed class ArenaData : IDisposable
+        private sealed class ArenaData : IPooledExtraData, IDisposable
         {
             public Settings Settings;
 
@@ -2446,6 +2446,27 @@ namespace SS.Replay
             /// For thread synchronization.
             /// </summary>
             public readonly object Lock = new();
+
+            public void Reset()
+            {
+                lock (Lock)
+                {
+                    Settings = default;
+                    IFreqManagerEnforcerAdvisorRegistrationToken = null;
+                    State = ReplayState.None;
+                    FileName = null;
+                    StartedBy = null;
+                    PlaybackPosition = 0;
+                    IsPlaybackPaused = false;
+                    RecorderTask = null;
+                    PlaybackTask = null;
+                    PlayerIdMap.Clear();
+
+                    while (PlaybackQueue.TryTake(out _)) { }
+
+                    RecorderQueue = null;
+                }
+            }
 
             #region IDisposable
 

@@ -346,7 +346,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class UploadDataContext : IDisposable
+        private class UploadDataContext : IPooledExtraData, IDisposable
         {
             public FileStream Stream;
 
@@ -416,9 +416,20 @@ namespace SS.Core.Modules
                 UploadedInvoker = null;
             }
 
+            public void Reset()
+            {
+                if (UploadedInvoker is not null)
+                {
+                    // We do not want to invoke callbacks when we call Cleanup(...).
+                    UploadedInvoker = null;
+                }
+
+                Cleanup(false);
+            }
+
             public void Dispose()
             {
-                Cleanup(false); // TODO: might not want to invoke callbacks
+                Reset();
             }
         }
 

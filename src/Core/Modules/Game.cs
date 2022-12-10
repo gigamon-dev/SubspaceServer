@@ -49,161 +49,6 @@ namespace SS.Core.Modules
 
         private const int WeaponCount = 32;
 
-        [Flags]
-        private enum PersonalGreen
-        {
-            None = 0, 
-            Thor = 1, 
-            Burst = 2, 
-            Brick = 4, 
-        }
-
-        [Flags]
-        private enum CheckFastBombing
-        {
-            None = 0,
-
-            /// <summary>
-            /// Send sysop alert when fastbombing is detected
-            /// </summary>
-            Alert = 1,
-
-            /// <summary>
-            /// Filter out fastbombs
-            /// </summary>
-            Filter = 2,
-
-            /// <summary>
-            /// Kick fastbombing player off
-            /// </summary>
-            Kick = 4,
-        }
-
-        private class PlayerData
-        {
-            public C2S_PositionPacket pos = new();
-
-            /// <summary>
-            /// who the player is spectating, null means not spectating
-            /// </summary>
-            public Player speccing;
-
-            /// <summary>
-            /// The # of S2C weapon packets sent to the player.
-            /// </summary>
-            public uint S2CWeaponSent;
-
-            /// <summary>
-            /// used for determining which weapon packets to ignore for the player, if any
-            /// e.g. if the player is lagging badly, it can be set to handicap against the player
-            /// </summary>
-            public int ignoreWeapons;
-
-            /// <summary>
-            /// # of deaths the player has had without firing, used to check if the player should be sent to spec
-            /// </summary>
-            public int deathWithoutFiring;
-
-            // extra position data/energy stuff
-            public int epdQueries;
-
-            public struct PlExtraPositionData
-            {
-                /// <summary>
-                /// whose energy levels the player can see
-                /// </summary>
-                public SeeEnergy seeNrg;
-
-                /// <summary>
-                /// whose energy levels the player can see when in spectator mode
-                /// </summary>
-                public SeeEnergy seeNrgSpec;
-
-                /// <summary>
-                /// whether the player can see extra position data
-                /// </summary>
-                public bool seeEpd;
-            }
-            public PlExtraPositionData pl_epd;
-
-            // some flags
-            public bool lockship;
-
-            /// <summary>
-            /// Whether the player is in a <see cref="MapRegion"/> that does not allow antiwarp.
-            /// </summary>
-            public bool MapRegionNoAnti;
-
-            /// <summary>
-            /// Whether the player is in a <see cref="MapRegion"/> that does not allow firing of weapons.
-            /// </summary>
-            public bool MapRegionNoWeapons;
-
-            /// <summary>
-            /// when the lock expires, or null for session-long lock
-            /// </summary>
-            public DateTime? expires;
-
-            /// <summary>
-            /// when we last updated the region-based flags
-            /// </summary>
-            public DateTime lastRgnCheck;
-
-            /// <summary>
-            /// Set of regions the player was in during the last region check.
-            /// </summary>
-            public IImmutableSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
-
-            public ShipType? PlayerPostitionPacket_LastShip;
-
-            /// <summary>
-            /// When the player last shot a bomb, mine, or thor.
-            /// Used to check for fast bombing.
-            /// </summary>
-            public ServerTick? LastBomb;
-        }
-
-        private class ArenaData
-        {
-            /// <summary>
-            /// Client setting to multiply kill points if the killer was carrying a flag.
-            /// </summary>
-            public int FlaggerKillMultiplier;
-
-            /// <summary>
-            /// whether spectators in the arena can see extra data for the person they're spectating
-            /// </summary>
-            public bool SpecSeeExtra;
-
-            /// <summary>
-            /// whose energy levels spectators can see
-            /// </summary>
-            public SeeEnergy SpecSeeEnergy;
-
-            /// <summary>
-            /// whose energy levels everyone can see
-            /// </summary>
-            public SeeEnergy AllSeeEnergy;
-
-            public PersonalGreen personalGreen;
-            public bool initLockship;
-            public bool initSpec;
-            public int MaxDeathWithoutFiring;
-            public TimeSpan RegionCheckTime;
-            public bool NoSafeAntiwarp;
-            public int WarpThresholdDelta;
-
-            public CheckFastBombing CheckFastBombing;
-            public short FastBombingThreshold;
-            public short[] ShipBombDelay = new short[8];
-
-            public int cfg_pospix;
-            public int cfg_sendanti;
-            public int cfg_AntiwarpRange;
-            public int cfg_EnterDelay;
-            public int[] wpnRange = new int[WeaponCount];
-        }
-
         // delegates to prevent allocating a new delegate object per call
         private readonly Action<ShipFreqChangeDTO> mainloopWork_RunShipFreqChangeCallbackAction;
         private readonly Action<SpawnDTO> mainloopWork_RunSpawnCallbackAction;
@@ -791,7 +636,7 @@ namespace SS.Core.Modules
                 if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareBrick", 0) != 0)
                     pg |= PersonalGreen.Brick;
 
-                ad.personalGreen = pg;
+                ad.PersonalGreen = pg;
 
                 int cfg_bulletpix = _configManager.GetInt(_configManager.Global, "Net", "BulletPixels", 1500);
 
@@ -848,7 +693,7 @@ namespace SS.Core.Modules
                 if (ad.initSpec)
                 {
                     p.Ship = ShipType.Spec;
-                    p.Freq = (short)arena.SpecFreq;
+                    p.Freq = arena.SpecFreq;
                 }
 
                 p.Attached = -1;
@@ -2171,9 +2016,9 @@ namespace SS.Core.Modules
             Prize prize = g.Green;
 
             // don't forward non-shared prizes
-            if(!(prize == Prize.Thor && (ad.personalGreen & PersonalGreen.Thor) == PersonalGreen.Thor) &&
-                !(prize == Prize.Burst && (ad.personalGreen & PersonalGreen.Burst) == PersonalGreen.Burst) &&
-                !(prize == Prize.Brick && (ad.personalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
+            if(!(prize == Prize.Thor && (ad.PersonalGreen & PersonalGreen.Thor) == PersonalGreen.Thor) &&
+                !(prize == Prize.Burst && (ad.PersonalGreen & PersonalGreen.Burst) == PersonalGreen.Burst) &&
+                !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
             {
                 g.PlayerId = (short)p.Id;
                 g.Type = (byte)S2CPacketType.Green; // HACK: reuse the buffer that it came in on
@@ -2511,5 +2356,210 @@ namespace SS.Core.Modules
                 ShipFreqChangeCallback.Fire(dto.Arena, dto.Player, dto.NewShip, dto.OldShip, dto.NewFreq, dto.OldFreq);
             }
         }
+
+        #region Helper types
+
+        [Flags]
+        private enum PersonalGreen
+        {
+            None = 0,
+            Thor = 1,
+            Burst = 2,
+            Brick = 4,
+        }
+
+        [Flags]
+        private enum CheckFastBombing
+        {
+            None = 0,
+
+            /// <summary>
+            /// Send sysop alert when fastbombing is detected
+            /// </summary>
+            Alert = 1,
+
+            /// <summary>
+            /// Filter out fastbombs
+            /// </summary>
+            Filter = 2,
+
+            /// <summary>
+            /// Kick fastbombing player off
+            /// </summary>
+            Kick = 4,
+        }
+
+        private class PlayerData : IPooledExtraData
+        {
+            public C2S_PositionPacket pos = new();
+
+            /// <summary>
+            /// who the player is spectating, null means not spectating
+            /// </summary>
+            public Player speccing;
+
+            /// <summary>
+            /// The # of S2C weapon packets sent to the player.
+            /// </summary>
+            public uint S2CWeaponSent;
+
+            /// <summary>
+            /// used for determining which weapon packets to ignore for the player, if any
+            /// e.g. if the player is lagging badly, it can be set to handicap against the player
+            /// </summary>
+            public int ignoreWeapons;
+
+            /// <summary>
+            /// # of deaths the player has had without firing, used to check if the player should be sent to spec
+            /// </summary>
+            public int deathWithoutFiring;
+
+            // extra position data/energy stuff
+            public int epdQueries;
+
+            public struct PlExtraPositionData
+            {
+                /// <summary>
+                /// whose energy levels the player can see
+                /// </summary>
+                public SeeEnergy seeNrg;
+
+                /// <summary>
+                /// whose energy levels the player can see when in spectator mode
+                /// </summary>
+                public SeeEnergy seeNrgSpec;
+
+                /// <summary>
+                /// whether the player can see extra position data
+                /// </summary>
+                public bool seeEpd;
+            }
+            public PlExtraPositionData pl_epd;
+
+            // some flags
+            public bool lockship;
+
+            /// <summary>
+            /// Whether the player is in a <see cref="MapRegion"/> that does not allow antiwarp.
+            /// </summary>
+            public bool MapRegionNoAnti;
+
+            /// <summary>
+            /// Whether the player is in a <see cref="MapRegion"/> that does not allow firing of weapons.
+            /// </summary>
+            public bool MapRegionNoWeapons;
+
+            /// <summary>
+            /// when the lock expires, or null for session-long lock
+            /// </summary>
+            public DateTime? expires;
+
+            /// <summary>
+            /// when we last updated the region-based flags
+            /// </summary>
+            public DateTime lastRgnCheck;
+
+            /// <summary>
+            /// Set of regions the player was in during the last region check.
+            /// </summary>
+            public IImmutableSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+
+            public ShipType? PlayerPostitionPacket_LastShip;
+
+            /// <summary>
+            /// When the player last shot a bomb, mine, or thor.
+            /// Used to check for fast bombing.
+            /// </summary>
+            public ServerTick? LastBomb;
+
+            public void Reset()
+            {
+                pos = new();
+                speccing = null;
+                S2CWeaponSent = 0;
+                ignoreWeapons = 0;
+                deathWithoutFiring = 0;
+                epdQueries = 0;
+                pl_epd = default;
+                lockship = false;
+                MapRegionNoAnti = false;
+                MapRegionNoWeapons = false;
+                expires = null;
+                lastRgnCheck = default;
+                LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+                PlayerPostitionPacket_LastShip = null;
+                LastBomb = null;
+            }
+        }
+
+        private class ArenaData : IPooledExtraData
+        {
+            /// <summary>
+            /// Client setting to multiply kill points if the killer was carrying a flag.
+            /// </summary>
+            public int FlaggerKillMultiplier;
+
+            /// <summary>
+            /// whether spectators in the arena can see extra data for the person they're spectating
+            /// </summary>
+            public bool SpecSeeExtra;
+
+            /// <summary>
+            /// whose energy levels spectators can see
+            /// </summary>
+            public SeeEnergy SpecSeeEnergy;
+
+            /// <summary>
+            /// whose energy levels everyone can see
+            /// </summary>
+            public SeeEnergy AllSeeEnergy;
+
+            /// <summary>
+            /// Which types of greens should not be shared with teammates.
+            /// </summary>
+            public PersonalGreen PersonalGreen;
+
+            public bool initLockship;
+            public bool initSpec;
+            public int MaxDeathWithoutFiring;
+            public TimeSpan RegionCheckTime;
+            public bool NoSafeAntiwarp;
+            public int WarpThresholdDelta;
+
+            public CheckFastBombing CheckFastBombing;
+            public short FastBombingThreshold;
+            public readonly short[] ShipBombDelay = new short[8];
+
+            public int cfg_pospix;
+            public int cfg_sendanti;
+            public int cfg_AntiwarpRange;
+            public int cfg_EnterDelay;
+            public readonly int[] wpnRange = new int[WeaponCount];
+
+            public void Reset()
+            {
+                FlaggerKillMultiplier = 0;
+                SpecSeeExtra = false;
+                SpecSeeEnergy = SeeEnergy.None;
+                AllSeeEnergy = SeeEnergy.None;
+                PersonalGreen = PersonalGreen.None;
+                initLockship = false;
+                initSpec = false;
+                MaxDeathWithoutFiring = 0;
+                RegionCheckTime = default;
+                NoSafeAntiwarp = false;
+                WarpThresholdDelta = 0;
+                CheckFastBombing = CheckFastBombing.None;
+                FastBombingThreshold = 0;
+                Array.Clear(ShipBombDelay);
+                cfg_pospix = 0;
+                cfg_sendanti = 0;
+                cfg_AntiwarpRange = 0;
+                cfg_EnterDelay = 0;
+                Array.Clear(wpnRange);
+            }
+        }
+
+        #endregion
     }
 }
