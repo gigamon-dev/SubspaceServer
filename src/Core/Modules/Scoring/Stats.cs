@@ -1058,7 +1058,6 @@ namespace SS.Core.Modules.Scoring
                 _chat.SendMessage(player, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != player ? targetPlayer.Name : "you" )}:");
 
                 DateTime now = DateTime.UtcNow;
-
             
                 foreach ((int statId, BaseStatInfo baseStatinfo) in stats)
                 {
@@ -1071,32 +1070,47 @@ namespace SS.Core.Modules.Scoring
                             break;
                     }
 
-                    if (string.IsNullOrWhiteSpace(statName))
-                        statName = statId.ToString(CultureInfo.InvariantCulture);
-
                     if (baseStatinfo is StatInfo<int> intStatInfo)
                     {
-                        _chat.SendMessage(player, $"  {statName}: {intStatInfo.Value}");
+                        if (string.IsNullOrWhiteSpace(statName))
+                            _chat.SendMessage(player, $"  {statId}: {intStatInfo.Value}");
+                        else
+                            _chat.SendMessage(player, $"  {statName}: {intStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<uint> uintStatInfo)
                     {
-                        _chat.SendMessage(player, $"  {statName}: {uintStatInfo.Value}");
+                        if (string.IsNullOrWhiteSpace(statName))
+                            _chat.SendMessage(player, $"  {statId}: {uintStatInfo.Value}");
+                        else
+                            _chat.SendMessage(player, $"  {statName}: {uintStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<long> longStatInfo)
                     {
-                        _chat.SendMessage(player, $"  {statName}: {longStatInfo.Value}");
+                        if (string.IsNullOrWhiteSpace(statName))
+                            _chat.SendMessage(player, $"  {statId}: {longStatInfo.Value}");
+                        else
+                            _chat.SendMessage(player, $"  {statName}: {longStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<ulong> ulongStatInfo)
                     {
-                        _chat.SendMessage(player, $"  {statName}: {ulongStatInfo.Value}");
+                        if (string.IsNullOrWhiteSpace(statName))
+                            _chat.SendMessage(player, $"  {statId}: {ulongStatInfo.Value}");
+                        else
+                            _chat.SendMessage(player, $"  {statName}: {ulongStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<DateTime> dateTimeStatInfo)
                     {
-                        _chat.SendMessage(player, $"  {statName}: {dateTimeStatInfo.Value}");
+                        if (string.IsNullOrWhiteSpace(statName))
+                            _chat.SendMessage(player, $"  {statId}: {dateTimeStatInfo.Value}");
+                        else
+                            _chat.SendMessage(player, $"  {statName}: {dateTimeStatInfo.Value}");
                     }
                     else if (baseStatinfo is TimerStatInfo timerStatInfo)
                     {
-                        _chat.SendMessage(player, $"  {statName}: {timerStatInfo.GetValueAsOf(now)}");
+                        if (string.IsNullOrWhiteSpace(statName))
+                            _chat.SendMessage(player, $"  {statId}: {timerStatInfo.GetValueAsOf(now)}");
+                        else
+                            _chat.SendMessage(player, $"  {statName}: {timerStatInfo.GetValueAsOf(now)}");
                     }
                 }
             }

@@ -4316,7 +4316,7 @@ namespace SS.Core.Modules
                                 sb.Append(' ');
 
                             asciiBuilder.Append(!char.IsControl((char)d[pos]) ? (char)d[pos] : '.');
-                            sb.Append(d[pos].ToString("X2"));
+                            sb.Append($"{d[pos]:X2}");
                         }
 
                         for (; c < 16; c++)
@@ -4325,7 +4325,8 @@ namespace SS.Core.Modules
                         }
 
                         sb.Append("  ");
-                        sb.AppendLine(asciiBuilder.ToString());
+                        sb.Append(asciiBuilder);
+                        sb.AppendLine();
                         asciiBuilder.Length = 0;
                     }
                 }

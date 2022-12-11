@@ -1045,7 +1045,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                Arena arena = _arenaManager.FindArena(parameters.ToString()); // TODO: Can ArenaManager be changed to not use Dictionary<string, Arena>? Trie<Arena> needs enumerator performance enhancements first. Or use dual data structures?
+                Arena arena = _arenaManager.FindArena(parameters);
                 if (arena != null)
                 {
                     _chat.SendMessage(player, $"The jackpot in {arena.Name} is {_jackpot.GetJackpot(arena)}.");
@@ -1095,8 +1095,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            string section = token.ToString();
-            string key = remaining.ToString();
+            ReadOnlySpan<char> section = token;
+            ReadOnlySpan<char> key = remaining;
 
             ConfigHandle ch = command.Equals("geta", StringComparison.OrdinalIgnoreCase) ? player.Arena.Cfg : _configManager.Global;
             string result = _configManager.GetStr(ch, section, key);
@@ -2549,8 +2549,8 @@ namespace SS.Core.Modules
             Description = "Lists the players in the given arena.")]
         private void Command_listarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            string arenaName = !parameters.IsWhiteSpace() ? parameters.ToString() : player.Arena?.Name; // TODO: string allocation, requires ArenaManager changes
-            if (string.IsNullOrWhiteSpace(arenaName))
+            ReadOnlySpan<char> arenaName = !parameters.IsWhiteSpace() ? parameters : player.Arena?.Name;
+            if (arenaName.IsWhiteSpace())
                 return;
 
             Arena arena = _arenaManager.FindArena(arenaName);
