@@ -27,6 +27,7 @@ namespace SS.Core.Modules
         private readonly ReaderWriterLockSlim _arenaLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly Dictionary<string, Arena> _arenaDictionary = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Trie<Arena> _arenaTrie = new(false);
 
         /// <summary>
         /// Key = module Type
@@ -183,6 +184,7 @@ namespace SS.Core.Modules
             ((IArenaManager)this).FreeArenaData(_adkey);
 
             _arenaDictionary.Clear();
+            _arenaTrie.Clear();
 
             return true;
         }
@@ -305,7 +307,7 @@ namespace SS.Core.Modules
             }
         }
 
-        Arena IArenaManager.FindArena(string name)
+        Arena IArenaManager.FindArena(ReadOnlySpan<char> name)
         {
             ReadLock();
             try
@@ -318,7 +320,7 @@ namespace SS.Core.Modules
             }
         }
 
-        Arena IArenaManager.FindArena(string name, out int totalCount, out int playing)
+        Arena IArenaManager.FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing)
         {
             Arena arena = ((IArenaManager)this).FindArena(name);
 
@@ -774,9 +776,9 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        if (arenaPlace.Place(out string nameStr, ref spx, ref spy, player))
+                        if (arenaPlace.Place(nameBuffer, ref spx, ref spy, player, out int charsWritten))
                         {
-                            name = nameStr;
+                            name = nameBuffer[..charsWritten];
                         }
                         else
                         {
@@ -1031,6 +1033,7 @@ namespace SS.Core.Modules
                                 else
                                 {
                                     _arenaDictionary.Remove(arena.Name);
+                                    _arenaTrie.Remove(arena.Name, out _);
 
                                     // remove all the extra data object and return them to their factory
                                     foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
@@ -1050,17 +1053,24 @@ namespace SS.Core.Modules
                             else
                             {
                                 _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "Failed to detach modules from arena, arena will not be destroyed. Check for correct interface releasing.");
+
                                 _arenaDictionary.Remove(arena.Name);
-                                _arenaDictionary.Add(Guid.NewGuid().ToString(), arena);
+                                _arenaTrie.Remove(arena.Name, out _);
+                                string failName = Guid.NewGuid().ToString("N");
+                                _arenaDictionary.Add(failName, arena);
+                                _arenaTrie.Add(failName, arena);
+
                                 _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "WARNING: The server is no longer in a stable state because of this error. your modules need to be fixed.");
 
-                                // TODO: flush logs
+                                // Note: ASSS flushes the log file here.
+                                // However, writing of logs is asynchronous, so there's no guarantee the above was written to file before the flush.
+                                // Also, file I/O is a blocking operation and should be done on a worker thread.
+                                // Instead, I decided to skip it and just going to let it flush itself (happens periodically).
 
                                 arenaData.Resurrect = false;
                                 arenaData.Reap = false;
                                 arena.KeepAlive = true;
                                 arena.Status = ArenaState.Running;
-
                             }
                             break;
                     }
@@ -1313,7 +1323,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void CompleteGo(Player player, ReadOnlySpan<char> reqName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
+        private void CompleteGo(Player player, ReadOnlySpan<char> requestName, ShipType ship, int xRes, int yRes, bool gfx, bool voices, bool obscene, int spawnX, int spawnY)
         {
             // status should be LoggedIn or Playing at this point
             if (player.Status != PlayerState.LoggedIn && player.Status != PlayerState.Playing && player.Status != PlayerState.LeavingArena)
@@ -1323,12 +1333,12 @@ namespace SS.Core.Modules
             }
 
             // remove all illegal characters and make lowercase
-            string name;
+            Span<char> name = stackalloc char[Constants.MaxArenaNameLength];
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
             try
             {
-                sb.Append(reqName);
+                sb.Append(requestName);
                 for (int x = 0; x < sb.Length; x++)
                 {
                     if (x == 0 && sb[x] == '#')
@@ -1339,6 +1349,7 @@ namespace SS.Core.Modules
                         sb[x] = char.ToLower(sb[x]);
                 }
 
+                int charsWritten;
                 if (sb.Length == 0)
                 {
                     // this might occur when a player is redirected to us from another zone
@@ -1348,9 +1359,14 @@ namespace SS.Core.Modules
                         try
                         {
                             int spx = 0, spy = 0;
-                            if (!arenaPlace.Place(out name, ref spx, ref spy, player))
+                            if (arenaPlace.Place(name, ref spx, ref spy, player, out charsWritten))
                             {
-                                name = "0";
+                                name = name[..charsWritten];
+                            }
+                            else
+                            {
+                                "0".CopyTo(name);
+                                name = name[..1];
                             }
                         }
                         finally
@@ -1360,12 +1376,15 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        name = "0";
+                        "0".CopyTo(name);
+                        name = name[..1];
                     }
                 }
                 else
                 {
-                    name = sb.ToString();
+                    charsWritten = Math.Min(sb.Length, name.Length);
+                    sb.CopyTo(0, name, charsWritten);
+                    name = name[..charsWritten];
                 }
             }
             finally
@@ -1384,7 +1403,7 @@ namespace SS.Core.Modules
                 if (arena is null)
                 {
                     // create a non-permanent arena
-                    arena = CreateArena(name, false);
+                    arena = CreateArena(name.ToString(), false);
                     if (arena is null)
                     {
                         // if it fails, dump in first available
@@ -1443,12 +1462,12 @@ namespace SS.Core.Modules
             // it will be incremented when the arena is ready.
         }
 
-        private Arena FindArena(string name, ArenaState? minState, ArenaState? maxState)
+        private Arena FindArena(ReadOnlySpan<char> name, ArenaState? minState, ArenaState? maxState)
         {
             ReadLock();
             try
             {
-                if (_arenaDictionary.TryGetValue(name, out Arena arena) == false)
+                if (_arenaTrie.TryGetValue(name, out Arena arena) == false)
                     return null;
 
                 if (minState != null && arena.Status < minState)
@@ -1480,6 +1499,7 @@ namespace SS.Core.Modules
                 }
 
                 _arenaDictionary.Add(name, arena);
+                _arenaTrie.Add(name, arena);
             }
             finally
             {

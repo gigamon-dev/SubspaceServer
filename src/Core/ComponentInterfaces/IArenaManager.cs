@@ -47,24 +47,26 @@ namespace SS.Core.ComponentInterfaces
         void SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnx, int spawny);
 
         /// <summary>
-        /// This is a function for locating arenas.
-        /// Given a name, it returns either an arena (if some arena by that
-        /// name is running) or NULL (if not). 
+        /// Tries to find an arena.
         /// </summary>
-        /// <param name="name"></param>
-        /// <returns></returns>
-        Arena FindArena(string name);
+        /// <remarks>
+        /// This only includes that are in the <see cref="ArenaState.Running"/> state.
+        /// </remarks>
+        /// <param name="name">The name of the arena to find.</param>
+        /// <returns>The arena if found. Otherwise, <see langword="null"/>.</returns>
+        Arena FindArena(ReadOnlySpan<char> name);
 
         /// <summary>
-        /// This is a multi-purpose function for locating and counting arenas.
-        /// Given a name, it returns either an arena (if some arena by that
-        /// name is running) or NULL (if not). If it's running, it also fills
-        /// in the next two params with the number of players in the arena
-        /// and the number of non-spec players in the arena.
+        /// Tries to find an arena, and get player counts.
         /// </summary>
-        /// <param name="name"></param>
-        /// <returns></returns>
-        Arena FindArena(string name, out int totalCount, out int playing);
+        /// <remarks>
+        /// This only includes that are in the <see cref="ArenaState.Running"/> state.
+        /// </remarks>
+        /// <param name="name">The name of the arena to find.</param>
+        /// <param name="totalCount">When this method returns and an arena was found, the total number of players.</param>
+        /// <param name="playing">When this method returns and an arena was found, the number of players playing (not in spec).</param>
+        /// <returns>The arena if found. Otherwise, <see langword="null"/>.</returns>
+        Arena FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing);
 
         /// <summary>
         /// This counts the number of players in the server and in each arena.

@@ -16,6 +16,7 @@ namespace SS.Core.Modules
         private IFileTransfer _fileTransfer;
         private ILogFile _logFile;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
 
         #region Module members
 
@@ -26,7 +27,8 @@ namespace SS.Core.Modules
             ICommandManager commandManager,
             IFileTransfer fileTransfer,
             ILogFile logFile,
-            ILogManager logManager)
+            ILogManager logManager,
+            IMainloop mainloop)
         {
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -34,6 +36,7 @@ namespace SS.Core.Modules
             _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
             _logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
 
             commandManager.AddCommand("admlogfile", Command_admlogfile);
             commandManager.AddCommand("getfile", Command_getfile);
@@ -71,13 +74,25 @@ namespace SS.Core.Modules
         {
             if (parameters.Equals("flush", StringComparison.OrdinalIgnoreCase))
             {
-                _logFile.Flush();
-                _chat.SendMessage(player, "Log file flushed.");
+                // Do it on a worker thread, don't want to block the mainloop thread.
+                _mainloop.QueueThreadPoolWorkItem<object>(ThreadPoolWorkItem_Flush, null);
+                _chat.SendMessage(player, "Flushing log file.");
             }
             else if (parameters.Equals("reopen", StringComparison.OrdinalIgnoreCase))
             {
+                // Do it on a worker thread, don't want to block the mainloop thread.
+                _mainloop.QueueThreadPoolWorkItem<object>(ThreadPoolWorkItem_Reopen, null);
+                _chat.SendMessage(player, "Reopening log file.");
+            }
+
+            void ThreadPoolWorkItem_Flush(object dummy)
+            {
+                _logFile.Flush();
+            }
+
+            void ThreadPoolWorkItem_Reopen(object dummy)
+            {
                 _logFile.Reopen();
-                _chat.SendMessage(player, "Log file reopened.");
             }
         }
 
