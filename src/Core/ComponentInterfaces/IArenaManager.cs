@@ -40,11 +40,11 @@ namespace SS.Core.ComponentInterfaces
         /// Moves a player into a specific arena.
         /// Works on Continuum clients only.
         /// </summary>
-        /// <param name="p">the player to move</param>
+        /// <param name="player">the player to move</param>
         /// <param name="arenaName">the arena to send him to</param>
         /// <param name="spawnx">the x coord he should spawn at, or 0 for default</param>
         /// <param name="spawny">the y coord he should spawn at, or 0 for default</param>
-        void SendToArena(Player p, ReadOnlySpan<char> arenaName, int spawnx, int spawny);
+        void SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnx, int spawny);
 
         /// <summary>
         /// This is a function for locating arenas.

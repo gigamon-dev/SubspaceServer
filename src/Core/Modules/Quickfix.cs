@@ -61,19 +61,19 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void Packet_SettingChange(Player p, byte[] data, int length)
+        private void Packet_SettingChange(Player player, byte[] data, int length)
         {
-            if (!_capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
+            if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))
             {
-                _chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
+                _chat.SendMessage(player, "You are not authorized to view or change settings in this arena.");
                 return;
             }
 
-            ConfigHandle arenaConfigHandle = p.Arena?.Cfg;
+            ConfigHandle arenaConfigHandle = player.Arena?.Cfg;
             if (arenaConfigHandle == null)
                 return;
 
-            string comment = $"Set by {p.Name} with ?quickfix on {DateTime.UtcNow}";
+            string comment = $"Set by {player.Name} with ?quickfix on {DateTime.UtcNow}";
             bool permanent = true;
             int position = 1;
 
@@ -90,7 +90,7 @@ namespace SS.Core.Modules
 
                     if (tokens.Length != 3)
                     {
-                        _logManager.LogP(LogLevel.Malicious, nameof(Quickfix), p, "Badly formatted setting change.");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Quickfix), player, "Badly formatted setting change.");
                         return;
                     }
 
@@ -110,7 +110,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        _logManager.LogP(LogLevel.Info, nameof(Quickfix), p, $"Setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
+                        _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
                         _configManager.SetStr(arenaConfigHandle, tokens[0], tokens[1], tokens[2], comment, permanent);
                     }
                 }
@@ -127,15 +127,15 @@ namespace SS.Core.Modules
             "settings with their current values and allow you to change them. The\n" +
             "argument to this command can be used to limit the list of settings\n" +
             "displayed. (With no arguments, equivalent to ?getsettings in subgame.)")]
-        private void Command_quickfix(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_quickfix(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!_capabilityManager.HasCapability(p, Constants.Capabilities.ChangeSettings))
+            if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))
             {
-                _chat.SendMessage(p, "You are not authorized to view or change settings in this arena.");
+                _chat.SendMessage(player, "You are not authorized to view or change settings in this arena.");
                 return;
             }
 
-            ConfigHandle arenaConfigHandle = p.Arena?.Cfg;
+            ConfigHandle arenaConfigHandle = player.Arena?.Cfg;
             if (arenaConfigHandle == null)
                 return;
 
@@ -180,12 +180,12 @@ namespace SS.Core.Modules
 
             if (hasData)
             {
-                _chat.SendMessage(p, "Sending settings...");
-                _fileTransfer.SendFile(p, path, "server.set", true);
+                _chat.SendMessage(player, "Sending settings...");
+                _fileTransfer.SendFile(player, path, "server.set", true);
             }
             else
             {
-                _chat.SendMessage(p, "No settings matches your query.");
+                _chat.SendMessage(player, "No settings matches your query.");
                 DeleteTempFile(path);
             }
 

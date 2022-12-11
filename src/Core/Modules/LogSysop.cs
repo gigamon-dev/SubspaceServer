@@ -144,16 +144,16 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.Connect || action == PlayerAction.EnterArena)
             {
-                if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                     return;
 
-                if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeSysopLogAll))
+                if (_capabilityManager.HasCapability(player, Constants.Capabilities.SeeSysopLogAll))
                     pd.SeeWhat = SeeWhat.All;
-                else if (_capabilityManager.HasCapability(p, Constants.Capabilities.SeeSysopLogArena))
+                else if (_capabilityManager.HasCapability(player, Constants.Capabilities.SeeSysopLogArena))
                     pd.SeeWhat = SeeWhat.Arena;
                 else
                     pd.SeeWhat = SeeWhat.None;
@@ -172,7 +172,7 @@ namespace SS.Core.Modules
             "If limiting text is specified, only lines that contain that text will\n" +
             "be displayed. If a player is targeted, only lines mentioning that player\n" +
             "will be displayed.")]
-        private void Command_lastlog(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_lastlog(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             target.TryGetPlayerTarget(out Player targetPlayer);
 
@@ -230,7 +230,7 @@ namespace SS.Core.Modules
                     var set = _objectPoolManager.PlayerSetPool.Get();
                     try
                     {
-                        set.Add(p);
+                        set.Add(player);
 
                         while (left < count)
                         {

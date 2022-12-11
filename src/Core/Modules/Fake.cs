@@ -61,12 +61,12 @@ namespace SS.Core.Modules
 
         #region Command handlers
 
-        private void Command_makefake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_makefake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            CreateFakePlayer(parameters, p.Arena, ShipType.Spec, 9999);
+            CreateFakePlayer(parameters, player.Arena, ShipType.Spec, 9999);
         }
 
-        private void Command_killfake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_killfake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.TryGetPlayerTarget(out Player targetPlayer))
             {

@@ -199,7 +199,7 @@ namespace SS.Replay
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
@@ -210,7 +210,7 @@ namespace SS.Replay
             {
                 byte[] buffer = _recordBufferPool.Rent(Enter.Length);
                 ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
-                enter = new(ServerTick.Now, (short)p.Id, p.Name, p.Squad, p.Ship, p.Freq);
+                enter = new(ServerTick.Now, (short)player.Id, player.Name, player.Squad, player.Ship, player.Freq);
 
                 ad.RecorderQueue.Add(new RecordBuffer(buffer, Enter.Length));
             }
@@ -218,7 +218,7 @@ namespace SS.Replay
             {
                 byte[] buffer = _recordBufferPool.Rent(Leave.Length);
                 ref Leave leave = ref MemoryMarshal.AsRef<Leave>(buffer);
-                leave = new(ServerTick.Now, (short)p.Id);
+                leave = new(ServerTick.Now, (short)player.Id);
 
                 ad.RecorderQueue.Add(new RecordBuffer(buffer, Leave.Length));
             }
@@ -250,7 +250,7 @@ namespace SS.Replay
             }
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
@@ -259,7 +259,7 @@ namespace SS.Replay
 
             byte[] buffer = _recordBufferPool.Rent(ShipChange.Length);
             ref Kill kill = ref MemoryMarshal.AsRef<Kill>(buffer);
-            kill = new(ServerTick.Now, (short)killer.Id, (short)killed.Id, pts, flagCount);
+            kill = new(ServerTick.Now, (short)killer.Id, (short)killed.Id, points, flagCount);
 
             ad.RecorderQueue.Add(new RecordBuffer(buffer, Kill.Length));
         }

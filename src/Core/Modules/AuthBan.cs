@@ -157,21 +157,21 @@ namespace SS.Core.Modules
             "Kicks the player off of the server, with an optional timeout. (-s number, -t number, or number for seconds, -m number for minutes.)\n" +
             "For kicks with a timeout, you may provide a message to be displayed to the user.\n" +
             "Messages appear to users on timeout as \"You have been temporarily kicked for <reason>.\"")]
-        private void Command_kick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_kick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                _chat.SendMessage(p, "This comand only operates when targeting a specific player.");
+                _chat.SendMessage(player, "This comand only operates when targeting a specific player.");
                 return;
             }
 
-            if (targetPlayer == p)
+            if (targetPlayer == player)
                 return;
 
-            if (!_capabilityManager.HigherThan(p, targetPlayer))
+            if (!_capabilityManager.HigherThan(player, targetPlayer))
             {
-                _chat.SendMessage(p, $"You don't have permission to use ?kick on {targetPlayer.Name}.");
-                _chat.SendMessage(targetPlayer, $"{p.Name} tried to use ?kick on you.");
+                _chat.SendMessage(player, $"You don't have permission to use ?kick on {targetPlayer.Name}.");
+                _chat.SendMessage(targetPlayer, $"{player.Name} tried to use ?kick on you.");
                 return;
             }
 
@@ -186,7 +186,7 @@ namespace SS.Core.Modules
                     if (token.IsEmpty
                         || !int.TryParse(token, out int numValue))
                     {
-                        _chat.SendMessage(p, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
+                        _chat.SendMessage(player, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
                         return;
                     }
 
@@ -198,7 +198,7 @@ namespace SS.Core.Modules
                     if (token.IsEmpty
                         || !int.TryParse(token, out int numValue))
                     {
-                        _chat.SendMessage(p, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
+                        _chat.SendMessage(player, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
                         return;
                     }
 
@@ -220,23 +220,23 @@ namespace SS.Core.Modules
 
                 if (timeout > TimeSpan.Zero)
                 {
-                    BanRecord ban = new(DateTime.UtcNow + timeout, p.Name, reason.Trim().ToString());
+                    BanRecord ban = new(DateTime.UtcNow + timeout, player.Name, reason.Trim().ToString());
 
                     lock (_lockObj)
                     {
                         _banDictionary[targetPlayer.MacId] = ban;
                     }
 
-                    _chat.SendMessage(p, $"Kicked '{targetPlayer.Name}' for {timeout}.");
+                    _chat.SendMessage(player, $"Kicked '{targetPlayer.Name}' for {timeout}.");
                 }
                 else
                 {
-                    _chat.SendMessage(p, $"Kicked '{targetPlayer.Name}'.");
+                    _chat.SendMessage(player, $"Kicked '{targetPlayer.Name}'.");
                 }
             }
             else
             {
-                _chat.SendMessage(p, $"Kicked '{targetPlayer.Name}'.");
+                _chat.SendMessage(player, $"Kicked '{targetPlayer.Name}'.");
             }
 
             _playerData.KickPlayer(targetPlayer);
@@ -246,7 +246,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Lists the current kicks (machine-id bans) in effect.")]
-        private void Command_listkick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_listkick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
             try
@@ -268,8 +268,8 @@ namespace SS.Core.Modules
                     }
                 }
 
-                _chat.SendMessage(p, $"Active machine id bans:");
-                _chat.SendWrappedText(p, sb);
+                _chat.SendMessage(player, $"Active machine id bans:");
+                _chat.SendWrappedText(player, sb);
             }
             finally
             {
@@ -281,11 +281,11 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<machine id>",
             Description = "Removes a machine id ban.")]
-        private void Command_delkick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_delkick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!uint.TryParse(parameters, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint macId))
             {
-                _chat.SendMessage(p, "Invalid machine id.");
+                _chat.SendMessage(player, "Invalid machine id.");
             }
             else
             {
@@ -297,9 +297,9 @@ namespace SS.Core.Modules
                 }
 
                 if (success)
-                    _chat.SendMessage(p, $"Successfully removed ban {macId:X}.");
+                    _chat.SendMessage(player, $"Successfully removed ban {macId:X}.");
                 else
-                    _chat.SendMessage(p, $"Ban {macId:X} not found.");
+                    _chat.SendMessage(player, $"Ban {macId:X} not found.");
             }
         }
 

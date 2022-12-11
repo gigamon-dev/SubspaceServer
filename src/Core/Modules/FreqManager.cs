@@ -85,9 +85,9 @@ namespace SS.Core.Modules
 
         #region IFreqManager
 
-        void IFreqManager.Initial(Player p, ref ShipType ship, ref short freq)
+        void IFreqManager.Initial(Player player, ref ShipType ship, ref short freq)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -98,7 +98,7 @@ namespace SS.Core.Modules
             {
                 ShipType workingShip = ship;
 
-                if (ad.Config.AlwaysStartInSpec || !CanEnterGame(arena, p, null))
+                if (ad.Config.AlwaysStartInSpec || !CanEnterGame(arena, player, null))
                 {
                     workingShip = ShipType.Spec;
                 }
@@ -112,7 +112,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // Find an initial freq using the balancer and enforcer.
-                    workingFreqNum = FindEntryFreq(arena, p, null);
+                    workingFreqNum = FindEntryFreq(arena, player, null);
 
                     if (workingFreqNum == arena.SpecFreq)
                     {
@@ -120,7 +120,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        ShipMask mask = GetAllowableShips(arena, p, workingShip, workingFreqNum, null);
+                        ShipMask mask = GetAllowableShips(arena, player, workingShip, workingFreqNum, null);
                         if ((mask & workingShip.GetShipMask()) == ShipMask.None)
                         {
                             // The curent ship isn't valid, get one that is.
@@ -140,9 +140,9 @@ namespace SS.Core.Modules
             }
         }
 
-        void IFreqManager.ShipChange(Player p, ShipType workingShip, StringBuilder errorMessage)
+        void IFreqManager.ShipChange(Player player, ShipType workingShip, StringBuilder errorMessage)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -154,22 +154,22 @@ namespace SS.Core.Modules
             if (workingShip >= ShipType.Spec)
             {
                 // Always allow switching to spec.
-                _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
+                _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
                 return;
             }
 
             // See if the player is allowed to change their ship/freq.
-            if (!IsUnlocked(arena, p, errorMessage))
+            if (!IsUnlocked(arena, player, errorMessage))
             {
                 return; // passes along errorMessage, if any
             }
 
-            short workingFreqNum = p.Freq;
+            short workingFreqNum = player.Freq;
 
-            if (p.Ship == ShipType.Spec)
+            if (player.Ship == ShipType.Spec)
             {
                 // Trying to come out of spec. Check to see if the player can enter the game.
-                if (!CanEnterGame(arena, p, errorMessage))
+                if (!CanEnterGame(arena, player, errorMessage))
                 {
                     return; // passes along errorMessage, if any
                 }
@@ -177,7 +177,7 @@ namespace SS.Core.Modules
                 if (workingFreqNum == arena.SpecFreq)
                 {
                     // The player is coming from the spec freq, assign them a new freq.
-                    workingFreqNum = FindEntryFreq(arena, p, errorMessage);
+                    workingFreqNum = FindEntryFreq(arena, player, errorMessage);
                     if (workingFreqNum == arena.SpecFreq)
                     {
                         // An entry freq could not be found.
@@ -205,13 +205,13 @@ namespace SS.Core.Modules
             // Make sure the ship is legal.
             if (workingShip != ShipType.Spec)
             {
-                ShipMask mask = GetAllowableShips(arena, p, workingShip, workingFreqNum, errorMessage);
+                ShipMask mask = GetAllowableShips(arena, player, workingShip, workingFreqNum, errorMessage);
                 if ((mask & workingShip.GetShipMask()) == ShipMask.None)
                 {
-                    if ((mask & p.Ship.GetShipMask()) != ShipMask.None)
+                    if ((mask & player.Ship.GetShipMask()) != ShipMask.None)
                     {
                         // Default to the old ship.
-                        workingShip = p.Ship;
+                        workingShip = player.Ship;
                     }
                     else
                     {
@@ -226,12 +226,12 @@ namespace SS.Core.Modules
                 workingFreqNum = arena.SpecFreq;
             }
 
-            _game.SetShipAndFreq(p, workingShip, workingFreqNum); // UpdateFreqs will be called in the the ShipFreqChange callback.
+            _game.SetShipAndFreq(player, workingShip, workingFreqNum); // UpdateFreqs will be called in the the ShipFreqChange callback.
         }
 
-        void IFreqManager.FreqChange(Player p, short requestedFreqNum, StringBuilder errorMessage)
+        void IFreqManager.FreqChange(Player player, short requestedFreqNum, StringBuilder errorMessage)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -240,16 +240,16 @@ namespace SS.Core.Modules
 
             errorMessage?.Clear(); // Clear so that we can tell if an enforcer wrote a message.
 
-            ShipType workingShip = p.Ship;
+            ShipType workingShip = player.Ship;
             if (workingShip == ShipType.Spec && requestedFreqNum == arena.SpecFreq)
             {
                 // Always allow switching to the spec freq if the person is spectating.
-                _game.SetFreq(p, arena.SpecFreq);
+                _game.SetFreq(player, arena.SpecFreq);
                 return;
             }
 
             // See if the player is allows to change their ship/freq.
-            if (!IsUnlocked(arena, p, errorMessage))
+            if (!IsUnlocked(arena, player, errorMessage))
             {
                 return; // pass along errorMessage, if any
             }
@@ -257,9 +257,9 @@ namespace SS.Core.Modules
             if (requestedFreqNum < 0 || requestedFreqNum >= ad.Config.NumberOfFrequencies)
             {
                 // They requested a bad freq.
-                if (workingShip == ShipType.Spec && p.Freq != arena.SpecFreq)
+                if (workingShip == ShipType.Spec && player.Freq != arena.SpecFreq)
                 {
-                    _game.SetFreq(p, arena.SpecFreq);
+                    _game.SetFreq(player, arena.SpecFreq);
                 }
                 else
                 {
@@ -274,7 +274,7 @@ namespace SS.Core.Modules
             // allowed. Second, make sure that if spectators are only allowed on the
             // spec freq, that they have a ship they can use on that freq.
 
-            if (!CanChangeToFreq(arena, p, requestedFreqNum, errorMessage))
+            if (!CanChangeToFreq(arena, player, requestedFreqNum, errorMessage))
             {
                 return; // pass along errorMessage, if any
             }
@@ -283,19 +283,19 @@ namespace SS.Core.Modules
             {
                 // Since the player must come out of spec immediately, we must find them a ship.
 
-                if (!CanEnterGame(arena, p, errorMessage))
+                if (!CanEnterGame(arena, player, errorMessage))
                 {
                     return; // pass along errorMessage, if any
                 }
 
-                ShipMask mask = GetAllowableShips(arena, p, ShipType.Spec, requestedFreqNum, errorMessage);
+                ShipMask mask = GetAllowableShips(arena, player, ShipType.Spec, requestedFreqNum, errorMessage);
                 workingShip = GetShip(mask);
             }
             else if (workingShip != ShipType.Spec)
             {
                 // Since the player is already in game, we just need to make sure their ship is legal on their new freq,
                 // or find them a new ship if it's not.
-                ShipMask mask = GetAllowableShips(arena, p, ShipType.Spec, requestedFreqNum, errorMessage);
+                ShipMask mask = GetAllowableShips(arena, player, ShipType.Spec, requestedFreqNum, errorMessage);
                 if ((mask & workingShip.GetShipMask()) == ShipMask.None)
                 {
                     workingShip = GetShip(mask);
@@ -320,7 +320,7 @@ namespace SS.Core.Modules
             {
                 // The player passed all checks for being unlocked:
                 // being able to change to the target freq and having a legal ship.
-                _game.SetShipAndFreq(p, workingShip, requestedFreqNum); // UpdateFreqs will be called in the the ShipFreqChange callback.
+                _game.SetShipAndFreq(player, workingShip, requestedFreqNum); // UpdateFreqs will be called in the the ShipFreqChange callback.
             }
         }
 
@@ -328,7 +328,7 @@ namespace SS.Core.Modules
 
         #region IFreqBalancer
 
-        int IFreqBalancer.GetPlayerMetric(Player p)
+        int IFreqBalancer.GetPlayerMetric(Player player)
         {
             return 1;
         }
@@ -605,9 +605,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (action == PlayerAction.PreEnterArena)
@@ -616,7 +616,7 @@ namespace SS.Core.Modules
             }
             else if (action == PlayerAction.EnterArena)
             {
-                UpdateFreqs(arena, p, p.Freq, arena.SpecFreq);
+                UpdateFreqs(arena, player, player.Freq, arena.SpecFreq);
             }
             else if (action == PlayerAction.LeaveArena)
             {
@@ -626,27 +626,27 @@ namespace SS.Core.Modules
                     freqNum = pd.Freq.FreqNum;
 
                 // Pretend all players leaving pass through the spec freq on their way out.
-                UpdateFreqs(arena, p, arena.SpecFreq, freqNum);
+                UpdateFreqs(arena, player, arena.SpecFreq, freqNum);
             }
         }
 
-        private void Callback_PreShipFreqChange(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        private void Callback_PreShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            UpdateFreqs(p.Arena, p, newFreq, oldFreq);
+            UpdateFreqs(player.Arena, player, newFreq, oldFreq);
         }
 
         #endregion
 
-        private void UpdateFreqs(Arena arena, Player p, short newFreqNum, short oldFreqNum)
+        private void UpdateFreqs(Arena arena, Player player, short newFreqNum, short oldFreqNum)
         {
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (newFreqNum == oldFreqNum)
                 return;
 
             // Fake players are not supported. For now, use a custom balancer if you need to support fake players.
-            if (p.Type == ClientType.Fake)
+            if (player.Type == ClientType.Fake)
                 return;
 
             _playerData.Lock(); // TODO: review this lock
@@ -663,7 +663,7 @@ namespace SS.Core.Modules
                     Debug.Assert(freq == pd.Freq);
                     
                     // Remove player from freq.
-                    freq.Players.Remove(p);
+                    freq.Players.Remove(player);
                     pd.Freq = null;
 
                     // Possibly disband the freq altogether, if it's not required.
@@ -688,7 +688,7 @@ namespace SS.Core.Modules
                     }
 
                     // Add player to freq.
-                    freq.Players.Add(p);
+                    freq.Players.Add(player);
                     pd.Freq = freq;
                 }
             }
@@ -780,7 +780,7 @@ namespace SS.Core.Modules
             return ShipType.Spec;
         }
 
-        private short FindEntryFreq(Arena arena, Player p, StringBuilder errorMessage)
+        private short FindEntryFreq(Arena arena, Player player, StringBuilder errorMessage)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return arena.SpecFreq;
@@ -796,7 +796,7 @@ namespace SS.Core.Modules
 
             try
             {
-                int playerMetric = GetPlayerMetric(p, balancer);
+                int playerMetric = GetPlayerMetric(player, balancer);
 
                 short result = arena.SpecFreq;
                 int resultMetric = -1;
@@ -805,7 +805,7 @@ namespace SS.Core.Modules
 
                 for (i = 0; i < ad.Config.DesiredTeams; i++)
                 {
-                    if (!CanChangeToFreq(arena, p, i, errorMessage))
+                    if (!CanChangeToFreq(arena, player, i, errorMessage))
                         continue;
 
                     Freq freq = GetFreq(arena, i);
@@ -833,7 +833,7 @@ namespace SS.Core.Modules
                     {
                         Freq freq = GetFreq(arena, i);
 
-                        if (CanChangeToFreq(arena, p, i, errorMessage))
+                        if (CanChangeToFreq(arena, player, i, errorMessage))
                         {
                             if (freq == null
                                 || GetFreqMetric(freq, balancer) <= balancer.GetMaxMetric(arena, i) - playerMetric)
@@ -886,15 +886,15 @@ namespace SS.Core.Modules
             return null;
         }
 
-        private static int GetPlayerMetric(Player p, IFreqBalancer balancer)
+        private static int GetPlayerMetric(Player player, IFreqBalancer balancer)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (balancer == null)
                 throw new ArgumentNullException(nameof(balancer));
 
-            return p.IsHuman ? balancer.GetPlayerMetric(p) : 0;
+            return player.IsHuman ? balancer.GetPlayerMetric(player) : 0;
         }
 
         private int GetFreqMetric(Freq freq, IFreqBalancer balancer)

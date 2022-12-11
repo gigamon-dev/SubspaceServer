@@ -54,12 +54,12 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
                 // A biller module could have set the player's banner prior to this.
-                CheckAndSendBanner(p, false, false);
+                CheckAndSendBanner(player, false, false);
 
                 // Send everyone else's banner to the player.
                 _playerData.Lock();
@@ -70,7 +70,7 @@ namespace SS.Core.Modules
                     {
                         if (other.Status == PlayerState.Playing
                             && other.Arena == arena
-                            && other != p
+                            && other != player
                             && other.TryGetExtraData(_pdKey, out PlayerData opd))
                         {
                             lock (opd.Lock)
@@ -78,7 +78,7 @@ namespace SS.Core.Modules
                                 if (opd.Status == BannerStatus.Good)
                                 {
                                     S2C_Banner packet = new((short)other.Id, in opd.Banner);
-                                    _network.SendToOne(p, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityP1);
+                                    _network.SendToOne(player, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityP1);
                                 }
                             }
                         }
@@ -91,39 +91,39 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Banner(Player p, byte[] data, int length)
+        private void Packet_Banner(Player player, byte[] data, int length)
         {
             if (length != C2S_Banner.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Banners), p, $"Bad C2S banner packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, $"Bad C2S banner packet (length={length}).");
                 return;
             }
 
             // This implicitly catches setting from pre-playing states.
-            if (p.Arena == null)
+            if (player.Arena == null)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Banners), p, $"Tried to set a banner from outside an arena.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, $"Tried to set a banner from outside an arena.");
                 return;
             }
 
-            if (p.Ship != ShipType.Spec)
+            if (player.Ship != ShipType.Spec)
             {
-                _chat.SendMessage(p, "You must be in spectator mode to set a banner.");
-                _logManager.LogP(LogLevel.Info, nameof(Banners), p, "Tried to set a banner while in a ship.");
+                _chat.SendMessage(player, "You must be in spectator mode to set a banner.");
+                _logManager.LogP(LogLevel.Info, nameof(Banners), player, "Tried to set a banner while in a ship.");
                 return;
             }
 
             ref C2S_Banner pkt = ref MemoryMarshal.AsRef<C2S_Banner>(data);
-            SetBanner(p, in pkt.Banner, true);
-            _logManager.LogP(LogLevel.Drivel, nameof(Banners), p, "Set banner.");
+            SetBanner(player, in pkt.Banner, true);
+            _logManager.LogP(LogLevel.Drivel, nameof(Banners), player, "Set banner.");
         }
 
-        public void SetBanner(Player p, in Banner banner, bool isFromPlayer)
+        public void SetBanner(Player player, in Banner banner, bool isFromPlayer)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -131,17 +131,17 @@ namespace SS.Core.Modules
                 pd.Banner = banner; // copy
                 pd.Status = BannerStatus.Pending;
 
-                if (p.Status == PlayerState.Playing)
-                    CheckAndSendBanner(p, true, isFromPlayer);
+                if (player.Status == PlayerState.Playing)
+                    CheckAndSendBanner(player, true, isFromPlayer);
             }
         }
 
-        private void CheckAndSendBanner(Player p, bool notify, bool isFromPlayer)
+        private void CheckAndSendBanner(Player player, bool notify, bool isFromPlayer)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -151,7 +151,7 @@ namespace SS.Core.Modules
 
                 if (pd.Status == BannerStatus.Pending)
                 {
-                    if (IsAllowedBanner(p))
+                    if (IsAllowedBanner(player))
                     {
                         pd.Status = BannerStatus.Good;
                     }
@@ -161,30 +161,30 @@ namespace SS.Core.Modules
 
                         if (isFromPlayer)
                         {
-                            _logManager.LogP(LogLevel.Drivel, nameof(Banners), p, "Denied permission to use a banner.");
+                            _logManager.LogP(LogLevel.Drivel, nameof(Banners), player, "Denied permission to use a banner.");
                         }
                     }
                 }
 
                 if (pd.Status == BannerStatus.Good)
                 {
-                    Arena arena = p.Arena;
+                    Arena arena = player.Arena;
                     if (arena == null) // This can be null if the banner is from a biller module, and we'll come back later in the PlayerActionCallback to send it.
                         return;
 
                     // send to everyone
-                    S2C_Banner packet = new((short)p.Id, pd.Banner);
+                    S2C_Banner packet = new((short)player.Id, pd.Banner);
                     _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
 
                     if (notify)
                     {
-                        SetBannerCallback.Fire(arena, p, in pd.Banner, isFromPlayer);
+                        SetBannerCallback.Fire(arena, player, in pd.Banner, isFromPlayer);
                     }
                 }
             }
         }
 
-        private bool IsAllowedBanner(Player p) => p != null && _capabilityManager.HasCapability(p, Constants.Capabilities.SetBanner);
+        private bool IsAllowedBanner(Player player) => player != null && _capabilityManager.HasCapability(player, Constants.Capabilities.SetBanner);
 
         #region Helper types
 

@@ -389,7 +389,7 @@ namespace SS.Core.Modules
             return sum;
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             lock (_lockObj)
             {
@@ -402,15 +402,15 @@ namespace SS.Core.Modules
                     S2C_Security toSend = isOverride ? ad.OverridePacket.Value : _packet;
                     toSend.Key = 0; // no key
 
-                    _logManager.LogP(LogLevel.Drivel, nameof(Security), p,
+                    _logManager.LogP(LogLevel.Drivel, nameof(Security), player,
                         $"Sent seeds{(isOverride ? " (override)" : "")}: green={toSend.GreenSeed:X}, door={toSend.DoorSeed:X}, timestamp={toSend.Timestamp:X}.");
 
                     // Send the packet without a key (just syncing the client, not requesting the client to respond).
-                    _network.SendToOne(p, ref toSend, NetSendFlags.Reliable);
+                    _network.SendToOne(player, ref toSend, NetSendFlags.Reliable);
                 }
                 else if (action == PlayerAction.LeaveArena)
                 {
-                    if (p.TryGetExtraData(_pdKey, out PlayerData pd))
+                    if (player.TryGetExtraData(_pdKey, out PlayerData pd))
                     {
                         if (pd.Sent)
                         {
@@ -521,24 +521,24 @@ namespace SS.Core.Modules
             return false; // don't run again
         }
 
-        private void KickPlayer(Player p)
+        private void KickPlayer(Player player)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (_securityKickoff)
             {
-                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.BypassSecurity))
+                if (!_capabilityManager.HasCapability(player, Constants.Capabilities.BypassSecurity))
                 {
-                    _logManager.LogP(LogLevel.Info, nameof(Security), p, "Kicking off for security violation.");
-                    _playerData.KickPlayer(p);
+                    _logManager.LogP(LogLevel.Info, nameof(Security), player, "Kicking off for security violation.");
+                    _playerData.KickPlayer(player);
                 }
             }
         }
 
-        private void Packet_SecurityResponse(Player p, byte[] data, int length)
+        private void Packet_SecurityResponse(Player player, byte[] data, int length)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (data == null)
@@ -546,29 +546,29 @@ namespace SS.Core.Modules
 
             if (length < 0 || length < C2S_Security.Length)
             {
-                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Security), p, $"Got a security response with a bad packet length={length}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Got a security response with a bad packet length={length}.");
                 }
 
                 return;
             }
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
 
             if (arena == null)
             {
-                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but is not in an arena.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, "Got a security response, but is not in an arena.");
                 }
 
                 return;
             }
 
-            _logManager.LogP(LogLevel.Drivel, nameof(Security), p, "Got a security response.");
+            _logManager.LogP(LogLevel.Drivel, nameof(Security), player, "Got a security response.");
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -586,9 +586,9 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                         {
-                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Got a security response, but wasn't expecting one.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), player, "Got a security response, but wasn't expecting one.");
                         }
                     }
                 }
@@ -600,9 +600,9 @@ namespace SS.Core.Modules
 
                     if (pd.SettingsChecksum != 0 && pkt.SettingChecksum != pd.SettingsChecksum)
                     {
-                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                         {
-                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Settings checksum mismatch.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), player, "Settings checksum mismatch.");
                         }
 
                         kick = true;
@@ -610,9 +610,9 @@ namespace SS.Core.Modules
 
                     if (ad.MapChecksum != 0 && pkt.MapChecksum != ad.MapChecksum)
                     {
-                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                         {
-                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Map checksum mismatch.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), player, "Map checksum mismatch.");
                         }
 
                         kick = true;
@@ -620,14 +620,14 @@ namespace SS.Core.Modules
 
                     bool exeOk = false;
 
-                    if (p.Type == ClientType.VIE)
+                    if (player.Type == ClientType.VIE)
                     {
                         if (_vieExeChecksum == pkt.ExeChecksum)
                         {
                             exeOk = true;
                         }
                     }
-                    else if (p.Type == ClientType.Continuum)
+                    else if (player.Type == ClientType.Continuum)
                     {
                         if (_continuumExeChecksum != 0)
                         {
@@ -648,9 +648,9 @@ namespace SS.Core.Modules
 
                     if (!exeOk)
                     {
-                        if (!_capabilityManager.HasCapability(p, Constants.Capabilities.SuppressSecurity))
+                        if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                         {
-                            _logManager.LogP(LogLevel.Malicious, nameof(Security), p, "Exe checksum mismatch.");
+                            _logManager.LogP(LogLevel.Malicious, nameof(Security), player, "Exe checksum mismatch.");
                         }
 
                         kick = true;
@@ -658,7 +658,7 @@ namespace SS.Core.Modules
 
                     if (kick)
                     {
-                        KickPlayer(p);
+                        KickPlayer(player);
                     }
                 }
             }
@@ -678,7 +678,7 @@ namespace SS.Core.Modules
                 HighestPing = pkt.HighestPing,
             };
 
-            _lagCollect.ClientLatency(p, in cld);
+            _lagCollect.ClientLatency(player, in cld);
         }
 
         /// <summary>

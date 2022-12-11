@@ -339,9 +339,9 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        void IScoreStats.ScoreReset(Player p, PersistInterval interval)
+        void IScoreStats.ScoreReset(Player player, PersistInterval interval)
         {
-            if (p == null || !p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             DateTime now = DateTime.UtcNow;
@@ -1011,11 +1011,11 @@ namespace SS.Core.Modules.Scoring
             "target, yourself. By default, it will show arena stats. Use {-g} to switch it to\n" +
             "show global (zone-wide) stats. An interval name can be specified as an argument.\n" +
             "By default, the per-reset interval is used.")]
-        private void Command_stats(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_stats(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                targetPlayer = p;
+                targetPlayer = player;
             }
 
             if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -1037,7 +1037,7 @@ namespace SS.Core.Modules.Scoring
                     if (!Enum.TryParse(token, true, out interval)
                         || !_intervals.Contains(interval))
                     {
-                        _chat.SendMessage(p, $"Invalid interval");
+                        _chat.SendMessage(player, $"Invalid interval");
                         return;
                     }                    
                 }
@@ -1055,7 +1055,7 @@ namespace SS.Core.Modules.Scoring
                 if (stats == null)
                     return;
 
-                _chat.SendMessage(p, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != p ? targetPlayer.Name : "you" )}:");
+                _chat.SendMessage(player, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != player ? targetPlayer.Name : "you" )}:");
 
                 DateTime now = DateTime.UtcNow;
 
@@ -1076,27 +1076,27 @@ namespace SS.Core.Modules.Scoring
 
                     if (baseStatinfo is StatInfo<int> intStatInfo)
                     {
-                        _chat.SendMessage(p, $"  {statName}: {intStatInfo.Value}");
+                        _chat.SendMessage(player, $"  {statName}: {intStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<uint> uintStatInfo)
                     {
-                        _chat.SendMessage(p, $"  {statName}: {uintStatInfo.Value}");
+                        _chat.SendMessage(player, $"  {statName}: {uintStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<long> longStatInfo)
                     {
-                        _chat.SendMessage(p, $"  {statName}: {longStatInfo.Value}");
+                        _chat.SendMessage(player, $"  {statName}: {longStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<ulong> ulongStatInfo)
                     {
-                        _chat.SendMessage(p, $"  {statName}: {ulongStatInfo.Value}");
+                        _chat.SendMessage(player, $"  {statName}: {ulongStatInfo.Value}");
                     }
                     else if (baseStatinfo is StatInfo<DateTime> dateTimeStatInfo)
                     {
-                        _chat.SendMessage(p, $"  {statName}: {dateTimeStatInfo.Value}");
+                        _chat.SendMessage(player, $"  {statName}: {dateTimeStatInfo.Value}");
                     }
                     else if (baseStatinfo is TimerStatInfo timerStatInfo)
                     {
-                        _chat.SendMessage(p, $"  {statName}: {timerStatInfo.GetValueAsOf(now)}");
+                        _chat.SendMessage(player, $"  {statName}: {timerStatInfo.GetValueAsOf(now)}");
                     }
                 }
             }
@@ -1110,9 +1110,9 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_NewPlayer(Player p, bool isNew)
+        private void Callback_NewPlayer(Player player, bool isNew)
         {
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)

@@ -45,11 +45,22 @@ namespace SS.Core.ComponentInterfaces
         //
 
         /// <summary>
-        /// Pool of <see cref="Player"/> HashSets that can be reused.
+        /// Pool of <see cref="Player"/> <see cref="HashSet{T}"/>s that can be reused.
+        /// </summary>
+        /// <remarks>
         /// The set is guaranteed to be empty when it is taken from the pool.
         /// The set is automatically cleared when it is returned to the pool.
-        /// </summary>
+        /// </remarks>
         ObjectPool<HashSet<Player>> PlayerSetPool { get; }
+
+        /// <summary>
+        /// Pool of <see cref="Arena"/> <see cref="HashSet{T}"/>s that can be reused.
+        /// </summary>
+        /// <remarks>
+        /// The set is guaranteed to be empty when it is taken from the pool.
+        /// The set is automatically cleared when it is returned to the pool.
+        /// </remarks>
+        ObjectPool<HashSet<Arena>> ArenaSetPool { get; }
 
         /// <summary>
         /// Pool of <see cref="StringBuilder"/> objects.

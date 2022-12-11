@@ -55,15 +55,15 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterGame)
-                _allPlayerStats.StartTimer(p, StatCodes.ArenaTotalTime, null);
+                _allPlayerStats.StartTimer(player, StatCodes.ArenaTotalTime, null);
             else if (action == PlayerAction.LeaveArena)
-                _allPlayerStats.StopTimer(p, StatCodes.ArenaTotalTime, null);
+                _allPlayerStats.StopTimer(player, StatCodes.ArenaTotalTime, null);
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
             _allPlayerStats.IncrementStat(killer, StatCodes.Kills, null, 1);
             _allPlayerStats.IncrementStat(killed, StatCodes.Deaths, null, 1);
@@ -158,20 +158,20 @@ namespace SS.Core.Modules.Scoring
             _allPlayerStats.IncrementStat(player, StatCodes.TurfTags, null, 1);
         }
 
-        private void Callback_BallPickup(Arena arena, Player p, byte ballId)
+        private void Callback_BallPickup(Arena arena, Player player, byte ballId)
         {
-            _allPlayerStats.StartTimer(p, StatCodes.BallCarryTime, null);
-            _allPlayerStats.IncrementStat(p, StatCodes.BallCarries, null, 1);
+            _allPlayerStats.StartTimer(player, StatCodes.BallCarryTime, null);
+            _allPlayerStats.IncrementStat(player, StatCodes.BallCarries, null, 1);
         }
 
-        private void Callback_BallShoot(Arena arena, Player p, byte ballId)
+        private void Callback_BallShoot(Arena arena, Player player, byte ballId)
         {
-            _allPlayerStats.StopTimer(p, StatCodes.BallCarryTime, null);
+            _allPlayerStats.StopTimer(player, StatCodes.BallCarryTime, null);
         }
 
-        private void Callback_BallGoal(Arena arena, Player p, byte ballId, MapCoordinate coordinate)
+        private void Callback_BallGoal(Arena arena, Player player, byte ballId, MapCoordinate coordinate)
         {
-            _allPlayerStats.IncrementStat(p, StatCodes.BallGoals, null, 1);
+            _allPlayerStats.IncrementStat(player, StatCodes.BallGoals, null, 1);
         }
     }
 }

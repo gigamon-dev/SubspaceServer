@@ -12,28 +12,28 @@ namespace SS.Core.ComponentInterfaces
         /// Encrypts data for a player.
         /// </summary>
         /// <remarks>Data is encrypted in place.</remarks>
-        /// <param name="p">The player encrypting data for.</param>
+        /// <param name="player">The player encrypting data for.</param>
         /// <param name="data">The buffer to encrypt.  This is guaranteed to be larger than <paramref name="len"/> by at least 4 bytes.</param>
         /// <param name="len">The # of bytes to encrypt within <paramref name="data"/>.</param>
         /// <returns>length of the resulting data</returns>
-        int Encrypt(Player p, Span<byte> data, int len);
+        int Encrypt(Player player, Span<byte> data, int len);
 
         /// <summary>
         /// Decrypts data for a player.
         /// </summary>
         /// <remarks>Data is encrypted in place.</remarks>
-        /// <param name="p">The player decrypting data for.</param>
+        /// <param name="player">The player decrypting data for.</param>
         /// <param name="data">The buffer to decrypt.  This is guaranteed to be larger than <paramref name="len"/> by at least 4 bytes.</param>
         /// <param name="len">The # of bytes to decrypt within <paramref name="data"/>.</param>
         /// <returns>length of the resulting data</returns>
-        int Decrypt(Player p, Span<byte> data, int len);
+        int Decrypt(Player player, Span<byte> data, int len);
 
         /// <summary>
         /// Called when encryption info for a player is no longer needed (e.g. the player disconnects).
         /// This allows for cleanup to be done, if needed.
         /// </summary>
-        /// <param name="p">The player to cleanup for.</param>
-        void Void(Player p);
+        /// <param name="player">The player to cleanup for.</param>
+        void Void(Player player);
     }
 
     /// <summary>

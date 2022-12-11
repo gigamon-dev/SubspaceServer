@@ -134,11 +134,11 @@ namespace SS.Core.Modules
             Targets = CommandTarget.Any,
             Args = "<redirect alias> | <ip>:<port>[:<arena>]",
             Description = "Redirects the target to a different zone.")]
-        private void Command_redirect(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_redirect(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.Type == TargetType.Arena)
             {
-                target = p;
+                target = player;
             }
 
             ((IRedirect)this).AliasRedirect(target, parameters);

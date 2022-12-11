@@ -50,7 +50,9 @@ cmd_endinterval
 cmd_flaginfo
 cmd_neutflag
 
+cmd_setship
 privcmd_setship
+cmd_setfreq
 privcmd_setfreq
 cmd_specall
 privcmd_specall

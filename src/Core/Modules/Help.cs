@@ -171,7 +171,7 @@ namespace SS.Core.Modules
             "Displays help on a command or config file setting. Use {section:}\n" +
             "to list known keys in that section. Use {:} to list known section\n" +
             "names.")]
-        private void Command_help(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_help(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!parameters.IsWhiteSpace())
             {
@@ -194,97 +194,97 @@ namespace SS.Core.Modules
 
                 if (section.IsWhiteSpace())
                 {
-                    PrintConfigSections(p);
+                    PrintConfigSections(player);
                 }
                 else if (key.IsWhiteSpace())
                 {
-                    PrintConfigSectionKeys(p, section);
+                    PrintConfigSectionKeys(player, section);
                 }
                 else
                 {
-                    PrintConfigHelp(p, section.ToString(), key.ToString()); // TODO: remove LINQ and string allocation
+                    PrintConfigHelp(player, section.ToString(), key.ToString()); // TODO: remove LINQ and string allocation
                 }
             }
             else
             {
-                PrintCommandHelp(p, parameters);
+                PrintCommandHelp(player, parameters);
             }
         }
 
-        private void PrintConfigSections(Player p)
+        private void PrintConfigSections(Player player)
         {
-            _chat.SendMessage(p, "Known config file sections:");
-            _chat.SendWrappedText(p, _sectionGroupsStr);
+            _chat.SendMessage(player, "Known config file sections:");
+            _chat.SendWrappedText(player, _sectionGroupsStr);
         }
 
-        private void PrintConfigSectionKeys(Player p, ReadOnlySpan<char> section)
+        private void PrintConfigSectionKeys(Player player, ReadOnlySpan<char> section)
         {
             if (!_sectionAllKeysDictionary.TryGetValue(section, out string allKeysStr))
             {
-                _chat.SendMessage(p, $"I don't know anything about section {section}.");
+                _chat.SendMessage(player, $"I don't know anything about section {section}.");
                 return;
             }
 
-            _chat.SendMessage(p, $"Known keys in section {section}:");
-            _chat.SendWrappedText(p, allKeysStr);
+            _chat.SendMessage(player, $"Known keys in section {section}:");
+            _chat.SendWrappedText(player, allKeysStr);
         }
 
-        private void PrintConfigHelp(Player p, string section, string key)
+        private void PrintConfigHelp(Player player, string section, string key)
         {
             if (!_settingsLookup.Contains(section))
             {
-                _chat.SendMessage(p, $"I don't know anything about section {section}.");
+                _chat.SendMessage(player, $"I don't know anything about section {section}.");
                 return;
             }
 
             var keys = _settingsLookup[section].Where(tuple => string.Equals(tuple.Attr.Key, key, StringComparison.OrdinalIgnoreCase));
             if (!keys.Any())
             {
-                _chat.SendMessage(p, $"I don't know anything about key {key}.");
+                _chat.SendMessage(player, $"I don't know anything about key {key}.");
                 return;
             }
 
             foreach ((ConfigHelpAttribute attr, string moduleTypeName) in keys)
             {
-                _chat.SendMessage(p, $"Help on setting {section}:{attr.Key}:");
+                _chat.SendMessage(player, $"Help on setting {section}:{attr.Key}:");
                 
                 if (!string.IsNullOrWhiteSpace(moduleTypeName))
-                    _chat.SendMessage(p, $"  Requires module: {moduleTypeName}");
+                    _chat.SendMessage(player, $"  Requires module: {moduleTypeName}");
 
                 if(string.IsNullOrWhiteSpace(attr.FileName))
-                    _chat.SendMessage(p, $"  Location: {attr.Scope}");
+                    _chat.SendMessage(player, $"  Location: {attr.Scope}");
                 else
-                    _chat.SendMessage(p, $"  Location: {attr.Scope}, File: {attr.FileName}");
+                    _chat.SendMessage(player, $"  Location: {attr.Scope}, File: {attr.FileName}");
 
-                _chat.SendMessage(p, $"  Type: {attr.Type.Name}");
+                _chat.SendMessage(player, $"  Type: {attr.Type.Name}");
 
                 if (!string.IsNullOrWhiteSpace(attr.Range))
-                    _chat.SendMessage(p, $"  Range: {attr.Range}");
+                    _chat.SendMessage(player, $"  Range: {attr.Range}");
 
                 if (!string.IsNullOrWhiteSpace(attr.DefaultValue))
-                    _chat.SendMessage(p, $"  Default: {attr.DefaultValue}");
+                    _chat.SendMessage(player, $"  Default: {attr.DefaultValue}");
 
-                _chat.SendWrappedText(p, attr.Description);
+                _chat.SendWrappedText(player, attr.Description);
             }
         }
 
-        private void PrintCommandHelp(Player p, ReadOnlySpan<char> command)
+        private void PrintCommandHelp(Player player, ReadOnlySpan<char> command)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            string helpText = _commandManager.GetHelpText(command, p.Arena);
+            string helpText = _commandManager.GetHelpText(command, player.Arena);
 
             if (string.IsNullOrWhiteSpace(helpText))
             {
-                _chat.SendMessage(p, $"Sorry, I don't know anything about '?{command}'.");
+                _chat.SendMessage(player, $"Sorry, I don't know anything about '?{command}'.");
                 return;
             }
 
-            _chat.SendMessage(p, $"Help on '?{command}':");
+            _chat.SendMessage(player, $"Help on '?{command}':");
             foreach (string str in helpText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                _chat.SendMessage(p, str);
+                _chat.SendMessage(player, str);
             }
         }
     }

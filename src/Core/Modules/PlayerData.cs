@@ -294,15 +294,15 @@ namespace SS.Core.Modules
                     return;
             }
 
-            static bool Matches(ITarget t, Player p)
+            static bool Matches(ITarget target, Player player)
             {
-                if (t == null || p == null)
+                if (target == null || player == null)
                     return false;
 
-                return t.Type switch
+                return target.Type switch
                 {
-                    TargetType.Arena => p.Arena == ((IArenaTarget)t).Arena,
-                    TargetType.Freq => (t is ITeamTarget teamTarget) && (p.Arena == teamTarget.Arena) && (p.Freq == teamTarget.Freq),
+                    TargetType.Arena => player.Arena == ((IArenaTarget)target).Arena,
+                    TargetType.Freq => (target is ITeamTarget teamTarget) && (player.Arena == teamTarget.Arena) && (player.Freq == teamTarget.Freq),
                     TargetType.Zone => true,
                     _ => false,
                 };

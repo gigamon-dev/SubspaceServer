@@ -15,9 +15,9 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="killed">The player that was killed.</param>
         /// <param name="bounty">The bounty of the <paramref name="killed"/> player</param>
         /// <param name="flagCount">The number of flags the <paramref name="killed"/> player was holding.</param>
-        /// <param name="pts">The number of points awarded to the <paramref name="killer"/>.</param>
+        /// <param name="points">The number of points awarded to the <paramref name="killer"/>.</param>
         /// <param name="green">The type of green prize dropped.</param>
-        public delegate void KillDelegate(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green);
+        public delegate void KillDelegate(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green);
 
         public static void Register(ComponentBroker broker, KillDelegate handler)
         {

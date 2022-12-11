@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
-    public delegate void MessageDelegate(Player p, ReadOnlySpan<char> message);
+    public delegate void MessageDelegate(Player player, ReadOnlySpan<char> message);
 
     public interface IChatNet : IComponentInterface
     {
@@ -11,12 +11,12 @@ namespace SS.Core.ComponentInterfaces
 
         void RemoveHandler(string type, MessageDelegate handler);
 
-        void SendToOne(Player p, ReadOnlySpan<char> message);
+        void SendToOne(Player player, ReadOnlySpan<char> message);
 
         void SendToArena(Arena arena, Player except, ReadOnlySpan<char> message);
 
         void SendToSet(IEnumerable<Player> set, ReadOnlySpan<char> message);
 
-        //void GetClientStats(Player p, )
+        //void GetClientStats(Player player, )
     }
 }

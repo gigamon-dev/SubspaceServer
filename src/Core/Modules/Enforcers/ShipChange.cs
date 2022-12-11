@@ -150,9 +150,9 @@ namespace SS.Core.Modules.Enforcers
             }
         }
 
-        private void Callback_ShipFreqChange(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (newShip != oldShip && newShip != ShipType.Spec)

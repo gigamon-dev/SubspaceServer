@@ -10,26 +10,26 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Called when a player connects and needs to be assigned to a freq.
         /// </summary>
-        /// <param name="p"></param>
+        /// <param name="player"></param>
         /// <param name="ship">will initially contain the requested ship</param>
         /// <param name="freq">will initially contain -1</param>
-        void Initial(Player p, ref ShipType ship, ref short freq);
+        void Initial(Player player, ref ShipType ship, ref short freq);
 
         /// <summary>
         /// Called when a player requests a ship change.
         /// </summary>
-        /// <param name="p"></param>
+        /// <param name="player"></param>
         /// <param name="requestedShip">will initially contain the requested ship</param>
         /// <param name="errorMessage"></param>
-        void ShipChange(Player p, ShipType requestedShip, StringBuilder errorMessage);
+        void ShipChange(Player player, ShipType requestedShip, StringBuilder errorMessage);
 
         /// <summary>
         /// Called when a player requests a freq change.
         /// </summary>
-        /// <param name="p"></param>
+        /// <param name="player"></param>
         /// <param name="requestedShip">will initially contain the requested ship</param>
         /// <param name="errorMessage"></param>
-        void FreqChange(Player p, short requestedFreqNum, StringBuilder errorMessage);
+        void FreqChange(Player player, short requestedFreqNum, StringBuilder errorMessage);
     }
 
     /// <summary>
@@ -44,9 +44,9 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// <see cref="Modules.FreqManager"/> uses this to ensure the teams are balanced.
         /// </remarks>
-        /// <param name="p"></param>
+        /// <param name="player"></param>
         /// <returns></returns>
-        int GetPlayerMetric(Player p);
+        int GetPlayerMetric(Player player);
 
         /// <summary>
         /// Gets a team's maximum balance metric.

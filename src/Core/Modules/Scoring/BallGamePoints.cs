@@ -190,7 +190,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_BallGoal(Arena arena, Player p, byte ballId, MapCoordinate coordinate)
+        private void Callback_BallGoal(Arena arena, Player player, byte ballId, MapCoordinate coordinate)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
@@ -201,7 +201,7 @@ namespace SS.Core.Modules.Scoring
             //if (!_balls.TryGetBallData(arena, ballId, out BallData ballData))
                 //return;
 
-            short scoringFreq = p.Freq; // TODO: investigate how ASSS has a value other than -1 when it accesses ballData.Freq;
+            short scoringFreq = player.Freq; // TODO: investigate how ASSS has a value other than -1 when it accesses ballData.Freq;
             if (scoringFreq < 0)
                 return;
 
@@ -237,15 +237,15 @@ namespace SS.Core.Modules.Scoring
 
                 try
                 {
-                    foreach (Player player in _playerData.Players)
+                    foreach (Player otherPlayer in _playerData.Players)
                     {
-                        if (player.Arena == arena
-                            && player.Status == PlayerState.Playing)
+                        if (otherPlayer.Arena == arena
+                            && otherPlayer.Status == PlayerState.Playing)
                         {
-                            if (player.Freq == p.Freq)
-                                teamSet.Add(player);
+                            if (otherPlayer.Freq == player.Freq)
+                                teamSet.Add(otherPlayer);
                             else
-                                enemySet.Add(player);
+                                enemySet.Add(otherPlayer);
                         }
                     }
                 }
@@ -258,13 +258,13 @@ namespace SS.Core.Modules.Scoring
                 {
                     points = RewardPoints(arena, scoringFreq);
 
-                    _chat.SendSetMessage(teamSet, ChatSound.Goal, $"Team Goal! by {p.Name}  Reward:{points}");
-                    _chat.SendSetMessage(enemySet, ChatSound.Goal, $"Enemy Goal! by {p.Name}  Reward:{points}");
+                    _chat.SendSetMessage(teamSet, ChatSound.Goal, $"Team Goal! by {player.Name}  Reward:{points}");
+                    _chat.SendSetMessage(enemySet, ChatSound.Goal, $"Enemy Goal! by {player.Name}  Reward:{points}");
                 }
                 else
                 {
-                    _chat.SendSetMessage(teamSet, ChatSound.Goal, $"Team Goal! by {p.Name}");
-                    _chat.SendSetMessage(enemySet, ChatSound.Goal, $"Enemy Goal! by {p.Name}");
+                    _chat.SendSetMessage(teamSet, ChatSound.Goal, $"Team Goal! by {player.Name}");
+                    _chat.SendSetMessage(enemySet, ChatSound.Goal, $"Enemy Goal! by {player.Name}");
 
                     if (nullGoal)
                     {
@@ -288,7 +288,7 @@ namespace SS.Core.Modules.Scoring
             // However, what rules does the client logic use regarding being in a safe zone and being in spec mode?
             _scoreStats.SendUpdates(arena, null);
 
-            BallGameGoalCallback.Fire(arena, arena, p, ballId, coordinate);
+            BallGameGoalCallback.Fire(arena, arena, player, ballId, coordinate);
 
             if (ad.Mode != SoccerMode.All)
             {
@@ -307,21 +307,21 @@ namespace SS.Core.Modules.Scoring
             Description = "Changes score of current soccer game, based on arguments. Only supports\n" +
             "first eight freqs, and arena must be in absolute scoring mode \n" +
             "(Soccer:CapturePoints < 0).")]
-        private void Command_setscore(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_setscore(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             if (ad.Mode == SoccerMode.All)
             {
-                _chat.SendMessage(p, "Arena cannot be in Soccer:Mode=all");
+                _chat.SendMessage(player, "Arena cannot be in Soccer:Mode=all");
                 return;
             }
 
             if (ad.IsStealPoints)
             {
-                _chat.SendMessage(p, "Arena must be using absolute scoring (Soccer:CapturePoints < 0).");
+                _chat.SendMessage(player, "Arena must be using absolute scoring (Soccer:CapturePoints < 0).");
                 return;
             }
 
@@ -335,7 +335,7 @@ namespace SS.Core.Modules.Scoring
             {
                 if (!int.TryParse(token, out int score))
                 {
-                    _chat.SendMessage(p, $"Invalid input: '{token}'. It must be an integer.");
+                    _chat.SendMessage(player, $"Invalid input: '{token}'. It must be an integer.");
                     return;
                 }
 
@@ -352,22 +352,22 @@ namespace SS.Core.Modules.Scoring
             Targets = CommandTarget.None,
             Args = null,
             Description = "Returns the current score of the soccer game in progress.")]
-        private void Command_score(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_score(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
-            PrintScoreMessage(arena, p);
+            PrintScoreMessage(arena, player);
         }
 
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
             Description = "Resets soccer game scores and balls.")]
-        private void Command_resetgame(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_resetgame(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ResetGame(p.Arena, p);
+            ResetGame(player.Arena, player);
         }
 
         #endregion

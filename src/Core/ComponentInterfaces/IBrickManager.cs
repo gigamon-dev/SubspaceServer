@@ -64,10 +64,10 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Handles a brick drop request from a player.
         /// </summary>
-        /// <param name="p">The player that sent the request.</param>
+        /// <param name="player">The player that sent the request.</param>
         /// <param name="x">The x-coordinate of the request, from the <see cref="Packets.Game.C2S_Brick"/> packet.</param>
         /// <param name="y">The y-coordinate of the request, from the <see cref="Packets.Game.C2S_Brick"/> packet.</param>
         /// <param name="bricks">The list to add locations to. Note, a handler can decide to drop more than one brick per request.</param>
-        void HandleBrick(Player p, short x, short y, IList<BrickLocation> bricks);
+        void HandleBrick(Player player, short x, short y, IList<BrickLocation> bricks);
     }
 }

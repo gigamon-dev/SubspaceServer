@@ -174,7 +174,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
@@ -183,20 +183,20 @@ namespace SS.Core.Modules
 
                 lock (abd.Lock)
                 {
-                    ExpireBricks(p.Arena);
+                    ExpireBricks(player.Arena);
                     
                     // Send active bricks to the player.
-                    SendToPlayerOrArena(p, null, abd.Bricks, 0);
+                    SendToPlayerOrArena(player, null, abd.Bricks, 0);
                 }
             }
         }
 
-        private void Callback_DoBrickMode(Player p, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
+        private void Callback_DoBrickMode(Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -216,9 +216,9 @@ namespace SS.Core.Modules
             if (brickMode == BrickMode.Lateral)
             {
                 // For making brick direction deterministic when rotation is at exactly 45 degrees (rotation of 5, 15, 25, or 35).
-                bool isLastRotationClockwise = p.Position.IsLastRotationClockwise;
+                bool isLastRotationClockwise = player.Position.IsLastRotationClockwise;
 
-                BrickDirection direction = p.Position.Rotation switch
+                BrickDirection direction = player.Position.Rotation switch
                 {
                     > 35 or < 5 or (> 15 and < 25) => BrickDirection.Horizontal,
                     (> 5 and < 15) or (> 25 and < 35) => BrickDirection.Vertical,
@@ -311,19 +311,19 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Brick(Player p, byte[] data, int length)
+        private void Packet_Brick(Player player, byte[] data, int length)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
 
             if (length != C2S_Brick.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Bricks), p, $"Bad packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Bricks), player, $"Bad packet (length={length}).");
                 return;
             }
 
-            if (p.Status != PlayerState.Playing || p.Ship == ShipType.Spec || arena == null)
+            if (player.Status != PlayerState.Playing || player.Ship == ShipType.Spec || arena == null)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Bricks), p, $"Ignored request from bad state.");
+                _logManager.LogP(LogLevel.Warn, nameof(Bricks), player, $"Ignored request from bad state.");
                 return;
             }
 
@@ -347,11 +347,11 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        brickHandler.HandleBrick(p, c2sBrick.X, c2sBrick.Y, brickList);
+                        brickHandler.HandleBrick(player, c2sBrick.X, c2sBrick.Y, brickList);
 
                         // TODO: AntiBrickWarpDistance logic
 
-                        DropBricks(arena, p.Freq, brickList);
+                        DropBricks(arena, player.Freq, brickList);
                     }
                     finally
                     {
@@ -538,19 +538,19 @@ namespace SS.Core.Modules
         // NOTE: compared to ASSS, the callback passes Player instead of Arena.
         // This means more information about the player can be accessed (including rotation, velocity, etc.).
         // Of course, the arena can be accessed through the player too.
-        void IBrickHandler.HandleBrick(Player p, short x, short y, IList<BrickLocation> bricks)
+        void IBrickHandler.HandleBrick(Player player, short x, short y, IList<BrickLocation> bricks)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
             if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
                 return;
 
-            DoBrickModeCallback.Fire(arena, p, abd.BrickMode, x, y, abd.BrickSpan, bricks);
+            DoBrickModeCallback.Fire(arena, player, abd.BrickMode, x, y, abd.BrickSpan, bricks);
         }
 
         #region Helper types

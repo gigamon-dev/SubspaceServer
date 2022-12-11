@@ -619,27 +619,27 @@ namespace SS.Core.Modules
             "A slash '/' means you can send the command in a private message to a player, " +
             "the effects will then apply to that player only.\n" +
             "A colon ':' means you can send the command in a private message to a player in a different arena")]
-        private void Command_commands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_commands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (_chat == null)
                 return;
 
             if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
-                _chat.SendMessage(p, $"'{targetPlayer.Name}' can use the following commands:");
-                ListCommands(p.Arena, targetPlayer, p, false, true);
+                _chat.SendMessage(player, $"'{targetPlayer.Name}' can use the following commands:");
+                ListCommands(player.Arena, targetPlayer, player, false, true);
             }
             else
             {
-                _chat.SendMessage(p, "You can use the following commands:");
-                ListCommands(p.Arena, p, p, false, true);
+                _chat.SendMessage(player, "You can use the following commands:");
+                ListCommands(player.Arena, player, player, false, true);
             }
 
             string helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
             if (string.IsNullOrWhiteSpace(helpCommandName))
                 helpCommandName = "man";
 
-            _chat.SendMessage(p, $"Use ?{helpCommandName} <command name> to learn more about a command.");
+            _chat.SendMessage(player, $"Use ?{helpCommandName} <command name> to learn more about a command.");
         }
 
         [CommandHelp(
@@ -654,22 +654,22 @@ namespace SS.Core.Modules
             "A slash '/' means you can send the command in a private message to a player, " +
             "the effects will then apply to that player only.\n" +
             "A colon ':' means you can send the command in a private message to a player in a different arena")]
-        private void Command_allcommands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_allcommands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (_chat == null)
                 return;
 
-            _chat.SendMessage(p, "All commands:");
-            ListCommands(p.Arena, p, p, false, false);
+            _chat.SendMessage(player, "All commands:");
+            ListCommands(player.Arena, player, player, false, false);
 
             string helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
             if (string.IsNullOrWhiteSpace(helpCommandName))
                 helpCommandName = "man";
 
-            _chat.SendMessage(p, $"Use ?{helpCommandName} <command name> to learn more about a command.");
+            _chat.SendMessage(player, $"Use ?{helpCommandName} <command name> to learn more about a command.");
         }
 
-        private void ListCommands(Arena arena, Player p, Player sendTo, bool excludeGlobal, bool excludeNoAccess)
+        private void ListCommands(Arena arena, Player player, Player sendTo, bool excludeGlobal, bool excludeNoAccess)
         {
             if (_chat == null)
                 return;
@@ -684,9 +684,9 @@ namespace SS.Core.Modules
                 foreach (var (commandName, commandDataList) in _cmdLookup)
                 {
                     var commandNameSpan = commandName.Span;
-                    bool canArena = Allowed(p, commandNameSpan, "cmd", null);
-                    bool canPriv = Allowed(p, commandNameSpan, "privcmd", null);
-                    bool canRemotePriv = Allowed(p, commandNameSpan, "rprivcmd", null);
+                    bool canArena = Allowed(player, commandNameSpan, "cmd", null);
+                    bool canPriv = Allowed(player, commandNameSpan, "privcmd", null);
+                    bool canRemotePriv = Allowed(player, commandNameSpan, "rprivcmd", null);
 
                     if (excludeNoAccess && !canArena && !canPriv && !canRemotePriv)
                         continue;

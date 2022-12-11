@@ -1123,7 +1123,7 @@ namespace SS.Core.Modules
             {
                 if (Ok(player, ChatMessageType.Command))
                 {
-                    ITarget target = Target.TeamTarget(player.Arena, player.Freq);
+                    ITarget target = Target.TeamTarget(player.Arena, freq);
                     RunCommands(text, player, target, sound);
                 }
             }
@@ -1312,7 +1312,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendReply(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player p, int fromPid, Span<char> msg, int chatNetOffset)
+        private void SendReply(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player player, int fromPid, Span<char> msg, int chatNetOffset)
         {
             //string ctype = GetChatType(type);
 
@@ -1339,10 +1339,10 @@ namespace SS.Core.Modules
             {
                 if (_obscene != null)
                 {
-                    foreach (Player player in set)
+                    foreach (Player otherPlayer in set)
                     {
-                        if (player.Flags.ObscenityFilter)
-                            filteredSet.Add(player);
+                        if (otherPlayer.Flags.ObscenityFilter)
+                            filteredSet.Add(otherPlayer);
                     }
 
                     set.ExceptWith(filteredSet);

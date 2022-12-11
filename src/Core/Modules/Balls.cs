@@ -275,20 +275,20 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             // Players entering will automaticaly get ball information by packets sent by the timer. Nothing special needed here for that.
 
             if (action == PlayerAction.LeaveArena)
-                CleanupAfter(arena, p, null, true, true);
+                CleanupAfter(arena, player, null, true, true);
         }
 
-        private void Callback_ShipFreqChange(Player p, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            CleanupAfter(p.Arena, p, null, true, false);
+            CleanupAfter(player.Arena, player, null, true, false);
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
             if (arena == null)
                 return;
@@ -306,32 +306,32 @@ namespace SS.Core.Modules
 
         #region Packet handlers
 
-        private void Packet_PickupBall(Player p, byte[] data, int length)
+        private void Packet_PickupBall(Player player, byte[] data, int length)
         {
             if (length != C2S_PickupBall.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Balls), p, $"Bad ball pick up packet (length={length}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball pick up packet (length={length}.");
                 return;
             }
 
-            Arena arena = p.Arena;
-            if (arena == null || p.Status != PlayerState.Playing)
+            Arena arena = player.Arena;
+            if (arena == null || player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), p, $"Ball pick up packet from bad arena or status (status={p.Status}).");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"Ball pick up packet from bad arena or status (status={player.Status}).");
                 return;
             }
 
-            if (p.Ship >= ShipType.Spec)
+            if (player.Ship >= ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: ball pick up from spectator mode.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball pick up from spectator mode.");
                 return;
             }
 
             ref C2S_PickupBall c2s = ref MemoryMarshal.AsRef<C2S_PickupBall>(data);
 
-            if (p.Flags.NoFlagsBalls)
+            if (player.Flags.NoFlagsBalls)
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(Balls), p, $"Too lagged to pick up ball {c2s.BallId}.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Balls), player, $"Too lagged to pick up ball {c2s.BallId}.");
                 return;
             }
 
@@ -344,7 +344,7 @@ namespace SS.Core.Modules
 
                 if (ballId >= ad.BallCount)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, $"State sync problem: tried to pick up nonexistant ball {ballId}");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried to pick up nonexistant ball {ballId}");
                     return;
                 }
 
@@ -354,20 +354,20 @@ namespace SS.Core.Modules
                 // Make sure someone else didn't get it first.
                 if (bd.State != BallState.OnMap)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: tried to pick up a ball that can't be picked up at the moment.");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: tried to pick up a ball that can't be picked up at the moment.");
                     return;
                 }
 
-                if (c2s.Time != bd.Time && (p != extraInfo.LastKiller || c2s.Time != extraInfo.KillerValidPickupTime))
+                if (c2s.Time != bd.Time && (player != extraInfo.LastKiller || c2s.Time != extraInfo.KillerValidPickupTime))
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: tried to pick up a ball from stale coords.");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: tried to pick up a ball from stale coords.");
                     return;
                 }
 
                 // Make sure the player doesn't carry more than one ball.
                 for (int i = 0; i < ad.BallCount; i++)
                 {
-                    if (ad.Balls[i].Carrier == p
+                    if (ad.Balls[i].Carrier == player
                         && ad.Balls[i].State == BallState.Carried
                         && i != ballId)
                     {
@@ -378,12 +378,12 @@ namespace SS.Core.Modules
                 BallData defaultBallData = bd;
 
                 bd.State = BallState.Carried;
-                bd.X = p.Position.X;
-                bd.Y = p.Position.Y;
+                bd.X = player.Position.X;
+                bd.Y = player.Position.Y;
                 bd.XSpeed = 0;
                 bd.YSpeed = 0;
-                bd.Carrier = p;
-                bd.Freq = p.Freq;
+                bd.Carrier = player;
+                bd.Freq = player.Freq;
                 bd.Time = 0;
                 bd.LastUpdate = ServerTick.Now;
 
@@ -393,7 +393,7 @@ namespace SS.Core.Modules
                 var advisors = arena.GetAdvisors<IBallsAdvisor>();
                 foreach (var advisor in advisors)
                 {
-                    if (!(allow = advisor.AllowPickupBall(arena, p, ballId, ref bd)))
+                    if (!(allow = advisor.AllowPickupBall(arena, player, ballId, ref bd)))
                         break;
                 }
 
@@ -409,31 +409,31 @@ namespace SS.Core.Modules
                     SendBallPacket(arena, ballId);
 
                     // now call callbacks
-                    BallPickupCallback.Fire(arena, arena, p, ballId);
+                    BallPickupCallback.Fire(arena, arena, player, ballId);
 
-                    _logManager.LogP(LogLevel.Info, nameof(Balls), p, $"Picked up ball {ballId}.");
+                    _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Picked up ball {ballId}.");
                 }
             }
         }
 
-        private void Packet_ShootBall(Player p, byte[] data, int length)
+        private void Packet_ShootBall(Player player, byte[] data, int length)
         {
             if (length != BallPacket.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Balls), p, $"Bad ball shoot packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball shoot packet (length={length}).");
                 return;
             }
 
-            Arena arena = p.Arena;
-            if (arena == null || p.Status != PlayerState.Playing)
+            Arena arena = player.Arena;
+            if (arena == null || player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "Ball fire packet from bad arena or status.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "Ball fire packet from bad arena or status.");
                 return;
             }
 
-            if (p.Ship >= ShipType.Spec)
+            if (player.Ship >= ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: ball shoot packet from specator mode.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball shoot packet from specator mode.");
                 return;
             }
 
@@ -447,16 +447,16 @@ namespace SS.Core.Modules
             {
                 if (ballId >= ad.BallCount)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, $"State sync problem: tried to shoot nonexistant ball {ballId}");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried to shoot nonexistant ball {ballId}");
                     return;
                 }
 
                 ref BallData bd = ref ad.Balls[ballId];
                 ref ExtraBallStateInfo extraInfo = ref ad.ExtraBallStateInfo[ballId];
 
-                if (bd.State != BallState.Carried || bd.Carrier != p)
+                if (bd.State != BallState.Carried || bd.Carrier != player)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: tried to shoot ball he wasn't carrying.");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: tried to shoot ball he wasn't carrying.");
                     return;
                 }
 
@@ -467,7 +467,7 @@ namespace SS.Core.Modules
                 bd.Y = c2s.Y;
                 bd.XSpeed = c2s.XSpeed;
                 bd.YSpeed = c2s.YSpeed;
-                bd.Freq = p.Freq;
+                bd.Freq = player.Freq;
                 bd.Time = c2s.Time;
                 bd.LastUpdate = ServerTick.Now;
 
@@ -477,7 +477,7 @@ namespace SS.Core.Modules
                 var advisors = arena.GetAdvisors<IBallsAdvisor>();
                 foreach (var advisor in advisors)
                 {
-                    if (!(allow = advisor.AllowShootBall(arena, p, ballId, false, ref bd)))
+                    if (!(allow = advisor.AllowShootBall(arena, player, ballId, false, ref bd)))
                         break;
                 }
 
@@ -493,9 +493,9 @@ namespace SS.Core.Modules
                     SendBallPacket(arena, ballId);
 
                     // now call callbacks
-                    BallShootCallback.Fire(arena, arena, p, ballId);
+                    BallShootCallback.Fire(arena, arena, player, ballId);
 
-                    _logManager.LogP(LogLevel.Info, nameof(Balls), p, $"Shot ball {ballId}.");
+                    _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Shot ball {ballId}.");
 
                     MapCoordinate mapCoordinate = new((short)(bd.X / 16), (short)(bd.Y / 16));
                     if (bd.Carrier != null
@@ -504,31 +504,31 @@ namespace SS.Core.Modules
                         // Shot a ball on top of a goal tile.
                         // Check whether it's a goal and if it is don't wait for the goal packet.
                         // Waiting for the goal packet is undesirable because it is a race between who has the better connection.
-                        _logManager.LogP(LogLevel.Drivel, nameof(Balls), p, $"Shot ball {ballId} on top of goal tile.");
+                        _logManager.LogP(LogLevel.Drivel, nameof(Balls), player, $"Shot ball {ballId} on top of goal tile.");
                         HandleGoal(arena, bd.Carrier, ballId, mapCoordinate);
                     }
                 }
             }
         }
 
-        private void Packet_Goal(Player p, byte[] data, int length)
+        private void Packet_Goal(Player player, byte[] data, int length)
         {
             if (length != C2S_Goal.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Balls), p, $"Bad ball goal packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball goal packet (length={length}).");
                 return;
             }
 
-            Arena arena = p.Arena;
-            if (arena == null || p.Status != PlayerState.Playing)
+            Arena arena = player.Arena;
+            if (arena == null || player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "Ball goal packet from bad arena or status.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "Ball goal packet from bad arena or status.");
                 return;
             }
 
-            if (p.Ship >= ShipType.Spec)
+            if (player.Ship >= ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: ball goal packet from specator mode.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball goal packet from specator mode.");
                 return;
             }
 
@@ -542,7 +542,7 @@ namespace SS.Core.Modules
             {
                 if (ballId >= ad.BallCount)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, $"State sync problem: tried a goal for nonexistant ball {ballId}");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried a goal for nonexistant ball {ballId}");
                     return;
                 }
 
@@ -556,17 +556,17 @@ namespace SS.Core.Modules
 
                 if (bd.State != BallState.OnMap)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: sent goal for carried ball.");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: sent goal for carried ball.");
                     return;
                 }
 
-                if (p != bd.Carrier)
+                if (player != bd.Carrier)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), p, "State sync problem: sent goal for ball he didn't shoot.");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: sent goal for ball he didn't shoot.");
                     return;
                 }
 
-                HandleGoal(arena, p, ballId, new MapCoordinate(c2s.X, c2s.Y));
+                HandleGoal(arena, player, ballId, new MapCoordinate(c2s.X, c2s.Y));
             }
         }
 
@@ -962,12 +962,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void HandleGoal(Arena arena, Player p, int ballId, MapCoordinate mapCoordinate)
+        private void HandleGoal(Arena arena, Player player, int ballId, MapCoordinate mapCoordinate)
         {
             if (arena == null)
                 return;
 
-            if (p == null)
+            if (player == null)
                 return;
 
             if (ballId < 0)
@@ -990,7 +990,7 @@ namespace SS.Core.Modules
                 var advisors = arena.GetAdvisors<IBallsAdvisor>();
                 foreach (var advisor in advisors)
                 {
-                    bool allow = advisor.AllowGoal(arena, p, ballId, mapCoordinate, ref bd);
+                    bool allow = advisor.AllowGoal(arena, player, ballId, mapCoordinate, ref bd);
                     if (!allow)
                     {
                         block = true;
@@ -1035,9 +1035,9 @@ namespace SS.Core.Modules
                         bd.LastUpdate = now;
                     }
 
-                    BallGoalCallback.Fire(arena, arena, p, (byte)ballId, mapCoordinate);
+                    BallGoalCallback.Fire(arena, arena, player, (byte)ballId, mapCoordinate);
 
-                    _logManager.LogP(LogLevel.Info, nameof(Balls), p, $"Goal with ball {ballId} at ({mapCoordinate.X},{mapCoordinate.Y}).");
+                    _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Goal with ball {ballId} at ({mapCoordinate.X},{mapCoordinate.Y}).");
                 }
             }
         }
@@ -1229,7 +1229,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CleanupAfter(Arena arena, Player p, Player killer, bool newt, bool isLeaving)
+        private void CleanupAfter(Arena arena, Player player, Player killer, bool newt, bool isLeaving)
         {
             if (arena == null)
                 return;
@@ -1246,30 +1246,30 @@ namespace SS.Core.Modules
                     ref BallData prev = ref ad.Previous[i];
                     ref ExtraBallStateInfo extraInfo = ref ad.ExtraBallStateInfo[i];
 
-                    if (extraInfo.LastKiller == p)
+                    if (extraInfo.LastKiller == player)
                     {
                         // This info no longer applies to this player.
                         extraInfo.LastKiller = null;
                     }
 
-                    if (isLeaving && prev.Carrier == p)
+                    if (isLeaving && prev.Carrier == player)
                     {
                         // Prevent stale player from appearing in historical data.
                         prev.Carrier = null;
                     }
 
-                    if (b.State == BallState.Carried && b.Carrier == p)
+                    if (b.State == BallState.Carried && b.Carrier == player)
                     {
                         ServerTick now = ServerTick.Now;
 
                         BallData defaultBallData = new()
                         {
                             State = BallState.OnMap,
-                            X = p.Position.X,
-                            Y = p.Position.Y,
+                            X = player.Position.X,
+                            Y = player.Position.Y,
                             XSpeed = 0,
                             YSpeed = 0,
-                            Carrier = newt || isLeaving ? null : p,
+                            Carrier = newt || isLeaving ? null : player,
                             //Freq =  // TODO: maybe this should be set too?
                             Time = now,
                             LastUpdate = now,
@@ -1285,7 +1285,7 @@ namespace SS.Core.Modules
                         foreach (var advisor in advisors)
                         {
                             // The true isForced parameter indicates that we're forcing the ball to be shot because the player left.
-                            if (!(allow = advisor.AllowShootBall(arena, p, i, true, ref b)))
+                            if (!(allow = advisor.AllowShootBall(arena, player, i, true, ref b)))
                                 break;
                         }
 
@@ -1307,7 +1307,7 @@ namespace SS.Core.Modules
                         SendBallPacket(arena, i);
 
                         // The ball is leaving the carrier no matter what, so the callback needs to be fired.
-                        BallShootCallback.Fire(arena, arena, p, (byte)i);
+                        BallShootCallback.Fire(arena, arena, player, (byte)i);
 
                         MapCoordinate coordinate = new((short)(b.X / 16), (short)(b.Y / 16));
                         if (!newt
@@ -1317,11 +1317,11 @@ namespace SS.Core.Modules
                             // Dropped an unneuted ball on a goal tile.
                             // Check whether it's a goal and if it is don't wait for the goal packet.
                             // Waiting for the goal packet is undesirable because it is a race between who has the better connection.
-                            _logManager.LogP(LogLevel.Drivel, nameof(Balls), p, $"Dropped ball {i} on top of goal tile.");
+                            _logManager.LogP(LogLevel.Drivel, nameof(Balls), player, $"Dropped ball {i} on top of goal tile.");
                             HandleGoal(arena, b.Carrier, i, coordinate);
                         }
                     }
-                    else if (newt && b.Carrier == p)
+                    else if (newt && b.Carrier == player)
                     {
                         // If it's on the map, but last touched by the person, reset its last touched 
                         b.Carrier = null;

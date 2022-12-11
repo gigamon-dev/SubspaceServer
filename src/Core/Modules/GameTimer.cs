@@ -120,21 +120,21 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<duration>", 
             Description = "Sets the arena timer. Not for arenas using a Misc:TimedGame.")]
-        private void Command_timer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_timer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             if (ad.GameLength != TimeSpan.Zero)
             {
-                _chat.SendMessage(p, "Timer is fixed to the Misc:TimedGame setting.");
+                _chat.SendMessage(player, "Timer is fixed to the Misc:TimedGame setting.");
                 return;
             }
 
             if (!TimeSpan.TryParse(parameters, out TimeSpan duration)) // TODO: change to accept the format the ASSS uses (<minutes>[:<seconds>])
             {
-                _chat.SendMessage(p, $"Invalid duration specified.");
+                _chat.SendMessage(player, $"Invalid duration specified.");
                 return;
             }
 
@@ -143,14 +143,14 @@ namespace SS.Core.Modules
                 if (ad.Start(DateTime.UtcNow, duration))
                 {
                     GameTimerChangedCallback.Fire(arena, arena, TimerChange.Started, TimerChangeReason.PlayerCommand, ad.GameLength != TimeSpan.Zero);
-                    Command_time(commandName, parameters, p, target);
+                    Command_time(commandName, parameters, player, target);
                 }
             }
             else
             {
                 ad.Stop();
                 GameTimerChangedCallback.Fire(arena, arena, TimerChange.Stopped, TimerChangeReason.PlayerCommand, ad.GameLength != TimeSpan.Zero);
-                Command_time(commandName, parameters, p, target);
+                Command_time(commandName, parameters, player, target);
             }
         }
 
@@ -158,9 +158,9 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Returns the amount of time left in the current game.")]
-        private void Command_time(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_time(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
@@ -175,7 +175,7 @@ namespace SS.Core.Modules
                 try
                 {
                     AppendTimerDuration(sb, remaining);
-                    _chat.SendMessage(p, $"Time left: {sb}.");
+                    _chat.SendMessage(player, $"Time left: {sb}.");
                 }
                 finally
                 {
@@ -189,7 +189,7 @@ namespace SS.Core.Modules
                 try
                 {
                     AppendTimerDuration(sb, ad.PausedRemaining.Value);
-                    _chat.SendMessage(p, $"Timer paused at: {sb}.");
+                    _chat.SendMessage(player, $"Timer paused at: {sb}.");
                 }
                 finally
                 {
@@ -198,7 +198,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                _chat.SendMessage(p, $"Time left: 0 seconds.");
+                _chat.SendMessage(player, $"Time left: 0 seconds.");
             }
         }
 
@@ -206,9 +206,9 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = "Resets a timed game for arenas using the Misc:TimedGame setting.")]
-        private void Command_timereset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_timereset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
@@ -218,7 +218,7 @@ namespace SS.Core.Modules
             if (ad.Start(DateTime.UtcNow))
             {
                 GameTimerChangedCallback.Fire(arena, arena, TimerChange.Started, TimerChangeReason.PlayerCommand, ad.GameLength != TimeSpan.Zero);
-                Command_time(commandName, parameters, p, target);
+                Command_time(commandName, parameters, player, target);
             }
         }
 
@@ -227,9 +227,9 @@ namespace SS.Core.Modules
             Args = null,
             Description = "Toggles the time between paused and unpaused.\n" +
             "The timer must have been created with ?timer.")]
-        private void Command_pausetimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_pausetimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
@@ -241,7 +241,7 @@ namespace SS.Core.Modules
                 if (ad.Pause())
                 {
                     GameTimerChangedCallback.Fire(arena, arena, TimerChange.Paused, TimerChangeReason.PlayerCommand, ad.GameLength != TimeSpan.Zero);
-                    Command_time(commandName, parameters, p, target);
+                    Command_time(commandName, parameters, player, target);
                 }
             }
             else
@@ -255,7 +255,7 @@ namespace SS.Core.Modules
                     try
                     {
                         AppendTimerDuration(sb, remaining);
-                        _chat.SendMessage(p, $"Timer resumed at: {sb}.");
+                        _chat.SendMessage(player, $"Timer resumed at: {sb}.");
                     }
                     finally
                     {

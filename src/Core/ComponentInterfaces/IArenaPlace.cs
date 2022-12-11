@@ -23,8 +23,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arenaName">to place the arena name in</param>
         /// <param name="spawnX">to put spawn coordinates, if desired</param>
         /// <param name="spawnY">to put spawn coordinates, if desired</param>
-        /// <param name="p">the player being placed</param>
+        /// <param name="player">the player being placed</param>
         /// <returns>true if name was filled in, false on any error</returns>
-        bool Place(out string arenaName, ref int spawnX, ref int spawnY, Player p);
+        bool Place(out string arenaName, ref int spawnX, ref int spawnY, Player player);
     }
 }

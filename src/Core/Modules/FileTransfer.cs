@@ -65,9 +65,9 @@ namespace SS.Core.Modules
 
         #region IFileTransfer Members
 
-        bool IFileTransfer.SendFile(Player p, string path, string filename, bool deleteAfter)
+        bool IFileTransfer.SendFile(Player player, string path, string filename, bool deleteAfter)
         {
-            if (p == null)
+            if (player == null)
                 return false;
 
             if (string.IsNullOrWhiteSpace(path))
@@ -84,7 +84,7 @@ namespace SS.Core.Modules
 
                 FileStream fileStream = fileInfo.OpenRead();
                 DownloadDataContext dd = new(fileStream, filename, deleteAfter ? path : null);
-                _network.SendSized(p, (int)fileInfo.Length + 17, GetSizedSendData, dd);
+                _network.SendSized(player, (int)fileInfo.Length + 17, GetSizedSendData, dd);
                 return true;
             }
             catch (Exception ex)
@@ -94,56 +94,56 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IFileTransfer.RequestFile<T>(Player p, string path, FileUploadedDelegate<T> uploaded, T arg)
+        bool IFileTransfer.RequestFile<T>(Player player, string path, FileUploadedDelegate<T> uploaded, T arg)
         {
-            if (p == null)
+            if (player == null)
                 return false;
 
             if (string.IsNullOrWhiteSpace(path))
                 return false;
 
-            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return false;
 
             if (path.Length > 256)
                 return false;
 
-            if (ud.Stream != null || !string.IsNullOrWhiteSpace(ud.FileName) || !p.IsStandard)
+            if (ud.Stream != null || !string.IsNullOrWhiteSpace(ud.FileName) || !player.IsStandard)
                 return false;
 
             ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
 
             S2C_RequestFile packet = new(path, "unused-field");
-            _network.SendToOne(p, ref packet, NetSendFlags.Reliable);
+            _network.SendToOne(player, ref packet, NetSendFlags.Reliable);
 
-            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, $"Requesting file '{path}'.");
+            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, $"Requesting file '{path}'.");
 
             if (path.Contains(".."))
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, "Sent file request with '..' in the path.");
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, "Sent file request with '..' in the path.");
 
             return true;
         }
 
-        void IFileTransfer.SetWorkingDirectory(Player p, string path)
+        void IFileTransfer.SetWorkingDirectory(Player player, string path)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             ud.WorkingDirectory = path;
         }
 
-        string IFileTransfer.GetWorkingDirectory(Player p)
+        string IFileTransfer.GetWorkingDirectory(Player player)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
-            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return null;
 
             return ud.WorkingDirectory;
@@ -151,12 +151,12 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             if (action == PlayerAction.Connect)
@@ -169,17 +169,17 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UploadFile(Player p, byte[] data, int length)
+        private void Packet_UploadFile(Player player, byte[] data, int length)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
-            if (!_capabilityManager.HasCapability(p, Constants.Capabilities.UploadFile))
+            if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
             {
-                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Denied file upload");
+                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Denied file upload");
                 return;
             }
 
@@ -194,18 +194,18 @@ namespace SS.Core.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Can't create temp file for upload. {ex.Message}");
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Can't create temp file for upload. {ex.Message}");
             }
 
             ud.Cleanup(success);
         }
 
-        private void SizedPacket_UploadFile(Player p, ReadOnlySpan<byte> data, int offset, int totalLength)
+        private void SizedPacket_UploadFile(Player player, ReadOnlySpan<byte> data, int offset, int totalLength)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             if (offset == -1)
@@ -217,9 +217,9 @@ namespace SS.Core.Modules
 
             if (offset == 0 && data.Length > 17 && ud.Stream == null)
             {
-                if (!_capabilityManager.HasCapability(p, Constants.Capabilities.UploadFile))
+                if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
                 {
-                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Denied file upload");
+                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Denied file upload");
                     return;
                 }
 
@@ -229,12 +229,12 @@ namespace SS.Core.Modules
                 }
                 catch (Exception ex)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Can't create temp file for upload. {ex.Message}");
+                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Can't create temp file for upload. {ex.Message}");
                     return;
                 }
 
                 ud.FileName = ud.Stream.Name;
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, $"Accepted file for upload (to '{ud.FileName}').");
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Accepted file for upload (to '{ud.FileName}').");
 
                 ud.Stream.Write(data[17..]);
             }
@@ -246,13 +246,13 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), p, "Completed upload.");
+                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Completed upload.");
                     ud.Cleanup(true);
                 }
             }
             else
             {
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), p, "UploadFile with unexpected parameters.");
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, "UploadFile with unexpected parameters.");
             }
         }
 

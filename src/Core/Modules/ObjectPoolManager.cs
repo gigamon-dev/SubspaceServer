@@ -19,6 +19,7 @@ namespace SS.Core.Modules
 
         private DefaultObjectPoolProvider _provider;
         private ObjectPool<HashSet<Player>> _playerHashSetPool;
+        private ObjectPool<HashSet<Arena>> _arenaHashSetPool;
         private ObjectPool<StringBuilder> _stringBuilderPool;
         private ObjectPool<IPEndPoint> _ipEndPointPool;
         
@@ -29,6 +30,7 @@ namespace SS.Core.Modules
 
             _provider = new DefaultObjectPoolProvider();
             _playerHashSetPool = _provider.Create(new PlayerHashSetPooledObjectPolicy());
+            _arenaHashSetPool = _provider.Create(new ArenaHashSetPooledObjectPolicy());
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
             _ipEndPointPool = _provider.Create(new IPEndPointPooledObjectPolicy());
 
@@ -62,6 +64,8 @@ namespace SS.Core.Modules
 
         ObjectPool <HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
 
+        ObjectPool<HashSet<Arena>> IObjectPoolManager.ArenaSetPool => _arenaHashSetPool;
+
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
 
         ObjectPool<IPEndPoint> IObjectPoolManager.IPEndPointPool => _ipEndPointPool;
@@ -81,7 +85,26 @@ namespace SS.Core.Modules
 
             public override bool Return(HashSet<Player> obj)
             {
-                if (obj == null)
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class ArenaHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<Arena>>
+        {
+            public int InitialCapacity { get; set; } = 32;
+
+            public override HashSet<Arena> Create()
+            {
+                return new HashSet<Arena>(InitialCapacity);
+            }
+
+            public override bool Return(HashSet<Arena> obj)
+            {
+                if (obj is null)
                     return false;
 
                 obj.Clear();
@@ -98,7 +121,7 @@ namespace SS.Core.Modules
 
             public override bool Return(IPEndPoint obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Address = IPAddress.Any;

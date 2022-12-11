@@ -57,25 +57,25 @@ namespace SS.Core.Modules
 
         #region IEncrypt members
 
-        int IEncrypt.Encrypt(Player p, Span<byte> data, int len)
+        int IEncrypt.Encrypt(Player player, Span<byte> data, int len)
         {
-            if (!p.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData pd))
                 return len;
 
             return pd.Encrypt(data, len);
         }
 
-        int IEncrypt.Decrypt(Player p, Span<byte> data, int len)
+        int IEncrypt.Decrypt(Player player, Span<byte> data, int len)
         {
-            if (!p.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData pd))
                 return len;
 
             return pd.Decrypt(data, len);
         }
 
-        void IEncrypt.Void(Player p)
+        void IEncrypt.Void(Player player)
         {
-            if (!p.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData pd))
                 return;
 
             pd.Reset();

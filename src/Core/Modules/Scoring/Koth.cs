@@ -156,7 +156,7 @@ namespace SS.Core.Modules.Scoring
             CheckStart(player.Arena);
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
@@ -231,11 +231,11 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
             {
-                if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 {
                     pd.Deaths = 0;
                     pd.CrownKills = 0;
@@ -257,9 +257,9 @@ namespace SS.Core.Modules.Scoring
 
         #region Commands
 
-        private void Command_resetkoth(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_resetkoth(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ResetGame(p.Arena, true);
+            ResetGame(player.Arena, true);
         }
 
         #endregion

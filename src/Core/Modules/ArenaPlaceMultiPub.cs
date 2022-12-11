@@ -45,16 +45,16 @@ namespace SS.Core.Modules
 
         [ConfigHelp("General", "DesiredPlaying", ConfigScope.Global, typeof(int), DefaultValue = "15", 
             Description = "This controls when the server will create new public arenas.")]
-        bool IArenaPlace.Place(out string arenaName, ref int spawnX, ref int spawnY, Player p)
+        bool IArenaPlace.Place(out string arenaName, ref int spawnX, ref int spawnY, Player player)
         {
             arenaName = string.Empty;
 
             // if the player connected through an ip/port that specified a connectas field, then try just that arena
             IEnumerable<string> tryList;
-            if (string.IsNullOrEmpty(p.ConnectAs))
+            if (string.IsNullOrEmpty(player.ConnectAs))
                 tryList = _pubNames;
             else
-                tryList = new string[] { p.ConnectAs };
+                tryList = new string[] { player.ConnectAs };
 
             for (int pass = 0; pass < 10; pass++)
             {

@@ -67,17 +67,17 @@ namespace SS.Core.Modules
             "subcommands: {flush} flushes the log file to disk (in preparation for\n" +
             "copying it, for example), and {reopen} tells the server to close and\n" +
             "re-open the log file (to rotate the log while the server is running).")]
-        private void Command_admlogfile(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_admlogfile(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.Equals("flush", StringComparison.OrdinalIgnoreCase))
             {
                 _logFile.Flush();
-                _chat.SendMessage(p, "Log file flushed.");
+                _chat.SendMessage(player, "Log file flushed.");
             }
             else if (parameters.Equals("reopen", StringComparison.OrdinalIgnoreCase))
             {
                 _logFile.Reopen();
-                _chat.SendMessage(p, "Log file reopened.");
+                _chat.SendMessage(player, "Log file reopened.");
             }
         }
 
@@ -87,15 +87,15 @@ namespace SS.Core.Modules
             Description =
                 "Transfers the specified file from the server to the client. The filename\n" +
                 "is considered relative to the current working directory.")]
-        private void Command_getfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_getfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!p.IsStandard)
+            if (!player.IsStandard)
             {
-                _chat.SendMessage(p, "Your client does not support file transfers.");
+                _chat.SendMessage(player, "Your client does not support file transfers.");
                 return;
             }
 
-            string workingDir = _fileTransfer.GetWorkingDirectory(p);
+            string workingDir = _fileTransfer.GetWorkingDirectory(player);
             string path = Path.Join(workingDir, parameters);
 
             string fullPath = Path.GetFullPath(path);
@@ -103,19 +103,19 @@ namespace SS.Core.Modules
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
-                _chat.SendMessage(p, "Invalid path.");
+                _chat.SendMessage(player, "Invalid path.");
             }
             else
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
 
                 if (!_fileTransfer.SendFile(
-                    p,
+                    player,
                     relativePath,
                     Path.GetFileName(fullPath),
                     false))
                 {
-                    _chat.SendMessage(p, $"Error sending '{relativePath}'.");
+                    _chat.SendMessage(player, $"Error sending '{relativePath}'.");
                 }
             }
         }
@@ -128,15 +128,15 @@ namespace SS.Core.Modules
                 "The server filename, if specified, will be considered relative to the\n" +
                 "current working directory. If omitted, the uploaded file will be placed\n" +
                 "in the current working directory and named the same as on the client.")]
-        private void Command_putfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_putfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!p.IsStandard)
+            if (!player.IsStandard)
             {
-                _chat.SendMessage(p, "Your client does not support file transfers.");
+                _chat.SendMessage(player, "Your client does not support file transfers.");
                 return;
             }
 
-            string workingDir = _fileTransfer.GetWorkingDirectory(p);
+            string workingDir = _fileTransfer.GetWorkingDirectory(player);
             ReadOnlySpan<char> clientFilename;
             ReadOnlySpan<char> serverFilename;
 
@@ -158,16 +158,16 @@ namespace SS.Core.Modules
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
-                _chat.SendMessage(p, "Invalid server path.");
+                _chat.SendMessage(player, "Invalid server path.");
             }
             else
             {
                 _fileTransfer.RequestFile(
-                    p, 
+                    player, 
                     clientFilename.ToString(), 
                     FileUploaded,
                     new UploadContext(
-                        p,
+                        player,
                         Path.GetRelativePath(currentDir, fullPath),
                         false));
             }
@@ -181,7 +181,7 @@ namespace SS.Core.Modules
                 "must be an absolute path; it is not considered relative to the previous\n" +
                 "working directory. If no arguments are specified, return to the server's\n" +
                 "root directory.")]
-        private void Command_cd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_cd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             string parametersStr = parameters.IsWhiteSpace() ? "." : parameters.ToString();
             string fullPath = Path.GetFullPath(parametersStr);
@@ -189,16 +189,16 @@ namespace SS.Core.Modules
 
             if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
             {
-                _chat.SendMessage(p, "Invalid path.");
+                _chat.SendMessage(player, "Invalid path.");
             }
             else if (!Directory.Exists(parametersStr))
             {
-                _chat.SendMessage(p, "The specified path doesn't exist.");
+                _chat.SendMessage(player, "The specified path doesn't exist.");
             }
             else
             {
-                _fileTransfer.SetWorkingDirectory(p, Path.GetRelativePath(currentDir, fullPath));
-                _chat.SendMessage(p, "Changed working directory.");
+                _fileTransfer.SetWorkingDirectory(player, Path.GetRelativePath(currentDir, fullPath));
+                _chat.SendMessage(player, "Changed working directory.");
             }
         }
 
@@ -208,9 +208,9 @@ namespace SS.Core.Modules
             Description = 
                 "Prints the current server-side working directory.\n" +
                 "A working directory of \".\" indicates the server's root directory.")]
-        private void Command_pwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_pwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            _chat.SendMessage(p, $"Current working directory: {_fileTransfer.GetWorkingDirectory(p)}");
+            _chat.SendMessage(player, $"Current working directory: {_fileTransfer.GetWorkingDirectory(player)}");
         }
 
         #endregion

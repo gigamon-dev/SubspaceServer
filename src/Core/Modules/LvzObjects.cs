@@ -167,7 +167,7 @@ namespace SS.Core.Modules
             Args = "<object id>",
             Description = "Toggles the specified object on.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objon(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_objon(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
                 Toggle(target, id, true);
@@ -178,7 +178,7 @@ namespace SS.Core.Modules
             Args = "<object id>",
             Description = "Toggles the specified object off.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objoff(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_objoff(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
                 Toggle(target, id, false);
@@ -189,7 +189,7 @@ namespace SS.Core.Modules
             Args = "[+|-]<object id 0> [+|-]<object id 1> ... [+|-]<object id N>",
             Description = "Toggles the specified objects on/off.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_objset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             int count = 0;
             foreach (char c in parameters)
@@ -230,9 +230,9 @@ namespace SS.Core.Modules
             Args = "<id>",
             Description = "Reports all known information about the object.\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_objinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena == null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             if (!short.TryParse(parameters, out short objectId))
@@ -248,11 +248,11 @@ namespace SS.Core.Modules
                     {
                         if (lvzData.Current.IsMapObject)
                         {
-                            _chat.SendMessage(p, $"lvz: Id:{objectId} Off:{lvzData.Off} Image:{lvzData.Current.ImageId} Layer:{lvzData.Current.Layer} Mode:{lvzData.Current.Mode} Time:{lvzData.Current.Time} map object coords ({lvzData.Current.MapX}, {lvzData.Current.MapY})");
+                            _chat.SendMessage(player, $"lvz: Id:{objectId} Off:{lvzData.Off} Image:{lvzData.Current.ImageId} Layer:{lvzData.Current.Layer} Mode:{lvzData.Current.Mode} Time:{lvzData.Current.Time} map object coords ({lvzData.Current.MapX}, {lvzData.Current.MapY})");
                         }
                         else
                         {
-                            _chat.SendMessage(p, $"lvz: Id:{objectId} Off:{lvzData.Off} Image:{lvzData.Current.ImageId} Layer:{lvzData.Current.Layer} Mode:{lvzData.Current.Mode} Time:{lvzData.Current.Time} screen object coords ({lvzData.Current.ScreenX}, {lvzData.Current.ScreenY}). X-offset: {lvzData.Current.ScreenXType}. Y-offset: {lvzData.Current.ScreenYType}.");
+                            _chat.SendMessage(player, $"lvz: Id:{objectId} Off:{lvzData.Off} Image:{lvzData.Current.ImageId} Layer:{lvzData.Current.Layer} Mode:{lvzData.Current.Mode} Time:{lvzData.Current.Time} screen object coords ({lvzData.Current.ScreenX}, {lvzData.Current.ScreenY}). X-offset: {lvzData.Current.ScreenXType}. Y-offset: {lvzData.Current.ScreenYType}.");
                         }
 
                         count++;
@@ -262,7 +262,7 @@ namespace SS.Core.Modules
 
             if (count == 0)
             {
-                _chat.SendMessage(p, $"Object {objectId} does not exist in any of the loaded LVZ files.");
+                _chat.SendMessage(player, $"Object {objectId} does not exist in any of the loaded LVZ files.");
                 return;
             }
         }
@@ -272,9 +272,9 @@ namespace SS.Core.Modules
             Args = null,
             Description = "List all ServerControlled object id's. Use ?objinfo <id> for attributes\n" +
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
-        private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena == null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             int count = 0;
@@ -299,12 +299,12 @@ namespace SS.Core.Modules
 
                 if (count > 0)
                 {
-                    _chat.SendMessage(p, $"{count} ServerControlled object{(count == 1 ? "" : "s")}:");
-                    _chat.SendWrappedText(p, sb);
+                    _chat.SendMessage(player, $"{count} ServerControlled object{(count == 1 ? "" : "s")}:");
+                    _chat.SendWrappedText(player, sb);
                 }
                 else
                 {
-                    _chat.SendMessage(p, $"0 ServerControlled objects.");
+                    _chat.SendMessage(player, $"0 ServerControlled objects.");
                 }
             }
             finally
@@ -315,24 +315,24 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Rebroadcast(Player p, byte[] data, int length)
+        private void Packet_Rebroadcast(Player player, byte[] data, int length)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (pd.Permission == BroadcastAuthorization.None)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), p, $"Attempted to broadcast without permission.");
+                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Attempted to broadcast without permission.");
                 return;
             }
 
             if (length < 4)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), p, $"Invalid broadcast packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid broadcast packet length ({length}).");
                 return;
             }
 
@@ -348,7 +348,7 @@ namespace SS.Core.Modules
             {
                 if (length < 6 || (length - 4) % ToggledObject.Length != 0)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), p, $"Invalid length for broadcasting a Toggle Object packet ({length}).");
+                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({length}).");
                     return;
                 }
 
@@ -376,7 +376,7 @@ namespace SS.Core.Modules
             {
                 if (pd.Permission != BroadcastAuthorization.Any)
                 {
-                    _logManager.LogP(LogLevel.Info, nameof(LvzObjects), p, $"Not authorized to broadcast packet of type {type}.");
+                    _logManager.LogP(LogLevel.Info, nameof(LvzObjects), player, $"Not authorized to broadcast packet of type {type}.");
                     return;
                 }
             }
@@ -388,7 +388,7 @@ namespace SS.Core.Modules
             else
             {
                 Player toPlayer = _playerData.PidToPlayer(toPlayerId);
-                if (toPlayer != null && toPlayer.Status == PlayerState.Playing && p.Arena == toPlayer.Arena)
+                if (toPlayer != null && toPlayer.Status == PlayerState.Playing && player.Arena == toPlayer.Arena)
                 {
                     _network.SendToOne(toPlayer, packet[4..], NetSendFlags.Reliable);
                 }
@@ -455,21 +455,21 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                     return;
 
-                if (_capabilityManager.HasCapability(p, Constants.Capabilities.BroadcastAny))
+                if (_capabilityManager.HasCapability(player, Constants.Capabilities.BroadcastAny))
                     pd.Permission = BroadcastAuthorization.Any;
-                else if (_capabilityManager.HasCapability(p, Constants.Capabilities.BroadcastBot))
+                else if (_capabilityManager.HasCapability(player, Constants.Capabilities.BroadcastBot))
                     pd.Permission = BroadcastAuthorization.Bot;
             }
             else if(action == PlayerAction.EnterGame)
             {
-                SendState(p);
+                SendState(player);
             }
         }
 

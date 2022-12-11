@@ -81,11 +81,11 @@ namespace SS.Core.ComponentInterfaces
         /// Checks whether a player should be considered as being authenticated.
         /// </summary>
         /// <typeparam name="T">Type of state to use for the <paramref name="done"/> callback.</typeparam>
-        /// <param name="p">The player to check.</param>
+        /// <param name="player">The player to check.</param>
         /// <param name="name">The name the player is attempting to authenticate with.</param>
         /// <param name="password">The password the player is attempting to authenticate with.</param>
         /// <param name="done">A callback to call when a determination has been reached.</param>
         /// <param name="state">The state to send when invoking the callback.</param>
-        void Check<T>(Player p, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state);
+        void Check<T>(Player player, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state);
     }
 }

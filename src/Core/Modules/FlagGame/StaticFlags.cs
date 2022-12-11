@@ -239,18 +239,18 @@ namespace SS.Core.Modules.FlagGame
 
         #region Packet handlers
 
-        private void Packet_TouchFlag(Player p, byte[] data, int length)
+        private void Packet_TouchFlag(Player player, byte[] data, int length)
         {
             if (length != C2S_TouchFlag.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"Invalid C2S_TouchFlag packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"Invalid C2S_TouchFlag packet length ({length}).");
                 return;
             }
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet but not in an arena.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but not in an arena.");
                 return;
             }
 
@@ -260,58 +260,58 @@ namespace SS.Core.Modules.FlagGame
             if (ad.Flags == null)
                 return; // module not enabled for the arena, there could be another flag game module that will handle it
 
-            if (p.Status != PlayerState.Playing)
+            if (player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet but not in playing state.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but not in playing state.");
                 return;
             }
 
-            if (p.Ship == ShipType.Spec)
+            if (player.Ship == ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(StaticFlags), p, $"C2S_TouchFlag packet from spec.");
+                _logManager.LogP(LogLevel.Warn, nameof(StaticFlags), player, $"C2S_TouchFlag packet from spec.");
                 return;
             }
 
-            if (p.Flags.DuringChange)
+            if (player.Flags.DuringChange)
             {
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), p, $"C2S_TouchFlag packet before ack from ship/freq change.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"C2S_TouchFlag packet before ack from ship/freq change.");
                 return;
             }
 
-            if (p.Flags.NoFlagsBalls)
+            if (player.Flags.NoFlagsBalls)
             {
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), p, $"Too lagged to tag a flag.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"Too lagged to tag a flag.");
                 return;
             }
 
             ref C2S_TouchFlag packet = ref MemoryMarshal.AsRef<C2S_TouchFlag>(data);
             if (packet.FlagId >= MaxFlags)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet but flag id >= {MaxFlags}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but flag id >= {MaxFlags}.");
                 return;
             }
 
             byte flagId = (byte)packet.FlagId;
             if (flagId < 0 || flagId >= ad.Flags.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet - bad flag id.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet - bad flag id.");
                 return;
             }
 
             ref FlagData flagData = ref ad.Flags[flagId];
 
             short oldFreq = flagData.OwnerFreq;
-            short newFreq = p.Freq;
+            short newFreq = player.Freq;
 
             if (oldFreq == newFreq)
                 return; // no change
 
             flagData.OwnerFreq = newFreq;
-            flagData.DirtyPlayer = p;
+            flagData.DirtyPlayer = player;
 
             TrySendSingleFlagUpdateToArena(arena, ad, flagId, ref flagData, DateTime.UtcNow);
 
-            StaticFlagClaimedCallback.Fire(arena, arena, p, flagId, oldFreq, newFreq);
+            StaticFlagClaimedCallback.Fire(arena, arena, player, flagId, oldFreq, newFreq);
         }
 
         #endregion
@@ -380,11 +380,11 @@ namespace SS.Core.Modules.FlagGame
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                SendFullFlagUpdate(p);
+                SendFullFlagUpdate(player);
             }
             else if (action == PlayerAction.LeaveArena)
             {
@@ -401,7 +401,7 @@ namespace SS.Core.Modules.FlagGame
                 {
                     ref FlagData flagData = ref ad.Flags[flagId];
 
-                    if (flagData.DirtyPlayer == p)
+                    if (flagData.DirtyPlayer == player)
                     {
                         SendSingleFlagUpdateToArena(arena, flagId, ref flagData, now);
                     }

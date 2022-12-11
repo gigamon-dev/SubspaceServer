@@ -786,21 +786,21 @@ namespace SS.Core.Modules
             Args = null,
             Description =
             "Displays the user database id of the target player, or yours if no target.")]
-        private void Command_userid(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_userid(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
-                targetPlayer = p;
+                targetPlayer = player;
 
             if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
                 return;
 
             if (!targetPlayerData.IsKnownToBiller)
             {
-                _chat.SendMessage(p, $"User ID unknown for {targetPlayer.Name}");
+                _chat.SendMessage(player, $"User ID unknown for {targetPlayer.Name}");
                 return;
             }
 
-            _chat.SendMessage(p, $"{targetPlayer.Name} has User ID {targetPlayerData.BillingUserId}");
+            _chat.SendMessage(player, $"{targetPlayer.Name} has User ID {targetPlayerData.BillingUserId}");
         }
 
         [CommandHelp(
@@ -810,25 +810,25 @@ namespace SS.Core.Modules
             "The subcommand 'status' reports the status of the user database server\n" +
             "connection. 'drop' disconnects the connection if it's up, and 'connect'\n" +
             "reconnects after dropping or failed login.")]
-        private void Command_userdbadm(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_userdbadm(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             lock (_lockObj)
             {
                 if (parameters.Equals("drop", StringComparison.OrdinalIgnoreCase))
                 {
                     DropConnection(BillingState.Disabled);
-                    _chat.SendMessage(p, "User database connection disabled.");
+                    _chat.SendMessage(player, "User database connection disabled.");
                 }
                 else if (parameters.Equals("connect", StringComparison.OrdinalIgnoreCase))
                 {
                     if (_state == BillingState.LoginFailed || _state == BillingState.Disabled || _state == BillingState.Retry)
                     {
                         _state = BillingState.NoSocket;
-                        _chat.SendMessage(p, "User database connection reactivated.");
+                        _chat.SendMessage(player, "User database connection reactivated.");
                     }
                     else
                     {
-                        _chat.SendMessage(p, "User database server connection already active.");
+                        _chat.SendMessage(player, "User database server connection already active.");
                     }
                 }
                 else
@@ -845,7 +845,7 @@ namespace SS.Core.Modules
                         _ => "unknown",
                     };
 
-                    _chat.SendMessage(p, $"User database status: {status}  Pending auths: {_pendingAuths}.");
+                    _chat.SendMessage(player, $"User database status: {status}  Pending auths: {_pendingAuths}.");
 
                     if (_identity is not null && _identity.Length > 0)
                     {
@@ -863,7 +863,7 @@ namespace SS.Core.Modules
                                 sb.Append($"{b:X2}");
                             }
 
-                            _chat.SendMessage(p, sb);
+                            _chat.SendMessage(player, sb);
                         }
                         finally
                         {

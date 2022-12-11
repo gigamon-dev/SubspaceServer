@@ -138,7 +138,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
@@ -174,25 +174,22 @@ namespace SS.Core.Modules.Scoring
             while (remaining.Length > 0
                 && (bytesRead = inStream.Read(data)) > 0)
             {
-                remaining = remaining.Slice(bytesRead);
+                remaining = remaining[bytesRead..];
             }
 
             if (remaining.Length != 0)
             {
                 ((IJackpot)this).ResetJackpot(arena);
-                return;
             }
-
-            int points = BinaryPrimitives.ReadInt32LittleEndian(data);
-
-            ((IJackpot)this).SetJackpot(arena, points);
+            else
+            {
+                int points = BinaryPrimitives.ReadInt32LittleEndian(data);
+                ((IJackpot)this).SetJackpot(arena, points);
+            }
         }
 
         private void Persist_ClearData(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return;
-
             ((IJackpot)this).ResetJackpot(arena);
         }
 

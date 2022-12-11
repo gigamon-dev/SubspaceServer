@@ -136,7 +136,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
@@ -145,7 +145,7 @@ namespace SS.Core.Modules
 
                 if (!string.IsNullOrWhiteSpace(ad.GreetMessage))
                 {
-                    _chat.SendMessage(p, ad.GreetMessage);
+                    _chat.SendMessage(player, ad.GreetMessage);
                 }
             }
         }

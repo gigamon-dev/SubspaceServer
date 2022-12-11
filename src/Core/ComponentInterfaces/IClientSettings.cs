@@ -16,17 +16,17 @@ namespace SS.Core.ComponentInterfaces
         /// Sends client-side settings to a player.
         /// </summary>
         /// <remarks>This is used by the <see cref="SS.Core.Modules.ArenaManager"/> module as part of the arena response procedure.</remarks>
-        /// <param name="p">The player to send settings to.</param>
-        void SendClientSettings(Player p);
+        /// <param name="player">The player to send settings to.</param>
+        void SendClientSettings(Player player);
 
         /// <summary>
         /// Gets the checksum of a player's client-side settings.
         /// </summary>
         /// <remarks>This is used by the <see cref="SS.Core.Modules.Security"/> module to validate checksums.</remarks>
-        /// <param name="p">The player to get the client-side settings checksum for.</param>
+        /// <param name="player">The player to get the client-side settings checksum for.</param>
         /// <param name="key">The key to use when generating the checksum.</param>
         /// <returns>The checksum.</returns>
-        uint GetChecksum(Player p, uint key);
+        uint GetChecksum(Player player, uint key);
 
         /// <summary>
         /// Generates a random prize for an arena based on client-side settings.
@@ -62,14 +62,14 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="p"></param>
+        /// <param name="player"></param>
         /// <param name="key"></param>
-        //void PlayerOverride(Player p, ClientSettingOverrideKey key);
+        //void PlayerOverride(Player player, ClientSettingOverrideKey key);
 
-        //void PlayerUnoverride(Player p, ClientSettingOverrideKey key);
+        //void PlayerUnoverride(Player player, ClientSettingOverrideKey key);
 
-        //bool GetPlayerOverride(Player p, ClientSettingOverrideKey key, out int value);
+        //bool GetPlayerOverride(Player player, ClientSettingOverrideKey key, out int value);
 
-        //int GetPlayerValue(Player p, ClientSettingOverrideKey key);
+        //int GetPlayerValue(Player player, ClientSettingOverrideKey key);
     }
 }

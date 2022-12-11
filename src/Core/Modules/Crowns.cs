@@ -190,21 +190,21 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_CrownExpired(Player p, byte[] data, int length)
+        private void Packet_CrownExpired(Player player, byte[] data, int length)
         {
             if (length != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Crowns), p, $"Invalid C2S CrownExpired packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Crowns), player, $"Invalid C2S CrownExpired packet length ({length}).");
                 return;
             }
 
-            if (p.Status != PlayerState.Playing
-                || !p.Packet.HasCrown)
+            if (player.Status != PlayerState.Playing
+                || !player.Packet.HasCrown)
             {
                 return;
             }
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -214,7 +214,7 @@ namespace SS.Core.Modules
 
             try
             {
-                behavior.CrownExpired(p);
+                behavior.CrownExpired(player);
             }
             finally
             {
@@ -223,12 +223,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
                 // Make sure the player starts out without a crown.
-                p.Packet.HasCrown = false;
+                player.Packet.HasCrown = false;
 
                 //
                 // Send the current crown state of the players in the arena.
@@ -244,12 +244,12 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        foreach (Player player in _playerData.Players)
+                        foreach (Player otherPlayer in _playerData.Players)
                         {
-                            if (player.Packet.HasCrown)
-                                crownSet.Add(player);
+                            if (otherPlayer.Packet.HasCrown)
+                                crownSet.Add(otherPlayer);
                             else
-                                noCrownSet.Add(player);
+                                noCrownSet.Add(otherPlayer);
                         }
                     }
                     finally
@@ -262,12 +262,12 @@ namespace SS.Core.Modules
                         // Send S2C Crown to turn on the crown for all players followed by S2C Crown to turn off the crown for those in noCrownSet.
                         // TODO: grouped packet?
                         S2C_Crown addAllPacket = new(CrownAction.On, TimeSpan.Zero, -1);
-                        _network.SendToOne(p, ref addAllPacket, NetSendFlags.Reliable);
+                        _network.SendToOne(player, ref addAllPacket, NetSendFlags.Reliable);
 
                         foreach (Player otherPlayer in noCrownSet)
                         {
                             S2C_Crown removePacket = new(CrownAction.Off, TimeSpan.Zero, (short)otherPlayer.Id);
-                            _network.SendToOne(p, ref removePacket, NetSendFlags.Reliable);
+                            _network.SendToOne(player, ref removePacket, NetSendFlags.Reliable);
                         }
                     }
                     else
@@ -277,7 +277,7 @@ namespace SS.Core.Modules
                         foreach (Player otherPlayer in crownSet)
                         {
                             S2C_Crown addPacket = new(CrownAction.On, TimeSpan.Zero, (short)otherPlayer.Id);
-                            _network.SendToOne(p, ref addPacket, NetSendFlags.Reliable);
+                            _network.SendToOne(player, ref addPacket, NetSendFlags.Reliable);
                         }
                     }
                 }
@@ -289,7 +289,7 @@ namespace SS.Core.Modules
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                p.Packet.HasCrown = false;
+                player.Packet.HasCrown = false;
             }
         }
 

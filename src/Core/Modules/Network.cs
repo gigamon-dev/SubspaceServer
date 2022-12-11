@@ -78,9 +78,9 @@ namespace SS.Core.Modules
             /// <summary>
             /// Invokes the reliable callback.
             /// </summary>
-            /// <param name="p">The player.</param>
+            /// <param name="player">The player.</param>
             /// <param name="success">True if the reliable packet was sucessfully sent and acknowledged. False if it was cancelled.</param>
-            void Invoke(Player p, bool success);
+            void Invoke(Player player, bool success);
 
             /// <summary>
             /// The next reliable callback to invoke in a chain forming linked list.
@@ -104,9 +104,9 @@ namespace SS.Core.Modules
 
             #region IReliableDelegateInvoker Members
 
-            public void Invoke(Player p, bool success)
+            public void Invoke(Player player, bool success)
             {
-                _callback?.Invoke(p, success);
+                _callback?.Invoke(player, success);
             }
 
             public IReliableCallbackInvoker Next
@@ -142,9 +142,9 @@ namespace SS.Core.Modules
 
             #region IReliableDelegateInvoker Members
 
-            public void Invoke(Player p, bool success)
+            public void Invoke(Player player, bool success)
             {
-                _callback?.Invoke(p, success, _clos);
+                _callback?.Invoke(player, success, _clos);
             }
 
             public IReliableCallbackInvoker Next
@@ -1498,12 +1498,12 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void ClearBuffers(Player p)
+        private void ClearBuffers(Player player)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             lock (conn.olmtx)
@@ -1552,7 +1552,7 @@ namespace SS.Core.Modules
                     SubspaceBuffer b = node.Value;
                     if (b.CallbackInvoker != null)
                     {
-                        QueueMainloopWorkItem(b.CallbackInvoker, p, false);
+                        QueueMainloopWorkItem(b.CallbackInvoker, player, false);
                         b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
                     }
 
@@ -1564,10 +1564,10 @@ namespace SS.Core.Modules
         }
 
         // call with player status locked
-        private void ProcessLagouts(Player p, DateTime now, List<Player> toKick, List<Player> toFree)
+        private void ProcessLagouts(Player player, DateTime now, List<Player> toKick, List<Player> toFree)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (toKick == null)
                 throw new ArgumentNullException(nameof(toKick));
@@ -1575,15 +1575,15 @@ namespace SS.Core.Modules
             if (toFree == null)
                 throw new ArgumentNullException(nameof(toFree));
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             // this is used for lagouts and also for timewait
             TimeSpan diff = now - conn.lastPkt;
 
             // process lagouts
-            if (p.WhenLoggedIn == PlayerState.Uninitialized // acts as flag to prevent dups
-                && p.Status < PlayerState.LeavingZone // don't kick them if they're already on the way out
+            if (player.WhenLoggedIn == PlayerState.Uninitialized // acts as flag to prevent dups
+                && player.Status < PlayerState.LeavingZone // don't kick them if they're already on the way out
                 && (diff > _config.DropTimeout || conn.HitMaxRetries || conn.HitMaxOutlist)) // these three are our kicking conditions, for now
             {
                 // manually create an unreliable chat packet because we won't have time to send it properly
@@ -1610,14 +1610,14 @@ namespace SS.Core.Modules
                     SendRaw(conn, buf.Bytes.AsSpan(0, buf.NumBytes));
                 }
 
-                _logManager.LogM(LogLevel.Info, nameof(Network), $"[{p.Name}] [pid={p.Id}] Player kicked for {reason}.");
+                _logManager.LogM(LogLevel.Info, nameof(Network), $"[{player.Name}] [pid={player.Id}] Player kicked for {reason}.");
 
-                toKick.Add(p);
+                toKick.Add(player);
             }
 
             // process timewait state
             // status is locked (shared) in here
-            if (p.Status == PlayerState.TimeWait)
+            if (player.Status == PlayerState.TimeWait)
             {
                 // finally, send disconnection packet
                 Span<byte> disconnectSpan = stackalloc byte[] { 0x00, 0x07 };
@@ -1626,37 +1626,37 @@ namespace SS.Core.Modules
                 // clear all our buffers
                 lock (conn.bigmtx)
                 {
-                    EndSized(p, false);
+                    EndSized(player, false);
                 }
 
-                ClearBuffers(p);
+                ClearBuffers(player);
 
                 // tell encryption to forget about him
                 if (conn.enc != null)
                 {
-                    conn.enc.Void(p);
+                    conn.enc.Void(player);
                     _broker.ReleaseInterface(ref conn.enc, conn.iEncryptName);
                 }
 
                 // log message
-                _logManager.LogM(LogLevel.Info, nameof(Network), $"[{p.Name}] [pid={p.Id}] Disconnected.");
+                _logManager.LogM(LogLevel.Info, nameof(Network), $"[{player.Name}] [pid={player.Id}] Disconnected.");
 
                 if (_clienthash.TryRemove(conn.RemoteEndpoint, out _) == false)
                     _logManager.LogM(LogLevel.Error, nameof(Network), "Established connection not in hash table.");
 
-                toFree.Add(p);
+                toFree.Add(player);
             }
         }
 
-        private void SubmitRelStats(Player p)
+        private void SubmitRelStats(Player player)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (_lagCollect == null)
                 return;
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             ReliableLagData rld = new()
@@ -1667,7 +1667,7 @@ namespace SS.Core.Modules
                 S2CN = (uint)conn.s2cn,
             };
 
-            _lagCollect.RelStats(p, in rld);
+            _lagCollect.RelStats(player, in rld);
         }
 
         private void SendRaw(ConnData conn, ReadOnlySpan<byte> data)
@@ -1985,9 +1985,9 @@ namespace SS.Core.Modules
                 timeout = low;
         }
 
-        private static bool IsOurs(Player p)
+        private static bool IsOurs(Player player)
         {
-            return p.Type == ClientType.Continuum || p.Type == ClientType.VIE;
+            return player.Type == ClientType.Continuum || player.Type == ClientType.VIE;
         }
 
         private void HandleGamePacketReceived(ListenData ld)
@@ -2811,20 +2811,20 @@ namespace SS.Core.Modules
             }
         }
 
-        private void QueueMainloopWorkItem(IReliableCallbackInvoker callbackInvoker, Player p, bool success)
+        private void QueueMainloopWorkItem(IReliableCallbackInvoker callbackInvoker, Player player, bool success)
         {
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             _mainloop.QueueMainWorkItem(
                 mainloopWork_InvokeReliableCallbackAction,
                 new InvokeReliableCallbackDTO()
                 {
                     CallbackInvoker = callbackInvoker,
-                    Player = p,
+                    Player = player,
                     Success = success,
                 });
         }
@@ -3172,12 +3172,12 @@ namespace SS.Core.Modules
         }
 
         // call with bigmtx locked
-        private void EndSized(Player p, bool success)
+        private void EndSized(Player player, bool success)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             if (conn.sizedrecv.offset != 0)
@@ -3188,7 +3188,7 @@ namespace SS.Core.Modules
                 // tell listeners that they're cancelled
                 if (type < MAXTYPES)
                 {
-                    _sizedhandlers[type]?.Invoke(p, Span<byte>.Empty, arg, arg);
+                    _sizedhandlers[type]?.Invoke(player, Span<byte>.Empty, arg, arg);
                 }
 
                 conn.sizedrecv.type = 0;
@@ -3584,28 +3584,28 @@ namespace SS.Core.Modules
             }
 
             // try to find a matching player for the endpoint
-            if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out Player p))
+            if (remoteEndpoint != null && _clienthash.TryGetValue(remoteEndpoint, out Player player))
             {
                 // We found it. If its status is Connected, just return the pid.
                 // It means we have to redo part of the connection init.
 
-                if (p.Status <= PlayerState.Connected)
+                if (player.Status <= PlayerState.Connected)
                 {
-                    return p;
+                    return player;
                 }
                 else
                 {
                     // otherwise, something is horribly wrong. make a note to this effect
-                    _logManager.LogP(LogLevel.Error, nameof(Network), p, $"NewConnection called for an established address.");
+                    _logManager.LogP(LogLevel.Error, nameof(Network), player, $"NewConnection called for an established address.");
                     return null;
                 }
             }
 
-            p = _playerData.NewPlayer(clientType);
+            player = _playerData.NewPlayer(clientType);
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
             {
-                _logManager.LogP(LogLevel.Error, nameof(Network), p, $"NewConnection created a new player, but ConnData not found.");
+                _logManager.LogP(LogLevel.Error, nameof(Network), player, $"NewConnection created a new player, but ConnData not found.");
                 return null;
             }
 
@@ -3616,21 +3616,21 @@ namespace SS.Core.Modules
 
                 if (enc == null)
                 {
-                    _logManager.LogP(LogLevel.Error, nameof(Network), p, $"NewConnection called to use IEncrypt '{iEncryptName}', but not found.");
+                    _logManager.LogP(LogLevel.Error, nameof(Network), player, $"NewConnection called to use IEncrypt '{iEncryptName}', but not found.");
                     return null;
                 }
             }
 
             conn.Initalize(enc, iEncryptName, _bandwithLimiterProvider.New());
-            conn.p = p;
+            conn.p = player;
 
             // copy data from ListenData
             conn.whichSock = ld.GameSocket;
-            p.ConnectAs = ld.ConnectAs;
+            player.ConnectAs = ld.ConnectAs;
 
-            p.IPAddress = remoteEndpoint.Address;
+            player.IPAddress = remoteEndpoint.Address;
 
-            p.ClientName = clientType switch
+            player.ClientName = clientType switch
             {
                 ClientType.VIE => "<ss/vie client>",
                 ClientType.Continuum => "<continuum>",
@@ -3641,13 +3641,13 @@ namespace SS.Core.Modules
             {
                 conn.RemoteEndpoint = remoteEndpoint;
 
-                _clienthash[remoteEndpoint] = p;
+                _clienthash[remoteEndpoint] = player;
             }
 
             _playerData.WriteLock();
             try
             {
-                p.Status = PlayerState.Connected;
+                player.Status = PlayerState.Connected;
             }
             finally
             {
@@ -3656,28 +3656,28 @@ namespace SS.Core.Modules
 
             if (remoteEndpoint != null)
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, $"New connection from {remoteEndpoint}.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"New connection from {remoteEndpoint}.");
             }
             else
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, $"New internal connection.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"New internal connection.");
             }
 
-            return p;
+            return player;
         }
 
         #endregion
 
         #region INetwork Members
 
-        void INetwork.SendToOne(Player p, ReadOnlySpan<byte> data, NetSendFlags flags)
+        void INetwork.SendToOne(Player player, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
-            SendToOne(p, data, flags);
+            SendToOne(player, data, flags);
         }
 
-        void INetwork.SendToOne<TData>(Player p, ref TData data, NetSendFlags flags) where TData : struct
+        void INetwork.SendToOne<TData>(Player player, ref TData data, NetSendFlags flags) where TData : struct
         {
-            ((INetwork)this).SendToOne(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetwork)this).SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
         void INetwork.SendToArena(Arena arena, Player except, ReadOnlySpan<byte> data, NetSendFlags flags)
@@ -3901,34 +3901,34 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendWithCallback(Player p, ReadOnlySpan<byte> data, ReliableDelegate callback)
+        void INetwork.SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback)
         {
             ReliableCallbackInvoker invoker = _reliableCallbackInvokerPool.Get();
             invoker.SetCallback(callback);
-            SendWithCallback(p, data, invoker);
+            SendWithCallback(player, data, invoker);
         }
 
-        void INetwork.SendWithCallback<TData>(Player p, ref TData data, ReliableDelegate callback)
+        void INetwork.SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback)
         {
-            ((INetwork)this).SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback);
+            ((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback);
         }
 
-        void INetwork.SendWithCallback<TState>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
+        void INetwork.SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
         {
             ReliableCallbackInvoker<TState> invoker = _objectPoolManager.GetPool<ReliableCallbackInvoker<TState>>().Get();
             invoker.SetCallback(callback, clos);
-            SendWithCallback(p, data, invoker);
+            SendWithCallback(player, data, invoker);
         }
 
-        void INetwork.SendWithCallback<TData, TState>(Player p, ref TData data, ReliableDelegate<TState> callback, TState clos)
+        void INetwork.SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState clos)
         {
-            ((INetwork)this).SendWithCallback(p, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback, clos);
+            ((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback, clos);
         }
 
-        private void SendWithCallback(Player p, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
+        private void SendWithCallback(Player player, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
         {
-            if (p == null)
-                throw new ArgumentNullException(nameof(p));
+            if (player == null)
+                throw new ArgumentNullException(nameof(player));
 
             if (data.Length < 1)
                 throw new ArgumentOutOfRangeException(nameof(data), "Length must be >= 1.");
@@ -3936,10 +3936,10 @@ namespace SS.Core.Modules
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
-            if (!IsOurs(p))
+            if (!IsOurs(player))
                 return;
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             // we can't handle big packets here
@@ -3974,9 +3974,9 @@ namespace SS.Core.Modules
             ((INetwork)this).SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
-        bool INetwork.SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestCallback, T clos)
+        bool INetwork.SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestCallback, T clos)
         {
-            if (p == null)
+            if (player == null)
             {
                 return false;
             }
@@ -3986,13 +3986,13 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!IsOurs(p))
+            if (!IsOurs(player))
             {
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), p, "Tried to send sized data to non-udp client.");
+                _logManager.LogP(LogLevel.Drivel, nameof(Network), player, "Tried to send sized data to non-udp client.");
                 return false;
             }
 
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return false;
 
             SizedSendData<T> sd = new(requestCallback, clos, len, 0);
@@ -4106,9 +4106,9 @@ namespace SS.Core.Modules
             return _globalStats;
         }
 
-        void INetwork.GetClientStats(Player p, ref NetClientStats stats)
+        void INetwork.GetClientStats(Player player, ref NetClientStats stats)
         {
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return;
 
             stats.s2cn = conn.s2cn;
@@ -4129,9 +4129,9 @@ namespace SS.Core.Modules
             conn.BandwidthLimiter.GetInfo(stats.BandwidthLimitInfo);
         }
 
-        TimeSpan INetwork.GetLastPacketTimeSpan(Player p)
+        TimeSpan INetwork.GetLastPacketTimeSpan(Player player)
         {
-            if (!p.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 return TimeSpan.Zero;
 
             //lock (conn.) // TODO: need to figure out locking

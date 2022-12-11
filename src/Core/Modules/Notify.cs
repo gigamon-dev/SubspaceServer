@@ -66,23 +66,23 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = "<message>",
             Description = "Sends the message to all online staff members.")]
-        private void Command_NotifyCommand(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_NotifyCommand(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (_chat.GetPlayerChatMask(p).IsAllowed(ChatMessageType.ModChat))
+            if (_chat.GetPlayerChatMask(player).IsAllowed(ChatMessageType.ModChat))
             {
                 if (parameters.IsWhiteSpace())
                 {
-                    _chat.SendMessage(p, !string.IsNullOrWhiteSpace(_emptyReply) ? _emptyReply : "Please include a message to send to online staff.");
+                    _chat.SendMessage(player, !string.IsNullOrWhiteSpace(_emptyReply) ? _emptyReply : "Please include a message to send to online staff.");
                 }
                 else
                 {
                     // same format as subgame
-                    _chat.SendModMessage($"{commandName}: ({p.Name}) ({(arena.IsPublic ? "Public " : "")}{arena.Name}): {parameters}");
-                    _chat.SendMessage(p, "Message has been sent to online staff.");
+                    _chat.SendModMessage($"{commandName}: ({player.Name}) ({(arena.IsPublic ? "Public " : "")}{arena.Name}): {parameters}");
+                    _chat.SendMessage(player, "Message has been sent to online staff.");
                 }
             }
         }

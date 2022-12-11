@@ -126,16 +126,16 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Command_obscene(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_obscene(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            p.Flags.ObscenityFilter = !p.Flags.ObscenityFilter;
+            player.Flags.ObscenityFilter = !player.Flags.ObscenityFilter;
 
             IChat chat = _broker.GetInterface<IChat>();
             if (chat != null)
             {
                 try
                 {
-                    chat.SendMessage(p, $"Obscenity filter {(p.Flags.ObscenityFilter ? "ON" : "OFF")}");
+                    chat.SendMessage(player, $"Obscenity filter {(player.Flags.ObscenityFilter ? "ON" : "OFF")}");
                 }
                 finally
                 {

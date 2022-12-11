@@ -35,15 +35,15 @@ namespace SS.Core.ComponentInterfaces
     /// <summary>
     /// Delegate for a handler to an incoming regular packet.
     /// </summary>
-    /// <param name="p">The player that sent the packet.</param>
+    /// <param name="player">The player that sent the packet.</param>
     /// <param name="data">The buffer containing the packet data that was received.</param>
     /// <param name="length">Number of bytes in the data.</param>
-    public delegate void PacketDelegate(Player p, byte[] data, int length);
+    public delegate void PacketDelegate(Player player, byte[] data, int length);
 
     /// <summary>
     /// Delegate for a handler to an incoming sized packet (file transfer).
     /// </summary>
-    /// <param name="p">The player that sent the packet.</param>
+    /// <param name="player">The player that sent the packet.</param>
     /// <param name="data">The buffer containing the packet data that was received.</param>
     /// <param name="offset">
     /// Starting position of the data being transmitted.
@@ -53,24 +53,24 @@ namespace SS.Core.ComponentInterfaces
     /// Overall size of the transfer in bytes.
     /// -1 indicates that the transfer was cancelled.
     /// </param>
-    public delegate void SizedPacketDelegate(Player p, ReadOnlySpan<byte> data, int offset, int totalLength);
+    public delegate void SizedPacketDelegate(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
     /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.
     /// </summary>
-    /// <param name="p">The player the packet was being sent to.</param>
+    /// <param name="player">The player the packet was being sent to.</param>
     /// <param name="success">Whether the packet was sucessfully sent.</param>
-    public delegate void ReliableDelegate(Player p, bool success);
+    public delegate void ReliableDelegate(Player player, bool success);
 
     /// <summary>
     /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.
     /// The callback includes a parameter for state.
     /// </summary>
     /// <typeparam name="T">The type of state object.</typeparam>
-    /// <param name="p">The player the packet was being sent to.</param>
+    /// <param name="player">The player the packet was being sent to.</param>
     /// <param name="success">Whether the packet was sucessfully sent.</param>
     /// <param name="clos">The state object.</param>
-    public delegate void ReliableDelegate<T>(Player p, bool success, T clos);
+    public delegate void ReliableDelegate<T>(Player player, bool success, T clos);
 
     /// <summary>
     /// Delegate for retrieving sized send data.
@@ -154,19 +154,19 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sends data to a single player.
         /// </summary>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToOne(Player p, ReadOnlySpan<byte> data, NetSendFlags flags);
+        void SendToOne(Player player, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// Sends data to a single player.
         /// </summary>
         /// <typeparam name="TData">The type of data packet to send.</typeparam>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToOne<TData>(Player p, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToOne<TData>(Player player, ref TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// Sends data to players in a specific arena or all arenas,
@@ -226,52 +226,52 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Reliably sends data to a player and invokes a callback after the data has been sent.
         /// </summary>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        void SendWithCallback(Player p, ReadOnlySpan<byte> data, ReliableDelegate callback);
+        void SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback);
 
         /// <summary>
         /// Reliably sends data to a player and invokes a callback after the data has been sent.
         /// </summary>
         /// <typeparam name="TData">The type of data packet to send.</typeparam>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        void SendWithCallback<TData>(Player p, ref TData data, ReliableDelegate callback) where TData : struct;
+        void SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback) where TData : struct;
 
         /// <summary>
         /// Reliably sends data to a player and invokes a callback after the data has been sent.
         /// </summary>
         /// <typeparam name="TState">The type of argument used in the callback.</typeparam>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
         /// <param name="clos">The state to send when invoking the callback.</param>
-        void SendWithCallback<TState>(Player p, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos);
+        void SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos);
 
         /// <summary>
         /// Reliably sends data to a player and invokes a callback after the data has been sent.
         /// </summary>
         /// <typeparam name="TData">The type of data packet to send.</typeparam>
         /// <typeparam name="TState">The type of argument used in the callback.</typeparam>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
         /// <param name="clos">The state to send when invoking the callback.</param>
-        void SendWithCallback<TData, TState>(Player p, ref TData data, ReliableDelegate<TState> callback, TState clos) where TData : struct;
+        void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState clos) where TData : struct;
 
         /// <summary>
         /// Sends 'sized' data to a player.
         /// Used for sending files to players (including, but not limited to: map files (lvl and lvz), news.txt, and client updates).
         /// </summary>
         /// <typeparam name="T">The type of the argument used in the callback to retrieve data to send.</typeparam>
-        /// <param name="p">The player to send data to.</param>
+        /// <param name="player">The player to send data to.</param>
         /// <param name="len">The total number of bytes to send in the transfer.</param>
         /// <param name="requestData">The delegate to call back for retrieving pieces of data for the transfer.</param>
         /// <param name="clos">The argument to pass when calling <paramref name="requestData"/>.</param>
         /// <returns></returns>
-        bool SendSized<T>(Player p, int len, GetSizedSendDataDelegate<T> requestData, T clos);
+        bool SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestData, T clos);
 
         /// <summary>
         /// Registers a handler for a regular packet type.
@@ -315,16 +315,16 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Gets network information for a player.
         /// </summary>
-        /// <param name="p">The player to get information about.</param>
+        /// <param name="player">The player to get information about.</param>
         /// <param name="stats">The information to populate.</param>
-        void GetClientStats(Player p, ref NetClientStats stats);
+        void GetClientStats(Player player, ref NetClientStats stats);
 
         /// <summary>
         /// Gets how long it has been since a packet was received from a specified player.
         /// </summary>
-        /// <param name="p">The player to check.</param>
+        /// <param name="player">The player to check.</param>
         /// <returns>The <see cref="TimeSpan"/> since the last packet was received.</returns>
-        TimeSpan GetLastPacketTimeSpan(Player p);
+        TimeSpan GetLastPacketTimeSpan(Player player);
 
         /// <summary>
         /// Gets the endpoint (IP Address and port) and connectAs that the server is listening on for game clients.

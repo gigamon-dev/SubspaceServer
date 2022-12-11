@@ -288,8 +288,8 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Resets all of a player's stats for an interval.
         /// </summary>
-        /// <param name="p">The player to reset the stats of.</param>
+        /// <param name="player">The player to reset the stats of.</param>
         /// <param name="interval">The interval to reset stats for.</param>
-        void ScoreReset(Player p, PersistInterval interval);
+        void ScoreReset(Player player, PersistInterval interval);
     }
 }

@@ -235,20 +235,20 @@ namespace SS.Core.Modules
             }
         }
 
-        private void MainloopWorkItem_CheckPlayer(Player p)
+        private void MainloopWorkItem_CheckPlayer(Player player)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             try
             {
-                if (p.Status != PlayerState.Playing)
+                if (player.Status != PlayerState.Playing)
                     return;
 
-                Arena arena = p.Arena;
+                Arena arena = player.Arena;
                 if (arena == null)
                     return;
 
@@ -257,8 +257,8 @@ namespace SS.Core.Modules
 
                 lock (lagLimits.Lock)
                 {
-                    CheckSpike(p, lagLimits);
-                    CheckLag(p, lagLimits);
+                    CheckSpike(player, lagLimits);
+                    CheckLag(player, lagLimits);
                 }
             }
             finally
@@ -271,26 +271,26 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CheckSpike(Player p, ArenaLagLimits lagLimits)
+        private void CheckSpike(Player player, ArenaLagLimits lagLimits)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
-            TimeSpan lastPacket = _network.GetLastPacketTimeSpan(p);
+            TimeSpan lastPacket = _network.GetLastPacketTimeSpan(player);
             if (lastPacket > lagLimits.SpikeForceSpec
-                && Spec(p, lagLimits.SpecFreq, "spike"))
+                && Spec(player, lagLimits.SpecFreq, "spike"))
             {
-                _chat.SendMessage(p, $"You have been specced for a {lastPacket.TotalMilliseconds} ms spike.");
+                _chat.SendMessage(player, $"You have been specced for a {lastPacket.TotalMilliseconds} ms spike.");
             }
         }
 
-        private void CheckLag(Player p, ArenaLagLimits lagLimits)
+        private void CheckLag(Player player, ArenaLagLimits lagLimits)
         {
             // gather data
-            _lagQuery.QueryPositionPing(p, out PingSummary positionPing);
-            _lagQuery.QueryClientPing(p, out ClientPingSummary clientPing);
-            _lagQuery.QueryReliablePing(p, out PingSummary reliablePing);
-            _lagQuery.QueryPacketloss(p, out PacketlossSummary packetloss);
+            _lagQuery.QueryPositionPing(player, out PingSummary positionPing);
+            _lagQuery.QueryClientPing(player, out ClientPingSummary clientPing);
+            _lagQuery.QueryReliablePing(player, out PingSummary reliablePing);
+            _lagQuery.QueryPacketloss(player, out PacketlossSummary packetloss);
 
             // average all pings together with reliable ping counted twice
             int averagePing = (positionPing.Average + clientPing.Average + (2 * reliablePing.Average)) / 4;
@@ -298,39 +298,39 @@ namespace SS.Core.Modules
             // check conditions that force spec
             if (averagePing > lagLimits.Ping.ForceSpec)
             {
-                p.Flags.NoShip = true;
+                player.Flags.NoShip = true;
 
-                if (Spec(p, lagLimits.SpecFreq, "ping"))
-                    _chat.SendMessage(p, $"You have been specced for excessive ping ({averagePing} > {lagLimits.Ping.ForceSpec}.");
+                if (Spec(player, lagLimits.SpecFreq, "ping"))
+                    _chat.SendMessage(player, $"You have been specced for excessive ping ({averagePing} > {lagLimits.Ping.ForceSpec}.");
             }
             else if (packetloss.s2c > lagLimits.S2CLoss.ForceSpec)
             {
-                p.Flags.NoShip = true;
+                player.Flags.NoShip = true;
 
-                if (Spec(p, lagLimits.SpecFreq, "s2c ploss"))
-                    _chat.SendMessage(p, $"You have been specced for excessive S2C packetloss ({packetloss.s2c:P2} > {lagLimits.S2CLoss.ForceSpec:P2}.");
+                if (Spec(player, lagLimits.SpecFreq, "s2c ploss"))
+                    _chat.SendMessage(player, $"You have been specced for excessive S2C packetloss ({packetloss.s2c:P2} > {lagLimits.S2CLoss.ForceSpec:P2}.");
             }
             else if (packetloss.s2cwpn > lagLimits.WeaponLoss.ForceSpec)
             {
-                p.Flags.NoShip = true;
+                player.Flags.NoShip = true;
 
-                if (Spec(p, lagLimits.SpecFreq, "s2c wpn ploss"))
-                    _chat.SendMessage(p, $"You have been specced for excessive S2C weapon packetloss ({packetloss.s2cwpn:P2} > {lagLimits.WeaponLoss.ForceSpec:P2}.");
+                if (Spec(player, lagLimits.SpecFreq, "s2c wpn ploss"))
+                    _chat.SendMessage(player, $"You have been specced for excessive S2C weapon packetloss ({packetloss.s2cwpn:P2} > {lagLimits.WeaponLoss.ForceSpec:P2}.");
             }
             else if (packetloss.c2s > lagLimits.C2SLoss.ForceSpec)
             {
-                p.Flags.NoShip = true;
+                player.Flags.NoShip = true;
 
-                if (Spec(p, lagLimits.SpecFreq, "c2s ploss"))
-                    _chat.SendMessage(p, $"You have been specced for excessive C2S packetloss ({packetloss.c2s:P2} > {lagLimits.C2SLoss.ForceSpec:P2}.");
+                if (Spec(player, lagLimits.SpecFreq, "c2s ploss"))
+                    _chat.SendMessage(player, $"You have been specced for excessive C2S packetloss ({packetloss.c2s:P2} > {lagLimits.C2SLoss.ForceSpec:P2}.");
             }
             else
             {
-                p.Flags.NoShip = false;
+                player.Flags.NoShip = false;
             }
 
             // check conditions for disallowing flags/balls
-            p.Flags.NoFlagsBalls = averagePing > lagLimits.Ping.NoFlags
+            player.Flags.NoFlagsBalls = averagePing > lagLimits.Ping.NoFlags
                 || packetloss.s2c > lagLimits.S2CLoss.NoFlags
                 || packetloss.s2cwpn > lagLimits.WeaponLoss.NoFlags
                 || packetloss.c2s > lagLimits.C2SLoss.NoFlags;
@@ -341,16 +341,16 @@ namespace SS.Core.Modules
             double ignore3 = (double)(packetloss.s2cwpn - lagLimits.WeaponLoss.IgnoreWeaponStart) / (lagLimits.WeaponLoss.IgnoreWeaponAll - lagLimits.WeaponLoss.IgnoreWeaponStart);
 
             // use the max of the 3
-            _game.SetIgnoreWeapons(p, Math.Clamp(Math.Max(Math.Max(ignore1, ignore2), ignore3), 0d, 1d));
+            _game.SetIgnoreWeapons(player, Math.Clamp(Math.Max(Math.Max(ignore1, ignore2), ignore3), 0d, 1d));
         }
 
-        private bool Spec(Player p, short specFreq, string reason)
+        private bool Spec(Player player, short specFreq, string reason)
         {
-            if (p.Ship == ShipType.Spec)
+            if (player.Ship == ShipType.Spec)
                 return false;
 
-            _game.SetShipAndFreq(p, ShipType.Spec, specFreq);
-            _logManager.LogP(LogLevel.Info, nameof(LagAction), p, $"specced for: {reason}");
+            _game.SetShipAndFreq(player, ShipType.Spec, specFreq);
+            _logManager.LogP(LogLevel.Info, nameof(LagAction), player, $"specced for: {reason}");
             return true;
         }
 

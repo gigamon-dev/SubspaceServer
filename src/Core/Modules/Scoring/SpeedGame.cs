@@ -121,18 +121,15 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return;
-
             if (action == PlayerAction.EnterArena)
             {
-                UpdateRank(arena, p, false);
+                UpdateRank(arena, player, false);
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                UpdateRank(arena, p, true);
+                UpdateRank(arena, player, true);
             }
 
             if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
@@ -146,11 +143,8 @@ namespace SS.Core.Modules.Scoring
             CheckStart(player.Arena);
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return;
-
             UpdateRank(arena, killer, false);
         }
 

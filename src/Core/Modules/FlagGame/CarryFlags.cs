@@ -445,18 +445,18 @@ namespace SS.Core.Modules.FlagGame
 
         #region Packet handlers
 
-        private void Packet_TouchFlag(Player p, byte[] data, int length)
+        private void Packet_TouchFlag(Player player, byte[] data, int length)
         {
             if (length != C2S_TouchFlag.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"Invalid C2S_TouchFlag packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"Invalid C2S_TouchFlag packet length ({length}).");
                 return;
             }
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet but not in an arena.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but not in an arena.");
                 return;
             }
 
@@ -466,27 +466,27 @@ namespace SS.Core.Modules.FlagGame
             if (ad.GameState != GameState.Running)
                 return;
 
-            if (p.Status != PlayerState.Playing)
+            if (player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), p, $"C2S_TouchFlag packet but not in playing state.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but not in playing state.");
                 return;
             }
 
-            if (p.Ship == ShipType.Spec)
+            if (player.Ship == ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(StaticFlags), p, $"C2S_TouchFlag packet from spec.");
+                _logManager.LogP(LogLevel.Warn, nameof(StaticFlags), player, $"C2S_TouchFlag packet from spec.");
                 return;
             }
 
-            if (p.Flags.DuringChange)
+            if (player.Flags.DuringChange)
             {
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), p, $"C2S_TouchFlag packet before ack from ship/freq change.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"C2S_TouchFlag packet before ack from ship/freq change.");
                 return;
             }
 
-            if (p.Flags.NoFlagsBalls)
+            if (player.Flags.NoFlagsBalls)
             {
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), p, $"Too lagged to tag a flag.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"Too lagged to tag a flag.");
                 return;
             }
 
@@ -495,7 +495,7 @@ namespace SS.Core.Modules.FlagGame
             if (flagId < 0 || flagId >= ad.Flags.Count)
             {
                 // Possible if a flag game was reset or # of flags was changed.
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), p, $"C2S_TouchFlag packet but bad flag id ({flagId}).");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"C2S_TouchFlag packet but bad flag id ({flagId}).");
                 return;
             }
 
@@ -503,50 +503,50 @@ namespace SS.Core.Modules.FlagGame
             if (flagInfo.State != FlagState.OnMap)
             {
                 // Possible if multiple players are racing to claim a flag.
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), p, $"C2S_TouchFlag packet but flag {flagId} was not on the map.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"C2S_TouchFlag packet but flag {flagId} was not on the map.");
                 return;
             }
 
-            ad.CarryFlagBehavior.TouchFlag(arena, p, flagId);
+            ad.CarryFlagBehavior.TouchFlag(arena, player, flagId);
         }
 
-        private void Packet_DropFlags(Player p, byte[] data, int length)
+        private void Packet_DropFlags(Player player, byte[] data, int length)
         {
-            if (p == null)
+            if (player == null)
                 return;
 
             if (length != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(CarryFlags), p, $"Invalid drop flag packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(CarryFlags), player, $"Invalid drop flag packet length ({length}).");
                 return;
             }
 
-            Arena arena = p.Arena;
-            if (arena == null || p.Status != PlayerState.Playing)
+            Arena arena = player.Arena;
+            if (arena == null || player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), p, $"Flag drop from bad state/arena.");
+                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, $"Flag drop from bad state/arena.");
                 return;
             }
 
-            if (p.Ship == ShipType.Spec)
+            if (player.Ship == ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), p, $"State sync problem: drop flag from spec.");
+                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, $"State sync problem: drop flag from spec.");
                 return;
             }
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (p.Packet.FlagsCarried == 0)
+            if (player.Packet.FlagsCarried == 0)
                 return;
 
-            S2C_FlagDrop flagDropPacket = new((short)p.Id);
+            S2C_FlagDrop flagDropPacket = new((short)player.Id);
             _network.SendToArena(arena, null, ref flagDropPacket, NetSendFlags.Reliable);
 
             AdjustCarriedFlags(
                 arena,
-                p,
-                ((p.Position.Status & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone) ? AdjustFlagReason.InSafe : AdjustFlagReason.Dropped);
+                player,
+                ((player.Position.Status & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone) ? AdjustFlagReason.InSafe : AdjustFlagReason.Dropped);
         }
 
         #endregion

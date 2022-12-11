@@ -180,29 +180,29 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.LeaveArena)
             {
-                ((IWatchDamage)this).ClearWatch(p, true);
+                ((IWatchDamage)this).ClearWatch(player, true);
             }
         }
 
-        private void Packet_Damage(Player p, byte[] data, int length)
+        private void Packet_Damage(Player player, byte[] data, int length)
         {
-            if (p.Status != PlayerState.Playing)
+            if (player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = p.Arena;
+            Arena arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             if (length < C2S_WatchDamageHeader.Length + DamageData.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(WatchDamage), p, $"Invalid C2S WatchDamage packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(WatchDamage), player, $"Invalid C2S WatchDamage packet length ({length}).");
                 return;
             }
 
@@ -215,7 +215,7 @@ namespace SS.Core.Modules
                 Span<byte> s2cPacket = stackalloc byte[S2C_WatchDamageHeader.Length + c2sDamageSpan.Length * DamageData.Length];
                 ref S2C_WatchDamageHeader s2cHeader = ref MemoryMarshal.AsRef<S2C_WatchDamageHeader>(s2cPacket);
                 Span<DamageData> s2cDamageSpan = MemoryMarshal.Cast<byte, DamageData>(s2cPacket[S2C_WatchDamageHeader.Length..]);
-                s2cHeader = new((short)p.Id, c2sHeader.Timestamp);
+                s2cHeader = new((short)player.Id, c2sHeader.Timestamp);
                 c2sDamageSpan.CopyTo(s2cDamageSpan);
 
                 _network.SendToSet(pd.PlayersWatching, s2cPacket, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
@@ -223,7 +223,7 @@ namespace SS.Core.Modules
 
             if (pd.CallbackWatchCount > 0)
             {
-                PlayerDamageCallback.Fire(arena, p, c2sHeader.Timestamp, c2sDamageSpan);
+                PlayerDamageCallback.Fire(arena, player, c2sHeader.Timestamp, c2sDamageSpan);
             }
         }
 
@@ -234,51 +234,51 @@ namespace SS.Core.Modules
             "turns it on, 0 turns it off, and no argument toggles. If sent as a\n" +
             "public command, only {?watchdamage 0} is meaningful, and it turns off\n" +
             "damage watching on all players.")]
-        private void Command_watchdamage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player p, ITarget target)
+        private void Command_watchdamage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.Type == TargetType.Arena)
             {
                 if (parameters.Equals("0", StringComparison.OrdinalIgnoreCase))
                 {
                     // Remove all subscriptions the player has on other players.
-                    ((IWatchDamage)this).ClearWatch(p, false);
-                    _chat.SendMessage(p, "All damage watching turned off.");
+                    ((IWatchDamage)this).ClearWatch(player, false);
+                    _chat.SendMessage(player, "All damage watching turned off.");
                 }
             }
             else if (target.TryGetPlayerTarget(out Player targetPlayer))
             {
                 if (targetPlayer.Type != ClientType.Continuum)
                 {
-                    _chat.SendMessage(p, $"Watchdamage requires {targetPlayer.Name} to use Continuum.");
+                    _chat.SendMessage(player, $"Watchdamage requires {targetPlayer.Name} to use Continuum.");
                     return;
                 }
 
                 if (parameters.Equals("0", StringComparison.OrdinalIgnoreCase))
                 {
                     // off
-                    if (((IWatchDamage)this).TryRemoveWatch(p, targetPlayer))
+                    if (((IWatchDamage)this).TryRemoveWatch(player, targetPlayer))
                     {
-                        _chat.SendMessage(p, $"Damage watching of {targetPlayer.Name} turned off.");
+                        _chat.SendMessage(player, $"Damage watching of {targetPlayer.Name} turned off.");
                     }
                 }
                 else if (parameters.Equals("1", StringComparison.OrdinalIgnoreCase))
                 {
                     // on
-                    if (((IWatchDamage)this).TryAddWatch(p, targetPlayer))
+                    if (((IWatchDamage)this).TryAddWatch(player, targetPlayer))
                     {
-                        _chat.SendMessage(p, $"Damage watching of {targetPlayer.Name} turned on.");
+                        _chat.SendMessage(player, $"Damage watching of {targetPlayer.Name} turned on.");
                     }
                 }
                 else
                 {
                     // toggle
-                    if (((IWatchDamage)this).TryAddWatch(p, targetPlayer))
+                    if (((IWatchDamage)this).TryAddWatch(player, targetPlayer))
                     {
-                        _chat.SendMessage(p, $"Damage watching of {targetPlayer.Name} turned on.");
+                        _chat.SendMessage(player, $"Damage watching of {targetPlayer.Name} turned on.");
                     }
-                    else if(((IWatchDamage)this).TryRemoveWatch(p, targetPlayer))
+                    else if(((IWatchDamage)this).TryRemoveWatch(player, targetPlayer))
                     {
-                        _chat.SendMessage(p, $"Damage watching of {targetPlayer.Name} turned off.");
+                        _chat.SendMessage(player, $"Damage watching of {targetPlayer.Name} turned off.");
                     }
                 }
             }
