@@ -49,16 +49,6 @@ namespace SS.Core.Modules
 
         private const int WeaponCount = 32;
 
-        // delegates to prevent allocating a new delegate object per call
-        private readonly Action<ShipFreqChangeDTO> mainloopWork_RunShipFreqChangeCallbackAction;
-        private readonly Action<SpawnDTO> mainloopWork_RunSpawnCallbackAction;
-
-        public Game()
-        {
-            mainloopWork_RunSpawnCallbackAction = MainloopWork_RunSpawnCallback;
-            mainloopWork_RunShipFreqChangeCallbackAction = MainloopWork_RunShipFreqChangeCallback;
-        }
-
         #region IModule Members
 
         public bool Load(
@@ -2299,13 +2289,21 @@ namespace SS.Core.Modules
         private void DoSpawnCallback(Player player, SpawnCallback.SpawnReason reason)
         {
             _mainloop.QueueMainWorkItem(
-                mainloopWork_RunSpawnCallbackAction,
+                MainloopWork_RunSpawnCallback,
                 new SpawnDTO()
                 {
                     Arena = player.Arena,
                     Player = player,
                     Reason = reason,
                 });
+
+            void MainloopWork_RunSpawnCallback(SpawnDTO dto)
+            {
+                if (dto.Arena == dto.Player.Arena)
+                {
+                    SpawnCallback.Fire(dto.Arena, dto.Player, dto.Reason);
+                }
+            }
         }
 
         private struct SpawnDTO
@@ -2313,15 +2311,6 @@ namespace SS.Core.Modules
             public Arena Arena;
             public Player Player;
             public SpawnCallback.SpawnReason Reason;
-        }
-
-        
-        private void MainloopWork_RunSpawnCallback(SpawnDTO dto)
-        {
-            if (dto.Arena == dto.Player.Arena)
-            {
-                SpawnCallback.Fire(dto.Arena, dto.Player, dto.Reason);
-            }
         }
 
         private struct ShipFreqChangeDTO
@@ -2337,7 +2326,7 @@ namespace SS.Core.Modules
         private void DoShipFreqChangeCallback(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             _mainloop.QueueMainWorkItem(
-                mainloopWork_RunShipFreqChangeCallbackAction,
+                MainloopWork_RunShipFreqChangeCallback,
                 new ShipFreqChangeDTO()
                 {
                     Arena = player.Arena,
@@ -2347,13 +2336,13 @@ namespace SS.Core.Modules
                     NewFreq = newFreq,
                     OldFreq = oldFreq,
                 });
-        }
 
-        private void MainloopWork_RunShipFreqChangeCallback(ShipFreqChangeDTO dto)
-        {
-            if (dto.Arena == dto.Player.Arena)
+            void MainloopWork_RunShipFreqChangeCallback(ShipFreqChangeDTO dto)
             {
-                ShipFreqChangeCallback.Fire(dto.Arena, dto.Player, dto.NewShip, dto.OldShip, dto.NewFreq, dto.OldFreq);
+                if (dto.Arena == dto.Player.Arena)
+                {
+                    ShipFreqChangeCallback.Fire(dto.Arena, dto.Player, dto.NewShip, dto.OldShip, dto.NewFreq, dto.OldFreq);
+                }
             }
         }
 

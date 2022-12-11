@@ -938,18 +938,8 @@ namespace SS.Core.Modules
 
         private readonly NetStats _globalStats = new();
 
-        // delegates to prevent allocating a new delegate object per call
-        private readonly Action<BigPacketWork> mainloopWork_CallBigPacketHandlersAction;
-        private readonly Action<SubspaceBuffer> mainloopWork_CallPacketHandlersAction;
-        private readonly Action<InvokeReliableCallbackDTO> mainloopWork_InvokeReliableCallbackAction;
-
         public Network()
         {
-            // Create callback delegates once rather than each time they're used.
-            mainloopWork_CallBigPacketHandlersAction = MainloopWork_CallBigPacketHandlers;
-            mainloopWork_CallPacketHandlersAction = MainloopWork_CallPacketHandlers;
-            mainloopWork_InvokeReliableCallbackAction = MainloopWork_InvokeReliableCallback;
-
             _oohandlers = new Action<SubspaceBuffer>[20];
 
             _oohandlers[0] = null; //00 - nothing
@@ -2259,7 +2249,7 @@ namespace SS.Core.Modules
             }
             else if (t1 < MAXTYPES)
             {
-                _mainloop.QueueMainWorkItem(mainloopWork_CallPacketHandlersAction, buffer);
+                _mainloop.QueueMainWorkItem(MainloopWork_CallPacketHandlers, buffer);
             }
             else
             {
@@ -2820,7 +2810,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(player));
 
             _mainloop.QueueMainWorkItem(
-                mainloopWork_InvokeReliableCallbackAction,
+                MainloopWork_InvokeReliableCallback,
                 new InvokeReliableCallbackDTO()
                 {
                     CallbackInvoker = callbackInvoker,
@@ -3012,7 +3002,7 @@ namespace SS.Core.Modules
                         // Process it on the mainloop thread.
                         // Ownership of the BigReceive object is transferred to the workitem. The workitem is responsible for disposing it.
                         _mainloop.QueueMainWorkItem(
-                            mainloopWork_CallBigPacketHandlersAction,
+                            MainloopWork_CallBigPacketHandlers,
                             new BigPacketWork()
                             {
                                 ConnData = conn,
