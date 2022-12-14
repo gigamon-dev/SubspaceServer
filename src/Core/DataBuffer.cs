@@ -1,22 +1,24 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using SS.Utilities;
 
 namespace SS.Core
 {
     public class DataBuffer : PooledObject
     {
-        public readonly byte[] Bytes = new byte[Constants.MaxConnInitPacket + 4];
+        public readonly byte[] Bytes;
 
         /// <summary>
         /// # of bytes used in the byte[]
         /// </summary>
         public int NumBytes;
 
-        public DataBuffer()
+        public DataBuffer() : this(Constants.MaxPacket + 4)
         {
+        }
+
+        public DataBuffer(int capacity)
+        {
+            Bytes = new byte[capacity];
         }
 
         public virtual void Clear()

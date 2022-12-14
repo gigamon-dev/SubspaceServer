@@ -59,8 +59,7 @@ namespace SS.Utilities
         {
             if (isDisposing)
             {
-                if (Pool != null)
-                    Pool.Release(this); // return this object to the pool it originated from
+                Pool?.Release(this); // return this object to the pool it originated from
             }
         }
     }
