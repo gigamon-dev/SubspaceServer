@@ -99,7 +99,7 @@ namespace SS.Core.Modules
         private readonly Dictionary<EndPoint, NetClientConnection> _clientConnections = new();
         private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.NoRecursion);
 
-        private delegate void CorePacketHandler(Span<byte> data, ConnData conn);
+        private delegate void CorePacketHandler(ReadOnlySpan<byte> data, ConnData conn);
 
         /// <summary>
         /// Handlers for 'core' packets (ss protocol's network/transport layer).
@@ -1143,7 +1143,7 @@ namespace SS.Core.Modules
 
         #region oohandlers (network layer header handling)
 
-        private void ProcessKeyResponse(Span<byte> data, ConnData conn)
+        private void ProcessKeyResponse(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1157,7 +1157,7 @@ namespace SS.Core.Modules
                 _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Got key response packet.");
         }
 
-        private void ProcessReliable(Span<byte> data, ConnData conn)
+        private void ProcessReliable(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1167,7 +1167,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(data);
+            ref readonly ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(data);
             int sn = rp.SeqNum;
 
             Monitor.Enter(conn.relmtx);
@@ -1226,7 +1226,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessAck(Span<byte> data, ConnData conn)
+        private void ProcessAck(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1234,7 +1234,7 @@ namespace SS.Core.Modules
             if (data.Length != 6) // ack packets are 6 bytes long
                 return;
 
-            ref AckPacket ack = ref MemoryMarshal.AsRef<AckPacket>(data);
+            ref readonly AckPacket ack = ref MemoryMarshal.AsRef<AckPacket>(data);
             int seqNum = ack.SeqNum;
 
             Monitor.Enter(conn.olmtx);
@@ -1291,7 +1291,7 @@ namespace SS.Core.Modules
             Monitor.Exit(conn.olmtx);
         }
 
-        private void ProcessSyncRequest(Span<byte> data, ConnData conn)
+        private void ProcessSyncRequest(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1329,7 +1329,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessDrop(Span<byte> data, ConnData conn)
+        private void ProcessDrop(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1349,7 +1349,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessBigData(Span<byte> data, ConnData conn)
+        private void ProcessBigData(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1428,7 +1428,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessPresize(Span<byte> data, ConnData conn)
+        private void ProcessPresize(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1436,7 +1436,7 @@ namespace SS.Core.Modules
             if (data.Length < 7)
                 return;
 
-            ref PresizedHeader header = ref MemoryMarshal.AsRef<PresizedHeader>(data);
+            ref readonly PresizedHeader header = ref MemoryMarshal.AsRef<PresizedHeader>(data);
             int size = header.Size;
             data = data[PresizedHeader.Length..];
 
@@ -1483,7 +1483,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessCancelReq(Span<byte> data, ConnData conn)
+        private void ProcessCancelReq(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1508,7 +1508,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessCancel(Span<byte> data, ConnData conn)
+        private void ProcessCancel(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1525,7 +1525,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessGrouped(Span<byte> data, ConnData conn)
+        private void ProcessGrouped(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1545,7 +1545,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessSpecial(Span<byte> data, ConnData conn)
+        private void ProcessSpecial(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -2692,7 +2692,7 @@ namespace SS.Core.Modules
                         Monitor.Exit(conn.relmtx);
 
                         // process it
-                        ProcessBuffer(buf.Bytes.AsSpan(ReliableHeader.Length, buf.NumBytes - ReliableHeader.Length), conn);
+                        ProcessBuffer(new ReadOnlySpan<byte>(buf.Bytes, ReliableHeader.Length, buf.NumBytes - ReliableHeader.Length), conn);
                         buf.Dispose();
 
                         Monitor.Enter(conn.relmtx);
@@ -2815,7 +2815,7 @@ namespace SS.Core.Modules
         /// </summary>
         /// <param name="data">The buffer to process.</param>
         /// <param name="conn">Context about the connection that the packet is being processed for.</param>
-        private void ProcessBuffer(Span<byte> data, ConnData conn)
+        private void ProcessBuffer(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
