@@ -6,14 +6,30 @@ using System.Text;
 
 namespace SS.Core.Modules.Enforcers
 {
+    /// <summary>
+    /// Module that enforces rules for changing ships:
+    /// <list>
+    ///     <item>
+    ///         <term>arena.conf: Misc:ShipChangeInterval</term>
+    ///         <description>Minimum allowed time between ship changes.</description>
+    ///     </item>
+    ///     <item>
+    ///         <term>arena.conf: Misc:AntiwarpShipChange</term>
+    ///         <description>Whether to prevent players not carrying flags to change ships while antiwarped.</description>
+    ///     </item>
+    ///     <item>
+    ///         <term>arena.conf: Misc:AntiwarpFlagShipChange</term>
+    ///         <description>Whether to prevent players carrying flags to change ships while antiwarped.</description>
+    ///     </item>
+    /// </list>
+    /// </summary>
+    [CoreModuleInfo]
     public class ShipChange : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
         private IGame _game;
         private IPlayerData _playerData;
-
-        //private IFlagCore _flagCore;
 
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
@@ -32,8 +48,6 @@ namespace SS.Core.Modules.Enforcers
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            //_flagCore = broker.GetInterface<IFlagCore>();
-
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
@@ -49,20 +63,27 @@ namespace SS.Core.Modules.Enforcers
             _arenaManager.FreeArenaData(_adKey);
             _playerData.FreePlayerData(_pdKey);
 
-            //if (_flagCore != null)
-            //    broker.ReleaseInterface(ref _flagCore);
-
             return true;
         }
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
+
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
+            ad.AdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
             return true;
         }
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return false;
+
+            if (!arena.UnregisterAdvisor(ref ad.AdvisorToken))
+                return false;
+
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
             return true;
         }
@@ -73,19 +94,19 @@ namespace SS.Core.Modules.Enforcers
 
         ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd)
-                || pd.LastChange == null)
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
             {
                 return ShipMask.All;
             }
 
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
             {
                 return ShipMask.All;
             }
 
-            if (pd.LastChange.Value + ad.ShipChangeInterval > DateTime.UtcNow 
-                && ad.ShipChangeInterval > TimeSpan.Zero)
+            if (pd.LastChange is not null
+                && ad.ShipChangeInterval > TimeSpan.Zero
+                && pd.LastChange.Value + ad.ShipChangeInterval > DateTime.UtcNow)
             {
                 if (ship != player.Ship)
                     errorMessage?.Append("You've changed ship too recently. Please wait.");
@@ -100,27 +121,14 @@ namespace SS.Core.Modules.Enforcers
                 && (ad.AntiwarpNonFlagger || ad.AntiwarpFlagger)
                 && _game.IsAntiwarped(player, null))
             {
-                int flags;
+                bool hasFlags = player.Packet.FlagsCarried > 0;
 
-                // TODO: flag logic
-                //if (_flagCore != null)
-                //{
-                //    flags = _flagCore.CountPlayerFlags(player);
-                //}
-                //else
-                //{
-                    flags = 0;
-                //}
-
-                if ((flags != 0 && ad.AntiwarpFlagger) || (flags == 0 && ad.AntiwarpNonFlagger))
+                if ((hasFlags && ad.AntiwarpFlagger) || (!hasFlags && ad.AntiwarpNonFlagger))
                 {
                     if (ship != player.Ship)
                         errorMessage?.Append("You are antiwarped!");
 
-                    if (player.Ship != ShipType.Spec)
-                        return player.Ship.GetShipMask(); // player can only stay in the current ship
-                    else
-                        return ShipMask.None; // can't switch
+                    return player.Ship.GetShipMask(); // player can only stay in the current ship
                 }
             }
 
@@ -167,12 +175,19 @@ namespace SS.Core.Modules.Enforcers
 
         private class ArenaData : IPooledExtraData
         {
+            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
+
+            #region Settings
+
             public TimeSpan ShipChangeInterval;
             public bool AntiwarpNonFlagger;
             public bool AntiwarpFlagger;
 
+            #endregion
+
             void IPooledExtraData.Reset()
             {
+                AdvisorToken = null;
                 ShipChangeInterval = TimeSpan.Zero;
                 AntiwarpNonFlagger = false;
                 AntiwarpFlagger = false;

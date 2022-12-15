@@ -628,20 +628,20 @@ namespace SS.Core.Modules
 
                 ad.PersonalGreen = pg;
 
-                int cfg_bulletpix = _configManager.GetInt(_configManager.Global, "Net", "BulletPixels", 1500);
+                int cfg_bulletpix = _configManager.GetInt(arena.Cfg, "Net", "BulletPixels", 1500);
 
-                int cfg_wpnpix = _configManager.GetInt(_configManager.Global, "Net", "WeaponPixels", 2000);
+                int cfg_wpnpix = _configManager.GetInt(arena.Cfg, "Net", "WeaponPixels", 2000);
 
-                ad.cfg_pospix = _configManager.GetInt(_configManager.Global, "Net", "PositionExtraPixels", 8000);
+                ad.cfg_pospix = _configManager.GetInt(arena.Cfg, "Net", "PositionExtraPixels", 8000);
 
-                ad.cfg_sendanti = _configManager.GetInt(_configManager.Global, "Net", "AntiwarpSendPercent", 5);
+                ad.cfg_sendanti = _configManager.GetInt(arena.Cfg, "Net", "AntiwarpSendPercent", 5);
                 ad.cfg_sendanti = Constants.RandMax / 100 * ad.cfg_sendanti;
 
-                int cfg_AntiwarpPixels = _configManager.GetInt(_configManager.Global, "Toggle", "AntiwarpPixels", 1);
+                int cfg_AntiwarpPixels = _configManager.GetInt(arena.Cfg, "Toggle", "AntiwarpPixels", 1);
                 ad.cfg_AntiwarpRange = cfg_AntiwarpPixels * cfg_AntiwarpPixels;
 
                 // continuum clients take EnterDelay + 100 ticks to respawn after death
-                ad.cfg_EnterDelay = _configManager.GetInt(_configManager.Global, "Kill", "EnterDelay", 0) + 100;
+                ad.cfg_EnterDelay = _configManager.GetInt(arena.Cfg, "Kill", "EnterDelay", 0) + 100;
                 // setting of 0 or less means respawn in place, with 1 second delay
                 if (ad.cfg_EnterDelay <= 0)
                     ad.cfg_EnterDelay = 100;
