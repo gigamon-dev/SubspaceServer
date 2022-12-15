@@ -200,26 +200,26 @@ namespace SS.Core.Modules
         {
             _oohandlers = new CorePacketHandler[20];
 
-            _oohandlers[0] = null;               // 0x00 - nothing
-            _oohandlers[1] = null;               // 0x01 - key initiation
-            _oohandlers[2] = ProcessKeyResponse; // 0x02 - key response
-            _oohandlers[3] = ProcessReliable;    // 0x03 - reliable
-            _oohandlers[4] = ProcessAck;         // 0x04 - reliable response
-            _oohandlers[5] = ProcessSyncRequest; // 0x05 - time sync request
-            _oohandlers[6] = null;               // 0x06 - time sync response
-            _oohandlers[7] = ProcessDrop;        // 0x07 - close connection
-            _oohandlers[8] = ProcessBigData;     // 0x08 - bigpacket
-            _oohandlers[9] = ProcessBigData;     // 0x09 - bigpacket end
-            _oohandlers[10] = ProcessPresize;    // 0x0A - presized data (file transfer)
-            _oohandlers[11] = ProcessCancelReq;  // 0x0B - cancel presized
-            _oohandlers[12] = ProcessCancel;     // 0x0C - presized has been cancelled
-            _oohandlers[13] = null;              // 0x0D - nothing
-            _oohandlers[14] = ProcessGrouped;    // 0x0E - grouped
-            _oohandlers[15] = null;              // 0x0F
-            _oohandlers[16] = null;              // 0x10
-            _oohandlers[17] = null;              // 0x11
-            _oohandlers[18] = null;              // 0x12
-            _oohandlers[19] = ProcessSpecial;    // 0x13 - cont key response
+            _oohandlers[0]  = null;                      // 0x00 - nothing
+            _oohandlers[1]  = null;                      // 0x01 - key initiation
+            _oohandlers[2]  = CorePacket_KeyResponse;    // 0x02 - key response
+            _oohandlers[3]  = CorePacket_Reliable;       // 0x03 - reliable
+            _oohandlers[4]  = CorePacket_Ack;            // 0x04 - reliable response
+            _oohandlers[5]  = CorePacket_SyncRequest;    // 0x05 - time sync request
+            _oohandlers[6]  = null;                      // 0x06 - time sync response
+            _oohandlers[7]  = CorePacket_Drop;           // 0x07 - close connection
+            _oohandlers[8]  = CorePacket_BigData;        // 0x08 - bigpacket
+            _oohandlers[9]  = CorePacket_BigData;        // 0x09 - bigpacket end
+            _oohandlers[10] = CorePacket_SizedData;      // 0x0A - sized data transfer (incoming)
+            _oohandlers[11] = CorePacket_CancelSized;    // 0x0B - request to cancel the current outgoing sized data transfer
+            _oohandlers[12] = CorePacket_SizedCancelled; // 0x0C - incoming sized data transfer has been cancelled
+            _oohandlers[13] = null;                      // 0x0D - nothing
+            _oohandlers[14] = CorePacket_Grouped;        // 0x0E - grouped
+            _oohandlers[15] = null;                      // 0x0F
+            _oohandlers[16] = null;                      // 0x10
+            _oohandlers[17] = null;                      // 0x11
+            _oohandlers[18] = null;                      // 0x12
+            _oohandlers[19] = CorePacket_Special;        // 0x13 - cont key response
 
             _readOnlyListenData = _listenDataList.AsReadOnly();
         }
@@ -1141,9 +1141,9 @@ namespace SS.Core.Modules
 
         #endregion
 
-        #region oohandlers (network layer header handling)
+        #region Core packet handlers (oohandlers)
 
-        private void ProcessKeyResponse(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_KeyResponse(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1157,7 +1157,7 @@ namespace SS.Core.Modules
                 _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Got key response packet.");
         }
 
-        private void ProcessReliable(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Reliable(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1226,7 +1226,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessAck(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Ack(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1291,7 +1291,7 @@ namespace SS.Core.Modules
             Monitor.Exit(conn.olmtx);
         }
 
-        private void ProcessSyncRequest(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_SyncRequest(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1329,7 +1329,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessDrop(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Drop(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1349,7 +1349,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessBigData(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_BigData(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1428,7 +1428,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessPresize(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_SizedData(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1483,7 +1483,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessCancelReq(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_CancelSized(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1508,7 +1508,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessCancel(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_SizedCancelled(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1525,7 +1525,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessGrouped(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Grouped(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -1533,6 +1533,10 @@ namespace SS.Core.Modules
             if (data.Length < 4)
                 return;
 
+            if (data.Length > Constants.MaxGroupedPacketLength)
+                return;
+
+            data = data[2..];
             while (data.Length > 0)
             {
                 int len = data[0];
@@ -1545,7 +1549,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessSpecial(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Special(ReadOnlySpan<byte> data, ConnData conn)
         {
             if (conn is null)
                 return;
@@ -2684,16 +2688,20 @@ namespace SS.Core.Modules
                         (buf = conn.relbuf[spot]) != null && processedCount <= Constants.CFG_INCOMING_BUFFER;
                         spot = conn.c2sn % Constants.CFG_INCOMING_BUFFER)
                     {
+                        if (!Monitor.TryEnter(conn.ReliableProcessingLock))
+                            break; // another thread is already processing a reliable packet for this connection
+
                         conn.c2sn++;
                         conn.relbuf[spot] = null;
-                        processedCount++;
 
                         // don't need the mutex while doing the actual processing
                         Monitor.Exit(conn.relmtx);
 
                         // process it
                         ProcessBuffer(new ReadOnlySpan<byte>(buf.Bytes, ReliableHeader.Length, buf.NumBytes - ReliableHeader.Length), conn);
+                        Monitor.Exit(conn.ReliableProcessingLock);
                         buf.Dispose();
+                        processedCount++;
 
                         Monitor.Enter(conn.relmtx);
                     }
@@ -3654,6 +3662,16 @@ namespace SS.Core.Modules
             /// mutex for <see cref="relbuf"/>
             /// </summary>
             public readonly object relmtx = new();
+
+            /// <summary>
+            /// This is used to ensure that only one incoming reliable packet is processed at a given time for the connection.
+            /// </summary>
+            /// <remarks>
+            /// Reliable packets need to be processed in the order of their sequence number; two can't be processed simultaneously.
+            /// <see cref="relmtx"/> is not held while processing since the receive thread shouldn't be blocked from adding to <see cref="relbuf"/>.
+            /// So, this is needed in case there are multiple threads processing reliable packets (Net:ReliableThreads > 1).
+            /// </remarks>
+            public readonly object ReliableProcessingLock = new();
 
             /// <summary>
             /// mutex for (<see cref="BigRecv"/> and <see cref="sizedrecv"/>)
