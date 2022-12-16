@@ -95,7 +95,7 @@ namespace SS.Core.Modules
             ShipFreqChangeCallback.Unregister(_broker, Callback_ShipFreqChange);
             KillCallback.Unregister(_broker, Callback_Kill);
 
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

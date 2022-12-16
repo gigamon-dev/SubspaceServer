@@ -74,7 +74,7 @@ namespace SS.Core.Modules.Scoring
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             KillCallback.Unregister(broker, Callback_Kill);
 
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

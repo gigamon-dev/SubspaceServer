@@ -143,8 +143,8 @@ namespace SS.Core.Modules
             if (_persist is not null && _persistRegistration is not null)
                 _persist.UnregisterPersistentData(_persistRegistration);
 
-            _arenaManager.FreeArenaData(_adKey);
-            _playerData.FreePlayerData(_pdKey);
+            _arenaManager.FreeArenaData(ref _adKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             if (_persist is not null)
                 _broker.ReleaseInterface(ref _persist);

@@ -113,7 +113,8 @@ namespace SS.Core.ComponentInterfaces
         /// Frees a per-arena data slot.
         /// </summary>
         /// <param name="key">The key from <see cref="AllocateArenaData{T}"/>.</param>
-        void FreeArenaData<T>(ArenaDataKey<T> key);
+        /// <returns><see langword="true"/> if the slot for given <paramref name="key"/> was freed. <see langword="false"/> if the <paramref name="key"/> was invalid.</returns>
+        bool FreeArenaData<T>(ref ArenaDataKey<T> key);
 
         /// <summary>
         /// Puts a "hold" on an arena, preventing it from proceeding to the

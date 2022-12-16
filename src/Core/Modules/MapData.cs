@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private InterfaceRegistrationToken<IMapData> _iMapDataToken;
 
-        private ArenaDataKey<ArenaData> adKey;
+        private ArenaDataKey<ArenaData> _adKey;
 
         #region IModule Members
 
@@ -40,7 +40,7 @@ namespace SS.Core.Modules
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
 
-            adKey = _arenaManager.AllocateArenaData<ArenaData>();
+            _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
             _iMapDataToken = _broker.RegisterInterface<IMapData>(this);
 
@@ -53,7 +53,7 @@ namespace SS.Core.Modules
                 return false;
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
-            _arenaManager.FreeArenaData(adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }
@@ -139,7 +139,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -162,7 +162,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -182,7 +182,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -202,7 +202,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -222,7 +222,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -242,7 +242,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -271,7 +271,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -339,7 +339,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             int saveKey = (int)key;
@@ -372,7 +372,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -392,7 +392,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -412,7 +412,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -432,7 +432,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -455,7 +455,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("A path is required.", nameof(path));
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
 
             ad.Lock.EnterReadLock();
@@ -477,7 +477,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             if (action == ArenaAction.PreCreate)

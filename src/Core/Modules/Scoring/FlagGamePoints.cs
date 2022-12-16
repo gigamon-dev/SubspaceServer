@@ -43,7 +43,7 @@ namespace SS.Core.Modules.Scoring
 
         public bool Unload(ComponentBroker broker)
         {
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

@@ -45,7 +45,7 @@ namespace SS.Matchmaking.Modules
         public bool Unload(ComponentBroker broker)
         {
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
             return true;
         }
 

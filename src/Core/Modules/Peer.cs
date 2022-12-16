@@ -103,7 +103,7 @@ namespace SS.Core.Modules
         {
             broker.UnregisterInterface(ref _iPeerToken);
             _networkEncryption.RemoveConnectionInitHandler(ConnectionInitHandler);
-            _arenaManager.FreeArenaData(_arenaDataKey);
+            _arenaManager.FreeArenaData(ref _arenaDataKey);
             return true;
         }
 

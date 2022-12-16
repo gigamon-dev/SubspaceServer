@@ -79,7 +79,7 @@ namespace SS.Matchmaking.Modules
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             broker.ReleaseInterface(ref _help);
 

@@ -150,7 +150,7 @@ namespace SS.Replay
             _commandManager.RemoveCommand("gamerecord", Command_replay);
             _commandManager.RemoveCommand("rec", Command_replay);
 
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

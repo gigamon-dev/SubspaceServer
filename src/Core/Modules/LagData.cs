@@ -55,7 +55,7 @@ namespace SS.Core.Modules
 
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
 
-            _playerData.FreePlayerData(_lagkey);
+            _playerData.FreePlayerData(ref _lagkey);
 
             return true;
         }

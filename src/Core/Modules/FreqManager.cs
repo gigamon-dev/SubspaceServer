@@ -76,8 +76,8 @@ namespace SS.Core.Modules
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
 
-            _arenaManager.FreeArenaData(_adKey);
-            _playerData.FreePlayerData(_pdKey);
+            _arenaManager.FreeArenaData(ref _adKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }

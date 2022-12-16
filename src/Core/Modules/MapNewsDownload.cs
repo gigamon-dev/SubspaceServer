@@ -104,7 +104,7 @@ namespace SS.Core.Modules
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
 
-            _arenaManager.FreeArenaData(_dlKey);
+            _arenaManager.FreeArenaData(ref _dlKey);
 
             return true;
         }

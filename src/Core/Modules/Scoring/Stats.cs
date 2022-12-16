@@ -153,7 +153,7 @@ namespace SS.Core.Modules.Scoring
 
             _commandManager.RemoveCommand("stats", Command_stats);
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }

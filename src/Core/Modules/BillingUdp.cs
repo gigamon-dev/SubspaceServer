@@ -153,7 +153,7 @@ namespace SS.Core.Modules
 
             _network.RemovePacket(C2SPacketType.RegData, Packet_RegData);
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             broker.ReleaseInterface(ref _arenaPlayerStats);
             broker.ReleaseInterface(ref _billingFallback);

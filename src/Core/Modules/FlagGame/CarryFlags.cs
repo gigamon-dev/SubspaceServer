@@ -79,7 +79,7 @@ namespace SS.Core.Modules.FlagGame
             _network.RemovePacket(C2SPacketType.TouchFlag, Packet_TouchFlag);
             _network.RemovePacket(C2SPacketType.DropFlags, Packet_DropFlags);
 
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

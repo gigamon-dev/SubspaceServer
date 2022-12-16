@@ -43,7 +43,7 @@ namespace SS.Core.Modules.Enforcers
         public bool Unload(ComponentBroker broker)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

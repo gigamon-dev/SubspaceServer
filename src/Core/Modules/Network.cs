@@ -582,7 +582,7 @@ namespace SS.Core.Modules
 
             _objectPoolManager.TryRemoveTracked(_bufferNodePool);
 
-            _playerData.FreePlayerData(_connKey);
+            _playerData.FreePlayerData(ref _connKey);
 
             return true;
         }

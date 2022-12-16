@@ -104,8 +104,8 @@ namespace SS.Core.Modules
 
             _network.RemovePacket(C2SPacketType.Rebroadcast, Packet_Rebroadcast);
 
-            _playerData.FreePlayerData(_pdKey);
-            _arenaManager.FreeArenaData(_adKey);
+            _playerData.FreePlayerData(ref _pdKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

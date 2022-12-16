@@ -106,7 +106,7 @@ namespace SS.Core.Modules
             _workerThread.Join();
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             _persistDatastore.Close();
 

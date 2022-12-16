@@ -59,7 +59,7 @@ namespace SS.Core.Modules
             _network.RemoveSizedPacket(C2SPacketType.UploadFile, SizedPacket_UploadFile);
 
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
-            _playerData.FreePlayerData(_udKey);
+            _playerData.FreePlayerData(ref _udKey);
 
             return true;
         }

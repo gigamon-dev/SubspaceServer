@@ -93,7 +93,7 @@ namespace SS.Core.Modules.FlagGame
                 broker.ReleaseInterface(ref _persist);
             }   
 
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

@@ -127,7 +127,7 @@ namespace SS.Core.Modules
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             DoBrickModeCallback.Unregister(broker, Callback_DoBrickMode);
 
-            _arenaManager.FreeArenaData(_adKey);
+            _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
         }

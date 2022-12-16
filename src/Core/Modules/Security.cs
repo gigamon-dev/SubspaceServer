@@ -161,8 +161,8 @@ namespace SS.Core.Modules
             _mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
             _mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            _arenaManager.FreeArenaData(_adKey);
-            _playerData.FreePlayerData(_pdKey);
+            _arenaManager.FreeArenaData(ref _adKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }

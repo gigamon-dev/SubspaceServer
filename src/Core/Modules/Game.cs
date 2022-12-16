@@ -161,8 +161,8 @@ namespace SS.Core.Modules
                 broker.ReleaseInterface(ref _persist);
             }
 
-            _arenaManager.FreeArenaData(_adkey);
-            _playerData.FreePlayerData(_pdkey);
+            _arenaManager.FreeArenaData(ref _adkey);
+            _playerData.FreePlayerData(ref _pdkey);
 
             return true;
         }

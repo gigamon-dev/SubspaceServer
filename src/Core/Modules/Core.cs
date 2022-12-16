@@ -139,7 +139,7 @@ namespace SS.Core.Modules
             //if (_chatnet != null)
             //_chatnet.RemoveHandler("LOGIN", chatLogin);
 
-            _playerData.FreePlayerData(_pdkey);
+            _playerData.FreePlayerData(ref _pdkey);
             return true;
         }
 

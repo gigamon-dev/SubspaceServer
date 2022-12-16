@@ -372,19 +372,14 @@ namespace SS.Core.Modules
             }
         }
 
-        void IPlayerData.FreePlayerData<T>(PlayerDataKey<T> key)
+        bool IPlayerData.FreePlayerData<T>(ref PlayerDataKey<T> key)
         {
             if (key.Id == 0)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(ArenaManager), $"There was an attempt to FreeArenaData with an uninitialized key (Id = 0).");
-                return;
+                return false;
             }
 
-            FreePlayerData(key.Id);
-        }
-
-        private void FreePlayerData(int keyId)
-        {
             WriteLock();
 
             try
@@ -393,8 +388,8 @@ namespace SS.Core.Modules
                 // Unregister
                 //
 
-                if (!_extraDataRegistrations.Remove(keyId, out ExtraDataFactory factory))
-                    return;
+                if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
+                    return false;
 
                 //
                 // Remove the data from every player
@@ -402,7 +397,7 @@ namespace SS.Core.Modules
 
                 foreach (Player player in _playerDictionary.Values)
                 {
-                    if (player.TryRemoveExtraData(keyId, out object data))
+                    if (player.TryRemoveExtraData(key.Id, out object data))
                     {
                         factory.Return(data);
                     }
@@ -414,6 +409,9 @@ namespace SS.Core.Modules
             {
                 WriteUnlock();
             }
+
+            key = new(0);
+            return true;
         }
 
         #endregion

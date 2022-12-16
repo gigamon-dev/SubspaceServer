@@ -83,7 +83,7 @@ namespace SS.Matchmaking.Modules
         {
             broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken);
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             foreach (var queue in _queueDictionary.Values)
             {

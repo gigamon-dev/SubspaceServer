@@ -59,7 +59,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("watchdamage", Command_watchdamage);
             _network.RemovePacket(C2SPacketType.Damage, Packet_Damage);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }

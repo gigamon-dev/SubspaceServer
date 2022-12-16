@@ -101,6 +101,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <typeparam name="T">The type of data to store in the slot.</typeparam>
         /// <param name="key">The key from <see cref="AllocatePlayerData{T}"/>.</param>
-        void FreePlayerData<T>(PlayerDataKey<T> key) where T : class;
+        /// <returns><see langword="true"/> if the slot for given <paramref name="key"/> was freed. <see langword="false"/> if the <paramref name="key"/> was invalid.</returns>
+        bool FreePlayerData<T>(ref PlayerDataKey<T> key) where T : class;
     }
 }

@@ -153,7 +153,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveUnlogged("passwd");
             _commandManager.RemoveUnlogged("local_password");
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             _configManager.CloseConfigFile(_pwdFile);
             _pwdFile = null;

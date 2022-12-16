@@ -52,7 +52,7 @@ namespace SS.Core.Modules
             if (!_networkEncryption.RemoveConnectionInitHandler(ProcessConnectionInit))
                 return false;
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }

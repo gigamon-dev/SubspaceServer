@@ -98,7 +98,7 @@ namespace SS.Core.Modules
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
             NewPlayerCallback.Unregister(_broker, Callback_NewPlayer);
 
-            _playerData.FreePlayerData(_pdkey);
+            _playerData.FreePlayerData(ref _pdkey);
 
             return true;
         }

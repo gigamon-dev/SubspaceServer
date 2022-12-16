@@ -48,7 +48,7 @@ namespace SS.Core.Modules
         {
             _network.RemovePacket(C2SPacketType.Banner, Packet_Banner);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }

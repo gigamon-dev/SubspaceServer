@@ -94,7 +94,7 @@ namespace SS.Matchmaking.Modules
             PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             if (_help != null)
             {

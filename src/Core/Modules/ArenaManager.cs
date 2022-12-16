@@ -179,9 +179,9 @@ namespace SS.Core.Modules
             _mainloopTimer.ClearTimer(MainloopTimer_ReapArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_DoArenaMaintenance, null);
 
-            _playerData.FreePlayerData(_spawnkey);
+            _playerData.FreePlayerData(ref _spawnkey);
 
-            ((IArenaManager)this).FreeArenaData(_adkey);
+            ((IArenaManager)this).FreeArenaData(ref _adkey);
 
             _arenaDictionary.Clear();
             _arenaTrie.Clear();
@@ -457,12 +457,12 @@ namespace SS.Core.Modules
             return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
-        void IArenaManager.FreeArenaData<T>(ArenaDataKey<T> key)
+        bool IArenaManager.FreeArenaData<T>(ref ArenaDataKey<T> key)
         {
             if (key.Id == 0)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(ArenaManager), $"There was an attempt to FreeArenaData with an uninitialized key (Id = 0).");
-                return;
+                return false;
             }
 
             WriteLock();
@@ -474,7 +474,7 @@ namespace SS.Core.Modules
                 //
 
                 if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
-                    return;
+                    return false;
 
                 //
                 // Remove the data from every arena
@@ -494,6 +494,9 @@ namespace SS.Core.Modules
             {
                 WriteUnlock();
             }
+
+            key = new(0);
+            return true;
         }
 
         void IArenaManager.HoldArena(Arena arena)
