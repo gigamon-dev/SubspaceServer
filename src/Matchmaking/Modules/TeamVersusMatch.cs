@@ -173,7 +173,7 @@ namespace SS.Matchmaking.Modules
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Unregister(broker, Callback_MatchmakingQueueChanged);
 
-            _playerData.FreePlayerData(_pdKey);
+            _playerData.FreePlayerData(ref _pdKey);
 
             return true;
         }
