@@ -10,6 +10,14 @@ using System.Text;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Scoring module for ball games.
+    /// </summary>
+    /// <remarks>
+    /// This module keeps track of the score for each team and determines when a team has won the ball game.
+    /// It also rewards points to players (depending on settings).
+    /// </remarks>
+    [CoreModuleInfo]
     public class BallGamePoints : IModule, IArenaAttachableModule, IBallGamePoints, IBallsAdvisor
     {
         private const int MaxTeams = 8;

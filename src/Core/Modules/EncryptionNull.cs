@@ -10,10 +10,6 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module for the login sequence (connection init) that responds such that no encryption is used.
     /// </summary>
-    /// <remarks>
-    /// This module cannot be used alongside other encryption modules. 
-    /// If you intend to use an encryption module, make sure this one is not loaded.
-    /// </remarks>
     [CoreModuleInfo]
     public class EncryptionNull : IModule
     {

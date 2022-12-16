@@ -18,6 +18,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module for controlling LVZ objects.
     /// </summary>
+    [CoreModuleInfo]
     public class LvzObjects : IModule, ILvzObjects
     {
         private IArenaManager _arenaManager;

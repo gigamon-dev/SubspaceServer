@@ -7,6 +7,9 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality to transfer files to and from game clients.
+    /// </summary>
     [CoreModuleInfo]
     public class FileTransfer : IModule, IFileTransfer
     {

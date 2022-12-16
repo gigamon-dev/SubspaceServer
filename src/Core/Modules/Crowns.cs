@@ -6,6 +6,15 @@ using System.Collections.Generic;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality for controlling crown indicators on players.
+    /// </summary>
+    /// <remarks>
+    /// The original use case of crowns was for implementing a King of the Hill style game.
+    /// However, it is not limited to that particular use case. Crowns can be used as a 
+    /// general mechanism to mark players.
+    /// </remarks>
+    [CoreModuleInfo]
     public class Crowns : IModule, ICrowns, ICrownsBehavior
     {
         private ILogManager _logManager;

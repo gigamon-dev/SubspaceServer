@@ -8,6 +8,10 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides VIE encryption.
+    /// </summary>
+    [CoreModuleInfo]
     public class EncryptionVIE : IModule, IEncrypt, IClientEncrypt
     {
         public const string InterfaceIdentifier = "enc-vie";

@@ -10,6 +10,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that provides functionality for banners (the small 12 x 8 bitmap image a player can choose to display next to their name).
     /// </summary>
+    [CoreModuleInfo]
     public class Banners : IModule, IBanners
     {
         private ICapabilityManager _capabilityManager;

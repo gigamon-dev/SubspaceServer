@@ -14,6 +14,7 @@ namespace SS.Core.Modules.FlagGame
     /// Module that manages flag games where the flags are static (based on where flags are placed on the map).
     /// In other words, flags that can't be carried, AKA "turf" style flags.
     /// </summary>
+    [CoreModuleInfo]
     public class StaticFlags : IModule, IStaticFlagGame
     {
         /// <summary>

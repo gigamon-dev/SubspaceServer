@@ -35,6 +35,7 @@ namespace SS.Core.Modules
     /// </list>
     /// </para>
     /// </remarks>
+    [CoreModuleInfo]
     public class Bricks : IModule, IBrickManager, IBrickHandler
     {
         /// <summary>

@@ -6,6 +6,10 @@ using System.Collections.Generic;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module that provides functionality for Speed games.
+    /// </summary>
+    [CoreModuleInfo]
     public class SpeedGame : IModule, IArenaAttachableModule
     {
         private IAllPlayerStats _allPlayerStats;

@@ -1968,15 +1968,31 @@ namespace SS.Core.Modules
 
                     if (info.AttachedArenas.Length > 0)
                     {
-                        string attachedArenas = string.Join(", ", info.AttachedArenas.Select(a => a.Name));
-                        _chat.SendMessage(player, $"  Attached Arenas: {attachedArenas}");
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        try
+                        {
+                            foreach (Arena arena in info.AttachedArenas)
+                            {
+                                if (sb.Length > 0)
+                                    sb.Append(", ");
+
+                                sb.Append(arena.Name);
+                            }
+
+                            _chat.SendMessage(player, $"  Attached Arenas: {sb}");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
                     }
 
                     _chat.SendMessage(player, $"  Description:");
-                    string[] tokens = info.Description.Split('\n');
-                    foreach (string token in tokens)
+                    ReadOnlySpan<char> remaining = info.Description;
+                    ReadOnlySpan<char> line;
+                    while (!(line = remaining.GetToken("\r\n", out remaining)).IsEmpty)
                     {
-                        _chat.SendMessage(player, $"    {token}");
+                        _chat.SendMessage(player, $"    {line}");
                     }
                 }
             }

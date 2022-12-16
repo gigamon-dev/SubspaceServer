@@ -32,6 +32,7 @@ namespace SS.Core.Modules
     /// The original implementation for ASSS was written by Sharvil Nanavati (Snrrrub) in C++.
     /// JoWie rewrote it into a C module, and this is based on JoWie's C module.
     /// </remarks>
+    [CoreModuleInfo]
     public class Peer : IModule, IPeer, IStringBuilderPoolProvider
     {
         private static readonly TimeSpan StaleArenaTimeout = TimeSpan.FromSeconds(30);

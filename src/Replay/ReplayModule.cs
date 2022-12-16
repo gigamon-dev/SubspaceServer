@@ -50,6 +50,13 @@ namespace SS.Replay
     /// This doesn't seem accurate. Is there a better way? 
     /// The Game module's position packet handler does something similiar when sending S2C position packets (rather than use the C2S postition packet "time").
     /// </remarks>
+    [ModuleInfo($"""
+        This module is based on the ASSS funky:record module. It also aims to be 
+        compatible with playing replays recorded with the PowerBall Zone replay module.
+        On top of all that, it goes further and attempts to cover recording and 
+        playback of all aspects of the game including: flag games, crowns, 
+        synchronization of doors & greens, etc.
+        """)]
     public class ReplayModule : IModule, IFreqManagerEnforcerAdvisor
     {
         private const uint ReplayFileVersion = 2;

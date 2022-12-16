@@ -19,6 +19,7 @@ namespace SS.Core.Modules
     /// </list>
     /// </para>
     /// </summary>
+    [CoreModuleInfo]
     public class LagAction : IModule
     {
         private IArenaManager _arenaManager;

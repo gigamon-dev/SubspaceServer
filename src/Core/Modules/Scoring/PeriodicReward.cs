@@ -9,6 +9,10 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module for rewarding players periodically for flag games.
+    /// </summary>
+    [CoreModuleInfo]
     public class PeriodicReward : IModule, IPeriodicReward, IPeriodicRewardPoints
     {
         private IAllPlayerStats _allPlayerStats;

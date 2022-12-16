@@ -13,6 +13,7 @@ namespace SS.Core.Modules
     /// Module that authenticates players based on hashed passwords stored in a configuration file ('conf/passwd.conf').
     /// This can also be used along with the <see cref="BillingUdp"/> to provide authentication when the the billing server connection is down.
     /// </summary>
+    [CoreModuleInfo]
     public sealed class AuthFile : IModule, IAuth, IBillingFallback, IDisposable
     {
         private IPlayerData _playerData;

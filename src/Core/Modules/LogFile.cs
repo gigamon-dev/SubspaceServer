@@ -9,6 +9,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Logging module that writes to a file.
     /// </summary>
+    [CoreModuleInfo]
     public class LogFile : IModule, ILogFile
     {
         private IConfigManager _configManager;

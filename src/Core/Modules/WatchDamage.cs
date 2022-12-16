@@ -7,6 +7,10 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality to watch damage done to players.
+    /// </summary>
+    [CoreModuleInfo]
     public class WatchDamage : IModule, IWatchDamage
     {
         private IChat _chat;

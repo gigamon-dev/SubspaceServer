@@ -16,6 +16,7 @@ namespace SS.Core.Modules
     /// to affect behavior and therefore should be able to handle most scenarios.
     /// </remarks>
     /// </summary>
+    [CoreModuleInfo]
     public class FreqManager : IModule, IFreqManager, IFreqBalancer, IFreqManagerEnforcerAdvisor
     {
         private IArenaManager _arenaManager;

@@ -7,6 +7,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that implements the <see cref="IPrng"/> interface to wrap pseudo-random number generation functionality.
     /// </summary>
+    [CoreModuleInfo]
     public class Prng : IModule, IPrng
     {
         private InterfaceRegistrationToken<IPrng> _iPrngToken;

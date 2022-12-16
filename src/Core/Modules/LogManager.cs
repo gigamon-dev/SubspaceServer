@@ -9,6 +9,9 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides logging functionality.
+    /// </summary>
     [CoreModuleInfo]
     public sealed class LogManager : IModule, IModuleLoaderAware, ILogManager, IDisposable
     {

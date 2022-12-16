@@ -5,6 +5,21 @@ using System;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module that advises the <see cref="Game"/> module on how many points to reward when a player is killed.
+    /// </summary>
+    /// <remarks>
+    /// The reward amount is based on the following arena settings:
+    /// <list type="bullet">
+    ///     <item>Kill:FixedKillReward</item>
+    ///     <item>Kill:FlagMinimumBounty</item>
+    ///     <item>Kill:PointsPerKilledFlag</item>
+    ///     <item>Kill:PointsPerCarriedFlag</item>
+    ///     <item>Kill:PointsPerTeamFlag</item>
+    ///     <item>Kill:TeamKillPoints</item>
+    /// </list>
+    /// </remarks>
+    [CoreModuleInfo]
     public class KillPoints : IModule, IArenaAttachableModule, IKillAdvisor
     {
         private IArenaManager _arenaManager;

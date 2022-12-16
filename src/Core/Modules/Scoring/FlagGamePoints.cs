@@ -5,8 +5,14 @@ using System;
 
 namespace SS.Core.Modules.Scoring
 {
-    // For a warzone-style win, watch for flag drop and check if all flags are dropped and one team owns them all.
-    // For a running/jackpot style win, watch for flag pickup and check if 1 team is carrying all the flags.
+    /// <summary>
+    /// Scoring module for carryable flag games.
+    /// </summary>
+    /// <remarks>
+    /// For a warzone-style win, it watches for a flag drop and checks if all flags are dropped and owned by one team.
+    /// For a running/jackpot style win, it watches for flag pickup and checks if 1 team is carrying all the flags.
+    /// </remarks>
+    [CoreModuleInfo]
     public class FlagGamePoints : IModule, IArenaAttachableModule
     {
         private IArenaManager _arenaManager;

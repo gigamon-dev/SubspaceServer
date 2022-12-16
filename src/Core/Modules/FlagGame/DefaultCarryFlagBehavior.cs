@@ -6,6 +6,9 @@ using System.Collections.Generic;
 
 namespace SS.Core.Modules.FlagGame
 {
+    /// <summary>
+    /// Default implementation of behaviors for carryable flags.
+    /// </summary>
     public class DefaultCarryFlagBehavior : ICarryFlagBehavior
     {
         private readonly ICarryFlagGame _carryFlagGame;

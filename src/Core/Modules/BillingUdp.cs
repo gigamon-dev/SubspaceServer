@@ -19,8 +19,14 @@ namespace SS.Core.Modules
     /// Module for connecting to a billing server via the UDP billing protocol.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// To use this module the <see cref="EncryptionVIE"/> module must be loaded first.
+    /// </para>
+    /// <para>
     /// This module is the equivalent of the 'billing_ssc' module in ASSS.
+    /// </para>
     /// </remarks>
+    [CoreModuleInfo]
     public class BillingUdp : IModule, IBilling, IAuth, IClientConnectionHandler
     {
         private ComponentBroker _broker;

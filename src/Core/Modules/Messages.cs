@@ -12,6 +12,7 @@ namespace SS.Core.Modules
     /// that enter an arena (Misc:GreetMessage setting) and/or 
     /// periodically (Misc:PeriodicMessage0 through Misc:PeriodicMessage9 settings).
     /// </summary>
+    [CoreModuleInfo]
     public class Messages : IModule
     {
         private IArenaManager _arenaManager;

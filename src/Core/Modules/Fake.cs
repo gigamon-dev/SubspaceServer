@@ -4,6 +4,10 @@ using System;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module for managing fake players.
+    /// </summary>
+    [CoreModuleInfo]
     public class Fake : IModule, IFake
     {
         private ICommandManager _commandManager;

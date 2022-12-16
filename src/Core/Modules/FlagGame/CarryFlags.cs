@@ -15,6 +15,7 @@ namespace SS.Core.Modules.FlagGame
     /// Module that manages flag games where flags can be carried.
     /// E.g. jackpot zone, running zone, warzone ctf.
     /// </summary>
+    [CoreModuleInfo]
     public class CarryFlags : IModule, ICarryFlagGame
     {
         public const int MaxFlags = 256; // continuum supports 303

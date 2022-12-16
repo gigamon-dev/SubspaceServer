@@ -7,6 +7,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that adds commands for players to notify staff members (e.g. ?cheater).
     /// </summary>
+    [CoreModuleInfo]
     public class Notify : IModule
     {
         private IChat _chat;

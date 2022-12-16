@@ -6,12 +6,28 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module for tracking player stats.
+    /// Stats are tracked globally (zone-wide) or per-arena.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// To manage global stats, use <see cref="IGlobalPlayerStats"/>.
+    /// To manage arena stats, use <see cref="IArenaPlayerStats"/>.
+    /// To manage both global and per-arena stats simultaneously, use <see cref="IAllPlayerStats"/>.
+    /// </para>
+    /// <para>
+    /// See <see cref="StatCodes"/> for built-in stats and their associated <see cref="StatId"/>s.
+    /// To add custom stats simply use a unique number for your StatId that isn't used yet.
+    /// It is best to start with a large number so that you have no chance of colliding if any additional built-in stats are added.
+    /// </para>
+    /// </remarks>
+    [CoreModuleInfo]
     public class Stats : IModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
     {
         private ComponentBroker _broker;

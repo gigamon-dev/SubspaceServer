@@ -13,6 +13,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality for temporarily kicking players off.
     /// This module addes the ?kick command and other associated commands to manage bans.
     /// </summary>
+    [CoreModuleInfo]
     public class AuthBan : IModule, IAuth
     {
         private IAuth _oldAuth;

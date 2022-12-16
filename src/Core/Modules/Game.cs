@@ -16,6 +16,9 @@ using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that manages the core game state.
+    /// </summary>
     [CoreModuleInfo]
     public class Game : IModule, IGame
     {

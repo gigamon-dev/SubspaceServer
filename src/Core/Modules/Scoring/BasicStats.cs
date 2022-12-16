@@ -6,6 +6,84 @@ using System;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module that tracks the following basic player stats:
+    /// <list type="bullet">
+    ///     <item>
+    ///         <term><see cref="StatCodes.ArenaTotalTime"/></term>
+    ///         <description>The time duration that a player spent in an arena</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.Kills"/></term>
+    ///         <description>Number of kills</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.Deaths"/></term>
+    ///         <description>Number of deaths</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.TeamKills"/></term>
+    ///         <description>Number teammates killed</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.TeamDeaths"/></term>
+    ///         <description>Number deaths by teammate</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagKills"/></term>
+    ///         <description>Number of kills while carrying a flag</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagDeaths"/></term>
+    ///         <description>Number of deaths while carrying a flag</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagGamesWon"/></term>
+    ///         <description>Number of flag games won</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagGamesLost"/></term>
+    ///         <description>Number of flag games lost</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagPoints"/></term>
+    ///         <description>Number points rewarded for winning flag games</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagPickups"/></term>
+    ///         <description>Number of carryable flags picked up</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagCarryTime"/></term>
+    ///         <description>Duration that flags have been carried</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagDrops"/></term>
+    ///         <description>Number of flags dropped</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.FlagNeutDrops"/></term>
+    ///         <description>Number of neutral flags dropped</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.TurfTags"/></term>
+    ///         <description>Number of static flags tagged</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.BallCarryTime"/></term>
+    ///         <description>Duration that of carrying a ball</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.BallCarries"/></term>
+    ///         <description>Number of ball carries</description>
+    ///     </item>
+    ///     <item>
+    ///         <term><see cref="StatCodes.BallGoals"/></term>
+    ///         <description>Number of ball goals</description>
+    ///     </item>
+    /// </list>
+    /// </summary>
+    [CoreModuleInfo]
     public class BasicStats : IModule
     {
         private IPlayerData _playerData;

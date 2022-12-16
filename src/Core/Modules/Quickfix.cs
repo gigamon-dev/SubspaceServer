@@ -15,6 +15,7 @@ namespace SS.Core.Modules
     /// <item>A packet handler (<see cref="Packets.C2SPacketType.SettingChange"/>) for processing requests from clients to update settings.</item>
     /// </list>
     /// </summary>
+    [CoreModuleInfo]
     public class Quickfix : IModule
     {
         private ICommandManager _commandManager;

@@ -13,6 +13,7 @@ namespace SS.Core.Modules.Enforcers
     /// The setting to specify which ships are allowed for a freq is Legalship:Freq#Mask, where # is the freq # (e.g. Freq0Mask for freq 0, Freq1Mask for freq 1, etc).
     /// Each ship is represented as a bit within the mask, <see cref="ShipMask"/>.
     /// </summary>
+    [CoreModuleInfo]
     public class LegalShip : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
         private IArenaManager _arenaManager;

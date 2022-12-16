@@ -11,6 +11,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that provides the ability to redirect players to another zone server.
     /// </summary>
+    [CoreModuleInfo]
     public class Redirect : IModule, IRedirect
     {
         private ICommandManager _commandManager;

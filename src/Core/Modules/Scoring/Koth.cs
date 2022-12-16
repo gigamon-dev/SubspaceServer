@@ -6,6 +6,10 @@ using System.Collections.Generic;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module that provides functionality for King of the Hill games.
+    /// </summary>
+    [CoreModuleInfo]
     public class Koth : IModule, IArenaAttachableModule, ICrownsBehavior
     {
         private IAllPlayerStats _allPlayerStats;

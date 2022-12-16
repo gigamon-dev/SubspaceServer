@@ -4,6 +4,9 @@ using System;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Logging module that to the console.
+    /// </summary>
     [CoreModuleInfo]
     public class LogConsole : IModule
     {

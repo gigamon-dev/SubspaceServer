@@ -10,6 +10,7 @@ namespace SS.Core.Modules
     /// Module that encapsulates database access for the <see cref="Modules.Persist"/> module.
     /// This implementation of <see cref="IPersistDatastore"/> uses a SQLite database as the storage mechanism.
     /// </summary>
+    [CoreModuleInfo]
     public class PersistSQLite : IModule, IPersistDatastore
     {
         private ILogManager _logManager;

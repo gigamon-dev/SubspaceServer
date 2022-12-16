@@ -7,6 +7,7 @@ namespace SS.Core.Modules.Enforcers
     /// <summary>
     /// Module that enforces that players can only spectate.
     /// </summary>
+    [CoreModuleInfo]
     public class LockSpec : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
         private readonly Dictionary<Arena, AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>> _arenaTokens = new();

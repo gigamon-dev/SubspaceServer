@@ -7,6 +7,9 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that manages <see cref="Player"/> objects.
+    /// </summary>
     [CoreModuleInfo]
     public class PlayerData : IModule, IPlayerData
     {

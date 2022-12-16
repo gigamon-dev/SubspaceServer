@@ -11,6 +11,7 @@ namespace SS.Core.Modules
     /// Module that provides the help commaand, which by default is ?man.
     /// This allows users to get information about a command or config file setting.
     /// </summary>
+    [CoreModuleInfo]
     public class Help : IModule, IModuleLoaderAware, IHelp, IConfigHelp
     {
         private IChat _chat;

@@ -17,6 +17,7 @@ namespace SS.Core.Modules
     /// <item>Player interactions with balls (pick up a ball, shoot a ball, score a goal with a ball)</item>
     /// </list>
     /// </summary>
+    [CoreModuleInfo]
     public class Balls : IModule, IBalls
     {
         /// <summary>

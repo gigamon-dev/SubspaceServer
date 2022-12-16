@@ -11,6 +11,7 @@ namespace SS.Core.Modules
     /// Module that provides a timer for each arena.
     /// The timer can be linked to a "Timed Game" such as a game of speed zone.
     /// </summary>
+    [CoreModuleInfo]
     public class GameTimer : IModule, IGameTimer
     {
         private IArenaManager _arenaManager;

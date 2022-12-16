@@ -9,6 +9,10 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module for publishing the zone on directory servers.
+    /// </summary>
+    [CoreModuleInfo]
     public class DirectoryPublisher : IModule
     {
         private ComponentBroker _broker;

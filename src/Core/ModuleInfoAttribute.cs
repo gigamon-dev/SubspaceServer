@@ -41,7 +41,7 @@ namespace SS.Core
     internal class CoreModuleInfoAttribute : ModuleInfoAttribute
     {
         internal CoreModuleInfoAttribute()
-            : base($"Subspace Server .NET ({Assembly.GetExecutingAssembly().GetName().Version})")
+            : base($"Subspace Server .NET")
         {
         }
     }

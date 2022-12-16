@@ -9,6 +9,10 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
+    /// <summary>
+    /// Module that provides functionality to persist information to a database.
+    /// </summary>
+    [CoreModuleInfo]
     public class Persist : IModule, IPersist, IPersistExecutor
     {
         private ComponentBroker _broker;

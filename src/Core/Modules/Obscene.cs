@@ -13,6 +13,7 @@ namespace SS.Core.Modules
     /// <remarks>
     /// Rather than how ASSS uses a config setting to store words, this implementation uses a separate 'obscene.txt' file, similar to subgame.
     /// </remarks>
+    [CoreModuleInfo]
     public sealed class Obscene : IModule, IObscene, IDisposable
     {
         private ComponentBroker _broker;

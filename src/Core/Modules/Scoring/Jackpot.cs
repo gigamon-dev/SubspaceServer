@@ -7,6 +7,15 @@ using System.IO;
 
 namespace SS.Core.Modules.Scoring
 {
+    /// <summary>
+    /// Module that keeps track of a per-arena point jackpot that can be awarded to players that win a game.
+    /// The jackpot can be configured to increment based on kills (Kill:JackpotBountyPercent in arena.conf).
+    /// It also provides the <see cref="IJackpot"/> interface to provide access to other modules.
+    /// <para>
+    /// The jackpot value will be saved and restored across arena reloads if the <see cref="Persist"/> module is being used.
+    /// </para>
+    /// </summary>
+    [CoreModuleInfo]
     public class Jackpot : IModule, IJackpot
     {
         // required dependencies
