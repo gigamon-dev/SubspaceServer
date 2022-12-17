@@ -12,6 +12,10 @@ namespace SS.Matchmaking.Modules
     /// <summary>
     /// Module that tracks stats for 1v1 matches.
     /// </summary>
+    [ModuleInfo($"""
+        Tracks stats for 1v1 matches.
+        For use with the {nameof(Match1v1)} module.
+        """)]
     public class OneVersusOneStats : IModule, IArenaAttachableModule
     {
         private IChat _chat;

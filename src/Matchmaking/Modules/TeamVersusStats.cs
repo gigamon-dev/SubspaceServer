@@ -7,6 +7,13 @@ using SS.Utilities;
 
 namespace SS.Matchmaking.Modules
 {
+    /// <summary>
+    /// Module that tracks stats for team versus matches.
+    /// </summary>
+    [ModuleInfo($"""
+        Tracks stats for team versus matches.
+        For use with the {nameof(TeamVersusMatch)} module.
+        """)]
     public class TeamVersusStats : IModule, IArenaAttachableModule
     {
         private IChat _chat;

@@ -15,6 +15,11 @@ namespace SS.Matchmaking.Modules
     /// Module that provides functionality for players to form groups with other players.
     /// Groups can be used along with the <see cref="MatchmakingQueues"/> module to form a premade team.
     /// </summary>
+    [ModuleInfo($"""
+        Functionality for players to form groups with other players.
+        Designed to be used with the {nameof(MatchmakingQueues)} module,
+        but functionality is separate and could find other uses.
+        """)]
     public class PlayerGroups : IModule, IPlayerGroups
     {
         private ComponentBroker _broker;

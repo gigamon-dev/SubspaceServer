@@ -18,6 +18,7 @@ namespace SS.Matchmaking.Modules
     /// Likewise, it also provides the ?cancel command to remove oneself or group from the queue.
     /// Other modules register queues through the <see cref="IMatchmakingQueues"/> interface.
     /// </remarks>
+    [ModuleInfo("Manages matchmaking queues.")]
     public class MatchmakingQueues : IModule, IMatchmakingQueues, IPlayerGroupAdvisor
     {
         private ComponentBroker _broker;

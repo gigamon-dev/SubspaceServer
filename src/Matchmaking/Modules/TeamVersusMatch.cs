@@ -40,6 +40,10 @@ namespace SS.Matchmaking.Modules
     /// then 5 minutes of overtime (next kill wins), 
     /// then maybe sudden death - burn items, lower max energy of each player by 1 unit every minute until at the minimum max energy, then lower max recharge rate of each player by 1 every minute
     /// </remarks>
+    [ModuleInfo($"""
+        Manages team versus matches.
+        Configuration: {nameof(TeamVersusMatch)}.conf
+        """)]
     public class TeamVersusMatch : IModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor
     {
         private const string ConfigurationFileName = $"{nameof(TeamVersusMatch)}.conf";

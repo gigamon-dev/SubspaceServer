@@ -13,9 +13,13 @@ namespace SS.Matchmaking.Modules
     /// <summary>
     /// Module that manages 1v1 matchmaking.
     /// </summary>
+    [ModuleInfo($"""
+        Manages 1v1 matchmaking.
+        Configuration: {nameof(Match1v1)}.conf
+        """)]
     public class Match1v1 : IModule, IMatchmakingQueueAdvisor
     {
-        private const string ConfigurationFileName = "Match1v1.conf";
+        private const string ConfigurationFileName = $"{nameof(Match1v1)}.conf";
 
         private IArenaManager _arenaManager;
         private IChat _chat;
