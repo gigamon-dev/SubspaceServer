@@ -97,7 +97,7 @@ namespace SS.Matchmaking.Modules
 
         IPlayerGroup IPlayerGroups.GetGroup(Player player)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return null;
 
             return playerData.Group;
@@ -112,7 +112,7 @@ namespace SS.Matchmaking.Modules
                 if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                     return;
 
-                if (pd.Group != null)
+                if (pd.Group is not null)
                 {
                     // The player is in a group. Remove the player from the group.
                     RemoveMember(pd.Group, player, PlayerGroupMemberRemovedReason.Disconnect);
@@ -160,7 +160,7 @@ namespace SS.Matchmaking.Modules
 
                 PlayerGroup group = targetPlayerData.Group;
 
-                if (group == null)
+                if (group is null)
                 {
                     if (targetPlayer == player)
                         _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
@@ -219,7 +219,7 @@ namespace SS.Matchmaking.Modules
             if (MemoryExtensions.Equals(token, "invite", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup group = playerData.Group;
-                if (group != null)
+                if (group is not null)
                 {
                     if (group.Leader != player)
                     {
@@ -254,14 +254,14 @@ namespace SS.Matchmaking.Modules
                 if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
-                    if (targetPlayer == null)
+                    if (targetPlayer is null)
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: Player '{remaining}' not found.");
                         return;
                     }
                 }
 
-                if (targetPlayer == null)
+                if (targetPlayer is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You must specify who to invite.");
                     return;
@@ -276,7 +276,7 @@ namespace SS.Matchmaking.Modules
                 if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
                     return;
 
-                if (targetPlayerData.Group != null)
+                if (targetPlayerData.Group is not null)
                 {
                     _chat.SendMessage(
                         player,
@@ -292,7 +292,7 @@ namespace SS.Matchmaking.Modules
                 //        $"{GroupCommandName}: {targetPlayer.Name} can't be invited. The player has too many pending invites .");
                 //}
 
-                if (group == null)
+                if (group is null)
                 {
                     // Decline all pending invites.
                     while (playerData.PendingGroups.Count > 0)
@@ -316,7 +316,7 @@ namespace SS.Matchmaking.Modules
             else if (MemoryExtensions.Equals(token, "uninvite", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup group = playerData.Group;
-                if (group == null)
+                if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
                     return;
@@ -331,14 +331,14 @@ namespace SS.Matchmaking.Modules
                 if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
-                    if (targetPlayer == null)
+                    if (targetPlayer is null)
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: Player '{remaining}' not found.");
                         return;
                     }
                 }
 
-                if (targetPlayer == null)
+                if (targetPlayer is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You must specify whose invite to cancel.");
                     return;
@@ -352,7 +352,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (MemoryExtensions.Equals(token, "accept", StringComparison.OrdinalIgnoreCase))
             {
-                if (playerData.Group != null)
+                if (playerData.Group is not null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are already in a group.");
                     return;
@@ -396,14 +396,14 @@ namespace SS.Matchmaking.Modules
                     if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                     {
                         targetPlayer = _playerData.FindPlayer(remaining);
-                        if (targetPlayer == null)
+                        if (targetPlayer is null)
                         {
                             _chat.SendMessage(player, $"{GroupCommandName}: Player '{remaining}' not found.");
                             return;
                         }
                     }
 
-                    if (targetPlayer == null)
+                    if (targetPlayer is null)
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: You have multiple invites and therefore need to specify which one you want to accept.");
                         return;
@@ -413,7 +413,7 @@ namespace SS.Matchmaking.Modules
                         return;
 
                     group = targetPlayerData.Group;
-                    if (group == null || !playerData.PendingGroups.Contains(group))
+                    if (group is null || !playerData.PendingGroups.Contains(group))
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: You do not have a pending invite from {targetPlayer.Name}.");
                         return;
@@ -461,14 +461,14 @@ namespace SS.Matchmaking.Modules
                     if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                     {
                         targetPlayer = _playerData.FindPlayer(remaining);
-                        if (targetPlayer == null)
+                        if (targetPlayer is null)
                         {
                             _chat.SendMessage(player, $"{GroupCommandName}: Player '{remaining}' not found.");
                             return;
                         }
                     }
 
-                    if (targetPlayer == null)
+                    if (targetPlayer is null)
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: You have multiple invites and therefore need to specify whose invite to decline.");
                         return;
@@ -478,7 +478,7 @@ namespace SS.Matchmaking.Modules
                         return;
 
                     group = targetPlayerData.Group;
-                    if (group == null || !playerData.PendingGroups.Contains(group))
+                    if (group is null || !playerData.PendingGroups.Contains(group))
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: There is no pending invite from {targetPlayer.Name}.");
                         return;
@@ -494,7 +494,7 @@ namespace SS.Matchmaking.Modules
             else if (MemoryExtensions.Equals(token, "leave", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup group = playerData.Group;
-                if (group == null)
+                if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
                     return;
@@ -505,7 +505,7 @@ namespace SS.Matchmaking.Modules
             else if (MemoryExtensions.Equals(token, "kick", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup group = playerData.Group;
-                if (group == null)
+                if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
                     return;
@@ -520,14 +520,14 @@ namespace SS.Matchmaking.Modules
                 if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
-                    if (targetPlayer == null)
+                    if (targetPlayer is null)
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: Player '{remaining}' not found.");
                         return;
                     }
                 }
 
-                if (targetPlayer == null)
+                if (targetPlayer is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You must specify who to kick.");
                     return;
@@ -548,7 +548,7 @@ namespace SS.Matchmaking.Modules
             else if (MemoryExtensions.Equals(token, "leader", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup group = playerData.Group;
-                if (group == null)
+                if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
                     return;
@@ -563,14 +563,14 @@ namespace SS.Matchmaking.Modules
                 if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
-                    if (targetPlayer == null)
+                    if (targetPlayer is null)
                     {
                         _chat.SendMessage(player, $"{GroupCommandName}: Player '{remaining}' not found.");
                         return;
                     }
                 }
 
-                if (targetPlayer == null)
+                if (targetPlayer is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You must specify which team member to make leader.");
                     return;
@@ -607,7 +607,7 @@ namespace SS.Matchmaking.Modules
             else if (MemoryExtensions.Equals(token, "disband", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup group = playerData.Group;
-                if (group == null)
+                if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
                     return;
@@ -623,7 +623,7 @@ namespace SS.Matchmaking.Modules
             }
             else
             {
-                if (_help != null)
+                if (_help is not null)
                     _chat.SendMessage(player, $"{GroupCommandName}: Invalid input. For instructions see: ?{_help.HelpCommand} {GroupCommandName}");
                 else
                     _chat.SendMessage(player, $"{GroupCommandName}: Invalid input.");
@@ -666,7 +666,7 @@ namespace SS.Matchmaking.Modules
 
         private bool RemovePending(PlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
         {
-            if (group == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return false;
 
             if (!group.RemovePending(player))
@@ -707,7 +707,7 @@ namespace SS.Matchmaking.Modules
 
         private bool RemoveMember(PlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason)
         {
-            if (group == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return false;
 
             bool wasLeader = player == group.Leader;
@@ -789,7 +789,7 @@ namespace SS.Matchmaking.Modules
             }
 
             // Check if the team needs to be assigned a new leader.
-            if (!isDisbanded && wasLeader && group.Leader != null)
+            if (!isDisbanded && wasLeader && group.Leader is not null)
             {
                 // Notify the team member that there is a new leader.
                 HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
@@ -810,7 +810,7 @@ namespace SS.Matchmaking.Modules
 
         private void RemoveAllPending(PlayerGroup group, PlayerGroupPendingRemovedReason reason)
         {
-            if (group == null)
+            if (group is null)
                 return;
 
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
@@ -831,7 +831,7 @@ namespace SS.Matchmaking.Modules
 
         private void Disband(PlayerGroup group)
         {
-            if (group == null)
+            if (group is null)
                 return;
 
             RemoveAllPending(group, PlayerGroupPendingRemovedReason.Disband);
@@ -856,7 +856,7 @@ namespace SS.Matchmaking.Modules
         /// <returns><see langword="true"/> if the group was disbanded. Otherwise, <see langword="false"/>.</returns>
         private bool DisbandIfEmpty(PlayerGroup group)
         {
-            if (group == null)
+            if (group is null)
                 return false;
 
             if (group.Members.Count > 0
@@ -950,7 +950,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(PlayerData obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Group = null;
@@ -969,7 +969,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(PlayerGroup obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Reset();

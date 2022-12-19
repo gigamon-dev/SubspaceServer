@@ -373,7 +373,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_PlayerPositionPacket(Player player, in C2S_PositionPacket positionPacket)
+        private void Callback_PlayerPositionPacket(Player player, in C2S_PositionPacket positionPacket, bool hasExtraPositionData)
         {
             if (player == null)
                 return;

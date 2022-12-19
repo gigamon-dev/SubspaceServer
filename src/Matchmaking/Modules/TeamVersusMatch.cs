@@ -11,7 +11,6 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace SS.Matchmaking.Modules
@@ -155,8 +154,6 @@ namespace SS.Matchmaking.Modules
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Register(broker, Callback_MatchmakingQueueChanged);
 
-            _network.AddPacket(C2SPacketType.Position, Packet_Position);
-
             _commandManager.AddCommand("loadmatchtype", Command_loadmatchtype);
             _commandManager.AddCommand("unloadmatchtype", Command_unloadmatchtype);
 
@@ -170,8 +167,6 @@ namespace SS.Matchmaking.Modules
 
             _commandManager.RemoveCommand("loadmatchtype", Command_loadmatchtype);
             _commandManager.RemoveCommand("unloadmatchtype", Command_unloadmatchtype);
-
-            _network.RemovePacket(C2SPacketType.Position, Packet_Position);
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
@@ -213,95 +208,13 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             PlayerSlot playerSlot = playerData.PlayerSlot;
-            if (playerSlot == null)
+            if (playerSlot is null)
                 return false; // not in match
 
             //if(playerSlot.Player == player)
             // Manual changing of ship/freq is not allowed.
 
             return false;
-        }
-
-        #endregion
-
-        #region Packet handlers
-
-        private void Packet_Position(Player player, byte[] data, int length)
-        {
-            if (length != C2S_PositionPacket.LengthWithExtra)
-                return;
-
-            if (player.Ship == ShipType.Spec)
-                return;
-
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                return;
-
-            PlayerSlot slot = playerData.PlayerSlot;
-            if (slot is null || slot.Status != PlayerSlotStatus.Playing)
-                return;
-
-            ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(new Span<byte>(data, 0, C2S_PositionPacket.LengthWithExtra));
-
-            // Keep track of the items for the slot.
-            slot.Bursts = pos.Extra.Bursts;
-            slot.Repels = pos.Extra.Repels;
-            slot.Thors = pos.Extra.Thors;
-            slot.Bricks = pos.Extra.Bricks;
-            slot.Decoys = pos.Extra.Decoys;
-            slot.Rockets = pos.Extra.Rockets;
-            slot.Portals = pos.Extra.Portals;
-
-            if (pos.Weapon.Type != WeaponCodes.Null
-                && slot.AllowShipChangeCutoff != null)
-            {
-                // The player has engaged.
-                slot.AllowShipChangeCutoff = null;
-            }
-
-            string playAreaRegion = slot.MatchData.Configuration.Boxes[slot.MatchData.MatchIdentifier.BoxIdx].PlayAreaMapRegion;
-            if (string.IsNullOrEmpty(playAreaRegion))
-            {
-                slot.IsInPlayArea = true;
-            }
-            else
-            {
-                if (pos.X == 0 && pos.Y == 0)
-                {
-                    // TODO: Verify this. When a player dies, it might send these coordinates? In which case, just ignore it.
-                }
-                else
-                {
-                    bool isInPlayArea = false;
-
-                    foreach (var region in _mapData.RegionsAt(player.Arena, pos.X, pos.Y))
-                    {
-                        if (string.Equals(region.Name, playAreaRegion, StringComparison.OrdinalIgnoreCase))
-                        {
-                            isInPlayArea = true;
-                            break;
-                        }
-                    }
-
-                    slot.IsInPlayArea = isInPlayArea;
-
-                    if (!slot.IsInPlayArea)
-                    {
-                        // The player is outside of the play area.
-                        CheckForMatchCompletion(slot.MatchData);
-                    }
-                }
-            }
-
-            slot.IsFullEnergy = 
-                _arenaDataDictionary.TryGetValue(player.Arena, out ArenaData arenaData) 
-                && pos.Energy >= arenaData.ShipSettings[(int)player.Ship].MaximumEnergy;
-
-            if (slot.SubPlayer is not null && slot.IsFullEnergy)
-            {
-                // Another player is waiting to sub in. Try to sub the other player in.
-                SubSlot(slot);
-            }
         }
 
         #endregion
@@ -347,6 +260,7 @@ namespace SS.Matchmaking.Modules
 
                 KillCallback.Register(arena, Callback_Kill);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
+                PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
 
                 _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena);
                 _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena);
@@ -372,6 +286,7 @@ namespace SS.Matchmaking.Modules
 
                     KillCallback.Unregister(arena, Callback_Kill);
                     ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+                    PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
 
                     _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
                     _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
@@ -425,7 +340,7 @@ namespace SS.Matchmaking.Modules
                 playerData.HasEnteredArena = true;
 
                 PlayerSlot slot = playerData.PlayerSlot;
-                if (slot != null)
+                if (slot is not null)
                 {
                     MatchData matchData = playerData.PlayerSlot.MatchData;
 
@@ -443,7 +358,7 @@ namespace SS.Matchmaking.Modules
                         ReturnToMatch(player, playerData);
                     }
                 }
-                else if (playerData.SubSlot != null
+                else if (playerData.SubSlot is not null
                     && string.Equals(arena.Name, playerData.SubSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                 {
                     // The player entered an arena for a match that they're trying to ?sub in for.
@@ -457,7 +372,13 @@ namespace SS.Matchmaking.Modules
 
                 playerData.HasEnteredArena = false;
 
-                if (playerData.SubSlot != null
+                if (playerData.IsWatchingExtraPositionData)
+                {
+                    _game.RemoveExtraPositionDataWatch(player);
+                    playerData.IsWatchingExtraPositionData = false;
+                }
+
+                if (playerData.SubSlot is not null
                     && string.Equals(arena.Name, playerData.SubSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                 {
                     // The player left the arena before entering the game, and therefore did not complete subbing into the match.
@@ -465,7 +386,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 PlayerSlot slot = playerData.PlayerSlot;
-                if (slot != null
+                if (slot is not null
                     && slot.Status == PlayerSlotStatus.Playing)
                 {
                     // The player left the arena while playing in a match.
@@ -477,14 +398,20 @@ namespace SS.Matchmaking.Modules
                 if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                     return;
 
-                if (playerData.SubSlot != null)
+                if (playerData.IsWatchingExtraPositionData)
+                {
+                    _game.RemoveExtraPositionDataWatch(player);
+                    playerData.IsWatchingExtraPositionData = false;
+                }
+
+                if (playerData.SubSlot is not null)
                 {
                     // The player disconnected from the server before being able to complete subbing into the match.
                     CancelSubInProgress(playerData.SubSlot, false);
                 }
 
                 PlayerSlot slot = playerData.PlayerSlot;
-                if (slot == null)
+                if (slot is null)
                     return;
 
                 // The player stays assigned to the slot.
@@ -516,7 +443,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             PlayerSlot killedPlayerSlot = killedPlayerData.PlayerSlot;
-            if (killedPlayerSlot == null)
+            if (killedPlayerSlot is null)
                 return;
 
             killedPlayerSlot.Lives--;
@@ -539,7 +466,7 @@ namespace SS.Matchmaking.Modules
 
             bool ProcessKnockOut(PlayerSlot slot)
             {
-                if (slot.Player != null && slot.Player.Ship != ShipType.Spec)
+                if (slot.Player is not null && slot.Player.Ship != ShipType.Spec)
                 {
                     _game.SetShip(slot.Player, ShipType.Spec);
                 }
@@ -555,8 +482,21 @@ namespace SS.Matchmaking.Modules
                 return;
 
             PlayerSlot slot = playerData.PlayerSlot;
-            if (slot == null)
+            if (slot is null)
                 return;
+
+            if (newShip != ShipType.Spec
+                && !playerData.IsWatchingExtraPositionData)
+            {
+                _game.AddExtraPositionDataWatch(player);
+                playerData.IsWatchingExtraPositionData = true;
+            }
+            else if (newShip == ShipType.Spec
+                && playerData.IsWatchingExtraPositionData)
+            {
+                _game.RemoveExtraPositionDataWatch(player);
+                playerData.IsWatchingExtraPositionData = false;
+            }
 
             MatchData matchData = slot.MatchData;
             if (matchData.Status == MatchStatus.InProgress)
@@ -568,6 +508,82 @@ namespace SS.Matchmaking.Modules
                         SetSlotInactive(slot, SlotNotActiveReason.ChangedToSpec);
                     }
                 }
+            }
+        }
+
+        private void Callback_PlayerPositionPacket(Player player, in C2S_PositionPacket positionPacket, bool hasExtraPositionData)
+        {
+            if (player.Ship == ShipType.Spec)
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            PlayerSlot slot = playerData.PlayerSlot;
+            if (slot is null || slot.Status != PlayerSlotStatus.Playing)
+                return;
+
+            if (hasExtraPositionData)
+            {
+                // Keep track of the items for the slot.
+                slot.Bursts = positionPacket.Extra.Bursts;
+                slot.Repels = positionPacket.Extra.Repels;
+                slot.Thors = positionPacket.Extra.Thors;
+                slot.Bricks = positionPacket.Extra.Bricks;
+                slot.Decoys = positionPacket.Extra.Decoys;
+                slot.Rockets = positionPacket.Extra.Rockets;
+                slot.Portals = positionPacket.Extra.Portals;
+            }
+
+            if (positionPacket.Weapon.Type != WeaponCodes.Null
+                && slot.AllowShipChangeCutoff is not null)
+            {
+                // The player has engaged.
+                slot.AllowShipChangeCutoff = null;
+            }
+
+            string playAreaRegion = slot.MatchData.Configuration.Boxes[slot.MatchData.MatchIdentifier.BoxIdx].PlayAreaMapRegion;
+            if (string.IsNullOrEmpty(playAreaRegion))
+            {
+                slot.IsInPlayArea = true;
+            }
+            else
+            {
+                if (positionPacket.X == 0 && positionPacket.Y == 0)
+                {
+                    // TODO: Verify this. When a player dies, it might send these coordinates? In which case, just ignore it.
+                }
+                else
+                {
+                    bool isInPlayArea = false;
+
+                    foreach (var region in _mapData.RegionsAt(player.Arena, positionPacket.X, positionPacket.Y))
+                    {
+                        if (string.Equals(region.Name, playAreaRegion, StringComparison.OrdinalIgnoreCase))
+                        {
+                            isInPlayArea = true;
+                            break;
+                        }
+                    }
+
+                    slot.IsInPlayArea = isInPlayArea;
+
+                    if (!slot.IsInPlayArea)
+                    {
+                        // The player is outside of the play area.
+                        CheckForMatchCompletion(slot.MatchData);
+                    }
+                }
+            }
+
+            slot.IsFullEnergy =
+                _arenaDataDictionary.TryGetValue(player.Arena, out ArenaData arenaData)
+                && positionPacket.Energy >= arenaData.ShipSettings[(int)player.Ship].MaximumEnergy;
+
+            if (slot.SubPlayer is not null && slot.IsFullEnergy)
+            {
+                // Another player is waiting to sub in. Try to sub the other player in.
+                SubSlot(slot);
             }
         }
 
@@ -617,7 +633,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             PlayerSlot playerSlot = playerData.PlayerSlot;
-            if (playerSlot == null)
+            if (playerSlot is null)
                 return;
 
             playerSlot.IsSubRequested = true;
@@ -722,13 +738,26 @@ namespace SS.Matchmaking.Modules
             if (slot is null)
                 return;
 
-            Player player = slot.SubPlayer;
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                return; // no ongoing sub for the slot
-
             if (!slot.CanBeSubbed)
             {
                 CancelSubInProgress(slot, true);
+                return;
+            }
+
+            Player player = slot.SubPlayer;
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            {
+                // No ongoing sub for the slot.
+                return;
+            }
+
+            MatchData matchData = slot.MatchData;
+            Arena arena = player.Arena;
+            if (arena is null 
+                || !string.Equals(arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase)
+                || !playerData.HasEnteredArena)
+            {
+                // The player trying to sub in is not yet in the arena.
                 return;
             }
 
@@ -745,16 +774,8 @@ namespace SS.Matchmaking.Modules
                 // - the player action handler (when the currently assigned player leaves the arena)
                 // - the ship change handler (when the currently assigned player switches to spec)
 
-                _chat.SendMessage(slot.Player, $"A player is waiting to ?{CommandNames.Sub} in for your slot. Get to full energy to be automatically subbed out.");
+                _chat.SendMessage(slot.Player, $"A player is waiting to sub in for your slot. Get to full energy to be automatically subbed out.");
                 _chat.SendMessage(slot.SubPlayer, "You will be subbed in when the active player gets to full energy. Please stand by.");
-                return;
-            }
-
-            MatchData matchData = slot.MatchData;
-            Arena arena = player.Arena;
-            if (arena is null || !string.Equals(arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
-            {
-                CancelSubInProgress(slot, true);
                 return;
             }
 
@@ -776,6 +797,8 @@ namespace SS.Matchmaking.Modules
             }
 
             _availableSubSlots.Remove(slot);
+            playerData.SubSlot = null;
+            slot.SubPlayer = null;
 
             if (slot.Status == PlayerSlotStatus.Playing
                 && slot.Player is not null
@@ -812,11 +835,11 @@ namespace SS.Matchmaking.Modules
         // TODO: Remember to call this when a match ends
         private void CancelSubInProgress(PlayerSlot slot, bool notify)
         {
-            if (slot == null)
+            if (slot is null)
                 return;
 
             Player player = slot.SubPlayer;
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
             playerData.SubSlot = null;
@@ -845,7 +868,7 @@ namespace SS.Matchmaking.Modules
             }
 
             PlayerSlot slot = playerData.PlayerSlot;
-            if (slot == null)
+            if (slot is null)
             {
                 _chat.SendMessage(player, $"You are not in a match.");
                 return;
@@ -863,7 +886,7 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (player.Arena == null || !string.Equals(player.Arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
+            if (player.Arena is null || !string.Equals(player.Arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
             {
                 // Send the player to the proper arena.
                 _arenaManager.SendToArena(player, matchData.ArenaName, 0, 0);
@@ -894,14 +917,14 @@ namespace SS.Matchmaking.Modules
             {
                 GetPlayersToNotify(slot.MatchData, players);
 
-                if (slot.SubPlayer != null)
+                if (slot.SubPlayer is not null)
                 {
                     players.Add(slot.SubPlayer);
                 }
 
                 if (players.Count > 0)
                 {
-                    _chat.SendSetMessage(players, $"{player} returned to the match. [Lives: {slot.Lives}]");
+                    _chat.SendSetMessage(players, $"{player.Name} returned to the match. [Lives: {slot.Lives}]");
                 }
             }
             finally
@@ -912,7 +935,7 @@ namespace SS.Matchmaking.Modules
             // There is a chance that another player was in the middle of trying to sub in, but didn't complete it yet.
             // For example, the other player used ?sub and is switching arenas, but this player used ?return before
             // the other player entered the arena.
-            if (slot.SubPlayer != null)
+            if (slot.SubPlayer is not null)
             {
                 CancelSubInProgress(slot, true);
             }
@@ -992,13 +1015,13 @@ namespace SS.Matchmaking.Modules
                 return;
 
             PlayerSlot playerSlot = playerData.PlayerSlot;
-            if (playerSlot == null)
+            if (playerSlot is null)
             {
                 _chat.SendMessage(player, $"You're not playing in a match.");
                 return;
             }
 
-            if (playerSlot.AllowShipChangeCutoff != null && playerSlot.AllowShipChangeCutoff < DateTime.UtcNow)
+            if (playerSlot.AllowShipChangeCutoff is not null && playerSlot.AllowShipChangeCutoff < DateTime.UtcNow)
             {
                 if (!TryParseShipNumber(player, parameters, out int shipNumber))
                     return;
@@ -1048,7 +1071,7 @@ namespace SS.Matchmaking.Modules
         private bool LoadConfiguration()
         {
             ConfigHandle ch = _configManager.OpenConfigFile(null, ConfigurationFileName);
-            if (ch == null)
+            if (ch is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Error opening {ConfigurationFileName}.");
                 return false;
@@ -1067,7 +1090,7 @@ namespace SS.Matchmaking.Modules
                     }
 
                     matchConfiguration = LoadMatchConfiguration(ch, matchType);
-                    if (matchConfiguration == null)
+                    if (matchConfiguration is null)
                     {
                         continue;
                     }
@@ -1214,7 +1237,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 TimeSpan? overTimeLimit = null;
-                if (timeLimit != null)
+                if (timeLimit is not null)
                 {
                     string overTimeLimitStr = _configManager.GetStr(ch, matchType, "OverTimeLimit");
                     if (!string.IsNullOrWhiteSpace(overTimeLimitStr))
@@ -1322,7 +1345,7 @@ namespace SS.Matchmaking.Modules
 
         private bool MakeMatch(TeamVersusMatchmakingQueue queue)
         {
-            if (queue == null)
+            if (queue is null)
                 return false;
 
             // Most often, a queue will be used by a single match type. However, multiple match types can use the same queue.
@@ -1384,7 +1407,7 @@ namespace SS.Matchmaking.Modules
 
                     playerSlot.Status = PlayerSlotStatus.Waiting;
 
-                    if (arena == null || player.Arena != arena)
+                    if (arena is null || player.Arena != arena)
                     {
                         _arenaManager.SendToArena(player, matchData.ArenaName, 0, 0);
                     }
@@ -1422,10 +1445,10 @@ namespace SS.Matchmaking.Modules
 
         private void AssignSlot(PlayerSlot slot, Player player)
         {
-            if (slot == null || player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (slot is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (playerData.PlayerSlot != null)
+            if (playerData.PlayerSlot is not null)
             {
                 // The player is already assigned a slot, unassign it first.
                 UnassignSlot(playerData.PlayerSlot);
@@ -1440,11 +1463,16 @@ namespace SS.Matchmaking.Modules
 
             slot.LagOuts = 0;
             slot.IsSubRequested = false;
+
+            if (slot.SubPlayer is not null)
+            {
+                CancelSubInProgress(slot, true);
+            }
         }
 
         private void UnassignSlot(PlayerSlot slot)
         {
-            if (slot == null)
+            if (slot is null)
                 return;
 
             if (string.IsNullOrWhiteSpace(slot.PlayerName))
@@ -1453,7 +1481,7 @@ namespace SS.Matchmaking.Modules
             _playerSlotDictionary.Remove(slot.PlayerName);
             slot.PlayerName = null;
 
-            if (slot.Player != null)
+            if (slot.Player is not null)
             {
                 if (slot.Player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 {
@@ -1551,7 +1579,7 @@ namespace SS.Matchmaking.Modules
 
         private bool MainloopTimer_ProcessInactiveSlot(PlayerSlot slot)
         {
-            if (slot == null)
+            if (slot is null)
                 return false;
 
             if (slot.Status != PlayerSlotStatus.Waiting)
@@ -1588,13 +1616,13 @@ namespace SS.Matchmaking.Modules
         /// <param name="players">The collection to populate with players.</param>
         private void GetPlayersToNotify(MatchData matchData, HashSet<Player> players)
         {
-            if (matchData == null || players == null)
+            if (matchData is null || players is null)
                 return;
 
             // Players in the match.
             foreach (PlayerSlot slot in matchData.TeamPlayerSlots)
             {
-                if (slot.Player != null)
+                if (slot.Player is not null)
                 {
                     players.Add(slot.Player);
                 }
@@ -1602,7 +1630,7 @@ namespace SS.Matchmaking.Modules
 
             // Players in the arena and on the spec freq.
             Arena arena = _arenaManager.FindArena(matchData.ArenaName);
-            if (arena != null)
+            if (arena is not null)
             {
                 _playerData.Lock();
 
@@ -1626,7 +1654,7 @@ namespace SS.Matchmaking.Modules
 
         private void QueueMatchInitialzation(MatchData matchData)
         {
-            if (matchData == null)
+            if (matchData is null)
                 return;
 
             _mainloop.QueueMainWorkItem(DoMatchInitialization, matchData);
@@ -1636,14 +1664,14 @@ namespace SS.Matchmaking.Modules
                 if (matchData.Status == MatchStatus.Initializing)
                 {
                     Arena arena = _arenaManager.FindArena(matchData.ArenaName);
-                    if (arena == null)
+                    if (arena is null)
                         return;
 
                     // Check that all players are in the arena.
                     foreach (PlayerSlot playerSlot in matchData.TeamPlayerSlots)
                     {
                         if (playerSlot.Status != PlayerSlotStatus.Waiting
-                            || playerSlot.Player == null
+                            || playerSlot.Player is null
                             || playerSlot.Player.Arena != arena
                             || !playerSlot.Player.TryGetExtraData(_pdKey, out PlayerData playerData)
                             || !playerData.HasEnteredArena)
@@ -1694,7 +1722,7 @@ namespace SS.Matchmaking.Modules
             }
             else
             {
-                if (playerData.NextShip != null)
+                if (playerData.NextShip is not null)
                     ship = playerData.NextShip.Value;
                 else
                     playerData.NextShip = ship = ShipType.Warbird;
@@ -1710,7 +1738,7 @@ namespace SS.Matchmaking.Modules
             _game.SetShipAndFreq(player, ship, freq);
 
             // Warp the player to the starting location.
-            if (startLocation != null)
+            if (startLocation is not null)
             {
                 _game.WarpTo(player, startLocation.Value.X, startLocation.Value.Y);
             }
@@ -1731,7 +1759,7 @@ namespace SS.Matchmaking.Modules
                     return;
 
                 Arena arena = player.Arena;
-                if (arena == null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData arenaData))
+                if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData arenaData))
                     return;
 
                 ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
@@ -1756,7 +1784,7 @@ namespace SS.Matchmaking.Modules
 
         private void QueueCheckForMatchCompletion(MatchData matchData)
         {
-            if (matchData == null)
+            if (matchData is null)
                 return;
 
             _mainloopTimer.SetTimer(CheckForMatchCompletion, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, matchData, matchData);
@@ -1764,7 +1792,7 @@ namespace SS.Matchmaking.Modules
 
         private bool CheckForMatchCompletion(MatchData matchData)
         {
-            if (matchData == null)
+            if (matchData is null)
                 return false;
 
             int numTeams = matchData.TeamPlayerSlots.GetLength(0);
@@ -1937,7 +1965,7 @@ namespace SS.Matchmaking.Modules
                 IsSubRequested
                 || (Status == PlayerSlotStatus.Waiting
                     && (LagOuts >= MatchData.Configuration.MaxLagOuts
-                        || (InactiveTimestamp != null
+                        || (InactiveTimestamp is not null
                             && (DateTime.UtcNow - InactiveTimestamp.Value) >= MatchData.Configuration.AllowSubAfter
                         )
                     )
@@ -2025,6 +2053,11 @@ namespace SS.Matchmaking.Modules
             /// Whether the player is trying to ?return to their match.
             /// </summary>
             public bool IsReturning = false;
+
+            /// <summary>
+            /// Whether extra position data is being watched for the player via <see cref="IGame.AddExtraPositionDataWatch(Player)"/>.
+            /// </summary>
+            public bool IsWatchingExtraPositionData = false;
         }
 
         private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
@@ -2036,7 +2069,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(PlayerData obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.PlayerSlot = null;
@@ -2076,7 +2109,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(ArenaData obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.IFreqManagerEnforcerAdvisorToken = null;
@@ -2168,12 +2201,12 @@ namespace SS.Matchmaking.Modules
                 else
                 {
                     var node = _queue.First;
-                    while (node != null && node.ValueRef.Timestamp <= item.ValueRef.Timestamp)
+                    while (node is not null && node.ValueRef.Timestamp <= item.ValueRef.Timestamp)
                     {
                         node = node.Next;
                     }
 
-                    if (node != null)
+                    if (node is not null)
                     {
                         _queue.AddBefore(node, item);
                     }
@@ -2191,7 +2224,7 @@ namespace SS.Matchmaking.Modules
             public bool Remove(Player player)
             {
                 LinkedListNode<QueuedPlayerOrGroup> node = _queue.First;
-                while (node != null)
+                while (node is not null)
                 {
                     if (node.ValueRef.Player == player)
                     {
@@ -2208,7 +2241,7 @@ namespace SS.Matchmaking.Modules
             public bool Remove(IPlayerGroup group)
             {
                 LinkedListNode<QueuedPlayerOrGroup> node = _queue.First;
-                while (node != null)
+                while (node is not null)
                 {
                     if (node.ValueRef.Group == group)
                     {
@@ -2239,16 +2272,16 @@ namespace SS.Matchmaking.Modules
             {
                 foreach (QueuedPlayerOrGroup pog in _queue)
                 {
-                    if (pog.Player != null)
+                    if (pog.Player is not null)
                         soloPlayers?.Add(pog.Player);
-                    else if (pog.Group != null)
+                    else if (pog.Group is not null)
                         groups?.Add(pog.Group);
                 }
             }
 
             public bool GetMatch(MatchConfiguration matchConfiguration, PlayerSlot[,] teamPlayerSlots)
             {
-                if (matchConfiguration == null || teamPlayerSlots == null)
+                if (matchConfiguration is null || teamPlayerSlots is null)
                     return false;
 
                 int numTeams = matchConfiguration.NumTeams;
@@ -2275,12 +2308,12 @@ namespace SS.Matchmaking.Modules
                     for (int teamIdx = 0; teamIdx < numTeams; teamIdx++)
                     {
                         LinkedListNode<QueuedPlayerOrGroup> node = _queue.First;
-                        if (node == null)
+                        if (node is null)
                             break; // Cannot fill the team.
 
                         ref QueuedPlayerOrGroup pog = ref node.ValueRef;
 
-                        if (pog.Group != null)
+                        if (pog.Group is not null)
                         {
                             // Got a group, which fills the team.
                             Debug.Assert(pog.Group.Members.Count == playersPerTeam);
@@ -2292,16 +2325,16 @@ namespace SS.Matchmaking.Modules
                             pending.Add(node);
                             continue; // Filled the team with a group.
                         }
-                        else if (pog.Player != null)
+                        else if (pog.Player is not null)
                         {
                             // Got a solo player, check if there are enough solo players to fill the team.
                             pendingSolo.Add(node);
 
                             while (pendingSolo.Count < playersPerTeam
-                                && (node = node.Next) != null)
+                                && (node = node.Next) is not null)
                             {
                                 pog = ref node.ValueRef;
-                                if (pog.Player != null)
+                                if (pog.Player is not null)
                                 {
                                     pendingSolo.Add(node);
                                 }
@@ -2328,22 +2361,28 @@ namespace SS.Matchmaking.Modules
 
                                 // Try to find a group to fill the team instead.
                                 node = _queue.First.Next;
-                                while (node != null)
+                                while (node is not null)
                                 {
                                     pog = ref node.ValueRef;
-                                    if (pog.Group != null)
-                                    {
-                                        Debug.Assert(pog.Group.Members.Count == playersPerTeam);
+                                    if (pog.Group is not null)
+                                        break;
 
-                                        for (int slotIdx = 0; slotIdx < playersPerTeam; slotIdx++)
-                                            teamPlayerSlots[teamIdx, slotIdx].Player = pog.Group.Members[slotIdx];
-
-                                        _queue.Remove(node);
-                                        pending.Add(node);
-                                        continue; // Filled the team with a group.
-                                    }
+                                    node = node.Next;
                                 }
 
+                                if (node is not null && pog.Group is not null)
+                                {
+                                    // Got a group, which fills the team.
+                                    Debug.Assert(pog.Group.Members.Count == playersPerTeam);
+
+                                    for (int slotIdx = 0; slotIdx < playersPerTeam; slotIdx++)
+                                        teamPlayerSlots[teamIdx, slotIdx].Player = pog.Group.Members[slotIdx];
+
+                                    _queue.Remove(node);
+                                    pending.Add(node);
+                                    continue; // Filled the team with a group.
+                                }
+                                
                                 break; // Cannot fill the team.
                             }
                         }
@@ -2352,12 +2391,13 @@ namespace SS.Matchmaking.Modules
                     bool success = true;
                     foreach (PlayerSlot playerSlot in teamPlayerSlots)
                     {
-                        if (playerSlot.Player == null)
+                        if (playerSlot.Player is null)
                             success = false;
                     }
 
                     if (success)
                     {
+                        // TODO: if all players were solo players, then teams can be randomized
                         return true;
                     }
                     else

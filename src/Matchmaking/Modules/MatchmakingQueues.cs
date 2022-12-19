@@ -99,7 +99,7 @@ namespace SS.Matchmaking.Modules
 
             _playerData.FreePlayerData(ref _pdKey);
 
-            if (_help != null)
+            if (_help is not null)
             {
                 broker.ReleaseInterface(ref _help);
             }
@@ -113,7 +113,7 @@ namespace SS.Matchmaking.Modules
 
         bool IMatchmakingQueues.RegisterQueue(IMatchmakingQueue queue)
         {
-            if (queue == null)
+            if (queue is null)
                 return false;
 
             if (!queue.Options.AllowSolo && !queue.Options.AllowGroups)
@@ -127,7 +127,7 @@ namespace SS.Matchmaking.Modules
 
         bool IMatchmakingQueues.UnregisterQueue(IMatchmakingQueue queue)
         {
-            if (queue == null)
+            if (queue is null)
                 return false;
 
             // TODO: if any player was queued, dequeue. If it was their last queue, change their status.
@@ -182,7 +182,7 @@ namespace SS.Matchmaking.Modules
 
         void IMatchmakingQueues.SetPlaying(HashSet<Player> players)
         {
-            if (players == null)
+            if (players is null)
                 return;
 
             foreach (Player player in players)
@@ -198,15 +198,15 @@ namespace SS.Matchmaking.Modules
 
         private void SetPlaying(Player player, bool isSub)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             // Individual
             if (player.TryGetExtraData(_pdKey, out UsageData usageData))
             {
-                foreach (IMatchmakingQueue queue in usageData.Queues.Keys)
+                foreach (QueuedInfo queuedInfo in usageData.Queued)
                 {
-                    queue.Remove(player);
+                    queuedInfo.Queue.Remove(player);
                 }
 
                 usageData.SetPlaying(isSub);
@@ -214,11 +214,11 @@ namespace SS.Matchmaking.Modules
 
             // Group
             IPlayerGroup group = _playerGroups.GetGroup(player);
-            if (group != null && _groupUsageDictionary.TryGetValue(group, out usageData))
+            if (group is not null && _groupUsageDictionary.TryGetValue(group, out usageData))
             {
-                foreach (IMatchmakingQueue queue in usageData.Queues.Keys)
+                foreach (QueuedInfo queuedInfo in usageData.Queued)
                 {
-                    queue.Remove(group);
+                    queuedInfo.Queue.Remove(group);
                 }
 
                 usageData.SetPlaying(isSub);
@@ -240,31 +240,30 @@ namespace SS.Matchmaking.Modules
 
         private void UnsetPlaying(Player player, bool allowRequeue)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
                 return;
 
-            usageData.UnsetPlaying();
-
-            if (usageData.AutoQueues.Count > 0)
+            if (usageData.UnsetPlaying(out bool wasSub) && usageData.PreviousQueued.Count > 0)
             {
-                if (allowRequeue && usageData.AutoRequeue)
+                if (allowRequeue && (wasSub || usageData.AutoRequeue))
                 {
-                    // TODO: Set timer to requeue.
+                    // TODO: Maybe instead of doing this immediately, set a timer to do it. That way there will be a delay after match completion?
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
-                        foreach ((IMatchmakingQueue queue, DateTime? timestamp) in usageData.AutoQueues)
+                        foreach ((IMatchmakingQueue queue, DateTime timestamp) in usageData.PreviousQueued)
                         {
-                            if (Enqueue(player, null, usageData, queue, timestamp ?? DateTime.UtcNow))
+                            if (!wasSub && !queue.Options.AllowAutoRequeue)
+                                continue;
+
+                            if (Enqueue(player, null, usageData, queue, wasSub ? timestamp : DateTime.UtcNow))
                                 addedQueues.Add(queue);
-                            else
-                                _logManager.LogP(LogLevel.Drivel, nameof(MatchmakingQueues), player, $"Failed to enqueue to: {queue.Name}.");
                         }
 
-                        usageData.ClearAutoQueues();
+                        usageData.ClearPreviousQueued();
 
                         NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
                     }
@@ -275,12 +274,12 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    usageData.ClearAutoQueues();
+                    usageData.ClearPreviousQueued();
                 }
             }
 
             IPlayerGroup group = _playerGroups.GetGroup(player);
-            if (group != null)
+            if (group is not null)
             {
                 UnsetPlaying(group, allowRequeue);
             }
@@ -288,7 +287,7 @@ namespace SS.Matchmaking.Modules
 
         private void UnsetPlaying(IPlayerGroup group, bool allowRequeue)
         {
-            if (group == null)
+            if (group is null)
                 return;
 
             foreach (Player member in group.Members)
@@ -303,23 +302,24 @@ namespace SS.Matchmaking.Modules
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
                 return;
 
-            usageData.UnsetPlaying();
-
-            if (usageData.AutoQueues.Count > 0)
+            if (usageData.UnsetPlaying(out bool wasSub) && usageData.PreviousQueued.Count > 0)
             {
                 if (allowRequeue && usageData.AutoRequeue)
                 {
-                    // TODO: Set timer to requeue.
+                    // TODO: Maybe instead of doing this immediately, set a timer to do it. That way there will be a delay after match completion?
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
-                        foreach ((IMatchmakingQueue queue, DateTime? timestamp) in usageData.AutoQueues)
+                        foreach ((IMatchmakingQueue queue, DateTime timestamp) in usageData.PreviousQueued)
                         {
-                            if (Enqueue(group.Leader, group, usageData, queue, timestamp ?? DateTime.UtcNow))
+                            if (!wasSub && !queue.Options.AllowAutoRequeue)
+                                continue;
+
+                            if (Enqueue(group.Leader, group, usageData, queue, wasSub ? timestamp : DateTime.UtcNow))
                                 addedQueues.Add(queue);
                         }
 
-                        usageData.ClearAutoQueues();
+                        usageData.ClearPreviousQueued();
 
                         NotifyQueuedAndInvokeChangeCallbacks(null, group, addedQueues);
                     }
@@ -330,7 +330,7 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    usageData.ClearAutoQueues();
+                    usageData.ClearPreviousQueued();
                 }
             }
         }
@@ -341,7 +341,7 @@ namespace SS.Matchmaking.Modules
 
         bool IPlayerGroupAdvisor.AllowSendInvite(IPlayerGroup group, StringBuilder message)
         {
-            if (group == null || !_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
+            if (group is null || !_groupUsageDictionary.TryGetValue(group, out UsageData usageData))
                 return true;
 
             if (usageData.State == QueueState.Queued)
@@ -362,7 +362,7 @@ namespace SS.Matchmaking.Modules
 
         bool IPlayerGroupAdvisor.AllowAcceptInvite(Player player, StringBuilder message)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out UsageData usageData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out UsageData usageData))
                 return true;
 
             if (usageData.State == QueueState.Queued)
@@ -414,7 +414,7 @@ namespace SS.Matchmaking.Modules
                 if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
                     return;
 
-                if (usageData.Queues.Count > 0)
+                if (usageData.Queued.Count > 0)
                 {
                     // The player is searching for a match, stop the search.
                     RemoveFromAllQueues(player, null, usageData, false);
@@ -435,7 +435,7 @@ namespace SS.Matchmaking.Modules
             else if (usageData.State == QueueState.Playing)
             {
                 // The group is playing in a match, remove automatic requeuing.
-                usageData.ClearAutoQueues();
+                usageData.ClearPreviousQueued();
             }
         }
 
@@ -443,7 +443,7 @@ namespace SS.Matchmaking.Modules
         {
             if (_groupUsageDictionary.Remove(group, out UsageData usageData))
             {
-                if (usageData.Queues.Count > 0)
+                if (usageData.Queued.Count > 0)
                 {
                     // The group is searching for a match, stop the search.
                     RemoveFromAllQueues(null, group, usageData, false);
@@ -476,7 +476,7 @@ namespace SS.Matchmaking.Modules
             "An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.")]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (player.Status != PlayerState.Playing || player.Arena == null)
+            if (player.Status != PlayerState.Playing || player.Arena is null)
                 return;
 
             // Check if the player is in a group.
@@ -484,7 +484,7 @@ namespace SS.Matchmaking.Modules
 
             // Get the usage data.
             UsageData usageData;
-            if (group != null)
+            if (group is not null)
             {
                 if (!_groupUsageDictionary.TryGetValue(group, out usageData))
                 {
@@ -504,22 +504,22 @@ namespace SS.Matchmaking.Modules
                 switch (usageData.State)
                 {
                     case QueueState.None:
-                        _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} not searching for a game yet.");
+                        _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} not searching for a game yet.");
                         break;
 
                     case QueueState.Queued:
                         StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
-                            foreach (var queue in usageData.Queues.Keys)
+                            foreach (var queuedInfo in usageData.Queued)
                             {
                                 if (sb.Length > 0)
                                     sb.Append(", ");
 
-                                sb.Append(queue.Name);
+                                sb.Append(queuedInfo.Queue.Name);
                             }
 
-                            _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} searching for a game on the following queues: {sb}");
+                            _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} searching for a game on the following queues: {sb}");
                         }
                         finally
                         {
@@ -528,24 +528,24 @@ namespace SS.Matchmaking.Modules
                         break;
 
                     case QueueState.Playing:
-                        _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} currently playing in match.");
+                        _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} currently playing in match.");
 
                         if (usageData.AutoRequeue)
                         {
-                            if (usageData.AutoQueues.Count > 0)
+                            if (usageData.PreviousQueued.Count > 0)
                             {
                                 sb = _objectPoolManager.StringBuilderPool.Get();
                                 try
                                 {
-                                    foreach (var queue in usageData.AutoQueues.Keys)
+                                    foreach (var queuedInfo in usageData.PreviousQueued)
                                     {
                                         if (sb.Length > 0)
                                             sb.Append(", ");
 
-                                        sb.Append(queue.Name);
+                                        sb.Append(queuedInfo.Queue.Name);
                                     }
 
-                                    _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} set to automatically requeue to: {sb}");
+                                    _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} set to automatically requeue to: {sb}");
                                 }
                                 finally
                                 {
@@ -554,7 +554,7 @@ namespace SS.Matchmaking.Modules
                             }
                             else
                             {
-                                _chat.SendMessage(player, $"{NextCommandName}: {(group == null ? "You are" : "Your group is")} set to automatically requeue.");
+                                _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} set to automatically requeue.");
                             }
                         }
                         break;
@@ -587,7 +587,7 @@ namespace SS.Matchmaking.Modules
 
             // The command is to start a search.
 
-            if (group != null)
+            if (group is not null)
             {
                 if (player != group.Leader)
                 {
@@ -674,7 +674,7 @@ namespace SS.Matchmaking.Modules
                     string queueName = token.ToString(); // FIXME: string allocation needed to search dictionary
 
                     IMatchmakingQueue queue = AddToQueue(player, group, usageData, queueName);
-                    if (queue != null)
+                    if (queue is not null)
                     {
                         addedQueues.Add(queue);
                     }
@@ -698,7 +698,7 @@ namespace SS.Matchmaking.Modules
                     foreach (IMatchmakingQueueAdvisor advisor in advisors)
                     {
                         string alias = advisor.GetQueueNameByAlias(arena, queueName);
-                        if (alias != null && _queues.TryGetValue(alias, out queue))
+                        if (alias is not null && _queues.TryGetValue(alias, out queue))
                         {
                             queueName = alias;
                             break;
@@ -706,7 +706,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                if (queue == null)
+                if (queue is null)
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' not found.");
                     return null;
@@ -721,7 +721,7 @@ namespace SS.Matchmaking.Modules
 
         private bool Enqueue(Player player, IPlayerGroup group, UsageData usageData, IMatchmakingQueue queue, DateTime timestamp)
         {
-            if (group != null)
+            if (group is not null)
             {
                 // group search
                 if (!queue.Options.AllowGroups)
@@ -782,7 +782,7 @@ namespace SS.Matchmaking.Modules
 
         private void NotifyQueuedAndInvokeChangeCallbacks(Player player, IPlayerGroup group, List<IMatchmakingQueue> addedQueues)
         {
-            if (addedQueues == null || addedQueues.Count <= 0)
+            if (addedQueues is null || addedQueues.Count <= 0)
                 return;
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
@@ -796,7 +796,7 @@ namespace SS.Matchmaking.Modules
                     sb.Append(queue.Name);
                 }
 
-                if (group != null)
+                if (group is not null)
                 {
                     // Notify the group members that a search has started.
                     HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
@@ -811,7 +811,7 @@ namespace SS.Matchmaking.Modules
                         _objectPoolManager.PlayerSetPool.Return(members);
                     }
                 }
-                else if (player != null)
+                else if (player is not null)
                 {
                     // Notify the player that a search has started.
                     _chat.SendMessage(player, $"{NextCommandName}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
@@ -825,7 +825,7 @@ namespace SS.Matchmaking.Modules
             // Fire the callbacks in the order that the queues were added. This will cause matchmaking module to attempt matches on the queues in that order.
             // Note: Firing the callbacks is purposely done after adding to all requested queues so that in case there is a match, we can keep track of any queues that allow automatic requeuing.
             // Also, we want the above notifications to be sent before any other matching notifications.
-            if (group != null)
+            if (group is not null)
             {
                 foreach (IMatchmakingQueue queue in addedQueues)
                 {
@@ -853,7 +853,7 @@ namespace SS.Matchmaking.Modules
 
             // Get the usage data.
             UsageData usageData;
-            if (group != null)
+            if (group is not null)
             {
                 if (player != group.Leader)
                 {
@@ -882,7 +882,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (usageData.Queues.Count == 0)
+                if (usageData.Queued.Count == 0)
                 {
                     _chat.SendMessage(player, $"{CancelCommandName}: There are no active searches to cancel.");
                     return;
@@ -905,13 +905,13 @@ namespace SS.Matchmaking.Modules
                         // Did not find a queue with the name provided.
                         // Check if the name provided is an alias.
                         Arena arena = player.Arena;
-                        if (arena != null)
+                        if (arena is not null)
                         {
                             var advisors = arena.GetAdvisors<IMatchmakingQueueAdvisor>();
                             foreach (IMatchmakingQueueAdvisor advisor in advisors)
                             {
                                 string alias = advisor.GetQueueNameByAlias(arena, queueName);
-                                if (alias != null && _queues.TryGetValue(alias, out queue))
+                                if (alias is not null && _queues.TryGetValue(alias, out queue))
                                 {
                                     queueName = alias;
                                     break;
@@ -920,7 +920,7 @@ namespace SS.Matchmaking.Modules
                         }
                     }
 
-                    if (queue == null)
+                    if (queue is null)
                     {
                         _chat.SendMessage(player, $"{CancelCommandName}: Queue '{queueName}' not found.");
                         continue;
@@ -933,14 +933,14 @@ namespace SS.Matchmaking.Modules
                     }
                     else
                     {
-                        if (group != null)
+                        if (group is not null)
                             queue.Remove(group);
                         else
                             queue.Remove(player);
                     }
 
                     // Notify
-                    if (group != null)
+                    if (group is not null)
                     {
                         HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
                         try
@@ -958,7 +958,7 @@ namespace SS.Matchmaking.Modules
                         _chat.SendMessage(player, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
                     }
 
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group != null ? QueueItemType.Group : QueueItemType.Player);
+                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group is not null ? QueueItemType.Group : QueueItemType.Player);
                 }
             }
         }
@@ -967,31 +967,31 @@ namespace SS.Matchmaking.Modules
 
         private void RemoveFromAllQueues(Player player, IPlayerGroup group, UsageData usageData, bool notify)
         {
-            if (player == null && group == null)
+            if (player is null && group is null)
                 return; // must have a player, a group, or both
 
-            if (usageData == null)
+            if (usageData is null)
                 return;
 
-            if (usageData.Queues.Count == 0)
+            if (usageData.Queued.Count == 0)
                 return; // not searching
 
             List<IMatchmakingQueue> removedFrom = _iMatchmakingQueueListPool.Get();
             try
             {
                 // Do the actual removal.
-                foreach (var queue in usageData.Queues.Keys)
+                foreach (var queuedInfo in usageData.Queued)
                 {
                     bool removed = false;
 
-                    if (group != null)
-                        removed = queue.Remove(group);
-                    else if (player != null)
-                        removed = queue.Remove(player);
+                    if (group is not null)
+                        removed = queuedInfo.Queue.Remove(group);
+                    else if (player is not null)
+                        removed = queuedInfo.Queue.Remove(player);
 
                     if (removed)
                     {
-                        removedFrom.Add(queue);
+                        removedFrom.Add(queuedInfo.Queue);
                     }
                 }
 
@@ -1000,7 +1000,7 @@ namespace SS.Matchmaking.Modules
                 // Notify the player(s).
                 if (notify)
                 {
-                    if (group != null)
+                    if (group is not null)
                     {
                         HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
                         try
@@ -1024,7 +1024,7 @@ namespace SS.Matchmaking.Modules
                 // Fire the callback.
                 foreach (var queue in removedFrom)
                 {
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group != null ? QueueItemType.Group : QueueItemType.Player);
+                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group is not null ? QueueItemType.Group : QueueItemType.Player);
                 }
             }
             finally
@@ -1048,17 +1048,39 @@ namespace SS.Matchmaking.Modules
             Playing,
         }
 
+        private readonly record struct QueuedInfo(IMatchmakingQueue Queue, DateTime Timestamp);
+
         private class UsageData
         {
             public QueueState State { get; private set; }
             public bool AutoRequeue = false;
-            public readonly Dictionary<IMatchmakingQueue, DateTime> Queues = new();
-            public readonly Dictionary<IMatchmakingQueue, DateTime?> AutoQueues = new();
+            public bool IsPlayingAsSub = false;
+
+            // TODO: Maybe better to use LinkedList<QueuedInfo> but then have to deal with pooling of LinkedListNode<QueuedInfo> objects.
+
+            public readonly List<QueuedInfo> Queued = new();
+            public readonly List<QueuedInfo> PreviousQueued = new();
 
             public bool AddQueue(IMatchmakingQueue queue, DateTime timestamp)
             {
-                if (!Queues.TryAdd(queue, timestamp))
-                    return false;
+                // Check if we're already searching the queue.
+                foreach (QueuedInfo queuedInfo in Queued)
+                {
+                    if (queuedInfo.Queue == queue)
+                        return false;
+                }
+
+                // Add it, keeping the list sorted by timestamp.
+                int i;
+                for (i = Queued.Count - 1; i >= 0; i--)
+                {
+                    QueuedInfo queuedInfo = Queued[i];
+                    if (timestamp >= queuedInfo.Timestamp)
+                    {
+                        break;
+                    }
+                }
+                Queued.Insert(i + 1, new QueuedInfo(queue, timestamp));
 
                 if (State == QueueState.None)
                     State = QueueState.Queued;
@@ -1068,21 +1090,35 @@ namespace SS.Matchmaking.Modules
 
             public bool RemoveQueue(IMatchmakingQueue queue)
             {
-                if (!Queues.Remove(queue))
+                if (!TryRemove(queue))
                     return false;
 
-                if (State == QueueState.Queued && Queues.Count == 0)
+                if (State == QueueState.Queued && Queued.Count == 0)
                     State = QueueState.None;
 
                 return true;
+
+                bool TryRemove(IMatchmakingQueue queue)
+                {
+                    for (int i = 0; i < Queued.Count; i++)
+                    {
+                        if (Queued[i].Queue == queue)
+                        {
+                            Queued.RemoveAt(i);
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }
             }
 
             public bool RemoveAllQueues()
             {
-                if (Queues.Count == 0)
+                if (Queued.Count == 0)
                     return false;
 
-                Queues.Clear();
+                Queued.Clear();
 
                 if (State == QueueState.Queued)
                     State = QueueState.None;
@@ -1093,35 +1129,44 @@ namespace SS.Matchmaking.Modules
             public void SetPlaying(bool isSub)
             {
                 State = QueueState.Playing;
+                IsPlayingAsSub = isSub;
 
-                AutoQueues.Clear();
+                PreviousQueued.Clear();
 
-                foreach ((IMatchmakingQueue queue, DateTime timestamp) in Queues)
+                foreach (QueuedInfo queuedInfo in Queued)
                 {
-                    if (queue.Options.AllowAutoRequeue)
-                        AutoQueues.Add(queue, isSub ? timestamp : null);
+                    PreviousQueued.Add(queuedInfo);
                 }
 
-                Queues.Clear();
+                Queued.Clear();
             }
 
-            public void UnsetPlaying()
+            public bool UnsetPlaying(out bool wasSub)
             {
                 if (State == QueueState.Playing)
+                {
                     State = QueueState.None;
+                    wasSub = IsPlayingAsSub;
+                    IsPlayingAsSub = false;
+                    return true;
+                }
+
+                wasSub = false;
+                return false;
             }
 
-            public void ClearAutoQueues()
+            public void ClearPreviousQueued()
             {
-                AutoQueues.Clear();
+                PreviousQueued.Clear();
             }
 
             public void Reset()
             {
                 State = QueueState.None;
-                Queues.Clear();
-                AutoQueues.Clear();
                 AutoRequeue = false;
+                IsPlayingAsSub = false;
+                Queued.Clear();
+                PreviousQueued.Clear();
             }
         }
 
@@ -1134,7 +1179,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(UsageData obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Reset();
@@ -1152,7 +1197,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(List<IMatchmakingQueue> obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Clear();
@@ -1169,7 +1214,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(List<PlayerOrGroup> obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Clear();

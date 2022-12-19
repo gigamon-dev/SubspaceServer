@@ -109,7 +109,7 @@ namespace SS.Matchmaking.Modules
         string IMatchmakingQueueAdvisor.GetDefaultQueue(Arena arena)
         {
             if (string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase)
-                && _boxes != null
+                && _boxes is not null
                 && _boxes.Length > 0)
             {
                 return _boxes[0].Queue.Name;
@@ -121,7 +121,7 @@ namespace SS.Matchmaking.Modules
         string IMatchmakingQueueAdvisor.GetQueueNameByAlias(Arena arena, string alias)
         {
             if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase)
-                || _boxes == null
+                || _boxes is null
                 || !int.TryParse(alias, out int boxNumber))
             {
                 return null;
@@ -162,7 +162,7 @@ namespace SS.Matchmaking.Modules
         {
             if (action == PlayerAction.EnterGame)
             {
-                if (arena == null
+                if (arena is null
                     || !string.Equals(arena.BaseName, _arenaBaseName)
                     || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 {
@@ -171,7 +171,7 @@ namespace SS.Matchmaking.Modules
 
                 playerData.HasEnteredArena = true;
 
-                if (playerData.MatchIdentifier != null
+                if (playerData.MatchIdentifier is not null
                     && playerData.MatchIdentifier.ArenaNumber == arena.Number)
                 {
                     if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
@@ -196,7 +196,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                if (arena == null || !string.Equals(arena.BaseName, _arenaBaseName))
+                if (arena is null || !string.Equals(arena.BaseName, _arenaBaseName))
                     return;
 
                 if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -204,7 +204,7 @@ namespace SS.Matchmaking.Modules
 
                 playerData.HasEnteredArena = false;
 
-                if (playerData.MatchIdentifier != null
+                if (playerData.MatchIdentifier is not null
                     && arena.Number == playerData.MatchIdentifier.ArenaNumber)
                 {
                     if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
@@ -233,7 +233,7 @@ namespace SS.Matchmaking.Modules
                 if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                     return;
 
-                if (playerData.MatchIdentifier != null)
+                if (playerData.MatchIdentifier is not null)
                 {
                     if (!_arenaDataDictionary.TryGetValue(playerData.MatchIdentifier.ArenaNumber, out ArenaData arenaData))
                         return;
@@ -272,10 +272,10 @@ namespace SS.Matchmaking.Modules
             if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerPlayerData) || killerPlayerData.MatchIdentifier == null)
+            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerPlayerData) || killerPlayerData.MatchIdentifier is null)
                 return;
 
-            if (!killed.TryGetExtraData(_pdKey, out PlayerData killedPlayerData) || killedPlayerData.MatchIdentifier == null || killerPlayerData.MatchIdentifier != killedPlayerData.MatchIdentifier)
+            if (!killed.TryGetExtraData(_pdKey, out PlayerData killedPlayerData) || killedPlayerData.MatchIdentifier is null || killerPlayerData.MatchIdentifier != killedPlayerData.MatchIdentifier)
                 return;
 
             if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
@@ -306,7 +306,7 @@ namespace SS.Matchmaking.Modules
             if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData) || playerData.MatchIdentifier == null)
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData) || playerData.MatchIdentifier is null)
                 return;
 
             int boxId = playerData.MatchIdentifier.BoxId;
@@ -351,7 +351,7 @@ namespace SS.Matchmaking.Modules
         private bool LoadConfiguration()
         {
             ConfigHandle ch = _configManager.OpenConfigFile(null, ConfigurationFileName);
-            if (ch == null)
+            if (ch is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Error opening {ConfigurationFileName}.");
                 return false;
@@ -431,7 +431,7 @@ namespace SS.Matchmaking.Modules
 
         private bool DoMatching(OneVersusOneQueue queue)
         {
-            if (queue == null)
+            if (queue is null)
                 return false;
 
             // Find an available spot for the match..
@@ -476,7 +476,7 @@ namespace SS.Matchmaking.Modules
             string arenaName = GetArenaName(arenaNumber);
             Arena arena = _arenaManager.FindArena(arenaName); // This will only find the arena if it already exists and is running.
 
-            if (arena != null && player1.Arena == arena)
+            if (arena is not null && player1.Arena == arena)
             {
                 boxState.Player1State = PlayerMatchmakingState.Waiting;
             }
@@ -486,7 +486,7 @@ namespace SS.Matchmaking.Modules
                 _arenaManager.SendToArena(player1, arenaName, 0, 0);
             }
 
-            if (arena != null && player2.Arena == arena)
+            if (arena is not null && player2.Arena == arena)
             {
                 boxState.Player2State = PlayerMatchmakingState.Waiting;
             }
@@ -567,7 +567,7 @@ namespace SS.Matchmaking.Modules
             {
                 string arenaName = GetArenaName(matchIdentifier.ArenaNumber);
                 Arena arena = _arenaManager.FindArena(arenaName);
-                if (arena == null)
+                if (arena is null)
                     return;
 
                 if (!_arenaDataDictionary.TryGetValue(matchWorkItem.ArenaNumber, out ArenaData arenaData))
@@ -617,7 +617,7 @@ namespace SS.Matchmaking.Modules
                 void SetShipAndFreq(Player player, PlayerData playerData, short freq)
                 {
                     ShipType ship;
-                    if (playerData.LastShip != null)
+                    if (playerData.LastShip is not null)
                         ship = playerData.LastShip.Value;
                     else
                         playerData.LastShip = ship = ShipType.Warbird;
@@ -634,7 +634,7 @@ namespace SS.Matchmaking.Modules
             bool CheckMatchCompletion(MatchIdentifier matchIdentifier)
             {
                 Arena arena = _arenaManager.FindArena(_arenaNames[matchIdentifier.ArenaNumber]);
-                if (arena == null)
+                if (arena is null)
                     return false;
 
                 if (!_arenaDataDictionary.TryGetValue(matchIdentifier.ArenaNumber, out ArenaData arenaData))
@@ -669,19 +669,19 @@ namespace SS.Matchmaking.Modules
                     // NOTE: If the player disconnected, then the player is null. Therefore, all these null checks.
                     if (boxState.Player1State == PlayerMatchmakingState.GaveUp)
                     {
-                        if (boxState.Player1 != null)
+                        if (boxState.Player1 is not null)
                             _chat.SendMessage(boxState.Player1, "You left the match.");
 
-                        if (boxState.Player2 != null)
+                        if (boxState.Player2 is not null)
                             _chat.SendMessage(boxState.Player2, "Your opponent left the match.");
                     }
 
                     if (boxState.Player2State == PlayerMatchmakingState.GaveUp)
                     {
-                        if (boxState.Player2 != null)
+                        if (boxState.Player2 is not null)
                             _chat.SendMessage(boxState.Player2, "You left the match.");
 
-                        if (boxState.Player1 != null)
+                        if (boxState.Player1 is not null)
                             _chat.SendMessage(boxState.Player1, "Your opponent left the match.");
                     }
 
@@ -707,12 +707,12 @@ namespace SS.Matchmaking.Modules
                     // Clear match info.
                     boxState.Reset();
 
-                    if (player1 != null)
+                    if (player1 is not null)
                     {
                         RemoveFromPlay(player1);
                     }
 
-                    if (player2 != null)
+                    if (player2 is not null)
                     {
                         RemoveFromPlay(player2);
                     }
@@ -790,7 +790,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Add(Player player, DateTime timestamp) // TODO: handle adding to the proper spot based on timestamp
             {
-                if (SoloQueue == null)
+                if (SoloQueue is null)
                     return false;
 
                 SoloQueue.AddLast(player);
@@ -799,7 +799,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Add(IPlayerGroup group, DateTime timestamp)
             {
-                //if (GroupQueue == null)
+                //if (GroupQueue is null)
                 return false;
 
                 // TODO: find the correct spot in the queue (ordered by # of players? or by time added only
@@ -818,12 +818,12 @@ namespace SS.Matchmaking.Modules
 
             public void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups)
             {
-                if (soloPlayers != null)
+                if (soloPlayers is not null)
                 {
                     soloPlayers.UnionWith(SoloQueue);
                 }
 
-                if (groups != null)
+                if (groups is not null)
                 {
                     // groups purposely not supported in this queue
                 }
@@ -853,10 +853,10 @@ namespace SS.Matchmaking.Modules
 
             public void UndoNext(Player player1, Player player2)
             {
-                if (player2 != null)
+                if (player2 is not null)
                     SoloQueue.AddFirst(player2);
 
-                if (player1 != null)
+                if (player1 is not null)
                     SoloQueue.AddFirst(player1);
             }
 
@@ -1023,7 +1023,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Return(PlayerData obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.MatchIdentifier = null;

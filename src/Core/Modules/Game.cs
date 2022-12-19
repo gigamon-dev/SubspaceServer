@@ -416,6 +416,32 @@ namespace SS.Core.Modules
             pd.pl_epd.seeNrgSpec = seeNrgSpec;
         }
 
+        void IGame.AddExtraPositionDataWatch(Player player)
+        {
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+                return;
+
+            if (playerData.EpdWatchCount == 0)
+            {
+                SendSpecBytes(player, true);
+            }
+
+            playerData.EpdModuleWatchCount++;
+        }
+
+        void IGame.RemoveExtraPositionDataWatch(Player player)
+        {
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+                return;
+
+            playerData.EpdModuleWatchCount--;
+
+            if (playerData.EpdWatchCount == 0)
+            {
+                SendSpecBytes(player, false);
+            }
+        }
+
         bool IGame.IsAntiwarped(Player player, HashSet<Player> playersAntiwarping)
         {
             if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
@@ -733,7 +759,7 @@ namespace SS.Core.Modules
                 pd.pl_epd.seeNrg = seeNrg;
                 pd.pl_epd.seeNrgSpec = seeNrgSpec;
                 pd.pl_epd.seeEpd = seeEpd;
-                pd.epdQueries = 0;
+                pd.EpdPlayerWatchCount = 0;
 
                 pd.S2CWeaponSent = 0;
                 pd.deathWithoutFiring = 0;
@@ -760,7 +786,7 @@ namespace SS.Core.Modules
                         _playerData.Unlock();
                     }
 
-                    if (pd.epdQueries > 0)
+                    if (pd.EpdPlayerWatchCount > 0)
                         _logManager.LogP(LogLevel.Error, nameof(Game), player, "Extra position data queries is still nonzero.");
 
                     ClearSpeccing(pd);
@@ -826,11 +852,15 @@ namespace SS.Core.Modules
                         if (!data.speccing.TryGetExtraData(_pdkey, out PlayerData odata))
                             return;
 
-                        if (--odata.epdQueries <= 0)
+                        if (odata.EpdPlayerWatchCount > 0)
                         {
-                            // no more people speccing the player that want extra position data
-                            SendSpecBytes(data.speccing, false);
-                            odata.epdQueries = 0;
+                            odata.EpdPlayerWatchCount--;
+
+                            if (odata.EpdWatchCount == 0)
+                            {
+                                // Tell the player that it no longer needs to to send extra position data.
+                                SendSpecBytes(data.speccing, false);
+                            }
                         }
                     }
                 }
@@ -852,11 +882,13 @@ namespace SS.Core.Modules
                     if (!t.TryGetExtraData(_pdkey, out PlayerData tdata))
                         return;
 
-                    if (tdata.epdQueries++ == 0)
+                    if (tdata.EpdWatchCount == 0)
                     {
-                        // first time player is being specced by someone watching extra position data, tell the player to send extra position data
+                        // Tell the player to start sending extra position data.
                         SendSpecBytes(t, true);
                     }
+
+                    tdata.EpdPlayerWatchCount++;
                 }
             }
         }
@@ -1343,7 +1375,7 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                PlayerPositionPacketCallback.Fire(arena, player, in pos);
+                PlayerPositionPacketCallback.Fire(arena, player, in pos, len == C2S_PositionPacket.LengthWithExtra);
             }
 
             pd.PlayerPostitionPacket_LastShip = player.Ship;
@@ -2406,8 +2438,20 @@ namespace SS.Core.Modules
             /// </summary>
             public int deathWithoutFiring;
 
-            // extra position data/energy stuff
-            public int epdQueries;
+            /// <summary>
+            /// The # of players that are spectating the player that can see extra position data.
+            /// </summary>
+            public int EpdPlayerWatchCount;
+
+            /// <summary>
+            /// The # of module watches for extra position data on the player.
+            /// </summary>
+            public int EpdModuleWatchCount;
+
+            /// <summary>
+            /// Gets the total # of extra position data watches on the player.
+            /// </summary>
+            public int EpdWatchCount => EpdPlayerWatchCount + EpdModuleWatchCount;
 
             public struct PlExtraPositionData
             {
@@ -2471,7 +2515,8 @@ namespace SS.Core.Modules
                 S2CWeaponSent = 0;
                 ignoreWeapons = 0;
                 deathWithoutFiring = 0;
-                epdQueries = 0;
+                EpdPlayerWatchCount = 0;
+                EpdModuleWatchCount = 0;
                 pl_epd = default;
                 lockship = false;
                 MapRegionNoAnti = false;

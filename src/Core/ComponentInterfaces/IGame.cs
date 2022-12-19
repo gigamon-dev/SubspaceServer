@@ -155,6 +155,25 @@ namespace SS.Core.ComponentInterfaces
         void ResetPlayerEnergyViewing(Player player);
         void ResetSpectatorEnergyViewing(Player player);
 
+        /// <summary>
+        /// Adds a module-level extra position data watch on a player.
+        /// </summary>
+        /// <remarks>
+        /// This will tell the player's client to send extra position data if it already isn't.
+        /// The calling module can register for the <see cref="ComponentCallbacks.PlayerPositionPacketCallback"/> and read the extra position data from it.
+        /// <para>
+        /// Remember to call <see cref="RemoveExtraPositionDataWatch(Player)"/> when done.
+        /// </para>
+        /// </remarks>
+        /// <param name="player">The player to add a watch on.</param>
+        void AddExtraPositionDataWatch(Player player);
+
+        /// <summary>
+        /// Removes a module-level extra position data watch from a player.
+        /// </summary>
+        /// <param name="player">The player to remove a watch on.</param>
+        void RemoveExtraPositionDataWatch(Player player);
+
         // TODO: more
         //IncrementWeaponPacketCount
 
