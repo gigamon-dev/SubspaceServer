@@ -15,11 +15,11 @@ namespace SS.Matchmaking.Modules
     /// </summary>
     [ModuleInfo($"""
         Manages 1v1 matchmaking.
-        Configuration: {nameof(Match1v1)}.conf
+        Configuration: {nameof(OneVersusOneMatch)}.conf
         """)]
-    public class Match1v1 : IModule, IMatchmakingQueueAdvisor
+    public class OneVersusOneMatch : IModule, IMatchmakingQueueAdvisor
     {
-        private const string ConfigurationFileName = $"{nameof(Match1v1)}.conf";
+        private const string ConfigurationFileName = $"{nameof(OneVersusOneMatch)}.conf";
 
         private IArenaManager _arenaManager;
         private IChat _chat;
@@ -353,7 +353,7 @@ namespace SS.Matchmaking.Modules
             ConfigHandle ch = _configManager.OpenConfigFile(null, ConfigurationFileName);
             if (ch is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Error opening {ConfigurationFileName}.");
+                _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Error opening {ConfigurationFileName}.");
                 return false;
             }
 
@@ -375,21 +375,21 @@ namespace SS.Matchmaking.Modules
                     string queueName = _configManager.GetStr(ch, $"Box{box}", "Queue");
                     if (string.IsNullOrWhiteSpace(queueName))
                     {
-                        _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Invalid Queue for Box{box}.");
+                        _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Invalid Queue for Box{box}.");
                         return false;
                     }
 
                     string coordinateStr = _configManager.GetStr(ch, $"Box{box}", "StartPlayer1");
                     if (!MapCoordinate.TryParse(coordinateStr, out MapCoordinate startLocation1))
                     {
-                        _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Invalid StartPlayer1 for Box{box}.");
+                        _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Invalid StartPlayer1 for Box{box}.");
                         return false;
                     }
 
                     coordinateStr = _configManager.GetStr(ch, $"Box{box}", "StartPlayer2");
                     if (!MapCoordinate.TryParse(coordinateStr, out MapCoordinate startLocation2))
                     {
-                        _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Invalid StartPlayer2 for Box{box}.");
+                        _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Invalid StartPlayer2 for Box{box}.");
                         return false;
                     }
 
@@ -410,7 +410,7 @@ namespace SS.Matchmaking.Modules
 
                         if (!_matchmakingQueues.RegisterQueue(queue))
                         {
-                            _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Failed to register queue '{queueName}' (used by Box{box}).");
+                            _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Failed to register queue '{queueName}' (used by Box{box}).");
                             return false;
                         }
 

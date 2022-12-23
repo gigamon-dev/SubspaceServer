@@ -14,7 +14,7 @@ namespace SS.Matchmaking.Modules
     /// </summary>
     [ModuleInfo($"""
         Tracks stats for 1v1 matches.
-        For use with the {nameof(Match1v1)} module.
+        For use with the {nameof(OneVersusOneMatch)} module.
         """)]
     public class OneVersusOneStats : IModule, IArenaAttachableModule
     {
