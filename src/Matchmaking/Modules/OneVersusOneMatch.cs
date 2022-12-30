@@ -35,12 +35,34 @@ namespace SS.Matchmaking.Modules
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor> _iMatchmakingQueueAdvisorToken;
 
+        /// <summary>
+        /// The base name for the arenas that matches are to be played in.
+        /// </summary>
         private string _arenaBaseName;
+
+        /// <summary>
+        /// The maximum # of arenas to use for matches.
+        /// </summary>
         private int _maxArenas;
-        private readonly List<string> _arenaNames = new(10); // for reducing string allocations
+
+        /// <summary>
+        /// Dictionary of queues (key = queue name).
+        /// </summary>
         private Dictionary<string, OneVersusOneQueue> _queueDictionary;
-        private BoxConfiguration[] _boxes;
-        private readonly Dictionary<int, ArenaData> _arenaDataDictionary = new(); // Not using per-arena data since it will have data for arenas that aren't created yet.
+
+        /// <summary>
+        /// Configuration for each box.
+        /// </summary>
+        private BoxConfiguration[] _boxConfigs;
+
+        /// <summary>
+        /// Dictionary of arena data (key = arena number)
+        /// </summary>
+        /// <remarks>
+        /// Not using per-arena data since it will have data for arenas that aren't created yet.
+        /// Also, it only has data for arenas having the base arena name (hence why the key is the arena number).
+        /// </remarks>
+        private readonly Dictionary<int, ArenaData> _arenaDataDictionary = new();
 
         #region Module members
 
@@ -109,10 +131,10 @@ namespace SS.Matchmaking.Modules
         string IMatchmakingQueueAdvisor.GetDefaultQueue(Arena arena)
         {
             if (string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase)
-                && _boxes is not null
-                && _boxes.Length > 0)
+                && _boxConfigs is not null
+                && _boxConfigs.Length > 0)
             {
-                return _boxes[0].Queue.Name;
+                return _boxConfigs[0].Queue.Name;
             }
 
             return null;
@@ -121,7 +143,7 @@ namespace SS.Matchmaking.Modules
         string IMatchmakingQueueAdvisor.GetQueueNameByAlias(Arena arena, string alias)
         {
             if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase)
-                || _boxes is null
+                || _boxConfigs is null
                 || !int.TryParse(alias, out int boxNumber))
             {
                 return null;
@@ -129,9 +151,9 @@ namespace SS.Matchmaking.Modules
 
             boxNumber -= 1; // zero-indexed
 
-            if (boxNumber >= 0 && boxNumber < _boxes.Length)
+            if (boxNumber >= 0 && boxNumber < _boxConfigs.Length)
             {
-                return _boxes[boxNumber].Queue.Name;
+                return _boxConfigs[boxNumber].Queue.Name;
             }
 
             return null;
@@ -155,6 +177,18 @@ namespace SS.Matchmaking.Modules
             {
                 KillCallback.Unregister(arena, Callback_Kill);
                 ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+
+                // Immediately end any ongoing matches in the arena.
+                if (_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData arenaData))
+                {
+                    foreach (BoxState boxState in arenaData.Boxes)
+                    {
+                        if (boxState.Status == BoxStatus.Playing)
+                        {
+                            EndMatch(arena, arena.Number, boxState, OneVersusOneMatchEndReason.Aborted, null);
+                        }
+                    }
+                }
             }
         }
 
@@ -215,13 +249,21 @@ namespace SS.Matchmaking.Modules
                     {
                         if (boxState.Player1 == player)
                         {
-                            boxState.Player1State = PlayerMatchmakingState.GaveUp;
+                            if (boxState.Player1State == PlayerMatchmakingState.Playing)
+                            {
+                                boxState.Player1State = PlayerMatchmakingState.GaveUp;
+                            }
+
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
                             _matchmakingQueues.UnsetPlaying(player, false);
                         }
                         else if (boxState.Player2 == player)
                         {
-                            boxState.Player2State = PlayerMatchmakingState.GaveUp;
+                            if (boxState.Player2State == PlayerMatchmakingState.Playing)
+                            {
+                                boxState.Player2State = PlayerMatchmakingState.GaveUp;
+                            }
+
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
                             _matchmakingQueues.UnsetPlaying(player, false);
                         }
@@ -313,7 +355,7 @@ namespace SS.Matchmaking.Modules
             BoxState boxState = arenaData.Boxes[boxId];
             if (boxState.Status == BoxStatus.Playing)
             {
-                BoxConfiguration boxConfig = _boxes[boxId];
+                BoxConfiguration boxConfig = _boxConfigs[boxId];
 
                 if (newShip == ShipType.Spec)
                 {
@@ -365,10 +407,10 @@ namespace SS.Matchmaking.Modules
                     _maxArenas = 1;
 
                 int boxCount = _configManager.GetInt(ch, "Matchmaking", "Boxes", 0);
-                _boxes = new BoxConfiguration[boxCount];
+                _boxConfigs = new BoxConfiguration[boxCount];
                 _queueDictionary = new(boxCount);
 
-                for (int i = 0; i < _boxes.Length; i++)
+                for (int i = 0; i < _boxConfigs.Length; i++)
                 {
                     int box = i + 1;
 
@@ -418,7 +460,7 @@ namespace SS.Matchmaking.Modules
                     }
 
                     queue.AddBox(i);
-                    _boxes[i] = new BoxConfiguration(queue, startLocation1, startLocation2);
+                    _boxConfigs[i] = new BoxConfiguration(queue, startLocation1, startLocation2);
                 }
             }
             finally
@@ -439,6 +481,12 @@ namespace SS.Matchmaking.Modules
             {
                 return false;
             }
+
+            Span<char> arenaName = stackalloc char[Constants.MaxArenaNameLength];
+            if (!Arena.TryCreateArenaName(arenaName, _arenaBaseName, arenaNumber, out int charsWritten))
+                return false;
+            
+            arenaName = arenaName[..charsWritten];
 
             // Check if there are 2 players available.
             if (!queue.GetNext(out Player player1, out Player player2))
@@ -473,7 +521,6 @@ namespace SS.Matchmaking.Modules
 
             // Get the players into the correct arena if they aren't already there.
             // TODO: If the player is not in spec, then notify them of the match and which arena to go to and give them 30 seconds to get there.
-            string arenaName = GetArenaName(arenaNumber);
             Arena arena = _arenaManager.FindArena(arenaName); // This will only find the arena if it already exists and is running.
 
             if (arena is not null && player1.Arena == arena)
@@ -508,7 +555,7 @@ namespace SS.Matchmaking.Modules
                     // arena data
                     if (!_arenaDataDictionary.TryGetValue(arenaNumber, out arenaData))
                     {
-                        arenaData = new ArenaData(arenaNumber, _boxes.Length);
+                        arenaData = new ArenaData(arenaNumber, _boxConfigs.Length);
                         _arenaDataDictionary.Add(arenaNumber, arenaData);
                     }
 
@@ -545,27 +592,18 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private string GetArenaName(int arenaNumber)
-        {
-            if (arenaNumber < _arenaNames.Count)
-            {
-                return _arenaNames[arenaNumber];
-            }
-            else
-            {
-                string arenaName = Arena.CreateArenaName(_arenaBaseName, arenaNumber);
-                _arenaNames.Add(arenaName);
-                return arenaName;
-            }
-        }
-
         private void QueueMatchInitialzation(MatchIdentifier matchIdentifier)
         {
             _mainloop.QueueMainWorkItem(DoMatchInitialization, matchIdentifier);
 
             void DoMatchInitialization(MatchIdentifier matchWorkItem)
             {
-                string arenaName = GetArenaName(matchIdentifier.ArenaNumber);
+                Span<char> arenaName = stackalloc char[Constants.MaxArenaNameLength];
+                if (!Arena.TryCreateArenaName(arenaName, _arenaBaseName, matchIdentifier.ArenaNumber, out int charsWritten))
+                    return;
+
+                arenaName = arenaName[..charsWritten];
+
                 Arena arena = _arenaManager.FindArena(arenaName);
                 if (arena is null)
                     return;
@@ -600,8 +638,8 @@ namespace SS.Matchmaking.Modules
                         SetShipAndFreq(player2, player2Data, freq2);
 
                         // Warp the players to their starting locations.
-                        _game.WarpTo(player1, _boxes[boxId].StartLocation1.X, _boxes[boxId].StartLocation1.Y);
-                        _game.WarpTo(player2, _boxes[boxId].StartLocation2.X, _boxes[boxId].StartLocation2.Y);
+                        _game.WarpTo(player1, _boxConfigs[boxId].StartLocation1.X, _boxConfigs[boxId].StartLocation1.Y);
+                        _game.WarpTo(player2, _boxConfigs[boxId].StartLocation2.X, _boxConfigs[boxId].StartLocation2.Y);
 
                         // Reset their ships.
                         _game.ShipReset(player1);
@@ -629,11 +667,18 @@ namespace SS.Matchmaking.Modules
 
         private void QueueMatchCompletionCheck(MatchIdentifier matchIdentifier)
         {
+            _mainloopTimer.ClearTimer<MatchIdentifier>(CheckMatchCompletion, matchIdentifier);
             _mainloopTimer.SetTimer(CheckMatchCompletion, 2000, Timeout.Infinite, matchIdentifier, matchIdentifier);
 
             bool CheckMatchCompletion(MatchIdentifier matchIdentifier)
             {
-                Arena arena = _arenaManager.FindArena(_arenaNames[matchIdentifier.ArenaNumber]);
+                Span<char> arenaName = stackalloc char[Constants.MaxArenaNameLength];
+                if (!Arena.TryCreateArenaName(arenaName, _arenaBaseName, matchIdentifier.ArenaNumber, out int charsWritten))
+                    return false;
+
+                arenaName = arenaName[..charsWritten];
+
+                Arena arena = _arenaManager.FindArena(arenaName);
                 if (arena is null)
                     return false;
 
@@ -689,58 +734,58 @@ namespace SS.Matchmaking.Modules
                 }
 
                 return false;
+            }
+        }
 
-                void EndMatch(Arena arena, int boxId, BoxState boxState, OneVersusOneMatchEndReason reason, int? winner)
-                {
-                    string winnerPlayerName = winner switch
-                    {
-                        1 => boxState.Player1Name,
-                        2 => boxState.Player2Name,
-                        _ => null
-                    };
+        private void EndMatch(Arena arena, int boxId, BoxState boxState, OneVersusOneMatchEndReason reason, int? winner)
+        {
+            string winnerPlayerName = winner switch
+            {
+                1 => boxState.Player1Name,
+                2 => boxState.Player2Name,
+                _ => null
+            };
 
-                    OneVersusOneMatchEndedCallback.Fire(arena, arena, boxId, reason, winnerPlayerName);
+            OneVersusOneMatchEndedCallback.Fire(arena, arena, boxId, reason, winnerPlayerName);
 
-                    Player player1 = boxState.Player1;
-                    Player player2 = boxState.Player2;
+            Player player1 = boxState.Player1;
+            Player player2 = boxState.Player2;
 
-                    // Clear match info.
-                    boxState.Reset();
+            // Clear match info.
+            boxState.Reset();
 
-                    if (player1 is not null)
-                    {
-                        RemoveFromPlay(player1);
-                    }
+            if (player1 is not null)
+            {
+                RemoveFromPlay(player1);
+            }
 
-                    if (player2 is not null)
-                    {
-                        RemoveFromPlay(player2);
-                    }
+            if (player2 is not null)
+            {
+                RemoveFromPlay(player2);
+            }
 
-                    void RemoveFromPlay(Player player)
-                    {
-                        if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                            return;
+            void RemoveFromPlay(Player player)
+            {
+                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                    return;
 
-                        playerData.MatchIdentifier = null;
+                playerData.MatchIdentifier = null;
 
-                        // Change to spectator mode.
-                        // NOTE: The ShipFreqChangeCallback gets called asynchronously as a mainloop workitem.
-                        if (player.Ship != ShipType.Spec)
-                            _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                // Change to spectator mode.
+                // NOTE: The ShipFreqChangeCallback gets called asynchronously as a mainloop workitem.
+                if (player.Ship != ShipType.Spec)
+                    _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
 
-                        // Remove the players' 'Playing' state with allowed requeuing.
-                        // Since this can requeue, it will fire the MatchmakingQueueChangedCallback for any that are requeued.
-                        // However, this must definitely happen after the ShipFreqChangeCallback(s).
-                        // So, queue this as a mainloop workitem too, which will happen after the ShipFreqChangeCallback(s) occur.
-                        _mainloop.QueueMainWorkItem(DoUnsetPlaying, player);
-                    }
+                // Remove the players' 'Playing' state with allowed requeuing.
+                // Since this can requeue, it will fire the MatchmakingQueueChangedCallback for any that are requeued.
+                // However, this must definitely happen after the ShipFreqChangeCallback(s).
+                // So, queue this as a mainloop workitem too, which will happen after the ShipFreqChangeCallback(s) occur.
+                _mainloop.QueueMainWorkItem(DoUnsetPlaying, player);
+            }
 
-                    void DoUnsetPlaying(Player player)
-                    {
-                        _matchmakingQueues.UnsetPlaying(player, true);
-                    }
-                }
+            void DoUnsetPlaying(Player player)
+            {
+                _matchmakingQueues.UnsetPlaying(player, true);
             }
         }
 

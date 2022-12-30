@@ -386,10 +386,34 @@ namespace SS.Core
         /// <returns>The arena name.</returns>
         public static string CreateArenaName(string baseName, int number)
         {
+            if (number < 0)
+                throw new ArgumentOutOfRangeException(nameof(number), "Cannot be negative.");
+
             if (string.IsNullOrWhiteSpace(baseName) || string.Equals(baseName, Constants.ArenaGroup_Public, StringComparison.OrdinalIgnoreCase))
                 return number.ToString(CultureInfo.InvariantCulture);
 
             return (number == 0) ? baseName : $"{baseName}{number}";
+        }
+
+        /// <summary>
+        /// Constructs an arena name from a base name and number.
+        /// </summary>
+        /// <param name="destination">The span which the arena name should be written to.</param>
+        /// <param name="baseName">The base name of the arena.</param>
+        /// <param name="number">The number of the arena.</param>
+        /// <param name="charsWritten">When this method returns, contains the number of characters written to <paramref name="destination"/>.</param>
+        /// <returns><see langword="true"/> if the entire arena name could be written; otherwise <see langword="false"/>.</returns>
+        public static bool TryCreateArenaName(Span<char> destination, ReadOnlySpan<char> baseName, int number, out int charsWritten)
+        {
+            if (number < 0)
+                throw new ArgumentOutOfRangeException(nameof(number), "Cannot be negative.");
+
+            if (baseName.IsWhiteSpace() || baseName.Equals(Constants.ArenaGroup_Public, StringComparison.OrdinalIgnoreCase))
+                return destination.TryWrite($"{number}", out charsWritten);
+
+            return number == 0
+                ? destination.TryWrite($"{baseName}", out charsWritten)
+                : destination.TryWrite($"{baseName}{number}", out charsWritten);
         }
     }
 }

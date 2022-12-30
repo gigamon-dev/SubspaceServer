@@ -23,7 +23,7 @@ namespace SS.Matchmaking.Callbacks
     /// <summary>
     /// Callback for when a 1v1 match ends.
     /// </summary>
-    public class OneVersusOneMatchEndedCallback
+    public static class OneVersusOneMatchEndedCallback
     {
         public delegate void OneVersusOneMatchEndedDelegate(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string winnerPlayerName);
 
