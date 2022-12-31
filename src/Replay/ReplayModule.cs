@@ -295,7 +295,7 @@ namespace SS.Replay
             }
         }
 
-        private void Callback_BricksPlaced(Arena arena, IReadOnlyList<BrickData> bricks)
+        private void Callback_BricksPlaced(Arena arena, Player player, IReadOnlyList<BrickData> bricks)
         {
             Debug.Assert(_mainloop.IsMainloop);
 

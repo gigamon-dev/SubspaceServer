@@ -1,4 +1,5 @@
 ﻿using SS.Core;
+using System.Text;
 
 namespace SS.Matchmaking.Advisors
 {
@@ -20,5 +21,13 @@ namespace SS.Matchmaking.Advisors
         /// <param name="alias">The alias to check.</param>
         /// <returns>The queue name if one was found. Otherwise, null.</returns>
         string GetQueueNameByAlias(Arena arena, string alias) => null;
+
+        /// <summary>
+        /// Gets information about the player's current match.
+        /// </summary>
+        /// <param name="player">The player to get current match info about.</param>
+        /// <param name="matchInfo">A <see cref="StringBuilder"/> to fill with info about the current match (e.g. match type, arena name, etc.)</param>
+        /// <returns><see langword="true"/> if <paramref name="matchInfo"/> was filled in. Otherwise, <see langword="false"/>.</returns>
+        bool TryGetCurrentMatchInfo(Player player, StringBuilder matchInfo) => false;
     }
 }

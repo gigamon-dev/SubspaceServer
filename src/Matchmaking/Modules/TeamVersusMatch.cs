@@ -11,6 +11,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 
 namespace SS.Matchmaking.Modules
@@ -105,6 +106,18 @@ namespace SS.Matchmaking.Modules
         private readonly LinkedList<PlayerSlot> _availableSubSlots = new(); // TODO: pooling of node objects
         // TODO: when a match ends, remember to remove from _availableSubSlots
 
+        /// <summary>
+        /// Data per arena base name (shared among arenas with the same base name).
+        /// Only contains data for arena base names that are configured for matches.
+        /// </summary>
+        /// <remarks>
+        /// Key: Arena base name
+        /// </remarks>
+        private readonly Dictionary<string, ArenaBaseData> _arenaBaseDataDictionary = new();
+
+        /// <summary>
+        /// Data per-arena (not all arenas, only those configured for matches).
+        /// </summary>
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new();
 
         private readonly ObjectPool<ArenaData> _arenaDataObjectPool = new NonTransientObjectPool<ArenaData>(new ArenaDataPooledObjectPolicy());
@@ -183,10 +196,29 @@ namespace SS.Matchmaking.Modules
 
         ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
         {
-            // TOOD: When in a match, allow a player to do a normal ship change instead of using ?sc
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return ShipMask.None;
+
+            // When in a match, allow a player to do a normal ship change instead of using ?sc
             // If during a period they can ship change (start of the match or after death), then allow (ShipMask.All).
-            // If during a period they cannot ship change, but have additional lives, don't allow any ship (ShipMask.None), but set their next ship.
-            return ShipMask.None;
+            // If during a period they cannot ship change, but have additional lives, don't allow, but set their next ship.
+
+            PlayerSlot playerSlot = playerData.PlayerSlot;
+            if (playerSlot is not null // player is in a match
+                && player.Arena is not null // player is in an arena
+                && string.Equals(player.Arena.Name, playerSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase) // player is in the match's arena
+                && playerSlot.AllowShipChangeCutoff is not null && playerSlot.AllowShipChangeCutoff < DateTime.UtcNow)  // within the period that ship changes are allowed (e.g. after death)
+            {
+                return ShipMask.All;
+            }
+
+            if (ship != ShipType.Spec) // should not possible to be spec, but checking just in case
+            {
+                playerData.NextShip = ship;
+                _chat.SendMessage(player, $"Your next ship will be a {ship}.");
+            }
+
+            return player.Ship.GetShipMask(); // Only allow the current ship. In other words, no change allowed.
         }
 
         bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder errorMessage)
@@ -204,17 +236,7 @@ namespace SS.Matchmaking.Modules
 
         bool IFreqManagerEnforcerAdvisor.IsUnlocked(Player player, StringBuilder errorMessage)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
-                return false;
-
-            PlayerSlot playerSlot = playerData.PlayerSlot;
-            if (playerSlot is null)
-                return false; // not in match
-
-            //if(playerSlot.Player == player)
-            // Manual changing of ship/freq is not allowed.
-
-            return false;
+            return true;
         }
 
         #endregion
@@ -259,8 +281,11 @@ namespace SS.Matchmaking.Modules
                 }
 
                 KillCallback.Register(arena, Callback_Kill);
+                PreShipFreqChangeCallback.Register(arena, Callback_PreShipFreqChange);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
                 PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
+                BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
+                SpawnCallback.Register(arena, Callback_Spawn);
 
                 _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena);
                 _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena);
@@ -285,8 +310,11 @@ namespace SS.Matchmaking.Modules
                         return;
 
                     KillCallback.Unregister(arena, Callback_Kill);
+                    PreShipFreqChangeCallback.Unregister(arena, Callback_PreShipFreqChange);
                     ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
                     PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
+                    BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
+                    SpawnCallback.Unregister(arena, Callback_Spawn);
 
                     _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
                     _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
@@ -446,23 +474,50 @@ namespace SS.Matchmaking.Modules
             if (killedPlayerSlot is null)
                 return;
 
+            if (killedPlayerSlot.MatchData.Status != MatchStatus.InProgress)
+                return;
+
             killedPlayerSlot.Lives--;
 
-            if (killedPlayerSlot.Lives > 0)
-            {
-                // The slot still has lives, allow the player to ship change using the ?sc command.
-                killedPlayerSlot.AllowShipChangeCutoff = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-            }
-            else
-            {
-                // This was the last life of the slot.
-                killedPlayerSlot.Status = PlayerSlotStatus.KnockedOut;
+            MatchData matchData = killedPlayerSlot.MatchData;
 
-                // The player needs to be moved to spec, but if done immediately any of lingering weapons fire from the player will be removed.
-                // We want to wait a short time to allow for a double-kill (though shorter than respawn time), before moving the player to spec and checking for match completion.
-                MatchData matchData = killedPlayerSlot.MatchData;
-                _mainloopTimer.SetTimer(ProcessKnockOut, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
+            TimeSpan gameTime = matchData.Started is not null ? DateTime.UtcNow - matchData.Started.Value : TimeSpan.Zero;
+            gameTime = new(gameTime.Days, gameTime.Hours, gameTime.Minutes, gameTime.Seconds); // remove fractional seconds
+            // TODO: add logic to format without hours if 0 --> custom format string?
+
+            HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+            try
+            {
+                GetPlayersToNotify(matchData, notifySet);
+
+                _chat.SendSetMessage(notifySet, $"{killed.Name} kb {killer.Name}"); // TODO: add assist logic, but that belongs in the TeamVersusStats module, so need a callback to fire and this probably need to add interface method to this for sending the notification?
+
+                if (killedPlayerSlot.Lives > 0)
+                {
+                    // The slot still has lives, allow the player to ship change (after death) for a limited amount of time.
+                    killedPlayerSlot.AllowShipChangeCutoff = DateTime.UtcNow + TimeSpan.FromSeconds(5); // TODO: make this configurable. Also, maybe limit how many change a player can make?
+
+                    _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining [{gameTime:g}]");
+                }
+                else
+                {
+                    // This was the last life of the slot.
+                    killedPlayerSlot.Status = PlayerSlotStatus.KnockedOut;
+
+                    _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} is OUT! [{gameTime:g}]");
+
+                    // The player needs to be moved to spec, but if done immediately any of lingering weapons fire from the player will be removed.
+                    // We want to wait a short time to allow for a double-kill (though shorter than respawn time), before moving the player to spec and checking for match completion.
+                    _mainloopTimer.SetTimer(ProcessKnockOut, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
+                }
+
+                //_chat.SendSetMessage(notifySet, $"Score: {}-{}")
             }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(notifySet);
+            }
+            
 
             bool ProcessKnockOut(PlayerSlot slot)
             {
@@ -476,6 +531,40 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        // This is called synchronously when the Game module sets a player's ship/freq.
+        private void Callback_PreShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            PlayerSlot slot = playerData.PlayerSlot;
+            if (slot is null)
+                return;
+
+            if (slot.MatchData.Status == MatchStatus.InProgress
+                && newShip != ShipType.Spec
+                && oldShip != ShipType.Spec
+                && newShip != oldShip
+                && newFreq == oldFreq)
+            {
+                // Send ship change notification.
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    GetPlayersToNotify(slot.MatchData, players);
+
+                    if (players.Count > 0)
+                    {
+                        _chat.SendSetMessage(players, $"{slot.Player.Name} changed to a {slot.Player.Ship}");
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+        }
+
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -485,6 +574,7 @@ namespace SS.Matchmaking.Modules
             if (slot is null)
                 return;
 
+            // Extra position data (for tracking items)
             if (newShip != ShipType.Spec
                 && !playerData.IsWatchingExtraPositionData)
             {
@@ -498,16 +588,11 @@ namespace SS.Matchmaking.Modules
                 playerData.IsWatchingExtraPositionData = false;
             }
 
-            MatchData matchData = slot.MatchData;
-            if (matchData.Status == MatchStatus.InProgress)
+            if (slot.MatchData.Status == MatchStatus.InProgress
+                && slot.Status == PlayerSlotStatus.Playing
+                && newShip == ShipType.Spec)
             {
-                if (slot.Status == PlayerSlotStatus.Playing)
-                {
-                    if (newShip == ShipType.Spec)
-                    {
-                        SetSlotInactive(slot, SlotNotActiveReason.ChangedToSpec);
-                    }
-                }
+                SetSlotInactive(slot, SlotNotActiveReason.ChangedToSpec);
             }
         }
 
@@ -535,7 +620,7 @@ namespace SS.Matchmaking.Modules
                 slot.Portals = positionPacket.Extra.Portals;
             }
 
-            if (positionPacket.Weapon.Type != WeaponCodes.Null
+            if (positionPacket.Weapon.Type != WeaponCodes.Null // Note: bricks are not position packet weapons, therefore handled separately with Callback_BricksPlaced
                 && slot.AllowShipChangeCutoff is not null)
             {
                 // The player has engaged.
@@ -584,6 +669,48 @@ namespace SS.Matchmaking.Modules
             {
                 // Another player is waiting to sub in. Try to sub the other player in.
                 SubSlot(slot);
+            }
+        }
+
+        private void Callback_BricksPlaced(Arena arena, Player player, IReadOnlyList<BrickData> bricks)
+        {
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            PlayerSlot slot = playerData.PlayerSlot;
+            if (slot is null || slot.Status != PlayerSlotStatus.Playing)
+                return;
+
+            if (slot.AllowShipChangeCutoff is not null)
+            {
+                // The player has engaged.
+                slot.AllowShipChangeCutoff = null;
+            }
+        }
+
+        private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reasons)
+        {
+            if (player is null)
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            PlayerSlot slot = playerData.PlayerSlot;
+            if (slot is null || slot.Status != PlayerSlotStatus.Playing)
+                return;
+
+            bool isAfterDeath = (reasons & SpawnCallback.SpawnReason.AfterDeath) == SpawnCallback.SpawnReason.AfterDeath;
+            bool isShipChange = (reasons & SpawnCallback.SpawnReason.ShipChange) == SpawnCallback.SpawnReason.ShipChange;
+
+            if (isAfterDeath
+                && !isShipChange
+                && playerData.NextShip is not null
+                && player.Ship != playerData.NextShip)
+            {
+                // The player respawned after dying and has a different ship set as their next one.
+                // Change the player to that ship.
+                _game.SetShip(player, playerData.NextShip.Value); // this will trigger another Spawn callback
             }
         }
 
@@ -811,6 +938,8 @@ namespace SS.Matchmaking.Modules
 
             AssignSlot(slot, player);
             SetShipAndFreq(slot, true, null);
+
+            // TODO: TeamVersusMatchPlayerSubbedCallback.Fire()
         }
 
         [CommandHelp(
@@ -832,7 +961,6 @@ namespace SS.Matchmaking.Modules
             CancelSubInProgress(playerData.SubSlot, true);
         }
 
-        // TODO: Remember to call this when a match ends
         private void CancelSubInProgress(PlayerSlot slot, bool notify)
         {
             if (slot is null)
@@ -1017,7 +1145,14 @@ namespace SS.Matchmaking.Modules
             PlayerSlot playerSlot = playerData.PlayerSlot;
             if (playerSlot is null)
             {
-                _chat.SendMessage(player, $"You're not playing in a match.");
+                _chat.SendMessage(player, "You're not playing in a match.");
+                return;
+            }
+
+            if (player.Arena is null
+                || !string.Equals(player.Arena.Name, playerSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
+            {
+                _chat.SendMessage(player, $"Your match is in a different arena: ?go {playerSlot.MatchData.ArenaName}");
                 return;
             }
 
@@ -1028,8 +1163,6 @@ namespace SS.Matchmaking.Modules
 
                 ShipType ship = (ShipType)(shipNumber - 1);
                 _game.SetShip(player, ship);
-
-                _chat.SendArenaMessage(player.Arena, $"{player.Name} changed to a {ship}.");
             }
             else if (playerSlot.Lives > 0)
             {
@@ -1060,10 +1193,16 @@ namespace SS.Matchmaking.Modules
 
         string IMatchmakingQueueAdvisor.GetDefaultQueue(Arena arena)
         {
-            //if (string.Equals(arena.BaseName, BaseArenaName, StringComparison.OrdinalIgnoreCase))
-            //return QueueName;
+            if (!_arenaBaseDataDictionary.TryGetValue(arena.BaseName, out ArenaBaseData arenaBaseData))
+                return null;
 
-            return null;
+            return arenaBaseData.DefaultQueueName;
+        }
+
+        bool IMatchmakingQueueAdvisor.TryGetCurrentMatchInfo(Player player, StringBuilder matchInfo)
+        {
+            // TODO: to tell the MatchmakingQueues module that a player is playing and optionaly to tell info about the match the player is currently in (arena, box, freq)
+            return false;
         }
 
         #endregion
@@ -1073,7 +1212,7 @@ namespace SS.Matchmaking.Modules
             ConfigHandle ch = _configManager.OpenConfigFile(null, ConfigurationFileName);
             if (ch is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Match1v1), $"Error opening {ConfigurationFileName}.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error opening {ConfigurationFileName}.");
                 return false;
             }
 
@@ -1161,6 +1300,16 @@ namespace SS.Matchmaking.Modules
 
                     queue.AddMatchConfiguration(matchConfiguration);
                     _matchConfigurationDictionary.Add(matchType, matchConfiguration);
+
+                    if (!_arenaBaseDataDictionary.TryGetValue(matchConfiguration.ArenaBaseName, out ArenaBaseData arenaBaseData))
+                    {
+                        arenaBaseData = new()
+                        {
+                            DefaultQueueName = queueName
+                        };
+
+                        _arenaBaseDataDictionary.Add(matchConfiguration.ArenaBaseName, arenaBaseData);
+                    }
                 }
             }
             finally
@@ -1413,6 +1562,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
+                QueueMatchInitialzation(matchData);
                 return true;
             }
 
@@ -1420,6 +1570,13 @@ namespace SS.Matchmaking.Modules
 
             bool TryGetAvailableMatch(MatchConfiguration matchConfiguration, out MatchData matchData)
             {
+                if (!_arenaBaseDataDictionary.TryGetValue(matchConfiguration.ArenaBaseName, out ArenaBaseData arenaBaseData))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing ArenaBaseData for {matchConfiguration.ArenaBaseName}.");
+                    matchData = null;
+                    return false;
+                }
+
                 for (int arenaNumber = 0; arenaNumber < matchConfiguration.MaxArenas; arenaNumber++)
                 {
                     for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
@@ -1427,7 +1584,10 @@ namespace SS.Matchmaking.Modules
                         MatchIdentifier matchIdentifier = new(matchConfiguration.MatchType, arenaNumber, boxIdx);
                         if (!_matchDataDictionary.TryGetValue(matchIdentifier, out matchData))
                         {
-                            matchData = new MatchData(matchIdentifier, matchConfiguration);
+                            short startingFreq = arenaBaseData.NextFreq;
+                            arenaBaseData.NextFreq += (short)matchConfiguration.NumTeams;
+
+                            matchData = new MatchData(matchIdentifier, matchConfiguration, startingFreq);
                             _matchDataDictionary.Add(matchIdentifier, matchData);
                             return true;
                         }
@@ -1628,7 +1788,8 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            // Players in the arena and on the spec freq.
+            // Players in the arena and on the spec freq get notifications for all matches in the arena.
+            // Players on a team freq get messages for the associated match (this includes a players that got subbed out).
             Arena arena = _arenaManager.FindArena(matchData.ArenaName);
             if (arena is not null)
             {
@@ -1638,8 +1799,10 @@ namespace SS.Matchmaking.Modules
                 {
                     foreach (Player player in _playerData.Players)
                     {
-                        if (player.Arena == arena
-                            && player.Freq == arena.SpecFreq)
+                        if (player.Arena == arena // in the arena
+                            && (player.Freq == arena.SpecFreq // on the spec freq
+                                || matchData.TeamFreqs.AsSpan().Contains(player.Freq) // or on a team freq
+                            ))
                         {
                             players.Add(player);
                         }
@@ -1697,18 +1860,23 @@ namespace SS.Matchmaking.Modules
                             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
                                 continue;
 
+                            playerSlot.Lives = matchData.Configuration.LivesPerPlayer;
+                            playerSlot.LagOuts = 0;
+
                             SetShipAndFreq(playerSlot, false, startLocation);
                         }
                     }
 
                     matchData.Status = MatchStatus.InProgress;
+                    matchData.Started = DateTime.UtcNow;
 
                     // TODO: Fire a callback to notify the stats module that the match has started.
+                    //TeamVersusMatchStartedCallback.Fire()
                 }
             }
         }
 
-        void SetShipAndFreq(PlayerSlot slot, bool isRefill, MapCoordinate? startLocation)
+        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, MapCoordinate? startLocation)
         {
             Player player = slot.Player;
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -1728,14 +1896,11 @@ namespace SS.Matchmaking.Modules
                     playerData.NextShip = ship = ShipType.Warbird;
             }
 
-            // TODO: better logic for freq #'s for when there are multiple boxes, this just assumes there will never be 100+ teams
-            short freq = (short)((slot.MatchData.MatchIdentifier.BoxIdx * 100) + slot.Identifier.TeamIdx);
-
             slot.Status = PlayerSlotStatus.Playing;
             slot.InactiveTimestamp = null;
 
             // Spawn the player (this is automatically in the center).
-            _game.SetShipAndFreq(player, ship, freq);
+            _game.SetShipAndFreq(player, ship, slot.MatchData.TeamFreqs[slot.Identifier.TeamIdx]);
 
             // Warp the player to the starting location.
             if (startLocation is not null)
@@ -1787,6 +1952,7 @@ namespace SS.Matchmaking.Modules
             if (matchData is null)
                 return;
 
+            _mainloopTimer.ClearTimer<MatchData>(CheckForMatchCompletion, matchData);
             _mainloopTimer.SetTimer(CheckForMatchCompletion, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, matchData, matchData);
         }
 
@@ -1802,9 +1968,114 @@ namespace SS.Matchmaking.Modules
 
             for (int teamIdx = 0; teamIdx < numTeams; teamIdx++)
             {
+                bool isTeamKnockedOut = true;
+
+                for (int slotIdx = 0; slotIdx < playersPerTeam; slotIdx++)
+                {
+                    PlayerSlot slot = matchData.TeamPlayerSlots[teamIdx, slotIdx];
+                    if (slot.Status != PlayerSlotStatus.KnockedOut
+                        && slot.Player is not null)
+                    {
+                        isTeamKnockedOut = false;
+                    }
+                }
+
+                if (!isTeamKnockedOut)
+                {
+                    remainingTeams++;
+                    lastRemainingTeamIdx = teamIdx;
+                }
+            }
+
+            if (remainingTeams == 0)
+            {
+                // DRAW
+                EndMatch(matchData, null);
+            }
+            else if (remainingTeams == 1)
+            {
+                // one team remains and therefore won
+                EndMatch(matchData, lastRemainingTeamIdx);
             }
 
             return false;
+        }
+
+        private void EndMatch(MatchData matchData, int? winTeamIdx)
+        {
+            HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+            StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                GetPlayersToNotify(matchData, notifySet);
+
+                for (int teamIdx = 0; teamIdx < matchData.Configuration.NumTeams; teamIdx++)
+                {
+                    if (scoreBuilder.Length > 0)
+                        scoreBuilder.Append('-');
+
+                    scoreBuilder.Append(matchData.TeamScores[teamIdx]);
+                }
+
+                if (winTeamIdx != null)
+                {
+                    scoreBuilder.Append($" Freq {matchData.TeamFreqs[winTeamIdx.Value]}");
+                }
+                else
+                {
+                    scoreBuilder.Append(" DRAW");
+                }
+
+                _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(notifySet);
+                _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+            }
+
+            // Fire a callback to notify the stats module that the match has ended.
+            //TODO: TeamVersusMatchEndedCallback.Fire()
+
+            Arena arena = _arenaManager.FindArena(matchData.ArenaName);
+            if (arena is null)
+                return;
+
+            foreach (PlayerSlot slot in matchData.TeamPlayerSlots)
+            {
+                if (slot.SubPlayer is not null)
+                {
+                    CancelSubInProgress(slot, true);
+                }
+
+                if (slot.Player is not null
+                    && slot.Player.Arena != arena)
+                {
+                    // Spec any remaining players
+                    _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
+                }
+            }
+
+            // Clear the 'playing' state of all players that were associated with the now completed match.
+            // TODO: change 'playing' logic to use player names, so that it can remember players that left mid-game and consider them to still be playing if they come back and the game is still ongoing
+            foreach (PlayerSlot slot in matchData.TeamPlayerSlots)
+            {
+                if (slot.Player is null)
+                {
+                    continue;
+                }
+
+                _mainloop.QueueMainWorkItem(DoUnsetPlaying, slot.Player);
+            }
+
+            //matchData.Status = MatchStatus.Complete; // TODO: add a timer to have a delay between games?
+            matchData.Status = MatchStatus.None;
+
+            void DoUnsetPlaying(Player player)
+            {
+                _matchmakingQueues.UnsetPlaying(player, true);
+            }
         }
 
         #region Helper types
@@ -1850,7 +2121,7 @@ namespace SS.Matchmaking.Modules
 
             public override int GetHashCode()
             {
-                return StringComparer.OrdinalIgnoreCase.GetHashCode(MatchType) ^ ArenaNumber.GetHashCode() ^ BoxIdx.GetHashCode();
+                return HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(MatchType), ArenaNumber.GetHashCode(), BoxIdx.GetHashCode());
             }
         }
 
@@ -1881,15 +2152,20 @@ namespace SS.Matchmaking.Modules
 
         private class MatchData
         {
-            public MatchData(MatchIdentifier matchIdentifier, MatchConfiguration configuration)
+            public MatchData(MatchIdentifier matchIdentifier, MatchConfiguration configuration, short startingFreq)
             {
                 MatchIdentifier = matchIdentifier;
                 Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
                 ArenaName = Arena.CreateArenaName(Configuration.ArenaBaseName, MatchIdentifier.ArenaNumber);
                 Status = MatchStatus.None;
+                TeamFreqs = new short[Configuration.NumTeams];
                 TeamPlayerSlots = new PlayerSlot[Configuration.NumTeams, Configuration.PlayersPerTeam];
+                TeamScores = new short[Configuration.NumTeams];
+
                 for (int teamIdx = 0; teamIdx < Configuration.NumTeams; teamIdx++)
                 {
+                    TeamFreqs[teamIdx] = startingFreq++;
+
                     for (int slotIdx = 0; slotIdx < Configuration.PlayersPerTeam; slotIdx++)
                     {
                         TeamPlayerSlots[teamIdx, slotIdx] = new PlayerSlot(this, new PlayerSlotIdentifier(teamIdx, slotIdx));
@@ -1901,7 +2177,14 @@ namespace SS.Matchmaking.Modules
             public readonly MatchConfiguration Configuration;
             public readonly string ArenaName;
             public MatchStatus Status;
+            public readonly short[] TeamFreqs;
             public readonly PlayerSlot[,] TeamPlayerSlots;
+            public readonly short[] TeamScores;
+            public DateTime? Started;
+
+            // TODO: track the players that have participated in the match so that they can be marked as no longer playing,
+            // Any players that left mid-game should be held in the playing state until the game ends, and they should be marked as not playing LAST.
+            //public List<Player> Players;
         }
 
         private enum PlayerSlotStatus
@@ -1924,7 +2207,7 @@ namespace SS.Matchmaking.Modules
             KnockedOut,
         }
 
-        private class PlayerSlot
+        private class PlayerSlot // TODO: ITeamVersusPlayerSlot
         {
             public readonly MatchData MatchData;
             public readonly PlayerSlotIdentifier Identifier;
@@ -2094,6 +2377,22 @@ namespace SS.Matchmaking.Modules
             public short MaximumEnergy { get; init; }
         }
 
+        private class ArenaBaseData
+        {
+            /// <summary>
+            /// For assigning freqs to <see cref="MatchData"/>.
+            /// </summary>
+            public short NextFreq = 0;
+
+            /// <summary>
+            /// The default queue, so that player can just type ?next (without a queue name).
+            /// </summary>
+            public string DefaultQueueName;
+        }
+
+        /// <summary>
+        /// Data for each arena that has a team versus match type
+        /// </summary>
         private class ArenaData
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> IFreqManagerEnforcerAdvisorToken;

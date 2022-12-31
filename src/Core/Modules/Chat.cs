@@ -177,6 +177,11 @@ namespace SS.Core.Modules
             }
         }
 
+        void IChat.SendMessage(Player player, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendMessage(player, ref handler);
+        }
+
         void IChat.SendMessage(Player player, ReadOnlySpan<char> message)
         {
             ((IChat)this).SendMessage(player, ChatSound.None, message);
@@ -202,6 +207,11 @@ namespace SS.Core.Modules
             {
                 handler.Clear();
             }
+        }
+
+        void IChat.SendMessage(Player player, ChatSound sound, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendMessage(player, sound, ref handler);
         }
 
         void IChat.SendMessage(Player player, ChatSound sound, ReadOnlySpan<char> message)
@@ -243,6 +253,11 @@ namespace SS.Core.Modules
             }
         }
 
+        void IChat.SendSetMessage(HashSet<Player> set, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendSetMessage(set, ref handler);
+        }
+
         void IChat.SendSetMessage(HashSet<Player> set, ReadOnlySpan<char> message)
         {
             ((IChat)this).SendSetMessage(set, ChatSound.None, message);
@@ -268,6 +283,11 @@ namespace SS.Core.Modules
             {
                 handler.Clear();
             }
+        }
+
+        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendSetMessage(set, sound, ref handler);
         }
 
         void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, ReadOnlySpan<char> message)
@@ -299,6 +319,11 @@ namespace SS.Core.Modules
             }
         }
 
+        void IChat.SendArenaMessage(Arena arena, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendArenaMessage(arena, ref handler);
+        }
+
         void IChat.SendArenaMessage(Arena arena, ReadOnlySpan<char> message)
         {
             ((IChat)this).SendArenaMessage(arena, ChatSound.None, message);
@@ -324,6 +349,11 @@ namespace SS.Core.Modules
             {
                 handler.Clear();
             }
+        }
+
+        void IChat.SendArenaMessage(Arena arena, ChatSound sound, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendArenaMessage(arena, sound, ref handler);
         }
 
         void IChat.SendArenaMessage(Arena arena, ChatSound sound, ReadOnlySpan<char> message)
@@ -372,6 +402,11 @@ namespace SS.Core.Modules
             }
         }
 
+        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendAnyMessage(set, type, sound, from, ref handler);
+        }
+
         void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message)
         {
             SendMessage(set, type, sound, from, message);
@@ -399,6 +434,11 @@ namespace SS.Core.Modules
             {
                 handler.Clear();
             }
+        }
+
+        void IChat.SendModMessage(IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        {
+            ((IChat)this).SendModMessage(ref handler);
         }
 
         void IChat.SendModMessage(ReadOnlySpan<char> message)

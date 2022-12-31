@@ -352,7 +352,7 @@ namespace SS.Core.Modules
 
                         // TODO: AntiBrickWarpDistance logic
 
-                        DropBricks(arena, player.Freq, brickList);
+                        DropBricks(arena, player.Freq, player, brickList);
                     }
                     finally
                     {
@@ -373,7 +373,7 @@ namespace SS.Core.Modules
             try
             {
                 brickList.Add(new BrickLocation(x1, y1, x2, y2));
-                DropBricks(arena, freq, brickList);
+                DropBricks(arena, freq, null, brickList);
             }
             finally
             {
@@ -381,7 +381,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void DropBricks(Arena arena, short freq, List<BrickLocation> bricks)
+        private void DropBricks(Arena arena, short freq, Player player, List<BrickLocation> bricks)
         {
             if (arena == null)
                 return;
@@ -432,7 +432,7 @@ namespace SS.Core.Modules
 
                     SendToPlayerOrArena(null, arena, brickDataList, abd.WallResendCount);
 
-                    BricksPlacedCallback.Fire(arena, arena, brickDataList);
+                    BricksPlacedCallback.Fire(arena, arena, player, brickDataList);
                 }
                 finally
                 {
