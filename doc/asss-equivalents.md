@@ -54,7 +54,7 @@ This document provides an overview of the various server parts and their relatio
 | help | SS.Core.Modules.Help | |
 | idle | - | No plans to add it. |
 | scoring:jackpot | SS.Core.Modules.Scoring.Jackpot | |
-| koth | SS.Core.Modules.Crowns<br>SS.Core.Scoring.Koth | |
+| koth | SS.Core.Modules.Crowns<br>SS.Core.Modules.Scoring.Koth | |
 | lagaction | SS.Core.Modules.LagAction | |
 | lagdata | SS.Core.Modules.LagData | |
 | log_console | SS.Core.Modules.LogConsole | |
@@ -89,7 +89,8 @@ This document provides an overview of the various server parts and their relatio
 | security | SS.Core.Modules.Security | |
 | sendfile | - | No plans to add it. |
 | funky:sgcompat | - | No plans to add it. |
-| stats | SS.Core.Modules.Stats | |
+| - | SS.Core.Modules.Scoring.SpeedGame | |
+| stats | SS.Core.Modules.Scoring.Stats | |
 | unixsignal | | No plans to add it. |
 | contrib:voices | - | No plans to add it. |
 | watchdamage | SS.Core.Modules.WatchDamage | |
@@ -160,6 +161,7 @@ This document provides an overview of the various server parts and their relatio
 | Iprng | SS.Core.ComponentInterfaces.IPrng | |
 | Iredirect | SS.Core.ComponentInterfaces.IRedirect | |
 | Ireldb | - | No plans to convert it. |
+| - | SS.Core.ComponentInterfaces.ISecuritySeedSync | |
 | Istats | SS.Core.ComponentInterfaces.IGlobalPlayerStats<br>SS.Core.ComponentInterfaces.IArenaPlayerStats<br>SS.Core.ComponentInterfaces.IAllPlayerStats<br>SS.Core.ComponentInterfaces.IScoreStats | ASSS only tracks per-arena stats. This server tracks both global (zone-wide) stats and per-arena stats. As such, there are separate interfaces for each and one to affect both simultaneously, IAllPlayerStats.  The IArenaPlayerStats interface is the closest match to Istats in ASSS since that affects per-arena stats. |
 | Iwatchdamage | SS.Core.ComponentInterfaces.IWatchDamage | |
 
@@ -171,6 +173,7 @@ This document provides an overview of the various server parts and their relatio
 | CB_BALLCOUNTCHANGE | SS.Core.ComponentCallbacks.BallCountChangedCallback | |
 | CB_BALLFIRE | SS.Core.ComponentCallbacks.BallShootCallback | |
 | CB_BALLPICKUP | SS.Core.ComponentCallbacks.BallPickupCallback | |
+| - | SS.Core.ComponentCallbacks.BricksPlacedCallback | |
 | CB_CHATMSG | SS.Core.ComponentCallbacks.ChatMessageCallback | |
 | CB_CONNINIT | n/a | Use INetworkEncryption.AppendConnectionInitHandler instead. |
 | CB_CROWNCHANGE | SS.Core.ComponentCallbacks.CrownToggledCallback | |
