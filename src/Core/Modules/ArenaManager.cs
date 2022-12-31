@@ -1218,7 +1218,6 @@ namespace SS.Core.Modules
                         if (player.Arena is not null
                             && player.Arena.TryGetExtraData(_adkey, out ArenaData arenaData))
                         {
-
                             arenaData.Reap = false;
                         }
 

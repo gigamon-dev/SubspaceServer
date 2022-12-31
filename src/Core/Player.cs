@@ -603,7 +603,7 @@ namespace SS.Core
             }
 
             /// <summary>
-            /// if the player needs to transition to a leaving arena state while wainting for the database to return
+            /// if the player needs to transition to a leaving arena state while waiting for the database to return
             /// </summary>
             public bool LeaveArenaWhenDoneWaiting
             {

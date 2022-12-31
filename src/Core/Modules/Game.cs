@@ -1688,7 +1688,7 @@ namespace SS.Core.Modules
 
             if (ship != ShipType.Spec)
             {
-                // flags = SPAWN_SHIPCHANGE set at the top of the function
+                // flags = SpawnReason.ShipChange set at the top of the function
                 if (oldShip == ShipType.Spec)
                 {
                     flags |= SpawnCallback.SpawnReason.Initial;
