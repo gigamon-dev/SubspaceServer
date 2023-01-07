@@ -25,9 +25,9 @@ namespace SS.Matchmaking.Advisors
         /// <summary>
         /// Gets information about the player's current match.
         /// </summary>
-        /// <param name="player">The player to get current match info about.</param>
+        /// <param name="playerName">The name of the player to get current match info about.</param>
         /// <param name="matchInfo">A <see cref="StringBuilder"/> to fill with info about the current match (e.g. match type, arena name, etc.)</param>
         /// <returns><see langword="true"/> if <paramref name="matchInfo"/> was filled in. Otherwise, <see langword="false"/>.</returns>
-        bool TryGetCurrentMatchInfo(Player player, StringBuilder matchInfo) => false;
+        bool TryGetCurrentMatchInfo(string playerName, StringBuilder matchInfo) => false;
     }
 }

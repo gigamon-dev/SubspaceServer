@@ -210,6 +210,8 @@ namespace SS.Matchmaking.Modules
                 }
 
                 usageData.SetPlaying(isSub);
+
+                _playersPlaying.Add(player.Name);
             }
 
             // Group
@@ -238,6 +240,19 @@ namespace SS.Matchmaking.Modules
             UnsetPlaying(player, allowRequeue);
         }
 
+        void IMatchmakingQueues.UnsetPlaying(string playerName, bool allowAutoRequeue)
+        {
+            Player player = _playerData.FindPlayer(playerName);
+            if (player is not null)
+            {
+               UnsetPlaying(player, allowAutoRequeue);
+            }
+            else
+            {
+                _playersPlaying.Remove(playerName);
+            }
+        }
+
         private void UnsetPlaying(Player player, bool allowRequeue)
         {
             if (player is null)
@@ -246,35 +261,40 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
                 return;
 
-            if (usageData.UnsetPlaying(out bool wasSub) && usageData.PreviousQueued.Count > 0)
+            if (usageData.UnsetPlaying(out bool wasSub))
             {
-                if (allowRequeue && (wasSub || usageData.AutoRequeue))
+                _playersPlaying.Remove(player.Name);
+
+                if (usageData.PreviousQueued.Count > 0)
                 {
-                    // TODO: Maybe instead of doing this immediately, set a timer to do it. That way there will be a delay after match completion?
-                    List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
-                    try
+                    if (allowRequeue && (wasSub || usageData.AutoRequeue))
                     {
-                        foreach ((IMatchmakingQueue queue, DateTime timestamp) in usageData.PreviousQueued)
+                        // TODO: Maybe instead of doing this immediately, set a timer to do it. That way there will be a delay after match completion?
+                        List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
+                        try
                         {
-                            if (!wasSub && !queue.Options.AllowAutoRequeue)
-                                continue;
+                            foreach ((IMatchmakingQueue queue, DateTime timestamp) in usageData.PreviousQueued)
+                            {
+                                if (!wasSub && !queue.Options.AllowAutoRequeue)
+                                    continue;
 
-                            if (Enqueue(player, null, usageData, queue, wasSub ? timestamp : DateTime.UtcNow))
-                                addedQueues.Add(queue);
+                                if (Enqueue(player, null, usageData, queue, wasSub ? timestamp : DateTime.UtcNow))
+                                    addedQueues.Add(queue);
+                            }
+
+                            usageData.ClearPreviousQueued();
+
+                            NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
                         }
-
-                        usageData.ClearPreviousQueued();
-
-                        NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
+                        finally
+                        {
+                            _iMatchmakingQueueListPool.Return(addedQueues);
+                        }
                     }
-                    finally
+                    else
                     {
-                        _iMatchmakingQueueListPool.Return(addedQueues);
+                        usageData.ClearPreviousQueued();
                     }
-                }
-                else
-                {
-                    usageData.ClearPreviousQueued();
                 }
             }
 
@@ -395,6 +415,7 @@ namespace SS.Matchmaking.Modules
                         return;
 
                     // The player disconnected while playing in match, but has now reconnected.
+                    // For players that disconnected, we do not keep track of the previous queues. So, it doesn't matter if they were a sub.
                     usageData.SetPlaying(false);
 
                     // TODO: send a message to the player that they're still in the match
@@ -501,6 +522,7 @@ namespace SS.Matchmaking.Modules
             if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase))
             {
                 // Print usage details.
+                StringBuilder sb;
                 switch (usageData.State)
                 {
                     case QueueState.None:
@@ -508,7 +530,7 @@ namespace SS.Matchmaking.Modules
                         break;
 
                     case QueueState.Queued:
-                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        sb = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
                             foreach (var queuedInfo in usageData.Queued)
@@ -528,7 +550,30 @@ namespace SS.Matchmaking.Modules
                         break;
 
                     case QueueState.Playing:
-                        _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} currently playing in match.");
+                        sb = _objectPoolManager.StringBuilderPool.Get();
+                        try
+                        {
+                            foreach (var advisor in player.Arena.GetAdvisors<IMatchmakingQueueAdvisor>())
+                            {
+                                if (advisor.TryGetCurrentMatchInfo(player.Name, sb))
+                                {
+                                    break;
+                                }
+                            }
+
+                            if (sb.Length > 0)
+                            {
+                                _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} currently playing in a match: {sb}");
+                            }
+                            else
+                            {
+                                _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} currently playing in a match.");
+                            }
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
 
                         if (usageData.AutoRequeue)
                         {

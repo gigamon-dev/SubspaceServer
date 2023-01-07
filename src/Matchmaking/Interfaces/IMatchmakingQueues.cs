@@ -38,18 +38,29 @@ namespace SS.Matchmaking.Interfaces
         void SetPlayingAsSub(Player player);
 
         /// <summary>
-        /// Removes the 'Playing' state of players that were previously marked with <see cref="SetPlaying(HashSet{Player})"/>, in the order provided.
+        /// Removes the 'Playing' state of players that were previously marked with <see cref="SetPlaying(HashSet{Player})"/> or <see cref="SetPlayingAsSub(Player)"/>, in the order provided.
         /// </summary>
-        /// <param name="players">The players to unset from the 'Playing' state.</param>
+        /// <param name="players">The players to unset from the 'Playing' state. The players are processed in the order provided.</param>
         /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
         void UnsetPlaying<T>(T players, bool allowRequeue) where T : IReadOnlyCollection<Player>;
 
         /// <summary>
-        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player})"/>.
+        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player})"/> or <see cref="SetPlayingAsSub(Player)"/>.
         /// </summary>
         /// <param name="player">The player to unset from the 'Playing' state.</param>
         /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
         void UnsetPlaying(Player player, bool allowRequeue);
+
+        /// <summary>
+        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player})"/> or <see cref="SetPlayingAsSub(Player)"/>.
+        /// </summary>
+        /// <remarks>
+        /// This overload is for modules that hold players in the 'Playing' state, even after if a player disconnects.
+        /// E.g. To hold players until the match ends. Or, to hold a player even longer (penalize) for leaving a match mid-game.
+        /// </remarks>
+        /// <param name="playerName">The name of the player to unset from the 'Playing' state.</param>
+        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
+        void UnsetPlaying(string playerName, bool allowRequeue);
 
         /// <summary>
         /// Object pool for <see cref="List{T}"/>s of <see cref="PlayerOrGroup"/>. For use with <see cref="UnsetPlaying(List{PlayerOrGroup})"/>.
