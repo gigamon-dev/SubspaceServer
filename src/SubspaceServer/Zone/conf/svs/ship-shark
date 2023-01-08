@@ -1,7 +1,7 @@
 [Shark]
 SuperTime=6000
 ShieldsTime=4000
-Gravity=0
+Gravity=1500
 GravityTopSpeed=100
 BulletFireEnergy=20
 MultiFireEnergy=30
@@ -67,7 +67,7 @@ AntiWarpStatus=1
 DamageFactor=30
 PrizeShareLimit=100
 AttachBounty=0
-ShrapnelMax=31
+ShrapnelMax=8
 ShrapnelRate=2
 MaxGuns=3
 MaxBombs=2

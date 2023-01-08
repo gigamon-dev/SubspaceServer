@@ -89,3 +89,14 @@ cmd_group
 privcmd_group
 cmd_next
 cmd_cancel
+
+; Matchmaking (TeamVersusMatch)
+cmd_requestsub
+cmd_sub
+cmd_cancelsub
+cmd_return
+cmd_restart
+cmd_randomize
+cmd_end
+cmd_draw
+cmd_sc

@@ -1,5 +1,8 @@
 ﻿namespace SS.Matchmaking.TeamVersus
 {
+    /// <summary>
+    /// Represents the reason why a match ended.
+    /// </summary>
     public enum MatchEndReason
     {
         /// <summary>
