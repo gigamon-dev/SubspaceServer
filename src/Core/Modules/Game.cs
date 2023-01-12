@@ -2084,8 +2084,26 @@ namespace SS.Core.Modules
                 player.Attached = toPlayerId;
 
                 // Invoke the callback
-                // TODO: ASSS has does the callback synchronously for incoming packets, and has main run it for force attach.  figure out what to do
-                AttachCallback.Fire(player.Arena, player, to);
+                Arena arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                _mainloop.QueueMainWorkItem(
+                    MainloopWork_FireAttachCallback,
+                    new AttachDTO()
+                    {
+                        Arena = arena,
+                        Player = player,
+                        To = to,
+                    });
+            }
+
+            static void MainloopWork_FireAttachCallback(AttachDTO dto)
+            {
+                if (dto.Arena == dto.Player.Arena)
+                {
+                    AttachCallback.Fire(dto.Arena, dto.Player, dto.To);
+                }
             }
         }
 
@@ -2323,16 +2341,20 @@ namespace SS.Core.Modules
 
         private void DoSpawnCallback(Player player, SpawnCallback.SpawnReason reason)
         {
+            Arena arena = player.Arena;
+            if (arena is null)
+                return;
+
             _mainloop.QueueMainWorkItem(
-                MainloopWork_RunSpawnCallback,
+                MainloopWork_FireSpawnCallback,
                 new SpawnDTO()
                 {
-                    Arena = player.Arena,
+                    Arena = arena,
                     Player = player,
                     Reason = reason,
                 });
 
-            void MainloopWork_RunSpawnCallback(SpawnDTO dto)
+            static void MainloopWork_FireSpawnCallback(SpawnDTO dto)
             {
                 if (dto.Arena == dto.Player.Arena)
                 {
@@ -2341,30 +2363,17 @@ namespace SS.Core.Modules
             }
         }
 
-        private struct SpawnDTO
-        {
-            public Arena Arena;
-            public Player Player;
-            public SpawnCallback.SpawnReason Reason;
-        }
-
-        private struct ShipFreqChangeDTO
-        {
-            public Arena Arena;
-            public Player Player;
-            public ShipType NewShip;
-            public ShipType OldShip;
-            public short NewFreq;
-            public short OldFreq;
-        }
-
         private void DoShipFreqChangeCallback(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
+            Arena arena = player.Arena;
+            if (arena is null)
+                return;
+
             _mainloop.QueueMainWorkItem(
-                MainloopWork_RunShipFreqChangeCallback,
+                MainloopWork_FireShipFreqChangeCallback,
                 new ShipFreqChangeDTO()
                 {
-                    Arena = player.Arena,
+                    Arena = arena,
                     Player = player,
                     NewShip = newShip,
                     OldShip = oldShip,
@@ -2372,7 +2381,7 @@ namespace SS.Core.Modules
                     OldFreq = oldFreq,
                 });
 
-            void MainloopWork_RunShipFreqChangeCallback(ShipFreqChangeDTO dto)
+            static void MainloopWork_FireShipFreqChangeCallback(ShipFreqChangeDTO dto)
             {
                 if (dto.Arena == dto.Player.Arena)
                 {
@@ -2382,6 +2391,30 @@ namespace SS.Core.Modules
         }
 
         #region Helper types
+
+        private struct AttachDTO
+        {
+            public required Arena Arena;
+            public required Player Player;
+            public required Player To;
+        }
+
+        private struct SpawnDTO
+        {
+            public required Arena Arena;
+            public required Player Player;
+            public required SpawnCallback.SpawnReason Reason;
+        }
+
+        private struct ShipFreqChangeDTO
+        {
+            public required Arena Arena;
+            public required Player Player;
+            public required ShipType NewShip;
+            public required ShipType OldShip;
+            public required short NewFreq;
+            public required short OldFreq;
+        }
 
         [Flags]
         private enum PersonalGreen
