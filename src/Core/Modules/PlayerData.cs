@@ -15,6 +15,7 @@ namespace SS.Core.Modules
     {
         internal ComponentBroker Broker;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
         private InterfaceRegistrationToken<IPlayerData> _iPlayerDataToken;
 
         /// <summary>
@@ -22,15 +23,24 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly static TimeSpan PlayerReuseDelay = TimeSpan.FromSeconds(10);
 
-        private readonly ReaderWriterLockSlim _globalPlayerDataRwLock = new(LockRecursionPolicy.SupportsRecursion);
+        private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.SupportsRecursion);
 
+        /// <summary>
+        /// The next available PlayerId for when a <see cref="Player"/> object needs to be allocated.
+        /// </summary>
         private int _nextPlayerId = 0;
 
         /// <summary>
-        /// Dictionary to look up players by Id.
-        /// Doubles as the list of players that can be enumerated on.
+        /// Dictionary of active players.
         /// </summary>
+        /// <remarks>Key =  PlayerId</remarks>
         private readonly Dictionary<int, Player> _playerDictionary = new(256);
+
+        /// <summary>
+        /// Players queued to be freed that are in a state where they've been removed from the <see cref="_playerDictionary"/>, but are not yet in the <see cref="_freePlayersQueue"/>.
+        /// Player objects in this collection still have their extra data.
+        /// </summary>
+        private readonly HashSet<Player> _playersBeingFreed = new(256);
 
         /// <summary>
         /// Queue of unused player objects and when each becomes available again.
@@ -44,10 +54,14 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        public bool Load(ComponentBroker broker, ILogManager logManager)
+        public bool Load(
+            ComponentBroker broker, 
+            ILogManager logManager,
+            IMainloop mainloop)
         {
             Broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
 
             _iPlayerDataToken = broker.RegisterInterface<IPlayerData>(this);
             return true;
@@ -72,12 +86,12 @@ namespace SS.Core.Modules
         /// </summary>
         public void Lock()
         {
-            _globalPlayerDataRwLock.EnterReadLock();
+            _rwLock.EnterReadLock();
         }
 
         public void Unlock()
         {
-            _globalPlayerDataRwLock.ExitReadLock();
+            _rwLock.ExitReadLock();
         }
 
         /// <summary>
@@ -85,12 +99,12 @@ namespace SS.Core.Modules
         /// </summary>
         public void WriteLock()
         {
-            _globalPlayerDataRwLock.EnterWriteLock();
+            _rwLock.EnterWriteLock();
         }
 
         public void WriteUnlock()
         {
-            _globalPlayerDataRwLock.ExitWriteLock();
+            _rwLock.ExitWriteLock();
         }
 
         #endregion
@@ -129,9 +143,9 @@ namespace SS.Core.Modules
                 player.ConnectAs = null;
 
                 // initialize the player's per player data
-                foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
+                foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                 {
-                    player.SetExtraData(keyId, info.Get());
+                    player.SetExtraData(keyId, factory.Get());
                 }
 
                 _playerDictionary.Add(player.Id, player);
@@ -141,46 +155,80 @@ namespace SS.Core.Modules
                 WriteUnlock();
             }
 
-            NewPlayerCallback.Fire(Broker, player, true);
+            _mainloop.QueueMainWorkItem(MainloopWork_FireNewPlayerCallback, player);
 
             return player;
+
+            void MainloopWork_FireNewPlayerCallback(Player player)
+            {
+                NewPlayerCallback.Fire(Broker, player, true);
+            }
         }
 
         void IPlayerData.FreePlayer(Player player)
         {
-            if (player == null)
+            if (player is null)
                 return;
-
-            NewPlayerCallback.Fire(Broker, player, false);
 
             WriteLock();
 
             try
             {
-                // remove the player from the dictionary
-                _playerDictionary.Remove(player.Id);
+                // Remove the player from the active players.
+                if (!_playerDictionary.Remove(player.Id))
+                    return;
 
-                foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
-                {
-                    if (player.TryRemoveExtraData(keyId, out object data))
-                    {
-                        info.Return(data);
-                    }
-                }
+                // Add the player to the players being freed.
+                if (!_playersBeingFreed.Add(player))
+                    return;
 
-                player.Initialize();
-
-                _freePlayersQueue.Enqueue(new FreePlayerInfo(player));
+                // Queue the player to be freed.
+                _mainloop.QueueMainWorkItem(MainloopWork_CompleteFreePlayer, player);
             }
             finally
             {
                 WriteUnlock();
             }
+
+            void MainloopWork_CompleteFreePlayer(Player player)
+            {
+                // First, execute callbacks.
+                // This allows other modules to perform cleanup, including their extra player data.
+                NewPlayerCallback.Fire(Broker, player, false);
+
+                // Next, do the "freeing".
+                WriteLock();
+
+                try
+                {
+                    if (!_playersBeingFreed.Remove(player))
+                        return;
+
+                    // Remove the extra player data.
+                    foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
+                    {
+                        if (player.TryRemoveExtraData(keyId, out object data))
+                        {
+                            info.Return(data);
+                        }
+                    }
+
+                    // Reset the player's data back to their initial values.
+                    player.Initialize();
+
+                    // Add the player to the queue, "freeing" it to be reused after a configured amount of time.
+                    _freePlayersQueue.Enqueue(new FreePlayerInfo(player));
+                }
+                finally
+                {
+                    WriteUnlock();
+                }
+            }
         }
 
         void IPlayerData.KickPlayer(Player player)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             WriteLock();
@@ -188,10 +236,10 @@ namespace SS.Core.Modules
             try
             {
                 // this will set state to PlayerState.LeavingArena, if it was anywhere above PlayerState.LoggedIn
-                if (player.Arena != null)
+                if (player.Arena is not null)
                 {
                     IArenaManagerInternal aman = Broker.GetInterface<IArenaManagerInternal>();
-                    if (aman != null)
+                    if (aman is not null)
                     {
                         try
                         {
@@ -216,7 +264,7 @@ namespace SS.Core.Modules
 
         Player IPlayerData.PidToPlayer(int pid)
         {
-            _globalPlayerDataRwLock.EnterReadLock();
+            Lock();
 
             try
             {
@@ -225,7 +273,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _globalPlayerDataRwLock.ExitReadLock();
+                Unlock();
             }
         }
 
@@ -233,7 +281,7 @@ namespace SS.Core.Modules
         {
             name = name.Trim();
 
-            _globalPlayerDataRwLock.EnterReadLock();
+            Lock();
 
             try
             {
@@ -250,7 +298,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _globalPlayerDataRwLock.ExitReadLock();
+                Unlock();
             }
 
             return null;
@@ -258,10 +306,10 @@ namespace SS.Core.Modules
 
         void IPlayerData.TargetToSet(ITarget target, HashSet<Player> set)
         {
-            if (target == null)
+            if (target is null)
                 throw new ArgumentNullException(nameof(target));
 
-            if (set == null)
+            if (set is null)
                 throw new ArgumentNullException(nameof(set));
 
             switch (target.Type)
@@ -299,7 +347,7 @@ namespace SS.Core.Modules
 
             static bool Matches(ITarget target, Player player)
             {
-                if (target == null || player == null)
+                if (target is null || player is null)
                     return false;
 
                 return target.Type switch
@@ -323,7 +371,7 @@ namespace SS.Core.Modules
 
         PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
         {
-            if (policy == null)
+            if (policy is null)
                 throw new ArgumentNullException(nameof(policy));
 
             // It's the policy's job to clear/reset an object when it's returned to the pool.
@@ -332,7 +380,7 @@ namespace SS.Core.Modules
 
         private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
-            if (createExtraDataFactoryFunc == null)
+            if (createExtraDataFactoryFunc is null)
                 throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
 
             WriteLock();
@@ -396,6 +444,14 @@ namespace SS.Core.Modules
                 //
 
                 foreach (Player player in _playerDictionary.Values)
+                {
+                    if (player.TryRemoveExtraData(key.Id, out object data))
+                    {
+                        factory.Return(data);
+                    }
+                }
+
+                foreach (Player player in _playersBeingFreed)
                 {
                     if (player.TryRemoveExtraData(key.Id, out object data))
                     {
