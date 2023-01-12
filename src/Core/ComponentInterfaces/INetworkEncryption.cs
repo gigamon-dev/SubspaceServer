@@ -54,6 +54,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Adds a handler to the end of the connection init pipeline.
         /// </summary>
+        /// <remarks>The <paramref name="handler"/> is called on Network module's ReceiveThread."/></remarks>
         /// <param name="handler">The handler to add.</param>
         void AppendConnectionInitHandler(ConnectionInitHandler handler);
 

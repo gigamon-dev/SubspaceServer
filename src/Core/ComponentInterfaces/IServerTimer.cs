@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SS.Core.ComponentInterfaces
+﻿namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
     /// Represents a method that handles calls from timer.

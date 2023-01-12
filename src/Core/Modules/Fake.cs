@@ -87,7 +87,7 @@ namespace SS.Core.Modules
                 return null;
 
             Player player = _playerData.NewPlayer(ClientType.Fake);
-            if (player == null)
+            if (player is null)
                 return null;
 
             if (name.Length > Constants.MaxPlayerNameLength)
@@ -116,7 +116,7 @@ namespace SS.Core.Modules
 
         public bool EndFaked(Player player)
         {
-            if (player == null)
+            if (player is null)
                 return false;
 
             if (player.Type != ClientType.Fake)
@@ -125,24 +125,24 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing || player.Arena == null)
                 _logManager.LogP(LogLevel.Warn, nameof(Fake), player, $"Fake player in bad status.");
 
-            _mainloop.QueueMainWorkItem(MainWorkItem_EndFake, player);
+            _mainloop.QueueMainWorkItem(MainloopWork_EndFake, player);
             return true;
-        }
 
-        private void MainWorkItem_EndFake(Player player)
-        {
-            Arena arena = player.Arena;
-
-            if (arena != null)
+            void MainloopWork_EndFake(Player player)
             {
-                S2C_PlayerLeaving packet = new((short)player.Id);
-                _network?.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
-                //_chatNet?.SendToArena(
+                Arena arena = player.Arena;
+
+                if (arena is not null)
+                {
+                    S2C_PlayerLeaving packet = new((short)player.Id);
+                    _network?.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
+                    //_chatNet?.SendToArena(
+                }
+
+                _logManager.LogP(LogLevel.Info, nameof(Fake), player, $"Fake player destroyed.");
+
+                _playerData.FreePlayer(player);
             }
-
-            _logManager.LogP(LogLevel.Info, nameof(Fake), player, $"Fake player destroyed.");
-
-            _playerData.FreePlayer(player);
         }
     }
 }
