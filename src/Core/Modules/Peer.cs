@@ -8,6 +8,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -971,9 +972,8 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    PeerZone peerZone = new()
-                    {
-                        Config = new PeerZoneConfig()
+                    PeerZone peerZone = new(
+                        new PeerZoneConfig()
                         {
                             Id = i,
                             IPEndPoint = new IPEndPoint(address, port),
@@ -985,8 +985,7 @@ namespace SS.Core.Modules
                             ReceiveMessages = _configManager.GetInt(_configManager.Global, peerSection, "ReceiveMessages", 1) != 0,
                             IncludeInPopulation = _configManager.GetInt(_configManager.Global, peerSection, "IncludeInPopulation", 1) != 0,
                             ProvideDefaultArenas = _configManager.GetInt(_configManager.Global, peerSection, "ProvidesDefaultArenas", 0) != 0,
-                        }
-                    };
+                        });
 
                     string arenas = _configManager.GetStr(_configManager.Global, peerSection, "Arenas");
                     if (!string.IsNullOrWhiteSpace(arenas))
@@ -1220,7 +1219,7 @@ namespace SS.Core.Modules
 
         private class PeerZone : IPeerZone
         {
-            public PeerZoneConfig Config { get; init; }
+            public PeerZoneConfig Config { get; }
 
             public int Id => Config.Id;
 
@@ -1230,15 +1229,23 @@ namespace SS.Core.Modules
 
             public int PlayerCount { get; set; }
 
-            public IReadOnlyList<string> ConfiguredArenas => Config.Arenas;
+            public IReadOnlyList<string> ConfiguredArenas { get; }
 
             public readonly List<PeerArena> Arenas = new();
-            IReadOnlyList<IPeerArena> IPeerZone.Arenas => Arenas;
+            private readonly ReadOnlyCollection<PeerArena> _readOnlyArenas;
+            IReadOnlyList<IPeerArena> IPeerZone.Arenas => _readOnlyArenas;
 
             public readonly Trie<PeerArena> ArenaLookup = new(false);
 
             public readonly uint[] Timestamps = new uint[256];
             public byte[] PlayerListBuffer;
+
+            public PeerZone(PeerZoneConfig config)
+            {
+                Config = config ?? throw new ArgumentNullException(nameof(config));
+                ConfiguredArenas = Config.Arenas.AsReadOnly();
+                _readOnlyArenas = Arenas.AsReadOnly();
+            }
         }
 
         private class PeerZoneConfig
