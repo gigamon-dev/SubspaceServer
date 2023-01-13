@@ -1835,7 +1835,7 @@ namespace SS.Core.Modules
                         _connectionInitLock.ExitReadLock();
                     }
 
-                    _logManager.LogM(LogLevel.Info, nameof(Network), $"Got a connection init packet, but no handler processed it.  Please verify that an encryption module is loaded or the {nameof(EncryptionNull)} module if no encryption is desired.");
+                    _logManager.LogM(LogLevel.Info, nameof(Network), $"Got a connection init packet from {remoteEndpoint}, but no handler processed it.  Please verify that an encryption module is loaded or the {nameof(EncryptionNull)} module if no encryption is desired.");
                     return false;
                 }
             }
