@@ -1,4 +1,5 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 using System;
 using System.IO;
 
@@ -38,11 +39,12 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
 
-            commandManager.AddCommand("admlogfile", Command_admlogfile);
-            commandManager.AddCommand("getfile", Command_getfile);
-            commandManager.AddCommand("putfile", Command_putfile);
-            commandManager.AddCommand("cd", Command_cd);
-            commandManager.AddCommand("pwd", Command_pwd);
+            _commandManager.AddCommand("admlogfile", Command_admlogfile);
+            _commandManager.AddCommand("getfile", Command_getfile);
+            _commandManager.AddCommand("putfile", Command_putfile);
+            _commandManager.AddCommand("botfeature", Command_botfeature);
+            _commandManager.AddCommand("cd", Command_cd);
+            _commandManager.AddCommand("pwd", Command_pwd);
 
             return true;
         }
@@ -52,6 +54,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("admlogfile", Command_admlogfile);
             _commandManager.RemoveCommand("getfile", Command_getfile);
             _commandManager.RemoveCommand("putfile", Command_putfile);
+            _commandManager.RemoveCommand("botfeature", Command_botfeature);
             _commandManager.RemoveCommand("cd", Command_cd);
             _commandManager.RemoveCommand("pwd", Command_pwd);
 
@@ -185,6 +188,39 @@ namespace SS.Core.Modules
                         player,
                         Path.GetRelativePath(currentDir, fullPath),
                         false));
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[+/-{seeallposn}] [+/-{seeownposn}]",
+            Description = "Enables or disables bot-specific features. {seeallposn} controls whether\n" +
+            "the bot gets to see all position packets. {seeownposn} controls whether\n" +
+            "you get your own mirror position packets.")]
+        private void Command_botfeature(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while ((token = remaining.GetToken(" ,", out remaining)).Length > 0)
+            {
+                bool isEnabled;
+                switch (token[0])
+                {
+                    case '+': isEnabled = true; break;
+                    case '-': isEnabled = false; break;
+                    default:
+                        _chat.SendMessage(player, $"Bad syntax: {token}");
+                        continue;
+                }
+
+                token = token[1..];
+
+                if (token.Equals("seeallposn", StringComparison.OrdinalIgnoreCase))
+                    player.Flags.SeeAllPositionPackets = isEnabled;
+                else if (token.Equals("seeownposn", StringComparison.OrdinalIgnoreCase))
+                    player.Flags.SeeOwnPosition = isEnabled;
+                else
+                    _chat.SendMessage(player, $"Unknown bot feature: {token}");
             }
         }
 
