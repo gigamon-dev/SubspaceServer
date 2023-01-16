@@ -242,7 +242,7 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    File.Move(filename, context.ServerPath);
+                    File.Move(filename, context.ServerPath, true);
                 }
                 catch (Exception ex)
                 {
