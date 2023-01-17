@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using SS.Core;
+using System.Collections.ObjectModel;
 
 namespace SS.Matchmaking.TeamVersus
 {
@@ -19,7 +20,11 @@ namespace SS.Matchmaking.TeamVersus
         /// </summary>
         string ArenaName { get; }
 
-        //Arena Arena { get; } // TODO: set it when the arena is created, clear it (null) when destroyed.
+        /// <summary>
+        /// The arena the match is in.
+        /// </summary>
+        /// <remarks><see langword="null"/> if the arena does not exist (e.g. no players in it).</remarks>
+        Arena Arena { get; }
 
         /// <summary>
         /// The teams in the match.

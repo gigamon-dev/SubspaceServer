@@ -282,6 +282,7 @@ namespace SS.Matchmaking.Modules
                     };
                 }
 
+                // Register callbacks.
                 KillCallback.Register(arena, Callback_Kill);
                 PreShipFreqChangeCallback.Register(arena, Callback_PreShipFreqChange);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
@@ -289,6 +290,7 @@ namespace SS.Matchmaking.Modules
                 BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
                 SpawnCallback.Register(arena, Callback_Spawn);
 
+                // Register commands.
                 _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena);
                 _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena);
                 _commandManager.AddCommand(CommandNames.CancelSub, Command_cancelsub, arena);
@@ -299,7 +301,17 @@ namespace SS.Matchmaking.Modules
                 _commandManager.AddCommand(CommandNames.Draw, Command_draw, arena);
                 _commandManager.AddCommand(CommandNames.ShipChange, Command_sc, arena);
 
+                // Register advisor.
                 arenaData.IFreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
+
+                // Fill in arena for associated matches.
+                foreach (MatchData matchData in _matchDataDictionary.Values)
+                {
+                    if (string.Equals(arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matchData.Arena = arena;
+                    }
+                }
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -308,9 +320,11 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
+                    // Unregister advisor.
                     if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
                         return;
 
+                    // Unregister callbacks.
                     KillCallback.Unregister(arena, Callback_Kill);
                     PreShipFreqChangeCallback.Unregister(arena, Callback_PreShipFreqChange);
                     ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
@@ -318,6 +332,7 @@ namespace SS.Matchmaking.Modules
                     BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
                     SpawnCallback.Unregister(arena, Callback_Spawn);
 
+                    // Unregister commands.
                     _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
                     _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
                     _commandManager.RemoveCommand(CommandNames.CancelSub, Command_cancelsub, arena);
@@ -331,6 +346,15 @@ namespace SS.Matchmaking.Modules
                 finally
                 {
                     _arenaDataObjectPool.Return(arenaData);
+                }
+
+                // Clear arena for associated matches.
+                foreach (MatchData matchData in _matchDataDictionary.Values)
+                {
+                    if (matchData.Arena == arena)
+                    {
+                        matchData.Arena = null;
+                    }
                 }
             }
         }
@@ -2425,6 +2449,8 @@ namespace SS.Matchmaking.Modules
             IMatchConfiguration IMatchData.Configuration { get; }
 
             public string ArenaName { get; }
+
+            public Arena Arena { get; set; }
 
             /// <summary>
             /// The status of the match.
