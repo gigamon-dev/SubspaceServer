@@ -74,10 +74,14 @@ Subspace Server .NET watches all used conf files, including those from nested #i
 
 ---
 ## ConfigManager - Changes saved to proper location
-When ASSS modifies a conf file, it just adds an override setting to the end of a 'root' conf file. Instead, Subspace Server .NET, has the ability to locate the proper location to make the change. In other words, it can determine which conf file to change (even within #include files), find the proper section to write to, and even overwrite/update an existing setting.
+When ASSS modifies a conf file, it just adds an override setting to the end of a 'root' conf file. Instead, Subspace Server .NET has the ability to locate the proper location to make the change. In other words, it can determine which conf file to change (even within #include files), find the proper section to write to, and even overwrite/update an existing setting.
 
 ---
-## ArenaManager - Player Entering packet to include multiple
+## ArenaManager - opening/reading of arena.conf on a worker thread
+In ASSS, the arena.conf is opened on the mainloop thread timer (in `arenaman.c` see the `ProcessArenaStates` function which calls `cfg->OpenConfigFile()`). This is file I/O, which is slower and can block. Therefore, in Subspace Server .NET this is done on a worker thread instead.
+
+---
+## ArenaManager - Player Entering packet to include multiple players
 When a player enters an arena, the server sends a list of all players currently in the arena. This is done with the 0x03 (Player Entering) game packet which is sent reliably. ASSS sends (queues up) one packet for each player in the arena. E.g., if there were 150 players in the arena, it queues up 150 separate packets. In turn, the network module will send these reliable packets in grouped packets (albeit with the limitations described in [Network module - reliable packet grouping](#network-module---reliable-packet-grouping)).
 
 The 0x03 (Player Entering) game packet allows for sending multiple in 1 packet. That is, the entire 0x03 is can be repeated for each player, sent in 1 jumbo packet. 
@@ -159,3 +163,13 @@ Use the ?replay command to control recording and playback. The basic commands ar
 
 Use the ?man command in-game for more information about the command:
 > `?man replay`
+
+---
+## KOTH (King of the Hill) and Crowns modules
+The ASSS `koth` module has crown logic baked into it. In Subspace Server .NET, crown functionality has its own module, `SS.Core.Modules.Crowns`. This allows crowns to potentially be used for other purposes than KOTH. Note, the crown functionality currently supports assigning crowns to players such that it is visible to all players in the arena. This could potentially be upgraded to allow crown assignments that are visible to a subset of players, rather than the entire arena.
+
+The ASSS `koth` module uses a timer, which runs every 5 seconds, to check for a win condition. It can only tell which players lost their crown in that 5 second window. As such, it considers those players to all have lost their crowns simutaneously. In Subspace Server .NET, KOTH is implemented differently. It keeps track of the time when each player's crown expires and uses that to determine a winner. This means it should be more accurate on who the winner is.
+
+---
+## SpeedGame module
+ASSS does not have Speed Zone functionality. In Subspace Server .NET, speed functionality is provided by the `SS.Core.Modules.Scoring.SpeedGame` module. This includes use of the S2C 0x24 (Speed packet). Also, it persists a player's personal best score (?best command).
