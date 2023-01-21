@@ -446,7 +446,7 @@ namespace SS.Core.Modules.FlagGame
 
         #region Packet handlers
 
-        private void Packet_TouchFlag(Player player, byte[] data, int length)
+        private void Packet_TouchFlag(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (length != C2S_TouchFlag.Length)
             {
@@ -511,7 +511,7 @@ namespace SS.Core.Modules.FlagGame
             ad.CarryFlagBehavior.TouchFlag(arena, player, flagId);
         }
 
-        private void Packet_DropFlags(Player player, byte[] data, int length)
+        private void Packet_DropFlags(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

@@ -62,7 +62,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void Packet_SettingChange(Player player, byte[] data, int length)
+        private void Packet_SettingChange(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))
             {

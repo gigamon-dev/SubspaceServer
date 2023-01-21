@@ -307,7 +307,7 @@ namespace SS.Core.Modules
 
         #region Packet handlers
 
-        private void Packet_PickupBall(Player player, byte[] data, int length)
+        private void Packet_PickupBall(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (length != C2S_PickupBall.Length)
             {
@@ -417,7 +417,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_ShootBall(Player player, byte[] data, int length)
+        private void Packet_ShootBall(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (length != BallPacket.Length)
             {
@@ -512,7 +512,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Goal(Player player, byte[] data, int length)
+        private void Packet_Goal(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (length != C2S_Goal.Length)
             {

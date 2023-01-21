@@ -316,7 +316,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Rebroadcast(Player player, byte[] data, int length)
+        private void Packet_Rebroadcast(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             Arena arena = player.Arena;
             if (arena == null)

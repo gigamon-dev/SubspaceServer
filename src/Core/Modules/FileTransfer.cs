@@ -172,7 +172,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UploadFile(Player player, byte[] data, int length)
+        private void Packet_UploadFile(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

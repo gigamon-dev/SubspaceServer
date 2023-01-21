@@ -310,7 +310,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UpdateRequest(Player player, byte[] pkt, int len)
+        private void Packet_UpdateRequest(Player player, byte[] pkt, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -341,7 +341,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_MapNewsRequest(Player player, byte[] pkt, int len)
+        private void Packet_MapNewsRequest(Player player, byte[] pkt, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

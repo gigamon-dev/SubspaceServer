@@ -6,6 +6,9 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
+    /// <summary>
+    /// Flags that indicate how data is to be sent.
+    /// </summary>
     [Flags]
     public enum NetSendFlags
     {
@@ -33,12 +36,45 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
+    /// Flags that indicate how data was received.
+    /// </summary>
+    [Flags]
+    public enum NetReceiveFlags
+    {
+        /// <summary>
+        /// No flags.
+        /// </summary>
+        None = 0x00,
+
+        /// <summary>
+        /// Whether the data was received in a reliable packet (00 03).
+        /// </summary>
+        Reliable = 0x01,
+
+        /// <summary>
+        /// Whether the data was received in a grouped packet (00 0E).
+        /// </summary>
+        Grouped = 0x02,
+
+        /// <summary>
+        /// Whether the data was received in a "big" packet (00 08, 00 09).
+        /// </summary>
+        Big = 0x04,
+
+        /// <summary>
+        /// Whether the data was received in a "sized" packet (00 0A).
+        /// </summary>
+        //Sized = 0x08, // sized has its own delegate, so don't need to include this here
+    }
+
+    /// <summary>
     /// Delegate for a handler to an incoming regular packet.
     /// </summary>
     /// <param name="player">The player that sent the packet.</param>
     /// <param name="data">The buffer containing the packet data that was received.</param>
     /// <param name="length">Number of bytes in the data.</param>
-    public delegate void PacketDelegate(Player player, byte[] data, int length);
+    /// <param name="flags">Flags indicating how the data was received.</param>
+    public delegate void PacketDelegate(Player player, byte[] data, int length, NetReceiveFlags flags);
 
     /// <summary>
     /// Delegate for a handler to an incoming sized packet (file transfer).
@@ -56,14 +92,14 @@ namespace SS.Core.ComponentInterfaces
     public delegate void SizedPacketDelegate(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.
+    /// Delegate for a callback when the send of a reliable packet completes successfully or unsuccessfully.
     /// </summary>
     /// <param name="player">The player the packet was being sent to.</param>
     /// <param name="success">Whether the packet was sucessfully sent.</param>
     public delegate void ReliableDelegate(Player player, bool success);
 
     /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes sucessfully or unsuccessfully.
+    /// Delegate for a callback when the send of a reliable packet completes successfully or unsuccessfully.
     /// The callback includes a parameter for state.
     /// </summary>
     /// <typeparam name="T">The type of state object.</typeparam>

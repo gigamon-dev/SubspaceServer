@@ -536,7 +536,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SecurityResponse(Player player, byte[] data, int length)
+        private void Packet_SecurityResponse(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

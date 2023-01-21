@@ -765,7 +765,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Chat(Player player, byte[] data, int len)
+        private void Packet_Chat(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

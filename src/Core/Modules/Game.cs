@@ -902,7 +902,7 @@ namespace SS.Core.Modules
             _net.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
-        private void Packet_Position(Player player, byte[] data, int len)
+        private void Packet_Position(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(new Span<byte>(data, 0, C2S_PositionPacket.LengthWithExtra));
             HandlePositionPacket(player, ref pos, len, false);
@@ -1420,7 +1420,7 @@ namespace SS.Core.Modules
             pd.LastRegionSet = newRegions;
         }
 
-        private void Packet_SpecRequest(Player player, byte[] data, int len)
+        private void Packet_SpecRequest(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -1456,7 +1456,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetShip(Player player, byte[] data, int len)
+        private void Packet_SetShip(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -1551,7 +1551,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetFreq(Player player, byte[] data, int len)
+        private void Packet_SetFreq(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -1810,7 +1810,7 @@ namespace SS.Core.Modules
             Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
         [ConfigHelp("Prize", "TeamkillPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
-        private void Packet_Die(Player player, byte[] data, int len)
+        private void Packet_Die(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -2013,7 +2013,7 @@ namespace SS.Core.Modules
             //if(_chatnet != null)
         }
 
-        private void Packet_Green(Player player, byte[] data, int len)
+        private void Packet_Green(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -2107,7 +2107,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_AttachTo(Player player, byte[] data, int len)
+        private void Packet_AttachTo(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null || data == null)
                 return;
@@ -2149,7 +2149,7 @@ namespace SS.Core.Modules
             Attach(player, to);
         }
 
-        private void Packet_TurretKickoff(Player player, byte[] data, int len)
+        private void Packet_TurretKickoff(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null || data == null)
                 return;

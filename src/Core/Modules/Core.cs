@@ -459,7 +459,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Login(Player player, byte[] data, int len)
+        private void Packet_Login(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

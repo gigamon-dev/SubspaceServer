@@ -99,7 +99,7 @@ namespace SS.Core.Modules
         private readonly Dictionary<EndPoint, NetClientConnection> _clientConnections = new();
         private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.NoRecursion);
 
-        private delegate void CorePacketHandler(ReadOnlySpan<byte> data, ConnData conn);
+        private delegate void CorePacketHandler(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags);
 
         /// <summary>
         /// Handlers for 'core' packets (ss protocol's network/transport layer).
@@ -1143,7 +1143,7 @@ namespace SS.Core.Modules
 
         #region Core packet handlers (oohandlers)
 
-        private void CorePacket_KeyResponse(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_KeyResponse(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1157,7 +1157,7 @@ namespace SS.Core.Modules
                 _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Got key response packet.");
         }
 
-        private void CorePacket_Reliable(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Reliable(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1198,6 +1198,7 @@ namespace SS.Core.Modules
                 {
                     SubspaceBuffer buffer = _bufferPool.Get();
                     buffer.Conn = conn;
+                    buffer.ReceiveFlags = flags | NetReceiveFlags.Reliable;
                     data.CopyTo(buffer.Bytes);
                     buffer.NumBytes = data.Length;
 
@@ -1226,7 +1227,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_Ack(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Ack(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1291,7 +1292,7 @@ namespace SS.Core.Modules
             Monitor.Exit(conn.olmtx);
         }
 
-        private void CorePacket_SyncRequest(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_SyncRequest(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1329,7 +1330,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_Drop(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Drop(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1349,7 +1350,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_BigData(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_BigData(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1377,6 +1378,7 @@ namespace SS.Core.Modules
                 }
 
                 // Append the data.
+                conn.BigRecv.Flags |= flags | NetReceiveFlags.Big;
                 conn.BigRecv.Append(data[2..]); // data only, header removed
 
                 if (data[1] == 0x08)
@@ -1418,7 +1420,7 @@ namespace SS.Core.Modules
                     if (work.ConnData is null || work.BigReceive is null || work.BigReceive.Buffer is null || work.BigReceive.Size < 1)
                         return;
 
-                    CallPacketHandlers(work.ConnData, work.BigReceive.Buffer, work.BigReceive.Size);
+                    CallPacketHandlers(work.ConnData, work.BigReceive.Buffer, work.BigReceive.Size, work.BigReceive.Flags);
                 }
                 finally
                 {
@@ -1428,7 +1430,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_SizedData(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_SizedData(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1466,7 +1468,7 @@ namespace SS.Core.Modules
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Length mismatch in sized packet.");
                     EndSized(conn.p, false);
                 }
-                else if ((conn.sizedrecv.offset + data.Length - 6) > size)
+                else if ((conn.sizedrecv.offset + data.Length - PresizedHeader.Length) > size)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Sized packet overflow.");
                     EndSized(conn.p, false);
@@ -1483,7 +1485,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_CancelSized(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_CancelSized(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1508,7 +1510,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_SizedCancelled(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_SizedCancelled(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1525,7 +1527,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CorePacket_Grouped(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Grouped(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1543,13 +1545,13 @@ namespace SS.Core.Modules
                 if (len > data.Length - 1)
                     break;
 
-                ProcessBuffer(data.Slice(1, len), conn);
+                ProcessBuffer(data.Slice(1, len), conn, flags | NetReceiveFlags.Grouped);
 
                 data = data[(1 + len)..];
             }
         }
 
-        private void CorePacket_Special(ReadOnlySpan<byte> data, ConnData conn)
+        private void CorePacket_Special(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -1569,7 +1571,7 @@ namespace SS.Core.Modules
                 using SubspaceBuffer buffer = _bufferPool.Get();
                 data.CopyTo(buffer.Bytes);
                 buffer.NumBytes = data.Length;
-                _nethandlers[t2]?.Invoke(player, buffer.Bytes, buffer.NumBytes);
+                _nethandlers[t2]?.Invoke(player, buffer.Bytes, buffer.NumBytes, flags);
             }
         }
 
@@ -1809,7 +1811,7 @@ namespace SS.Core.Modules
                 DumpPk($"RECV: about to process {bytesReceived} bytes", data);
 #endif
 
-                ProcessBuffer(data, conn);
+                ProcessBuffer(data, conn, NetReceiveFlags.None);
 
                 static bool IsConnectionInitPacket(ReadOnlySpan<byte> data)
                 {
@@ -2072,7 +2074,7 @@ namespace SS.Core.Modules
                             Interlocked.Add(ref _globalStats.byterecvd, (ulong)bytesReceived);
                             Interlocked.Increment(ref _globalStats.pktrecvd);
 
-                            ProcessBuffer(data, conn);
+                            ProcessBuffer(data, conn, NetReceiveFlags.None);
                         }
                         else
                         {
@@ -2307,7 +2309,7 @@ namespace SS.Core.Modules
                                     // We know we can group at least the first 2
                                     SubspaceBuffer groupedBuffer = _bufferPool.Get();
                                     groupedBuffer.Conn = conn;
-                                    groupedBuffer.Flags = b1.Flags; // taking the flags from the first packet, though doesn't really matter since we already know it's reliable
+                                    groupedBuffer.SendFlags = b1.SendFlags; // taking the flags from the first packet, though doesn't really matter since we already know it's reliable
                                     groupedBuffer.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
                                     groupedBuffer.Tries = 0;
 
@@ -2360,8 +2362,6 @@ namespace SS.Core.Modules
                                     {
                                         Interlocked.Increment(ref _globalStats.RelGroupedStats[Math.Min(relGrouper.Count - 1, _globalStats.RelGroupedStats.Length - 1)]);
                                     }
-
-                                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Grouped {relGrouper.Count} reliable packets into single reliable packet of {groupedBuffer.NumBytes} bytes.");
 
                                     LinkedListNode<SubspaceBuffer> groupedNode = _bufferNodePool.Get();
                                     groupedNode.Value = groupedBuffer;
@@ -2448,7 +2448,7 @@ namespace SS.Core.Modules
                             (BandwidthPriority)pri))
                         {
                             // try dropping it, if we can
-                            if ((buf.Flags & NetSendFlags.Droppable) != 0)
+                            if ((buf.SendFlags & NetSendFlags.Droppable) != 0)
                             {
                                 Debug.Assert(pri < (int)BandwidthPriority.Reliable);
                                 outlist.Remove(node);
@@ -2698,7 +2698,7 @@ namespace SS.Core.Modules
                         Monitor.Exit(conn.relmtx);
 
                         // process it
-                        ProcessBuffer(new ReadOnlySpan<byte>(buf.Bytes, ReliableHeader.Length, buf.NumBytes - ReliableHeader.Length), conn);
+                        ProcessBuffer(new ReadOnlySpan<byte>(buf.Bytes, ReliableHeader.Length, buf.NumBytes - ReliableHeader.Length), conn, buf.ReceiveFlags);
                         Monitor.Exit(conn.ReliableProcessingLock);
                         buf.Dispose();
                         processedCount++;
@@ -2823,7 +2823,7 @@ namespace SS.Core.Modules
         /// </summary>
         /// <param name="data">The buffer to process.</param>
         /// <param name="conn">Context about the connection that the packet is being processed for.</param>
-        private void ProcessBuffer(ReadOnlySpan<byte> data, ConnData conn)
+        private void ProcessBuffer(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -2837,7 +2837,7 @@ namespace SS.Core.Modules
                 // 'core' packet
                 if ((t2 < _oohandlers.Length) && (_oohandlers[t2] != null))
                 {
-                    _oohandlers[t2](data, conn);
+                    _oohandlers[t2](data, conn, flags);
                 }
                 else
                 {
@@ -2855,6 +2855,7 @@ namespace SS.Core.Modules
             {
                 SubspaceBuffer buffer = _bufferPool.Get();
                 buffer.Conn = conn;
+                buffer.ReceiveFlags = flags;
                 data.CopyTo(buffer.Bytes);
                 buffer.NumBytes = data.Length;
 
@@ -2879,7 +2880,7 @@ namespace SS.Core.Modules
                     if (conn is null)
                         return;
 
-                    CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes);
+                    CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes, buffer.ReceiveFlags);
                 }
                 finally
                 {
@@ -2888,7 +2889,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CallPacketHandlers(ConnData conn, byte[] bytes, int len)
+        private void CallPacketHandlers(ConnData conn, byte[] bytes, int len, NetReceiveFlags flags)
         {
             if (conn == null)
                 throw new ArgumentNullException(nameof(conn));
@@ -2917,7 +2918,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    handler(conn.p, bytes, len);
+                    handler(conn.p, bytes, len, flags);
                 }
                 catch (Exception ex)
                 {
@@ -3313,7 +3314,7 @@ namespace SS.Core.Modules
             buf.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
             buf.Tries = 0;
             buf.CallbackInvoker = callbackInvoker;
-            buf.Flags = flags;
+            buf.SendFlags = flags;
             buf.NumBytes = len;
             data.CopyTo(buf.Bytes);
 
@@ -3820,7 +3821,8 @@ namespace SS.Core.Modules
             public ConnData Conn;
 
             public byte Tries;
-            public NetSendFlags Flags;
+            public NetSendFlags SendFlags;
+            public NetReceiveFlags ReceiveFlags;
 
             public DateTime LastRetry;
 
@@ -3834,7 +3836,8 @@ namespace SS.Core.Modules
             {
                 Conn = null;
                 Tries = 0;
-                Flags = NetSendFlags.None;
+                SendFlags = NetSendFlags.None;
+                ReceiveFlags = NetReceiveFlags.None;
                 LastRetry = DateTime.MinValue;
 
                 if (CallbackInvoker != null)
@@ -4057,6 +4060,7 @@ namespace SS.Core.Modules
         /// </remarks>
         private class BigReceive : PooledObject
         {
+            public NetReceiveFlags Flags = NetReceiveFlags.None;
             public byte[] Buffer { get; private set; } = null;
             public int Size { get; private set; } = 0;
 
@@ -4080,6 +4084,8 @@ namespace SS.Core.Modules
 
             public void Clear()
             {
+                Flags = NetReceiveFlags.None;
+
                 if (Buffer != null)
                 {
                     ArrayPool<byte>.Shared.Return(Buffer, true);

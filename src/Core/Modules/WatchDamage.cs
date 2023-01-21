@@ -192,7 +192,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Damage(Player player, byte[] data, int length)
+        private void Packet_Damage(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             if (player.Status != PlayerState.Playing)
                 return;
