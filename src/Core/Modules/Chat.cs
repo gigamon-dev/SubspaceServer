@@ -1331,9 +1331,9 @@ namespace SS.Core.Modules
             {
                 ReadOnlySpan<char> remaining = msg;
                 int count = 0;
-                while (++count < _cfg.CommandLimit && !remaining.IsEmpty)
+                while (!remaining.IsEmpty && count++ < _cfg.CommandLimit)
                 {
-                    ReadOnlySpan<char> token = StringUtils.GetToken(msg, '|', out remaining);
+                    ReadOnlySpan<char> token = StringUtils.GetToken(remaining, '|', out remaining);
                     if (token.IsWhiteSpace())
                         continue;
 
