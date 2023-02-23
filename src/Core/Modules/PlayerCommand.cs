@@ -800,7 +800,7 @@ namespace SS.Core.Modules
                 peer.Lock();
                 try
                 {
-                    // Note: Using indexing to access the lists so workaround allocations from enumerating.
+                    // Note: Purposely using indexing to access the lists. Enumerating would incur allocations.
 
                     for (int zoneIndex = 0; zoneIndex < peer.Peers.Count; zoneIndex++)
                     {
