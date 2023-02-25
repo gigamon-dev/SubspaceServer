@@ -48,3 +48,12 @@ privcmd_redirect
 cmd_periodicreward
 cmd_periodicreset
 cmd_periodicstop
+
+cmd_getcs
+privcmd_getcs
+cmd_getcsoverride
+privcmd_getcsoverride
+cmd_setcsoverride
+privcmd_setcsoverride
+cmd_rmcsoverride
+privcmd_rmcsoverride

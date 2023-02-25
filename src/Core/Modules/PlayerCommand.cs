@@ -39,6 +39,7 @@ namespace SS.Core.Modules
         private IArenaPlayerStats _arenaPlayerStats;
         private IBalls _balls;
         private ICapabilityManager _capabilityManager;
+        private IClientSettings _clientSettings;
         private IConfigManager _configManager;
         private IFileTransfer _fileTransfer;
         private IGame _game;
@@ -160,6 +161,7 @@ namespace SS.Core.Modules
                     {
                         typeof(IArenaManager),
                         typeof(IConfigManager),
+                        typeof(IClientSettings),
                     },
                     Commands = new[]
                     {
@@ -167,6 +169,10 @@ namespace SS.Core.Modules
                         new CommandInfo("getg", Command_getX),
                         new CommandInfo("seta", Command_setX),
                         new CommandInfo("setg", Command_setX),
+                        new CommandInfo("getcs", Command_getcs),
+                        new CommandInfo("getcsoverride", Command_getcsoverride),
+                        new CommandInfo("setcsoverride", Command_setcsoverride),
+                        new CommandInfo("rmcsoverride", Command_rmcsoverride),
                     }
                 });
 
@@ -291,6 +297,7 @@ namespace SS.Core.Modules
             _arenaPlayerStats = null;
             _balls = null;
             _capabilityManager = null;
+            _clientSettings = null;
             _configManager = null;
             _fileTransfer = null;
             _game = null;
@@ -1141,6 +1148,249 @@ namespace SS.Core.Modules
 
             Configuration.ConfFile.ParseConfProperty(line, out string section, out string key, out ReadOnlySpan<char> value, out _);
             _configManager.SetStr(ch, section, key, value.ToString(), $"Set by {player.Name} on {DateTime.Now}", permanent);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena | CommandTarget.Player,
+            Args = "<section>:<key>",
+            Description = "Gets a client setting.\n" +
+            "When targeting a player, this is the current value for that player (including any overrides)." +
+            "When targeting an arena, this is the configured value for the arena.")]
+        private void Command_getcs(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (_clientSettings is null)
+                return;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            if (section.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing section).");
+                return;
+            }
+
+            ReadOnlySpan<char> key = remaining.TrimStart(':');
+            if (key.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing key).");
+                return;
+            }
+
+            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            {
+                _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
+                return;
+            }
+
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            {
+                int value = _clientSettings.GetSetting(targetPlayer, id);
+                _chat.SendMessage(player, $"The current client setting of player '{targetPlayer.Name}' for {section}:{key} is {value}");
+            }
+            else if (target.TryGetArenaTarget(out Arena arena))
+            {
+                int value = _clientSettings.GetSetting(arena, id);
+                _chat.SendMessage(player, $"The configured client setting of arena '{arena.Name}' for {section}:{key} is {value}");
+            }
+            else
+            {
+                _chat.SendMessage(player, $"Invalid target.");
+                return;
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena | CommandTarget.Player,
+            Args = "<section>:<key>",
+            Description = "Gets a client setting override.")]
+        private void Command_getcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (_clientSettings is null)
+                return;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            if (section.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing section).");
+                return;
+            }
+
+            ReadOnlySpan<char> key = remaining.TrimStart(':');
+            if (key.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing key).");
+                return;
+            }
+
+            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            {
+                _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
+                return;
+            }
+
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            {
+                if (_clientSettings.TryGetSettingOverride(targetPlayer, id, out int value))
+                {
+                    _chat.SendMessage(player, $"The client setting override on player '{targetPlayer.Name}' for {section}:{key} is {value}");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"There is no client setting override on player '{targetPlayer.Name}' for {section}:{key}");
+                }
+            }
+            else if (target.TryGetArenaTarget(out Arena arena))
+            {
+                if (_clientSettings.TryGetSettingOverride(arena, id, out int value))
+                {
+                    _chat.SendMessage(player, $"The client setting override on arena '{arena.Name}' for {section}:{key} is {value}");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"There is no client setting override on arena '{arena.Name}' for {section}:{key}");
+                }
+            }
+            else
+            {
+                _chat.SendMessage(player, $"Invalid target.");
+                return;
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena | CommandTarget.Player,
+            Args = "<section>:<key>=<value>",
+            Description = "Sets a client setting override.")]
+        private void Command_setcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (_clientSettings is null)
+                return;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            if (section.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing section).");
+                return;
+            }
+
+            ReadOnlySpan<char> key = remaining.GetToken('=', out remaining).TrimStart(':');
+            if (key.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing key).");
+                return;
+            }
+
+            remaining = remaining.TrimStart('=');
+            if (remaining.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing value).");
+                return;
+            }
+
+            if (!int.TryParse(remaining, out int value))
+            {
+                _chat.SendMessage(player, "Invalid input (unable to parse value)");
+                return;
+            }
+
+            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            {
+                _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
+                return;
+            }
+
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            {
+                _clientSettings.OverrideSetting(targetPlayer, id, value);
+                _clientSettings.SendClientSettings(targetPlayer);
+            }
+            else if (target.TryGetArenaTarget(out Arena arena))
+            {
+                _clientSettings.OverrideSetting(arena, id, value);
+
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    _playerData.TargetToSet(target, players);
+
+                    foreach (Player arenaPlayer in players)
+                    {
+                        _clientSettings.SendClientSettings(arenaPlayer);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+            else
+            {
+                _chat.SendMessage(player, $"Invalid target.");
+                return;
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Arena | CommandTarget.Player,
+            Args = "<section>:<key>",
+            Description = "Removes a client setting override.")]
+        private void Command_rmcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (_clientSettings is null)
+                return;
+
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            if (section.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing section).");
+                return;
+            }
+
+            ReadOnlySpan<char> key = remaining.TrimStart(':');
+            if (key.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input (missing key).");
+                return;
+            }
+
+            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            {
+                _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
+                return;
+            }
+
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            {
+                _clientSettings.UnoverrideSetting(targetPlayer, id);
+                _clientSettings.SendClientSettings(targetPlayer);
+            }
+            else if (target.TryGetArenaTarget(out Arena arena))
+            {
+                _clientSettings.UnoverrideSetting(arena, id);
+
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    _playerData.TargetToSet(target, players);
+
+                    foreach (Player arenaPlayer in players)
+                    {
+                        _clientSettings.SendClientSettings(arenaPlayer);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+            else
+            {
+                _chat.SendMessage(player, $"Invalid target.");
+                return;
+            }
         }
 
         [CommandHelp(

@@ -29,7 +29,7 @@ This document provides an overview of the various server parts and their relatio
 | cfghelp | SS.Core.Modules.Help | |
 | chat | SS.Core.Modules.Chat | |
 | chatnet |  | TODO: very low priority |
-| clientset | SS.Core.Modules.ClientSettings | TODO: override functionality |
+| clientset | SS.Core.Modules.ClientSettings | |
 | cmdlist | SS.Core.Modules.CommandManager | |
 | cmdman | SS.Core.Modules.CommandManager | |
 | config | SS.Core.Modules.ConfigManager | |
@@ -82,7 +82,7 @@ This document provides an overview of the various server parts and their relatio
 | scoring:points_kill | SS.Core.Modules.Scoring.KillPoints | |
 | scoring:points_periodic | SS.Core.Modules.Scoring.PeriodicReward | |
 | prng | SS.Core.Modules.Prng | |
-| pymod | n/a | Use IronPython? |
+| pymod | n/a | |
 | quickfix | SS.Core.Modules.Quickfix | |
 | funky:record | SS.Replay.ReplayModule | |
 | redirect | SS.Core.Modules.Redirect | |
@@ -149,7 +149,7 @@ This document provides an overview of the various server parts and their relatio
 | Inet | SS.Core.ComponentInterfaces.INetwork<br>SS.Core.ComponentInterfaces.INetworkEncryption | |
 | Iobjects | SS.Core.ComponentInterfaces.ILvzObjects | |
 | Iobscene | SS.Core.ComponentInterfaces.IObscene | |
-| Ioptparser | n/a | Python specific |
+| Ioptparser | n/a | |
 | Ipeer | SS.Core.ComponentInterfaces.IPeer | |
 | - | SS.Core.ComponentInterfaces.IPeriodicReward | |
 | Iperiodicpoints | SS.Core.ComponentInterfaces.IPeriodicRewardPoints | |

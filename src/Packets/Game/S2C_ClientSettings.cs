@@ -8,9 +8,23 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public unsafe struct S2C_ClientSettings
     {
-        public byte Type;
+        #region Static members
+
+        public static readonly int Length;
+
+        static S2C_ClientSettings()
+        {
+            Length = Marshal.SizeOf<S2C_ClientSettings>();
+        }
+
+        #endregion
 
         public ClientBits BitSet;
+        public byte Type
+        {
+            get => BitSet.Type;
+            set => BitSet.Type = value;
+        }
 
         // Ship settings
         public AllShipSettings Ships;
@@ -56,68 +70,77 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ClientBits
     {
-        private byte bitfield1;
-        private byte bitfield2;
-        private byte bitfield3;
+        private uint bitfield;
 
-        // bitfield1 masks
-        private const byte ExactDamageMask       = 0b00000001;
-        private const byte HideFlagsMask         = 0b00000010;
-        private const byte NoXRadarMask          = 0b00000100;
-        private const byte SlowFramerateMask     = 0b00111000;
-        private const byte DisableScreenshotMask = 0b01000000;
+        // masks
+        private const uint TypeMask                    = 0b_00000000_00000000_00000000_11111111;
+        private const uint ExactDamageMask             = 0b_00000000_00000000_00000001_00000000;
+        private const uint HideFlagsMask               = 0b_00000000_00000000_00000010_00000000;
+        private const uint NoXRadarMask                = 0b_00000000_00000000_00000100_00000000;
+        private const uint SlowFramerateMask           = 0b_00000000_00000000_00111000_00000000;
+        private const uint DisableScreenshotMask       = 0b_00000000_00000000_01000000_00000000;
+        private const uint MaxTimerDriftMask           = 0b_00000000_00000111_00000000_00000000;
+        private const uint DisableBallThroughWallsMask = 0b_00000000_00001000_00000000_00000000;
+        private const uint DisableBallKillingMask      = 0b_00000000_00010000_00000000_00000000;
 
-        // bitfield2 masks
-        private const byte MaxTimerDriftMask           = 0b00000111;
-        private const byte DisableBallThroughWallsMask = 0b00001000;
-        private const byte DisableBallKillingMask      = 0b00010000;
+        private uint BitField
+        {
+            get => LittleEndianConverter.Convert(bitfield);
+            set => bitfield = LittleEndianConverter.Convert(value);
+        }
+
+        public byte Type
+        {
+            get => (byte)(BitField & TypeMask);
+            set => BitField = (BitField & ~TypeMask) | (value & TypeMask);
+        }
 
         public bool ExactDamage
         {
-            get { return (bitfield1 & ExactDamageMask) != 0; }
-            set { bitfield1 = (byte)((bitfield1 & ~ExactDamageMask) | ((value ? 1 : 0) & ExactDamageMask)); }
+            get => (BitField & ExactDamageMask) != 0;
+            set => BitField = (BitField & ~ExactDamageMask) | (value ? ExactDamageMask : 0);
         }
 
         public bool HideFlags
         {
-            get { return ((bitfield1 & HideFlagsMask) >> 1) != 0; }
-            set { bitfield1 = (byte)((bitfield1 & ~HideFlagsMask) | (((value ? 1 : 0) << 1) & HideFlagsMask)); }
+            get => (BitField & HideFlagsMask) != 0;
+            set => BitField = (BitField & ~HideFlagsMask) | (value ? HideFlagsMask : 0);
         }
 
         public bool NoXRadar
         {
-            get { return ((bitfield1 & NoXRadarMask) >> 2) != 0; }
-            set { bitfield1 = (byte)((bitfield1 & ~NoXRadarMask) | (((value ? 1 : 0) << 2) & NoXRadarMask)); }
+            get => (BitField & NoXRadarMask) != 0;
+            set => BitField = (BitField & ~NoXRadarMask) | (value ? NoXRadarMask : 0);
         }
 
         public byte SlowFramerate
         {
-            get { return (byte)((bitfield1 & SlowFramerateMask) >> 3); }
-            set { bitfield1 = (byte)((bitfield1 & ~SlowFramerateMask) | ((value << 3) & SlowFramerateMask)); }
+            get => (byte)((BitField & SlowFramerateMask) >> 11);
+            set => BitField = (BitField & ~SlowFramerateMask) | (((uint)value << 11) & SlowFramerateMask);
         }
 
         public bool DisableScreenshot
         {
-            get { return ((bitfield1 & DisableScreenshotMask) >> 6) != 0; }
-            set { bitfield1 = (byte)((bitfield1 & ~DisableScreenshotMask) | (((value ? 1 : 0) << 6) & DisableScreenshotMask)); }
+            get => (BitField & DisableScreenshotMask) != 0;
+            set => BitField = (BitField & ~DisableScreenshotMask) | (value ? DisableScreenshotMask : 0);
         }
 
         public byte MaxTimerDrift
         {
-            get { return (byte)(bitfield2 & MaxTimerDriftMask); }
-            set { bitfield2 = (byte)((bitfield2 & ~MaxTimerDriftMask) | (value & MaxTimerDriftMask)); }
+            get => (byte)((BitField & MaxTimerDriftMask) >> 16);
+            set => BitField = (BitField & ~MaxTimerDriftMask) | (((uint)value << 16) & MaxTimerDriftMask);
         }
 
         public bool DisableWallPass
         {
-            get { return ((bitfield2 & DisableBallThroughWallsMask) >> 3) != 0; }
-            set { bitfield2 = (byte)((bitfield2 & ~DisableBallThroughWallsMask) | (((value ? 1 : 0) << 3) & DisableBallThroughWallsMask)); }
+            get => (BitField & DisableBallThroughWallsMask) != 0;
+            set => BitField = (BitField & ~DisableBallThroughWallsMask) | (value ? DisableBallThroughWallsMask : 0);
         }
 
         public bool DisableBallKilling
         {
-            get { return ((bitfield2 & DisableBallKillingMask) >> 4) != 0; }
-            set { bitfield2 = (byte)((bitfield2 & ~DisableBallKillingMask) | (((value ? 1 : 0) << 4) & DisableBallKillingMask)); }
+            get => (BitField & DisableBallKillingMask) != 0;
+            set => BitField = (BitField & ~DisableBallKillingMask) | (value ? DisableBallKillingMask : 0);
         }
     }
 
@@ -182,26 +205,26 @@ namespace SS.Packets.Game
 
         private ushort BitField
         {
-            get { return LittleEndianConverter.Convert(bitfield); }
-            set { bitfield = LittleEndianConverter.Convert(value); }
+            get => LittleEndianConverter.Convert(bitfield);
+            set => bitfield = LittleEndianConverter.Convert(value);
         }
 
         public byte SeeBombLevel
         {
-            get { return (byte)(BitField & SeeBombLevelMask); }
-            set { BitField = (ushort)((BitField & ~SeeBombLevelMask) | (value & SeeBombLevelMask)); }
+            get => (byte)(BitField & SeeBombLevelMask);
+            set => BitField = (ushort)((BitField & ~SeeBombLevelMask) | (value & SeeBombLevelMask));
         }
 
         public bool DisableFastShooting
         {
-            get { return ((BitField & DisableFastShootingMask) >> 2) != 0; }
-            set { BitField = (ushort)((BitField & ~DisableFastShootingMask) | (((value ? 1 : 0) << 2) & DisableFastShootingMask)); }
+            get => (BitField & DisableFastShootingMask) != 0;
+            set => BitField = (ushort)((BitField & ~DisableFastShootingMask) | (value ? DisableFastShootingMask : 0));
         }
 
         public byte Radius
         {
-            get { return (byte)((BitField & RadiusMask) >> 3); }
-            set { BitField = (ushort)((BitField & ~RadiusMask) | ((value << 3) & RadiusMask)); }
+            get => (byte)((BitField & RadiusMask) >> 3);
+            set => BitField = (ushort)((BitField & ~RadiusMask) | ((value << 3) & RadiusMask));
         }
     }
 
@@ -224,82 +247,88 @@ namespace SS.Packets.Game
         private const uint EmpBombMask        = 0b_00001000_00000000_00000000_00000000;
         private const uint SeeMinesMask       = 0b_00010000_00000000_00000000_00000000;
 
+        private uint BitField
+        {
+            get => LittleEndianConverter.Convert(bitfield);
+            set => bitfield = LittleEndianConverter.Convert(value);
+        }
+
         public byte ShrapnelMax
         {
-            get { return (byte)(bitfield & ShrapnelMaxMask); }
-            set { bitfield = (bitfield & ~ShrapnelMaxMask) | (value & ShrapnelMaxMask); }
+            get => (byte)(BitField & ShrapnelMaxMask);
+            set => BitField = (BitField & ~ShrapnelMaxMask) | (value & ShrapnelMaxMask);
         }
 
         public byte ShrapnelRate
         {
-            get { return (byte)((bitfield & ShrapnelRateMask) >> 5); }
-            set { bitfield = (bitfield & ~ShrapnelRateMask) | (((uint)value << 5) & ShrapnelRateMask); }
+            get => (byte)((BitField & ShrapnelRateMask) >> 5);
+            set => BitField = (BitField & ~ShrapnelRateMask) | (((uint)value << 5) & ShrapnelRateMask);
         }
 
         public byte CloakStatus
         {
-            get { return (byte)((bitfield & CloakStatusMask) >> 10); }
-            set { bitfield = (bitfield & ~CloakStatusMask) | (((uint)value << 10) & CloakStatusMask); }
+            get => (byte)((BitField & CloakStatusMask) >> 10);
+            set => BitField = (BitField & ~CloakStatusMask) | (((uint)value << 10) & CloakStatusMask);
         }
 
         public byte StealthStatus
         {
-            get { return (byte)((bitfield & StealthStatusMask) >> 12); }
-            set { bitfield = (bitfield & ~StealthStatusMask) | (((uint)value << 12) & StealthStatusMask); }
+            get => (byte)((BitField & StealthStatusMask) >> 12);
+            set => BitField = (BitField & ~StealthStatusMask) | (((uint)value << 12) & StealthStatusMask);
         }
 
         public byte XRadarStatus
         {
-            get { return (byte)((bitfield & XRadarStatusMask) >> 14); }
-            set { bitfield = (bitfield & ~XRadarStatusMask) | (((uint)value << 14) & XRadarStatusMask); }
+            get => (byte)((BitField & XRadarStatusMask) >> 14);
+            set => BitField = (BitField & ~XRadarStatusMask) | (((uint)value << 14) & XRadarStatusMask);
         }
 
         public byte AntiWarpStatus
         {
-            get { return (byte)((bitfield & AntiWarpStatusMask) >> 16); }
-            set { bitfield = (bitfield & ~AntiWarpStatusMask) | (((uint)value << 16) & AntiWarpStatusMask); }
+            get => (byte)((BitField & AntiWarpStatusMask) >> 16);
+            set => BitField = (BitField & ~AntiWarpStatusMask) | (((uint)value << 16) & AntiWarpStatusMask);
         }
 
         public byte InitialGuns
         {
-            get { return (byte)((bitfield & InitialGunsMask) >> 18); }
-            set { bitfield = (bitfield & ~InitialGunsMask) | (((uint)value << 18) & InitialGunsMask); }
+            get => (byte)((BitField & InitialGunsMask) >> 18);
+            set => BitField = (BitField & ~InitialGunsMask) | (((uint)value << 18) & InitialGunsMask);
         }
 
         public byte MaxGuns
         {
-            get { return (byte)((bitfield & MaxGunsMask) >> 20); }
-            set { bitfield = (bitfield & ~MaxGunsMask) | (((uint)value << 20) & MaxGunsMask); }
+            get => (byte)((BitField & MaxGunsMask) >> 20);
+            set => BitField = (BitField & ~MaxGunsMask) | (((uint)value << 20) & MaxGunsMask);
         }
 
         public byte InitialBombs
         {
-            get { return (byte)((bitfield & InitialBombsMask) >> 22); }
-            set { bitfield = (bitfield & ~InitialBombsMask) | (((uint)value << 22) & InitialBombsMask); }
+            get => (byte)((BitField & InitialBombsMask) >> 22);
+            set => BitField = (BitField & ~InitialBombsMask) | (((uint)value << 22) & InitialBombsMask);
         }
 
         public byte MaxBombs
         {
-            get { return (byte)((bitfield & MaxBombsMask) >> 24); }
-            set { bitfield = (bitfield & ~MaxBombsMask) | (((uint)value << 24) & MaxBombsMask); }
+            get => (byte)((BitField & MaxBombsMask) >> 24);
+            set => BitField = (BitField & ~MaxBombsMask) | (((uint)value << 24) & MaxBombsMask);
         }
 
         public bool DoubleBarrel
         {
-            get { return ((bitfield & DoubleBarrelMask) >> 26) != 0; }
-            set { bitfield = (bitfield & ~DoubleBarrelMask) | (((value ? 1u : 0u) << 26) & DoubleBarrelMask); }
+            get => (BitField & DoubleBarrelMask) != 0;
+            set => BitField = (BitField & ~DoubleBarrelMask) | (value ? DoubleBarrelMask : 0u);
         }
 
         public bool EmpBomb
         {
-            get { return ((bitfield & EmpBombMask) >> 27) != 0; }
-            set { bitfield = (bitfield & ~EmpBombMask) | (((value ? 1u : 0u) << 27) & EmpBombMask); }
+            get => (BitField & EmpBombMask) != 0;
+            set => BitField = (BitField & ~EmpBombMask) | (value ? EmpBombMask : 0u);
         }
 
         public bool SeeMines
         {
-            get { return ((bitfield & SeeMinesMask) >> 28) != 0; }
-            set { bitfield = (bitfield & ~SeeMinesMask) | (((value ? 1u : 0u) << 28) & SeeMinesMask); }
+            get => (BitField & SeeMinesMask) != 0;
+            set => BitField = (BitField & ~SeeMinesMask) | (value ? SeeMinesMask : 0u);
         }
     }
 
@@ -334,28 +363,28 @@ namespace SS.Packets.Game
         private const uint YMask      = 0b_00000000_00001111_11111100_00000000;
         private const uint RadiusMask = 0b_00011111_11110000_00000000_00000000;
 
-        public uint BitField
+        private uint BitField
         {
-            get { return LittleEndianConverter.Convert(bitfield); }
+            get => LittleEndianConverter.Convert(bitfield);
             set { bitfield = LittleEndianConverter.Convert(value); }
         }
 
         public ushort X
         {
-            get { return (ushort)(BitField & XMask); }
-            set { BitField = (BitField & ~XMask) | (value & XMask); }
+            get => (ushort)(BitField & XMask);
+            set => BitField = (BitField & ~XMask) | (value & XMask);
         }
 
         public ushort Y
         {
-            get { return (ushort)((BitField & XMask) >> 10); }
-            set { BitField = (BitField & ~XMask) | (((uint)value << 10) & XMask); }
+            get => (ushort)((BitField & XMask) >> 10);
+            set => BitField = (BitField & ~XMask) | (((uint)value << 10) & XMask);
         }
 
         public ushort Radius
         {
-            get { return (ushort)((BitField & RadiusMask) >> 20); }
-            set { BitField = (BitField & ~RadiusMask) | (((uint)value << 20) & RadiusMask); }
+            get => (ushort)((BitField & RadiusMask) >> 20);
+            set => BitField = (BitField & ~RadiusMask) | (((uint)value << 20) & RadiusMask);
         }
     }
 }
