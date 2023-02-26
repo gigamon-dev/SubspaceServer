@@ -649,7 +649,7 @@ namespace SS.Core.Modules.Scoring
                 ChatSound sound = ChatSound.Ding;
                 foreach (Player player in winners)
                 {
-                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, (ulong)points);
+                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, points);
                     _allPlayerStats.IncrementStat(player, StatCodes.KothGamesWon, null, 1);
 
                     _chat.SendArenaMessage(arena, sound, $"King of the Hill: {player.Name} awarded {points} points");

@@ -8,15 +8,15 @@ namespace SS.Core
         /* Standard Subspace scores
          * 
          * KillPoints and FlagPoints
-         * - The Subspace protocol actually represents this as an Int32.
-         * - However, this server stores it as an UInt64. This makes stats for the 'forever' interval (which never are reset) less likely to overflow.
+         * - The Subspace game protocol actually represents this as an Int32. Yes, point values can be negative.
+         * - However, this server stores it as an Int64. This makes stats for the 'forever' interval (which never are reset) less likely to overflow.
          * 
          * Kills and Deaths
-         * - The Subspace protocol actually represents this as an Int16.
-         * - However, this server stores it as an UInt64.
+         * - The Subspace game protocol actually represents this as an UInt16.
+         * - However, this server stores it as an UInt64. This makes stats for the 'forever' interval (which never are reset) less likely to overflow.
          */
-        public static readonly StatCode<ulong> KillPoints = new(StatId.KillPoints); 
-        public static readonly StatCode<ulong> FlagPoints = new(StatId.FlagPoints);
+        public static readonly StatCode<long> KillPoints = new(StatId.KillPoints); 
+        public static readonly StatCode<long> FlagPoints = new(StatId.FlagPoints);
         public static readonly StatCode<ulong> Kills = new(StatId.Kills);
         public static readonly StatCode<ulong> Deaths = new(StatId.Deaths);
 
@@ -42,7 +42,7 @@ namespace SS.Core
 
         public static readonly StatCode<ulong> KothGamesWon = new(StatId.KothGamesWon);
         public static readonly StatCode<ulong> SpeedGamesWon = new(StatId.SpeedGamesWon);
-        public static readonly StatCode<uint> SpeedPersonalBest = new(StatId.SpeedPersonalBest);
+        public static readonly StatCode<int> SpeedPersonalBest = new(StatId.SpeedPersonalBest);
     }
 
     public enum StatId

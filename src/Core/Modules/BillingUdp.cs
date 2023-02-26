@@ -583,10 +583,10 @@ namespace SS.Core.Modules
                 }
                 else if (action == PlayerAction.LeaveArena && arena.IsPublic && _savePublicPlayerScores && _arenaPlayerStats is not null)
                 {
-                    if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out ulong killPoints))
+                    if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out long killPoints))
                         killPoints = 0;
 
-                    if (!_arenaPlayerStats.TryGetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, out ulong flagPoints))
+                    if (!_arenaPlayerStats.TryGetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, out long flagPoints))
                         flagPoints = 0;
 
                     if (!_arenaPlayerStats.TryGetStat(player, StatCodes.Kills, PersistInterval.Reset, out ulong kills))
@@ -602,8 +602,8 @@ namespace SS.Core.Modules
                         (ushort)kills,
                         (ushort)deaths,
                         (ushort)flagPickups,
-                        (uint)killPoints,
-                        (uint)flagPoints);
+                        (int)killPoints,
+                        (int)flagPoints);
                 }
             }
         }

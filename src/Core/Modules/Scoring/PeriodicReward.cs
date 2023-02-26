@@ -339,7 +339,7 @@ namespace SS.Core.Modules.Scoring
 
                                 if (freqPoints.TryGetValue(player.Freq, out short points))
                                 {
-                                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, (ulong)points);
+                                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, points);
                                 }
                             }
                         }

@@ -26,32 +26,32 @@ namespace SS.Packets.Game
         // personal
         private byte best;
         private ushort rank;
-        private uint score;
+        private int score;
 
         // top 5
-        private fixed uint scores[5];
+        private fixed int scores[5];
         private fixed short playerIds[5];
 
         #region Helper Properties
 
         public bool IsPersonalBest => best != 0;
         public ushort Rank => LittleEndianConverter.Convert(rank);
-        public uint Score => LittleEndianConverter.Convert(score);
-        private Span<uint> Scores => MemoryMarshal.CreateSpan(ref scores[0], 5);
+        public int Score => LittleEndianConverter.Convert(score);
+        private Span<int> Scores => MemoryMarshal.CreateSpan(ref scores[0], 5);
         private Span<short> PlayerIds => MemoryMarshal.CreateSpan(ref playerIds[0], 5);
 
         #endregion
 
         #region Helper methods
 
-        public void SetPersonalStats(bool isPersonalBest, ushort rank, uint score)
+        public void SetPersonalStats(bool isPersonalBest, ushort rank, int score)
         {
             best = isPersonalBest ? (byte)1 : (byte)0;
             this.rank = LittleEndianConverter.Convert(rank);
             this.score = LittleEndianConverter.Convert(score);
         }
 
-        public void GetPlayerScore(int index, out short playerId, out uint score)
+        public void GetPlayerScore(int index, out short playerId, out int score)
         {
             if (index < 0 && index >= Scores.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
@@ -60,7 +60,7 @@ namespace SS.Packets.Game
             score = LittleEndianConverter.Convert(Scores[index]);
         }
 
-        public void SetPlayerScore(int index, short playerId, uint score)
+        public void SetPlayerScore(int index, short playerId, int score)
         {
             if (index < 0 && index >= Scores.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
@@ -79,7 +79,7 @@ namespace SS.Packets.Game
 
         #endregion
 
-        public S2C_SpeedStats(bool isPersonalBest, ushort rank, uint score)
+        public S2C_SpeedStats(bool isPersonalBest, ushort rank, int score)
         {
             Type = (byte)S2CPacketType.Speed;
 

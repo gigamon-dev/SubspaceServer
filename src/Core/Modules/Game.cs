@@ -1965,7 +1965,7 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, (ulong)points);
+                        allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, points);
                     }
                     finally
                     {

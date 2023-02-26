@@ -29,21 +29,21 @@ namespace SS.Packets.Game
             set => flagPoints = LittleEndianConverter.Convert(flagPoints);
         }
 
-        private short kills;
-        public short Kills
+        private ushort kills;
+        public ushort Kills
         {
             get => LittleEndianConverter.Convert(kills);
             set => kills = LittleEndianConverter.Convert(kills);
         }
 
-        private short deaths;
-        public short Deaths
+        private ushort deaths;
+        public ushort Deaths
         {
             get => LittleEndianConverter.Convert(deaths);
             set => deaths = LittleEndianConverter.Convert(deaths);
         }
 
-        public S2C_ScoreUpdate(short playerId, int killPoints, int flagPoints, short kills, short deaths)
+        public S2C_ScoreUpdate(short playerId, int killPoints, int flagPoints, ushort kills, ushort deaths)
         {
             Type = (byte)S2CPacketType.ScoreUpdate;
             this.playerId = LittleEndianConverter.Convert(playerId);

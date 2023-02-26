@@ -724,7 +724,7 @@ namespace SS.Core.Modules
 
                 foreach (Player targetPlayer in players)
                 {
-                    _arenaPlayerStats.IncrementStat(targetPlayer, StatCodes.FlagPoints, null, (ulong)pointsToAdd);
+                    _arenaPlayerStats.IncrementStat(targetPlayer, StatCodes.FlagPoints, null, pointsToAdd);
 
                     if (targetPlayer.Arena is not null)
                     {

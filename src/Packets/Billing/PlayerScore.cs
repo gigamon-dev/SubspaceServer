@@ -20,10 +20,10 @@ namespace SS.Packets.Billing
         private ushort kills;
         private ushort deaths;
         private ushort flags;
-        private uint points;
-        private uint flagPoints;
+        private int points;
+        private int flagPoints;
 
-        public PlayerScore(ushort kills, ushort deaths, ushort flags, uint points, uint flagPoints)
+        public PlayerScore(ushort kills, ushort deaths, ushort flags, int points, int flagPoints)
         {
             this.kills = LittleEndianConverter.Convert(kills);
             this.deaths = LittleEndianConverter.Convert(deaths);
@@ -52,13 +52,13 @@ namespace SS.Packets.Billing
             set => flags = LittleEndianConverter.Convert(value);
         }
 
-        public uint Points
+        public int Points
         {
             get => LittleEndianConverter.Convert(points);
             set => points = LittleEndianConverter.Convert(value);
         }
 
-        public uint FlagPoints
+        public int FlagPoints
         {
             get => LittleEndianConverter.Convert(flagPoints);
             set => flagPoints = LittleEndianConverter.Convert(value);

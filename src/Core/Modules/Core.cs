@@ -396,7 +396,7 @@ namespace SS.Core.Modules
                         {
                             // At this point, the player's stats should be loaded into the stats module since _persist.GetPlayer(...) was called earlier.
                             // Try to load scores into the player's PlayerEntering packet.
-                            _scoreStats.GetScores(player, out int killPoints, out int flagPoints, out short kills, out short deaths);
+                            _scoreStats.GetScores(player, out int killPoints, out int flagPoints, out ushort kills, out ushort deaths);
 
                             player.Packet.KillPoints = killPoints;
                             player.Packet.FlagPoints = flagPoints;

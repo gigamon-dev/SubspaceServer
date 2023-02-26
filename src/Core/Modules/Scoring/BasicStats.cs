@@ -180,7 +180,7 @@ namespace SS.Core.Modules.Scoring
                                 // only reward points if not in a safe zone
                                 if ((player.Position.Status & PlayerPositionStatus.Safezone) != PlayerPositionStatus.Safezone)
                                 {
-                                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, (ulong)points);
+                                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, points);
                                 }
                             }
                             else

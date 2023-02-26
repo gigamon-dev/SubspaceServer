@@ -50,8 +50,6 @@ namespace SS.Core.ComponentInterfaces
         ///<inheritdoc cref="IncrementStat"/>
         void IncrementStat(Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount);
         ///<inheritdoc cref="IncrementStat"/>
-        void IncrementStat(Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount);
-        ///<inheritdoc cref="IncrementStat"/>
         void IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount);
 
         #endregion
@@ -152,8 +150,6 @@ namespace SS.Core.ComponentInterfaces
         /// <inheritdoc cref="IGlobalPlayerStats.IncrementStat"/>
         void IncrementStat(Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount);
         /// <inheritdoc cref="IGlobalPlayerStats.IncrementStat"/>
-        void IncrementStat(Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount);
-        /// <inheritdoc cref="IGlobalPlayerStats.IncrementStat"/>
         void IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount);
 
         #endregion
@@ -220,8 +216,6 @@ namespace SS.Core.ComponentInterfaces
         /// <inheritdoc cref="IGlobalPlayerStats.IncrementStat"/>
         void IncrementStat(Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount);
         /// <inheritdoc cref="IGlobalPlayerStats.IncrementStat"/>
-        void IncrementStat(Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount);
-        /// <inheritdoc cref="IGlobalPlayerStats.IncrementStat"/>
         void IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount);
 
         #endregion
@@ -270,7 +264,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flagPoints">The # of points the player has from flags.</param>
         /// <param name="kills">The # of kills the player has.</param>
         /// <param name="deaths">The # of deaths the player has.</param>
-        void GetScores(Player player, out int killPoints, out int flagPoints, out short kills, out short deaths);
+        void GetScores(Player player, out int killPoints, out int flagPoints, out ushort kills, out ushort deaths);
 
         /// <summary>
         /// Looks players with dirty score stats (basic score stats only, i.e., kill points, flag points, kills, deaths).

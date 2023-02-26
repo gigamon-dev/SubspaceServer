@@ -580,7 +580,7 @@ namespace SS.Core.Modules.Scoring
                 {
                     foreach (Player player in set)
                     {
-                        _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, (ulong)points);
+                        _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, points);
                     }
                 }
 

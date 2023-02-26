@@ -7,6 +7,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules.Scoring
@@ -59,8 +60,8 @@ namespace SS.Core.Modules.Scoring
 
         #region Module members
 
-        [ConfigHelp("Stats", "AdditionalIntervals", ConfigScope.Global, typeof(string), 
-            Description = 
+        [ConfigHelp("Stats", "AdditionalIntervals", ConfigScope.Global, typeof(string),
+            Description =
             $"By default {nameof(Stats)} module tracks intervals: forever, reset, and game. " +
             $"This setting allows tracking of additional intervals.")]
         public bool Load(
@@ -166,21 +167,20 @@ namespace SS.Core.Modules.Scoring
         void IGlobalPlayerStats.IncrementStat(Player player, StatCode<long> statCode, PersistInterval? interval, long amount) => IncrementStat(StatScope.Global, player, statCode, interval, amount);
         void IGlobalPlayerStats.IncrementStat(Player player, StatCode<uint> statCode, PersistInterval? interval, uint amount) => IncrementStat(StatScope.Global, player, statCode, interval, amount);
         void IGlobalPlayerStats.IncrementStat(Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount) => IncrementStat(StatScope.Global, player, statCode, interval, amount);
-        void IGlobalPlayerStats.IncrementStat(Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount) => IncrementStat(StatScope.Global, player, statCode, interval, amount);
-        void IGlobalPlayerStats.IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount) => IncrementTimerStat(StatScope.Global, player, statCode, interval, amount);
+        void IGlobalPlayerStats.IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount) => IncrementStat(StatScope.Global, player, statCode, interval, amount);
 
-        void IGlobalPlayerStats.SetStat(Player player, StatCode<int> statCode, PersistInterval interval, int value) => SetStat(StatScope.Global, player, statCode.StatId, interval, value);
-        void IGlobalPlayerStats.SetStat(Player player, StatCode<long> statCode, PersistInterval interval, long value) => SetStat(StatScope.Global, player, statCode.StatId, interval, value);
-        void IGlobalPlayerStats.SetStat(Player player, StatCode<uint> statCode, PersistInterval interval, uint value) => SetStat(StatScope.Global, player, statCode.StatId, interval, value);
-        void IGlobalPlayerStats.SetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, ulong value) => SetStat(StatScope.Global, player, statCode.StatId, interval, value);
-        void IGlobalPlayerStats.SetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, DateTime value) => SetStat(StatScope.Global, player, statCode.StatId, interval, value);
+        void IGlobalPlayerStats.SetStat(Player player, StatCode<int> statCode, PersistInterval interval, int value) => SetNumberStat(StatScope.Global, player, statCode.StatId, interval, value);
+        void IGlobalPlayerStats.SetStat(Player player, StatCode<long> statCode, PersistInterval interval, long value) => SetNumberStat(StatScope.Global, player, statCode.StatId, interval, value);
+        void IGlobalPlayerStats.SetStat(Player player, StatCode<uint> statCode, PersistInterval interval, uint value) => SetNumberStat(StatScope.Global, player, statCode.StatId, interval, value);
+        void IGlobalPlayerStats.SetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, ulong value) => SetNumberStat(StatScope.Global, player, statCode.StatId, interval, value);
+        void IGlobalPlayerStats.SetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, DateTime value) => SetTimestampStat(StatScope.Global, player, statCode.StatId, interval, value);
         void IGlobalPlayerStats.SetStat(Player player, StatCode<TimeSpan> statCode, PersistInterval interval, TimeSpan value) => SetTimerStat(StatScope.Global, player, statCode.StatId, interval, value);
 
-        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<int> statCode, PersistInterval interval, out int value) => TryGetStat(StatScope.Global, player, statCode.StatId, interval, out value);
-        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<long> statCode, PersistInterval interval, out long value) => TryGetStat(StatScope.Global, player, statCode.StatId, interval, out value);
-        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<uint> statCode, PersistInterval interval, out uint value) => TryGetStat(StatScope.Global, player, statCode.StatId, interval, out value);
-        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, out ulong value) => TryGetStat(StatScope.Global, player, statCode.StatId, interval, out value);
-        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, out DateTime value) => TryGetStat(StatScope.Global, player, statCode.StatId, interval, out value);
+        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<int> statCode, PersistInterval interval, out int value) => TryGetNumberStat(StatScope.Global, player, statCode.StatId, interval, out value);
+        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<long> statCode, PersistInterval interval, out long value) => TryGetNumberStat(StatScope.Global, player, statCode.StatId, interval, out value);
+        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<uint> statCode, PersistInterval interval, out uint value) => TryGetNumberStat(StatScope.Global, player, statCode.StatId, interval, out value);
+        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, out ulong value) => TryGetNumberStat(StatScope.Global, player, statCode.StatId, interval, out value);
+        bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, out DateTime value) => TryGetTimestampStat(StatScope.Global, player, statCode.StatId, interval, out value);
         bool IGlobalPlayerStats.TryGetStat(Player player, StatCode<TimeSpan> statCode, PersistInterval interval, out TimeSpan value) => TryGetTimerStat(StatScope.Global, player, statCode.StatId, interval, out value);
 
         void IGlobalPlayerStats.StartTimer(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval) => StartTimer(StatScope.Global, player, statCode.StatId, interval);
@@ -195,21 +195,20 @@ namespace SS.Core.Modules.Scoring
         void IArenaPlayerStats.IncrementStat(Player player, StatCode<long> statCode, PersistInterval? interval, long amount) => IncrementStat(StatScope.Arena, player, statCode, interval, amount);
         void IArenaPlayerStats.IncrementStat(Player player, StatCode<uint> statCode, PersistInterval? interval, uint amount) => IncrementStat(StatScope.Arena, player, statCode, interval, amount);
         void IArenaPlayerStats.IncrementStat(Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount) => IncrementStat(StatScope.Arena, player, statCode, interval, amount);
-        void IArenaPlayerStats.IncrementStat(Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount) => IncrementStat(StatScope.Arena, player, statCode, interval, amount);
-        void IArenaPlayerStats.IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount) => IncrementTimerStat(StatScope.Arena, player, statCode, interval, amount);
+        void IArenaPlayerStats.IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount) => IncrementStat(StatScope.Arena, player, statCode, interval, amount);
 
-        void IArenaPlayerStats.SetStat(Player player, StatCode<int> statCode, PersistInterval interval, int value) => SetStat(StatScope.Arena, player, statCode.StatId, interval, value);
-        void IArenaPlayerStats.SetStat(Player player, StatCode<long> statCode, PersistInterval interval, long value) => SetStat(StatScope.Arena, player, statCode.StatId, interval, value);
-        void IArenaPlayerStats.SetStat(Player player, StatCode<uint> statCode, PersistInterval interval, uint value) => SetStat(StatScope.Arena, player, statCode.StatId, interval, value);
-        void IArenaPlayerStats.SetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, ulong value) => SetStat(StatScope.Arena, player, statCode.StatId, interval, value);
-        void IArenaPlayerStats.SetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, DateTime value) => SetStat(StatScope.Arena, player, statCode.StatId, interval, value);
+        void IArenaPlayerStats.SetStat(Player player, StatCode<int> statCode, PersistInterval interval, int value) => SetNumberStat(StatScope.Arena, player, statCode.StatId, interval, value);
+        void IArenaPlayerStats.SetStat(Player player, StatCode<long> statCode, PersistInterval interval, long value) => SetNumberStat(StatScope.Arena, player, statCode.StatId, interval, value);
+        void IArenaPlayerStats.SetStat(Player player, StatCode<uint> statCode, PersistInterval interval, uint value) => SetNumberStat(StatScope.Arena, player, statCode.StatId, interval, value);
+        void IArenaPlayerStats.SetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, ulong value) => SetNumberStat(StatScope.Arena, player, statCode.StatId, interval, value);
+        void IArenaPlayerStats.SetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, DateTime value) => SetTimestampStat(StatScope.Arena, player, statCode.StatId, interval, value);
         void IArenaPlayerStats.SetStat(Player player, StatCode<TimeSpan> statCode, PersistInterval interval, TimeSpan value) => SetTimerStat(StatScope.Arena, player, statCode.StatId, interval, value);
 
-        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<int> statCode, PersistInterval interval, out int value) => TryGetStat(StatScope.Arena, player, statCode.StatId, interval, out value);
-        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<long> statCode, PersistInterval interval, out long value) => TryGetStat(StatScope.Arena, player, statCode.StatId, interval, out value);
-        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<uint> statCode, PersistInterval interval, out uint value) => TryGetStat(StatScope.Arena, player, statCode.StatId, interval, out value);
-        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, out ulong value) => TryGetStat(StatScope.Arena, player, statCode.StatId, interval, out value);
-        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, out DateTime value) => TryGetStat(StatScope.Arena, player, statCode.StatId, interval, out value);
+        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<int> statCode, PersistInterval interval, out int value) => TryGetNumberStat(StatScope.Arena, player, statCode.StatId, interval, out value);
+        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<long> statCode, PersistInterval interval, out long value) => TryGetNumberStat(StatScope.Arena, player, statCode.StatId, interval, out value);
+        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<uint> statCode, PersistInterval interval, out uint value) => TryGetNumberStat(StatScope.Arena, player, statCode.StatId, interval, out value);
+        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, out ulong value) => TryGetNumberStat(StatScope.Arena, player, statCode.StatId, interval, out value);
+        bool IArenaPlayerStats.TryGetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, out DateTime value) => TryGetTimestampStat(StatScope.Arena, player, statCode.StatId, interval, out value);
         bool IArenaPlayerStats.TryGetStat(Player player, StatCode<TimeSpan> statCode, PersistInterval interval, out TimeSpan value) => TryGetTimerStat(StatScope.Arena, player, statCode.StatId, interval, out value);
 
         void IArenaPlayerStats.StartTimer(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval) => StartTimer(StatScope.Arena, player, statCode.StatId, interval);
@@ -224,14 +223,13 @@ namespace SS.Core.Modules.Scoring
         void IAllPlayerStats.IncrementStat(Player player, StatCode<long> statCode, PersistInterval? interval, long amount) => IncrementStat(StatScope.All, player, statCode, interval, amount);
         void IAllPlayerStats.IncrementStat(Player player, StatCode<uint> statCode, PersistInterval? interval, uint amount) => IncrementStat(StatScope.All, player, statCode, interval, amount);
         void IAllPlayerStats.IncrementStat(Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount) => IncrementStat(StatScope.All, player, statCode, interval, amount);
-        void IAllPlayerStats.IncrementStat(Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount) => IncrementStat(StatScope.All, player, statCode, interval, amount);
-        void IAllPlayerStats.IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount) => IncrementTimerStat(StatScope.All, player, statCode, interval, amount);
+        void IAllPlayerStats.IncrementStat(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount) => IncrementStat(StatScope.All, player, statCode, interval, amount);
 
-        void IAllPlayerStats.SetStat(Player player, StatCode<int> statCode, PersistInterval interval, int value) => SetStat(StatScope.All, player, statCode.StatId, interval, value);
-        void IAllPlayerStats.SetStat(Player player, StatCode<long> statCode, PersistInterval interval, long value) => SetStat(StatScope.All, player, statCode.StatId, interval, value);
-        void IAllPlayerStats.SetStat(Player player, StatCode<uint> statCode, PersistInterval interval, uint value) => SetStat(StatScope.All, player, statCode.StatId, interval, value);
-        void IAllPlayerStats.SetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, ulong value) => SetStat(StatScope.All, player, statCode.StatId, interval, value);
-        void IAllPlayerStats.SetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, DateTime value) => SetStat(StatScope.All, player, statCode.StatId, interval, value);
+        void IAllPlayerStats.SetStat(Player player, StatCode<int> statCode, PersistInterval interval, int value) => SetNumberStat(StatScope.All, player, statCode.StatId, interval, value);
+        void IAllPlayerStats.SetStat(Player player, StatCode<long> statCode, PersistInterval interval, long value) => SetNumberStat(StatScope.All, player, statCode.StatId, interval, value);
+        void IAllPlayerStats.SetStat(Player player, StatCode<uint> statCode, PersistInterval interval, uint value) => SetNumberStat(StatScope.All, player, statCode.StatId, interval, value);
+        void IAllPlayerStats.SetStat(Player player, StatCode<ulong> statCode, PersistInterval interval, ulong value) => SetNumberStat(StatScope.All, player, statCode.StatId, interval, value);
+        void IAllPlayerStats.SetStat(Player player, StatCode<DateTime> statCode, PersistInterval interval, DateTime value) => SetTimestampStat(StatScope.All, player, statCode.StatId, interval, value);
         void IAllPlayerStats.SetStat(Player player, StatCode<TimeSpan> statCode, PersistInterval interval, TimeSpan value) => SetTimerStat(StatScope.All, player, statCode.StatId, interval, value);
 
         void IAllPlayerStats.StartTimer(Player player, StatCode<TimeSpan> statCode, PersistInterval? interval) => StartTimer(StatScope.All, player, statCode.StatId, interval);
@@ -242,16 +240,16 @@ namespace SS.Core.Modules.Scoring
 
         #region IScoreStats members
 
-        void IScoreStats.GetScores(Player player, out int killPoints, out int flagPoints, out short kills, out short deaths)
+        void IScoreStats.GetScores(Player player, out int killPoints, out int flagPoints, out ushort kills, out ushort deaths)
         {
             IArenaPlayerStats arenaPlayerStats = this;
 
             unchecked
             {
-                killPoints = arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out ulong uKillPoints) ? (int)uKillPoints : default;
-                flagPoints = arenaPlayerStats.TryGetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, out ulong uFlagPoints) ? (int)uFlagPoints : default;
-                kills = arenaPlayerStats.TryGetStat(player, StatCodes.Kills, PersistInterval.Reset, out ulong uKills) ? (short)uKills : default;
-                deaths = arenaPlayerStats.TryGetStat(player, StatCodes.Deaths, PersistInterval.Reset, out ulong uDeaths) ? (short)uDeaths : default;
+                killPoints = arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out long killPointsValue) ? (int)killPointsValue : default;
+                flagPoints = arenaPlayerStats.TryGetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, out long flagPointsValue) ? (int)flagPointsValue : default;
+                kills = arenaPlayerStats.TryGetStat(player, StatCodes.Kills, PersistInterval.Reset, out ulong killsValue) ? (ushort)killsValue : default;
+                deaths = arenaPlayerStats.TryGetStat(player, StatCodes.Deaths, PersistInterval.Reset, out ulong deathsValue) ? (ushort)deathsValue : default;
             }
         }
 
@@ -276,8 +274,8 @@ namespace SS.Core.Modules.Scoring
 
                         int killPoints = 0;
                         int flagPoints = 0;
-                        short kills = 0;
-                        short deaths = 0;
+                        ushort kills = 0;
+                        ushort deaths = 0;
                         bool isDirty = false;
 
                         lock (pd.Lock)
@@ -286,10 +284,10 @@ namespace SS.Core.Modules.Scoring
                             if (stats == null)
                                 continue;
 
-                            GetStatValueAndCheckDirtyInt32(stats, StatCodes.KillPoints, ref killPoints, ref isDirty);
-                            GetStatValueAndCheckDirtyInt32(stats, StatCodes.FlagPoints, ref flagPoints, ref isDirty);
-                            GetStatValueAndCheckDirtyInt16(stats, StatCodes.Kills, ref kills, ref isDirty);
-                            GetStatValueAndCheckDirtyInt16(stats, StatCodes.Deaths, ref deaths, ref isDirty);
+                            GetStatValueAndCheckDirty(stats, StatCodes.KillPoints, ref killPoints, ref isDirty);
+                            GetStatValueAndCheckDirty(stats, StatCodes.FlagPoints, ref flagPoints, ref isDirty);
+                            GetStatValueAndCheckDirty(stats, StatCodes.Kills, ref kills, ref isDirty);
+                            GetStatValueAndCheckDirty(stats, StatCodes.Deaths, ref deaths, ref isDirty);
                         }
 
                         if (isDirty)
@@ -318,33 +316,14 @@ namespace SS.Core.Modules.Scoring
                 _playerData.Unlock();
             }
 
-            static void GetStatValueAndCheckDirtyInt32(SortedDictionary<int, BaseStatInfo> stats, StatCode<ulong> statCode, ref int value, ref bool isDirty)
+            static void GetStatValueAndCheckDirty<TStat, TScore>(SortedDictionary<int, BaseStatInfo> stats, StatCode<TStat> statCode, ref TScore value, ref bool isDirty)
+                where TStat : struct, INumber<TStat> 
+                where TScore : struct, INumber<TScore>
             {
                 if (stats.TryGetValue(statCode.StatId, out BaseStatInfo statInfo)
-                    && statInfo is StatInfo<ulong> longStatInfo)
+                    && statInfo is NumberStatInfo<TStat> longStatInfo)
                 {
-                    unchecked
-                    {
-                        value = (int)longStatInfo.Value;
-                    }
-
-                    if (statInfo.IsDirty)
-                    {
-                        isDirty = true;
-                        statInfo.IsDirty = false;
-                    }
-                }
-            }
-
-            static void GetStatValueAndCheckDirtyInt16(SortedDictionary<int, BaseStatInfo> stats, StatCode<ulong> statCode, ref short value, ref bool isDirty)
-            {
-                if (stats.TryGetValue(statCode.StatId, out BaseStatInfo statInfo)
-                    && statInfo is StatInfo<ulong> longStatInfo)
-                {
-                    unchecked
-                    {
-                        value = (short)longStatInfo.Value;
-                    }
+                    value = TScore.CreateTruncating(longStatInfo.Value);
 
                     if (statInfo.IsDirty)
                     {
@@ -443,7 +422,7 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private void DoStatInfoOperation<T>(StatScope scope, Player player, int statId, PersistInterval? interval, Action<StatInfo<T>> operationCallback) where T : struct, IEquatable<T>
+        private void DoNumberStatOperation<T>(StatScope scope, Player player, int statId, PersistInterval? interval, Action<NumberStatInfo<T>> operationCallback) where T : struct, INumber<T>
         {
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
@@ -455,7 +434,7 @@ namespace SS.Core.Modules.Scoring
                     // all intervals
                     foreach (PersistInterval persistInterval in _intervals)
                     {
-                        DoStatInfoOperation(scope, player, statId, persistInterval, operationCallback);
+                        DoNumberStatOperation(scope, player, statId, persistInterval, operationCallback);
                     }
                 }
                 else
@@ -478,9 +457,9 @@ namespace SS.Core.Modules.Scoring
                 }
             }
 
-            void DoOperation(SortedDictionary<int, BaseStatInfo> stats, int statId, Action<StatInfo<T>> operationCallback)
+            void DoOperation(SortedDictionary<int, BaseStatInfo> stats, int statId, Action<NumberStatInfo<T>> operationCallback)
             {
-                StatInfo<T> statInfo = GetOrCreateStatInfo<T>(stats, statId);
+                NumberStatInfo<T> statInfo = GetOrCreateNumberStat<T>(stats, statId);
                 if (statInfo != null)
                 {
                     operationCallback(statInfo);
@@ -545,62 +524,18 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void IncrementStat(StatScope scope, Player player, StatCode<int> statCode, PersistInterval? interval, int amount)
+        private void IncrementStat<T>(StatScope scope, Player player, StatCode<T> statCode, PersistInterval? interval, T amount) where T : struct, INumber<T>
         {
-            DoStatInfoOperation<int>(scope, player, statCode.StatId, interval, Increment);
+            DoNumberStatOperation<T>(scope, player, statCode.StatId, interval, Increment);
 
-            void Increment(StatInfo<int> statInfo)
+            void Increment(NumberStatInfo<T> statInfo)
             {
                 statInfo.Value += amount;
                 statInfo.IsDirty = true;
             }
         }
 
-        private void IncrementStat(StatScope scope, Player player, StatCode<uint> statCode, PersistInterval? interval, uint amount)
-        {
-            DoStatInfoOperation<uint>(scope, player, statCode.StatId, interval, Increment);
-
-            void Increment(StatInfo<uint> statInfo)
-            {
-                statInfo.Value += amount;
-                statInfo.IsDirty = true;
-            }
-        }
-
-        private void IncrementStat(StatScope scope, Player player, StatCode<long> statCode, PersistInterval? interval, long amount)
-        {
-            DoStatInfoOperation<long>(scope, player, statCode.StatId, interval, Increment);
-
-            void Increment(StatInfo<long> statInfo)
-            {
-                statInfo.Value += amount;
-                statInfo.IsDirty = true;
-            }
-        }
-
-        private void IncrementStat(StatScope scope, Player player, StatCode<ulong> statCode, PersistInterval? interval, ulong amount)
-        {
-            DoStatInfoOperation<ulong>(scope, player, statCode.StatId, interval, Increment);
-
-            void Increment(StatInfo<ulong> statInfo)
-            {
-                statInfo.Value += amount;
-                statInfo.IsDirty = true;
-            }
-        }
-
-        private void IncrementStat(StatScope scope, Player player, StatCode<DateTime> statCode, PersistInterval? interval, TimeSpan amount)
-        {
-            DoStatInfoOperation<DateTime>(scope, player, statCode.StatId, interval, Increment);
-
-            void Increment(StatInfo<DateTime> statInfo)
-            {
-                statInfo.Value += amount;
-                statInfo.IsDirty = true;
-            }
-        }
-
-        private void IncrementTimerStat(StatScope scope, Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount)
+        private void IncrementStat(StatScope scope, Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount)
         {
             DoTimerStatOperation(scope, player, statCode.StatId, interval, Increment);
 
@@ -611,28 +546,66 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private StatInfo<T> GetOrCreateStatInfo<T>(SortedDictionary<int, BaseStatInfo> stats, int statId) where T : struct, IEquatable<T>
+        private NumberStatInfo<T> GetOrCreateNumberStat<T>(SortedDictionary<int, BaseStatInfo> stats, int statId) where T : struct, INumber<T>
         {
-            StatInfo<T> statInfo;
+            NumberStatInfo<T> statInfo;
 
             if (stats.TryGetValue(statId, out BaseStatInfo baseStatInfo))
             {
-                statInfo = baseStatInfo as StatInfo<T>;
+                statInfo = baseStatInfo as NumberStatInfo<T>;
                 if (statInfo == null)
                 {
-                    _logManager.LogM(LogLevel.Error, nameof(Stats), $"Stat {statId} already exists, but is not a {typeof(T).Name}. This is an indication of a programming mistake.");
+                    // Try to convert the stat to the correct type.
+                    if (baseStatInfo is NumberStatInfo<int> int32StatInfo)
+                    {
+                        statInfo = new NumberStatInfo<T>
+                        {
+                            Value = T.CreateTruncating(int32StatInfo.Value)
+                        };
+                    }
+                    else if (baseStatInfo is NumberStatInfo<uint> uint32StatInfo)
+                    {
+                        statInfo = new NumberStatInfo<T>
+                        {
+                            Value = T.CreateTruncating(uint32StatInfo.Value)
+                        };
+                    }
+                    else if (baseStatInfo is NumberStatInfo<long> int64StatInfo)
+                    {
+                        statInfo = new NumberStatInfo<T>
+                        {
+                            Value = T.CreateTruncating(int64StatInfo.Value)
+                        };
+                    }
+                    else if (baseStatInfo is NumberStatInfo<long> uint64StatInfo)
+                    {
+                        statInfo = new NumberStatInfo<T>
+                        {
+                            Value = T.CreateTruncating(uint64StatInfo.Value)
+                        };
+                    }
+
+                    if (statInfo is not null)
+                    {
+                        // Replace the stat with the correct type.
+                        stats[statId] = statInfo;
+                    }
+                    else
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Stats), $"Stat {statId} already exists, but is not a {typeof(T).Name}. This is an indication of a programming mistake.");
+                    }
                 }
             }
             else
             {
-                statInfo = new StatInfo<T>();
+                statInfo = new NumberStatInfo<T>();
                 stats.Add(statId, statInfo);
             }
 
             return statInfo;
         }
 
-        private void SetStat<T>(StatScope scope, Player player, int statId, PersistInterval interval, T value) where T : struct, IEquatable<T>
+        private void SetNumberStat<T>(StatScope scope, Player player, int statId, PersistInterval interval, T value) where T : struct, INumber<T>
         {
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
@@ -656,11 +629,60 @@ namespace SS.Core.Modules.Scoring
 
             void SetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, T value)
             {
-                StatInfo<T> statInfo = GetOrCreateStatInfo<T>(stats, statId);
+                NumberStatInfo<T> statInfo = GetOrCreateNumberStat<T>(stats, statId);
                 if (statInfo != null)
                 {
                     statInfo.Value = value;
                     statInfo.IsDirty = true;
+                }
+            }
+        }
+
+        private void SetTimestampStat(StatScope scope, Player player, int statId, PersistInterval interval, DateTime value)
+        {
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+                return;
+
+            DateTime now = DateTime.UtcNow;
+
+            lock (pd.Lock)
+            {
+                if ((scope & StatScope.Global) == StatScope.Global)
+                {
+                    var stats = GetGlobalStatsByInterval(pd, interval);
+                    if (stats != null)
+                        SetStat(stats, statId, value);
+                }
+
+                if ((scope & StatScope.Arena) == StatScope.Arena)
+                {
+                    var stats = GetArenaStatsByInterval(pd, interval);
+                    if (stats != null)
+                        SetStat(stats, statId, value);
+                }
+            }
+
+            void SetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, DateTime value)
+            {
+                TimestampStatInfo timestampStatInfo;
+                if (stats.TryGetValue(statId, out BaseStatInfo statInfo))
+                {
+                    timestampStatInfo = statInfo as TimestampStatInfo;
+                    if (timestampStatInfo == null)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Stats), $"Attempted to set timer stat {statId}, but it was not a timer.");
+                        return;
+                    }
+
+                    timestampStatInfo.Value = value;
+                }
+                else
+                {
+                    timestampStatInfo = new TimestampStatInfo
+                    {
+                        Value = value
+                    };
+                    stats.Add(statId, timestampStatInfo);
                 }
             }
         }
@@ -711,7 +733,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private bool TryGetStat<T>(StatScope scope, Player player, int statId, PersistInterval interval, out T value) where T : struct, IEquatable<T>
+        private bool TryGetNumberStat<T>(StatScope scope, Player player, int statId, PersistInterval interval, out T value) where T : struct, INumber<T>
         {
             // This method only can return 1 value, so it does not allow a combined scope.
             if (scope != StatScope.Global && scope != StatScope.Arena)
@@ -744,9 +766,55 @@ namespace SS.Core.Modules.Scoring
                 }
 
                 if (stats.TryGetValue(statId, out BaseStatInfo baseStatInfo)
-                    && baseStatInfo is StatInfo<T> statInfo)
+                    && baseStatInfo is NumberStatInfo<T> statInfo)
                 {
                     value = statInfo.Value;
+                    return true;
+                }
+                else
+                {
+                    value = default;
+                    return false;
+                }
+            }
+        }
+
+        private bool TryGetTimestampStat(StatScope scope, Player player, int statId, PersistInterval interval, out DateTime value)
+        {
+            // This method only can return 1 value, so it does not allow a combined scope.
+            if (scope != StatScope.Global && scope != StatScope.Arena)
+                throw new ArgumentException("Only Global or Arena scope are allowed. Combined scopes are not allowed", nameof(scope));
+
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+            {
+                value = default;
+                return false;
+            }
+
+            lock (pd.Lock)
+            {
+                if (scope == StatScope.Global)
+                {
+                    return TryGetStat(GetGlobalStatsByInterval(pd, interval), statId, out value);
+                }
+                else
+                {
+                    return TryGetStat(GetArenaStatsByInterval(pd, interval), statId, out value);
+                }
+            }
+
+            static bool TryGetStat(SortedDictionary<int, BaseStatInfo> stats, int statId, out DateTime value)
+            {
+                if (stats == null)
+                {
+                    value = default;
+                    return false;
+                }
+
+                if (stats.TryGetValue(statId, out BaseStatInfo baseStatInfo)
+                    && baseStatInfo is TimestampStatInfo timestampStatInfo)
+                {
+                    value = timestampStatInfo.Value;
                     return true;
                 }
                 else
@@ -837,6 +905,8 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
+        #region Persist methods
+
         private void GetPersistData(Player player, Stream outStream, (PersistInterval Interval, PersistScope Scope) state)
         {
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -862,35 +932,35 @@ namespace SS.Core.Modules.Scoring
                 foreach ((int key, BaseStatInfo baseStatInfo) in stats)
                 {
                     // TODO: add logic for the other integer encodings (based on sign and value), might save some space?
-                    if (baseStatInfo is StatInfo<int> intStatInfo)
+                    if (baseStatInfo is NumberStatInfo<int> intStatInfo)
                     {
                         playerStats.StatMap.Add(
                             key,
                             new SSProto.StatInfo() { Int32Value = intStatInfo.Value });
                     }
-                    else if (baseStatInfo is StatInfo<uint> uintStatInfo)
+                    else if (baseStatInfo is NumberStatInfo<uint> uintStatInfo)
                     {
                         playerStats.StatMap.Add(
                             key,
                             new SSProto.StatInfo() { Uint32Value = uintStatInfo.Value });
                     }
-                    else if (baseStatInfo is StatInfo<long> longStatInfo)
+                    else if (baseStatInfo is NumberStatInfo<long> longStatInfo)
                     {
                         playerStats.StatMap.Add(
                             key,
                             new SSProto.StatInfo() { Int64Value = longStatInfo.Value });
                     }
-                    else if (baseStatInfo is StatInfo<ulong> ulongStatInfo)
+                    else if (baseStatInfo is NumberStatInfo<ulong> ulongStatInfo)
                     {
                         playerStats.StatMap.Add(
                             key,
                             new SSProto.StatInfo() { Uint64Value = ulongStatInfo.Value });
                     }
-                    else if (baseStatInfo is StatInfo<DateTime> dateTimeStatInfo)
+                    else if (baseStatInfo is TimestampStatInfo timestampStatInfo)
                     {
                         playerStats.StatMap.Add(
                             key,
-                            new SSProto.StatInfo() { Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(dateTimeStatInfo.Value) });
+                            new SSProto.StatInfo() { Timestamp = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(timestampStatInfo.Value) });
                     }
                     else if (baseStatInfo is TimerStatInfo timerStatInfo)
                     {
@@ -946,51 +1016,64 @@ namespace SS.Core.Modules.Scoring
                 {
                     if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int32Value)
                     {
-                        stats[key] = new StatInfo<int>() { Value = pStatInfo.Int32Value };
+                        stats[key] = new NumberStatInfo<int>() { Value = pStatInfo.Int32Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Uint32Value)
                     {
-                        stats[key] = new StatInfo<uint>() { Value = pStatInfo.Uint32Value };
+                        stats[key] = new NumberStatInfo<uint>() { Value = pStatInfo.Uint32Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Int64Value)
                     {
-                        stats[key] = new StatInfo<long>() { Value = pStatInfo.Int64Value };
+                        stats[key] = new NumberStatInfo<long>() { Value = pStatInfo.Int64Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Uint64Value)
                     {
-                        stats[key] = new StatInfo<ulong>() { Value = pStatInfo.Uint64Value };
+                        stats[key] = new NumberStatInfo<ulong>() { Value = pStatInfo.Uint64Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sint32Value)
                     {
-                        stats[key] = new StatInfo<int>() { Value = pStatInfo.Sint32Value };
+                        stats[key] = new NumberStatInfo<int>() { Value = pStatInfo.Sint32Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sint64Value)
                     {
-                        stats[key] = new StatInfo<long>() { Value = pStatInfo.Sint64Value };
+                        stats[key] = new NumberStatInfo<long>() { Value = pStatInfo.Sint64Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Fixed32Value)
                     {
-                        stats[key] = new StatInfo<uint>() { Value = pStatInfo.Fixed32Value };
+                        stats[key] = new NumberStatInfo<uint>() { Value = pStatInfo.Fixed32Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Fixed64Value)
                     {
-                        stats[key] = new StatInfo<ulong>() { Value = pStatInfo.Fixed64Value };
+                        stats[key] = new NumberStatInfo<ulong>() { Value = pStatInfo.Fixed64Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sfixed32Value)
                     {
-                        stats[key] = new StatInfo<int>() { Value = pStatInfo.Sfixed32Value };
+                        stats[key] = new NumberStatInfo<int>() { Value = pStatInfo.Sfixed32Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Sfixed64Value)
                     {
-                        stats[key] = new StatInfo<long>() { Value = pStatInfo.Sfixed64Value };
+                        stats[key] = new NumberStatInfo<long>() { Value = pStatInfo.Sfixed64Value };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Timestamp)
                     {
-                        stats[key] = new StatInfo<DateTime>() { Value = pStatInfo.Timestamp.ToDateTime() };
+                        stats[key] = new TimestampStatInfo() { Value = pStatInfo.Timestamp.ToDateTime() };
                     }
                     else if (pStatInfo.StatInfoCase == SSProto.StatInfo.StatInfoOneofCase.Duration)
                     {
                         stats[key] = new TimerStatInfo(pStatInfo.Duration.ToTimeSpan());
+                    }
+
+                    // Older versions of saved KillPoints and FlagPoints as an UInt64. It was later changed to be an Int64.
+                    // This is a hacky workaround for switching the type and being compatible with existing records.
+                    if (key == StatCodes.KillPoints.StatId || key == StatCodes.FlagPoints.StatId)
+                    {
+                        if (stats[key] is NumberStatInfo<ulong> uint64Stat)
+                        {
+                            stats[key] = new NumberStatInfo<long>()
+                            {
+                                Value = (long)uint64Stat.Value
+                            };
+                        }
                     }
                 }
             }
@@ -1019,6 +1102,10 @@ namespace SS.Core.Modules.Scoring
                 }
             }
         }
+
+        #endregion
+
+        #region Commands
 
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.None,
@@ -1055,7 +1142,7 @@ namespace SS.Core.Modules.Scoring
                     {
                         _chat.SendMessage(player, $"Invalid interval");
                         return;
-                    }                    
+                    }
                 }
             }
 
@@ -1067,14 +1154,14 @@ namespace SS.Core.Modules.Scoring
                     PersistScope.Global => GetGlobalStatsByInterval(pd, interval),
                     _ => null,
                 };
-            
+
                 if (stats == null)
                     return;
 
-                _chat.SendMessage(player, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != player ? targetPlayer.Name : "you" )}:");
+                _chat.SendMessage(player, $"The server is keeping track of the following {(scope == PersistScope.Global ? "Global" : "Arena")} {interval} stats about {(targetPlayer != player ? targetPlayer.Name : "you")}:");
 
                 DateTime now = DateTime.UtcNow;
-            
+
                 foreach ((int statId, BaseStatInfo baseStatinfo) in stats)
                 {
                     string statName = null;
@@ -1086,40 +1173,40 @@ namespace SS.Core.Modules.Scoring
                             break;
                     }
 
-                    if (baseStatinfo is StatInfo<int> intStatInfo)
+                    if (baseStatinfo is NumberStatInfo<int> intStatInfo)
                     {
                         if (string.IsNullOrWhiteSpace(statName))
                             _chat.SendMessage(player, $"  {statId}: {intStatInfo.Value}");
                         else
                             _chat.SendMessage(player, $"  {statName}: {intStatInfo.Value}");
                     }
-                    else if (baseStatinfo is StatInfo<uint> uintStatInfo)
+                    else if (baseStatinfo is NumberStatInfo<uint> uintStatInfo)
                     {
                         if (string.IsNullOrWhiteSpace(statName))
                             _chat.SendMessage(player, $"  {statId}: {uintStatInfo.Value}");
                         else
                             _chat.SendMessage(player, $"  {statName}: {uintStatInfo.Value}");
                     }
-                    else if (baseStatinfo is StatInfo<long> longStatInfo)
+                    else if (baseStatinfo is NumberStatInfo<long> longStatInfo)
                     {
                         if (string.IsNullOrWhiteSpace(statName))
                             _chat.SendMessage(player, $"  {statId}: {longStatInfo.Value}");
                         else
                             _chat.SendMessage(player, $"  {statName}: {longStatInfo.Value}");
                     }
-                    else if (baseStatinfo is StatInfo<ulong> ulongStatInfo)
+                    else if (baseStatinfo is NumberStatInfo<ulong> ulongStatInfo)
                     {
                         if (string.IsNullOrWhiteSpace(statName))
                             _chat.SendMessage(player, $"  {statId}: {ulongStatInfo.Value}");
                         else
                             _chat.SendMessage(player, $"  {statName}: {ulongStatInfo.Value}");
                     }
-                    else if (baseStatinfo is StatInfo<DateTime> dateTimeStatInfo)
+                    else if (baseStatinfo is TimestampStatInfo timestampStatInfo)
                     {
                         if (string.IsNullOrWhiteSpace(statName))
-                            _chat.SendMessage(player, $"  {statId}: {dateTimeStatInfo.Value}");
+                            _chat.SendMessage(player, $"  {statId}: {timestampStatInfo.Value}");
                         else
-                            _chat.SendMessage(player, $"  {statName}: {dateTimeStatInfo.Value}");
+                            _chat.SendMessage(player, $"  {statName}: {timestampStatInfo.Value}");
                     }
                     else if (baseStatinfo is TimerStatInfo timerStatInfo)
                     {
@@ -1131,6 +1218,10 @@ namespace SS.Core.Modules.Scoring
                 }
             }
         }
+
+        #endregion
+
+        #region Callbacks
 
         private void Callback_PersistIntervalEnded(PersistInterval interval, string arenaGroup)
         {
@@ -1173,6 +1264,8 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
+        #endregion
+
         private static SortedDictionary<int, BaseStatInfo> GetArenaStatsByInterval(PlayerData pd, PersistInterval interval)
         {
             if (pd == null)
@@ -1194,6 +1287,8 @@ namespace SS.Core.Modules.Scoring
             else
                 return null;
         }
+
+        #region Helper types
 
         [Flags]
         private enum StatScope
@@ -1245,13 +1340,26 @@ namespace SS.Core.Modules.Scoring
             public abstract void Clear();
         }
 
-        private class StatInfo<T> : BaseStatInfo where T : struct, IEquatable<T>
+        private class NumberStatInfo<T> : BaseStatInfo where T : struct, INumber<T>
         {
             public T Value { get; set; }
 
             public override void Clear()
             {
-                if (!Value.Equals(default(T)))
+                if (!Value.Equals(default))
+                    IsDirty = true;
+
+                Value = default;
+            }
+        }
+
+        private class TimestampStatInfo : BaseStatInfo
+        {
+            public DateTime Value { get; set; }
+
+            public override void Clear()
+            {
+                if (!Value.Equals(default))
                     IsDirty = true;
 
                 Value = default;
@@ -1333,5 +1441,7 @@ namespace SS.Core.Modules.Scoring
                 Reset();
             }
         }
+
+        #endregion
     }
 }

@@ -63,8 +63,8 @@ namespace SS.Packets.Game
         private int flagPoints;
         private short playerId;
         private short freq;
-        private short wins;
-        private short losses;
+        private ushort wins;
+        private ushort losses;
         private short attachedTo;
         private short flagsCarried;
         private byte miscBitfield;
@@ -111,13 +111,13 @@ namespace SS.Packets.Game
             set { freq = LittleEndianConverter.Convert(value); }
         }
 
-        public short Wins
+        public ushort Wins
         {
             get { return LittleEndianConverter.Convert(wins); }
             set { wins = LittleEndianConverter.Convert(value); }
         }
 
-        public short Losses
+        public ushort Losses
         {
             get { return LittleEndianConverter.Convert(losses); }
             set { losses = LittleEndianConverter.Convert(value); }

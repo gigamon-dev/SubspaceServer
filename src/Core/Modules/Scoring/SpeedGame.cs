@@ -161,7 +161,7 @@ namespace SS.Core.Modules.Scoring
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = player;
 
-            if (_arenaPlayerStats.TryGetStat(targetPlayer, StatCodes.SpeedPersonalBest, PersistInterval.Forever, out uint points))
+            if (_arenaPlayerStats.TryGetStat(targetPlayer, StatCodes.SpeedPersonalBest, PersistInterval.Forever, out int points))
             {
                 if (targetPlayer == player)
                     _chat.SendMessage(player, $"Your personal best: {points}");
@@ -222,7 +222,7 @@ namespace SS.Core.Modules.Scoring
                 for (int i = start; i <= end && i < ad.Rank.Count; i++)
                 {
                     Player otherPlayer = ad.Rank[i];
-                    if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out ulong otherKillPoints))
+                    if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out long otherKillPoints))
                         continue; // shouldn't happen
 
                     _chat.SendMessage(player, $"#{i+1} {otherKillPoints,6} {otherPlayer.Name}");
@@ -378,10 +378,10 @@ namespace SS.Core.Modules.Scoring
                     for (int i = 0; i < 5 && i < ad.Rank.Count; i++)
                     {
                         Player player = ad.Rank[i];
-                        if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out ulong killPoints))
+                        if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out long killPoints))
                             killPoints = 0; // this shouldn't happen
 
-                        packet.SetPlayerScore(i, (short)player.Id, (uint)killPoints);
+                        packet.SetPlayerScore(i, (short)player.Id, (int)killPoints);
                     }
 
                     // Send the packet to each player in the arena, with personal stats.
@@ -396,15 +396,15 @@ namespace SS.Core.Modules.Scoring
 
                             bool isPersonalBest = false;
                             int rank = ad.Rank.IndexOf(player) + 1;
-                            uint score = 0;
+                            int score = 0;
 
                             if (rank > 0
-                                && _arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out ulong killPoints)
+                                && _arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out long killPoints)
                                 && killPoints > 0)
                             {
-                                score = (uint)killPoints;
+                                score = (int)killPoints;
 
-                                bool hasPreviousBest = _arenaPlayerStats.TryGetStat(player, StatCodes.SpeedPersonalBest, PersistInterval.Forever, out uint personalBest);
+                                bool hasPreviousBest = _arenaPlayerStats.TryGetStat(player, StatCodes.SpeedPersonalBest, PersistInterval.Forever, out int personalBest);
 
                                 isPersonalBest = !hasPreviousBest || (hasPreviousBest && score >= personalBest);
 
@@ -467,7 +467,7 @@ namespace SS.Core.Modules.Scoring
             if (ad.GameState != GameState.Running)
                 return -1;
 
-            if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out ulong killPoints) || killPoints == 0)
+            if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out long killPoints) || killPoints == 0)
                 return -1; // no points yet, not ranked
 
             int index = ad.Rank.IndexOf(player);
@@ -486,7 +486,7 @@ namespace SS.Core.Modules.Scoring
                 for (int i = ad.Rank.Count - 1; i >= 0; i--)
                 {
                     Player otherPlayer = ad.Rank[i];
-                    if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out ulong otherKillPoints))
+                    if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out long otherKillPoints))
                         continue; // this shouldn't happen
 
                     if (otherKillPoints >= killPoints)
@@ -507,7 +507,7 @@ namespace SS.Core.Modules.Scoring
                 for (int i = index - 1; i >= 0; i--)
                 {
                     Player otherPlayer = ad.Rank[i];
-                    if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out ulong otherKillPoints))
+                    if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out long otherKillPoints))
                         continue; // this shouldn't happen
 
                     if (killPoints > otherKillPoints)

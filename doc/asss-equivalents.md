@@ -22,7 +22,7 @@ This document provides an overview of the various server parts and their relatio
 | billing_ssc | SS.Core.Modules.BillingUdp | |
 | bricks | SS.Core.Modules.Bricks | TODO: additional brick modes |
 | funky:brickwriter | - |  No plans to add it.  |
-| buy | | TODO: Low priority. |
+| buy | SS.Core.Modules.Buy | |
 | bw_default | SS.Core.Modules.BandwidthDefault | |
 | bw_nolimit | SS.Core.Modules.BandwidthNoLimit | |
 | capman | SS.Core.Modules.CapabilityManager | |
