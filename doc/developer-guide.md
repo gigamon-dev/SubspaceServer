@@ -22,7 +22,7 @@ That tells the server to load the `Prng` (Pseudo-random number generator module)
 
 The other form is for modules in separate plug-in assemblies. In other words, this is what you would use to extend functionality. Here's an example of what loading a plug-in module looks like:
 ```xml
-<module type="TurfReward.TurfModule" path="bin/modules/TurfReward/TurfReward.dll" />
+<module type="SS.Replay.ReplayModule" path="bin/modules/Replay/SS.Replay.dll" />
 ```
 Notice that it doesn't include the assembly name in the *type* attribute. Rather, it has a *path* attribute which contains the path of the assembly to load.  Also notice the path is within "bin/modules". That is where you put your own plug-in assemblies containing your custom modules.
 
@@ -32,7 +32,7 @@ Notice that it doesn't include the assembly name in the *type* attribute. Rather
 
 > **Tip:** For those new to .NET plugins, it is recommended you read the [.NET documentation](https://docs.microsoft.com/en-us/dotnet/core/tutorials/creating-app-with-plugin-support) about it.
 
-> For an example of a plugin project, see [TurfReward](../src/TurfReward/TurfReward.csproj).
+> For an example of a plugin project, see the [Replay module](../src/Replay/Replay.csproj) or the [MatchMaking module](../src/Matchmaking/Matchmaking.csproj).
 
 First, create a new class library project and add a reference the [Core](../src/Core/Core.csproj) asssembly
 
@@ -152,7 +152,7 @@ Normally, there is only one implementation of an Component Interface. However, i
 
 ### Getting a Component Interface
 
-First and foremost, you'll probably want to access the interfaces of other parts that are built into the server. So you'll need to know which interface you want. You can find the available built-in interfaces in the [SS.Core.IComponentInterfaces](../src/Core/ComponentInterfaces) namespace. Also, for a listing see the [ASSS Equivalents](asss-equivalents.md) document.
+First and foremost, you'll probably want to access the interfaces of other parts that are built into the server. So you'll need to know which interface you want. You can find the available built-in interfaces in the [SS.Core.ComponentInterfaces](../src/Core/ComponentInterfaces) namespace. Also, for a listing see the [ASSS Equivalents](asss-equivalents.md) document.
 
 Getting the currently registered instance implementing a Component Interface can be done in two ways:
 - Inject required Component Interface dependencies into your module's `Load` method.
@@ -690,9 +690,47 @@ The `Arena` class is another type widely used within the server. As you've alrea
 - If a module implements the `IDisposable` interface, the server will call the `Dispose` method after the module is unloaded.
 - If the class provided for Per-Player Data or Per-Arena Data implements the `IDisposable` interface, the server handles calling the `Dispose` method before the object is dropped from use.
 
-## Object Pooling
-As you probably already know, is very easy to allocate memory on the heap in .NET. However, those allocations come at a cost. When the references to that memory go out of scope, it's up to the garbage collector to clean up. Garbage collection takes time. In a real-time video game, having a delay can be very bad. Yes, this is the server-side, but any delay is going to seen as lag. Therefore, memory allocations and garbage collection are of a concern.
+## Threading
+The server is a multithreaded application. However, for the most part, your module's logic will be running on the mainloop thread. The mainloop thread is the thread that the majority of the server's logic runs on. 
 
+> The actual loop logic of the mainloop thread is in the Mainloop module.
+
+The module methods (`Load`, `Unload`, `PostLoad`, `PreUnload`, `AttachModule`, `DetachModule`) are called on the mainloop thread. Also, the built-in component callbacks are fired on the mainloop thread.
+
+> When firing your own callbacks, it is recommended to invoke them on the mainloop thread as well for consistency. 
+
+It is crucial that any logic processed on the mainloop thread not block execution. If your module needs to perform any blocking I/O (file access, database access, call a REST service, etc.), it needs to be done on a worker thread. The `IMainloop.QueueThreadPoolWorkItem` method provides a wrapper to `ThreadPool.QueueUserWorkItem`, which can be used to transition execution to a worker thread.
+
+> `IMainloop.IsMainloop` can be used to check whether you're on the mainloop thread.
+
+> **Design note:** It is also possible to use `Task`, `Task<T>`, and `async` / `await`. However, keep in mind that `Task` and `Task<T>` are reference types allocated on the heap. Therefore, much of the server's logic stays away from this to reduce allocations and potential garbage collections.
+
+When on a worker thread use `IMainloop.QueueMainWorkItem` to transition execution back to the mainloop thread. You should switch back to the mainloop thread if your logic needs to access the interface of another component, as most modules expect to only be called on the mainloop thread. However, there are exceptions. The following are safe to call from worker threads: 
+- `ILogManager` Log methods
+- `IChat` Send methods
+- `INetwork` Send methods
+- TODO: Add better documentation on thread-safe interface methods.
+
+### Synchronization
+The server executes a lot of logic on the mainloop thread. This is a trick that it uses to synchronize logic rather than have to deal with locking to protect data shared between multiple threads. If only the mainloop thread ever accesses a piece of data, then it's not shared data and therefore no locking is required. On top of that fact, the mainloop acts as the defining order of the game state. It simply executes queued work items and timers in their proper order. The order that they are processed is the order that it considers things to have occured.
+
+When data is shared between multiple threads, standard synchronization techniques must be used, such as locking. `Player` and `Arena` objects are the two most common types used thoughout the server. Multiple threads read and write to these objects. The `IPlayerData` interface and `IArenaManager` interface each expose collections of `Player` and `Arena` objects respectively. For synchronization, these interfaces provide Lock and Unlock methods that need to be called while accessing the collections.
+
+> The server uses the Lock and Unlock methods of the `IPlayerData` and `IArenaManager` interfaces to synchronize not just access to the collections, but also that of certain data within the `Player` and `Arena` objects. For example, `Player.Status`.
+
+## Performance, allocations, and garbage collection
+It is very easy to allocate memory on the heap in .NET. However, those allocations come at a cost. When the references to that memory go out of scope, it's up to the garbage collector to clean up. Garbage collection takes time. In a real-time video game, having a delay can be very bad. Yes, this is the server-side, but any delay is going to seen as lag. Therefore, memory allocations and garbage collection are of a concern.
+
+## String allocations
+It is highly recommended that when writing code for the server, that attention be made to not allocate strings when possible. A lot of effort has been put into reducing allocations of string objects. In fact, the main remaining places that string objects are allocated are: player names and arena names.
+
+The server extensively uses `Span<char>` and `ReadOnlySpan<char>` throughout, many times in conjuction with `stackalloc`. For example, even when a chat packet is received, no string objects are allocated to process it.
+
+Additionally, `IChat` and `ILogManager` provide method overloads with interpolated string handlers. Underneath the scenes, the interpolated string handlers use pooled `StringBuilder` objects. Therefore, when you call those methods with an interpolated string, there are no string allocations.
+
+The `SS.Utilties.Trie` and `SS.Utilties.Trie<TValue>` classes provide a replacement for where a string keyed `Dictionary` would normally have been used. There currently is no way to search a string keyed `Dictionary` with a `ReadOnlySpan<char>`; a string object is required. The `SS.Utilties.Trie` and `SS.Utilties.Trie<TValue>` classes provide similar functionality as a string keyed `Dictionary`, but with methods that accept `ReadOnlySpan<char>`. As their name implies, they use an implementation of the trie data structure.
+
+## Object Pooling
 Object pooling is a technique in which objects can be reused. The basic idea behind it is that a pool of objects is maintained. This pool is used such that when an object is needed, it will try to get one from the pool, rather than allocate a new one. And when an object is no longer needed, it can be returned to the pool so that it can be reused later on.
 
 > **Fun fact:** ASSS does pooling too, even though it is in C which doesn't have garbage collection. The ASSS 'net' module keeps a pool of data buffers, so that it doesn't need to allocate memory every time it needs to send or receive data.
