@@ -70,7 +70,7 @@ This document provides an overview of the various server parts and their relatio
 | mysql | - | No plans to add it. |
 | net | SS.Core.Modules.Network | |
 | notify | SS.Core.Module.Notify | |
-| objects | SS.Core.Modules.LvzObjects | TODO: currently toggle functionality only |
+| objects | SS.Core.Modules.LvzObjects | |
 | obscene | SS.Core.Modules.Obscene | |
 | peer | SS.Core.Modules.Peer | |
 | scoring:periodic | SS.Core.Modules.Scoring.PeriodicReward | |

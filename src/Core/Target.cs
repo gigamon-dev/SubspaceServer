@@ -105,7 +105,7 @@ namespace SS.Core
     {
         private class BasicTarget : ITarget
         {
-            private TargetType _type;
+            private readonly TargetType _type;
 
             public BasicTarget(TargetType type)
             {

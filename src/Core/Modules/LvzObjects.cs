@@ -5,13 +5,10 @@ using SS.Core.Map.Lvz;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -38,7 +35,7 @@ namespace SS.Core.Modules
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private NonTransientObjectPool<LvzData> _lvzDataObjectPool = new(new LvzDataPooledObjectPolicy());
+        private readonly NonTransientObjectPool<LvzData> _lvzDataObjectPool = new(new LvzDataPooledObjectPolicy());
 
         #region Module members
 
@@ -79,12 +76,15 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("objon", Command_objon);
             _commandManager.AddCommand("objoff", Command_objoff);
             _commandManager.AddCommand("objset", Command_objset);
+            _commandManager.AddCommand("objmove", Command_objmove);
+            _commandManager.AddCommand("objimage", Command_objimage);
+            _commandManager.AddCommand("objlayer", Command_objlayer);
+            _commandManager.AddCommand("objtimer", Command_objtimer);
+            _commandManager.AddCommand("objmode", Command_objmode);
             _commandManager.AddCommand("objinfo", Command_objinfo);
             _commandManager.AddCommand("objlist", Command_objlist);
 
             _interfaceRegistrationToken = broker.RegisterInterface<ILvzObjects>(this);
-
-            
 
             return true;
         }
@@ -96,6 +96,11 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("objon", Command_objon);
             _commandManager.RemoveCommand("objoff", Command_objoff);
             _commandManager.RemoveCommand("objset", Command_objset);
+            _commandManager.RemoveCommand("objmove", Command_objmove);
+            _commandManager.RemoveCommand("objimage", Command_objimage);
+            _commandManager.RemoveCommand("objlayer", Command_objlayer);
+            _commandManager.RemoveCommand("objtimer", Command_objtimer);
+            _commandManager.RemoveCommand("objmode", Command_objmode);
             _commandManager.RemoveCommand("objinfo", Command_objinfo);
             _commandManager.RemoveCommand("objlist", Command_objlist);
 
@@ -116,47 +121,269 @@ namespace SS.Core.Modules
 
         void ILvzObjects.SendState(Player player)
         {
-            SendState(player);
+            if (player is null)
+                return;
+
+            if (player.Arena is null)
+                return;
+
+            if (!player.Arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                return;
+
+            lock (arenaData.Lock)
+            {
+                // Continuum supports 0x35 (Toggle object) packets and 0x36 (Move object) packets up to a maximum of 2048 bytes.
+                Span<byte> packetBytes = stackalloc byte[2048];
+
+                //
+                // Toggles
+                //
+
+                packetBytes[0] = (byte)S2CPacketType.ToggleLVZ;
+                Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(packetBytes[1..]);
+                int index = 0;
+
+                foreach (LvzData lvzData in arenaData.List)
+                {
+                    if (!lvzData.Off)
+                    {
+                        if (index >= toggleSpan.Length)
+                        {
+                            _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+                            index = 0;
+                        }
+
+                        toggleSpan[index++] = new LvzObjectToggle(lvzData.Default.Id, false);
+                    }
+                }
+
+                if (index > 0)
+                {
+                    _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+                }
+
+                //
+                // Changes
+                //
+
+                packetBytes[0] = (byte)S2CPacketType.ChangeLVZ;
+                Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(packetBytes[1..]);
+                index = 0;
+
+                foreach (LvzData lvzData in arenaData.List)
+                {
+                    ObjectChange change = ObjectData.CalculateChange(ref lvzData.Default, ref lvzData.Current);
+                    if (change.Value != 0)
+                    {
+                        if (index >= changeSpan.Length)
+                        {
+                            _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectChange.Length)], NetSendFlags.Reliable);
+                            index = 0;
+                        }
+
+                        changeSpan[index++] = new LvzObjectChange(change, lvzData.Current);
+                    }
+                }
+
+                if (index > 0)
+                {
+                    _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectChange.Length)], NetSendFlags.Reliable);
+                }
+            }
         }
 
         void ILvzObjects.Toggle(ITarget target, short id, bool isEnabled)
         {
-            Toggle(target, id, isEnabled);
+            if (target is null)
+                return;
+
+            ReadOnlySpan<LvzObjectToggle> toggleSpan = stackalloc LvzObjectToggle[1] { new LvzObjectToggle(id, isEnabled) };
+            ((ILvzObjects)this).ToggleSet(target, toggleSpan);
         }
 
-        void ILvzObjects.ToggleSet(ITarget target, ReadOnlySpan<LvzToggle> set)
+        void ILvzObjects.ToggleSet(ITarget target, ReadOnlySpan<LvzObjectToggle> set)
         {
-            ToggleSet(target, set);
+            if (target is null)
+                return;
+
+            if (set.IsEmpty)
+                return;
+
+            ArenaData arenaData = null;
+            if (target.TryGetArenaTarget(out Arena arena))
+            {
+                arena.TryGetExtraData(_adKey, out arenaData);
+            }
+
+            // Continuum supports 0x35 (Toggle LVZ) packets up to a maximum of 2048 bytes.
+            Span<byte> packetBytes = stackalloc byte[int.Clamp(1 + 2 * set.Length, 3, 2048)];
+            packetBytes[0] = (byte)S2CPacketType.ToggleLVZ;
+            Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(packetBytes[1..]);
+            int index = 0;
+
+            foreach (ref readonly LvzObjectToggle toggle in set)
+            {
+                if (index >= toggleSpan.Length)
+                {
+                    _network.SendToTarget(target, packetBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+                    index = 0;
+                }
+
+                toggleSpan[index++] = toggle;
+
+                if (arena is not null && arenaData is not null)
+                {
+                    UpdateArenaToggleTracking(arena, arenaData, toggle.Id, toggle.IsEnabled);
+                }
+            }
+
+            if (index > 0)
+            {
+                _network.SendToTarget(target, packetBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+            }
         }
 
-        void ILvzObjects.Move(ITarget target, int id, int x, int y, int rx, int ry)
+        void ILvzObjects.SetPosition(ITarget target, short id, short x, short y, ScreenOffset offsetX, ScreenOffset offsetY)
         {
-            
+            ChangeObject(target, id, SetPosition);
+
+            void SetPosition(ref LvzObjectChange objectChange)
+            {
+                objectChange.Change.Position = true;
+
+                if (objectChange.Data.IsMapObject)
+                {
+                    objectChange.Data.MapX = SanitizeMapCoord(x);
+                    objectChange.Data.MapY = SanitizeMapCoord(y);
+                }
+                else
+                {
+                    objectChange.Data.ScreenX = x;
+                    objectChange.Data.ScreenY = y;
+                    objectChange.Data.ScreenXOffset = offsetX;
+                    objectChange.Data.ScreenYOffset = offsetY;
+                }
+            }
+
+            // Makes sure the position LVZ is within the map
+            static short SanitizeMapCoord(short coord)
+            {
+                // 1024 * 16 - 1 = 16383
+                return short.Clamp(coord, 0, 16383);
+            }
         }
 
-        void ILvzObjects.Image(ITarget target, int id, int image)
+        void ILvzObjects.SetImage(ITarget target, short id, byte imageId)
         {
-            
+            ChangeObject(target, id, SetImage);
+
+            void SetImage(ref LvzObjectChange objectChange)
+            {
+                objectChange.Change.Image = true;
+                objectChange.Data.ImageId = imageId;
+            }
         }
 
-        void ILvzObjects.Layer(ITarget target, int id, int layer)
+        void ILvzObjects.SetLayer(ITarget target, short id, DisplayLayer layer)
         {
-            
+            ChangeObject(target, id, SetLayer);
+
+            void SetLayer(ref LvzObjectChange objectChange)
+            {
+                objectChange.Change.Layer = true;
+                objectChange.Data.Layer = layer;
+            }
         }
 
-        void ILvzObjects.Timer(ITarget target, int id, int time)
+        void ILvzObjects.SetTimer(ITarget target, short id, ushort time)
         {
-            
+            ChangeObject(target, id, SetTimer);
+
+            void SetTimer(ref LvzObjectChange objectChange)
+            {
+                objectChange.Change.Time = true;
+                objectChange.Data.Time = time;
+            }
         }
 
-        void ILvzObjects.Mode(ITarget target, int id, int mode)
+        void ILvzObjects.SetMode(ITarget target, short id, DisplayMode mode)
         {
-            
+            ChangeObject(target, id, SetMode);
+
+            void SetMode(ref LvzObjectChange objectChange)
+            {
+                objectChange.Change.Mode = true;
+                objectChange.Data.Mode = mode;
+            }
         }
 
-        void ILvzObjects.Reset(Arena arena, int id)
+        void ILvzObjects.Reset(Arena arena, short id)
         {
-            
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                return;
+
+            lock (arenaData.Lock)
+            {
+                LvzData lvzData = arenaData.GetObjectData(id);
+                if (lvzData is null)
+                    return;
+
+                lvzData.Current = lvzData.Default;
+            }
+
+            ((ILvzObjects)this).Toggle(arena, id, false);
+        }
+
+        bool ILvzObjects.TryGetDefaultInfo(Arena arena, short id, out bool isEnabled, out ObjectData objectData)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            {
+                isEnabled = default;
+                objectData = default;
+                return false;
+            }
+
+            lock (arenaData.Lock)
+            {
+                LvzData lvzData = arenaData.GetObjectData(id);
+                if (lvzData is not null)
+                {
+                    isEnabled = !lvzData.Off;
+                    objectData = lvzData.Default;
+                    return true;
+                }
+            }
+
+            // Not found
+            isEnabled = default;
+            objectData = default;
+            return false;
+        }
+
+        bool ILvzObjects.TryGetCurrentInfo(Arena arena, short id, out bool isEnabled, out ObjectData objectData)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            {
+                isEnabled = default;
+                objectData = default;
+                return false;
+            }
+
+            lock (arenaData.Lock)
+            {
+                LvzData lvzData = arenaData.GetObjectData(id);
+                if (lvzData is not null)
+                {
+                    isEnabled = !lvzData.Off;
+                    objectData = lvzData.Current;
+                    return true;
+                }
+            }
+
+            // Not found
+            isEnabled = default;
+            objectData = default;
+            return false;
         }
 
         #endregion
@@ -171,7 +398,7 @@ namespace SS.Core.Modules
         private void Command_objon(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
-                Toggle(target, id, true);
+                ((ILvzObjects)this).Toggle(target, id, true);
         }
 
         [CommandHelp(
@@ -182,7 +409,7 @@ namespace SS.Core.Modules
         private void Command_objoff(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
-                Toggle(target, id, false);
+                ((ILvzObjects)this).Toggle(target, id, false);
         }
 
         [CommandHelp(
@@ -197,7 +424,7 @@ namespace SS.Core.Modules
                 if (c == '+' || c == '-')
                     count++;
 
-            Span<LvzToggle> set = stackalloc LvzToggle[count]; // Note: count is limited to max the chat message length
+            Span<LvzObjectToggle> set = stackalloc LvzObjectToggle[count]; // Note: count is limited to max the chat message length
 
             int i = 0;
             ReadOnlySpan<char> remaining = parameters;
@@ -217,12 +444,151 @@ namespace SS.Core.Modules
                 if (!short.TryParse(token[1..], out short id) || id  < 0)
                     continue;
 
-                set[i++] = new LvzToggle(id, enabled);
+                set[i++] = new LvzObjectToggle(id, !enabled);
             }
 
             if (i > 0)
             {
-                ToggleSet(target, set[..i]);
+                ((ILvzObjects)this).ToggleSet(target, set[..i]);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = "<id> <x> <y> (for map obj) or <id> [CBSGFETROWV]<x> [CBSGFETROWV]<y> (screen obj)",
+            Description = "Moves an LVZ map or screen object. Coordinates are in pixels.\n" +
+            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+        private void Command_objmove(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> idStr = remaining.GetToken(' ', out remaining);
+            ReadOnlySpan<char> xStr = remaining.GetToken(' ', out remaining);
+            ReadOnlySpan<char> yStr = remaining.GetToken(' ', out _);
+
+            if (!idStr.IsEmpty
+                && !xStr.IsEmpty
+                && !yStr.IsEmpty
+                && short.TryParse(idStr, out short id)
+                && TryParseCoord(xStr, out short x, out ScreenOffset offsetX)
+                && TryParseCoord(yStr, out short y, out ScreenOffset offsetY))
+            {
+                ((ILvzObjects)this).SetPosition(target, id, x, y, offsetX, offsetY);
+            }
+            else
+            {
+                _chat.SendMessage(player, "Invalid syntax. Please read help for ?objmove");
+            }
+
+            static bool TryParseCoord(ReadOnlySpan<char> coordStr, out short coord, out ScreenOffset offset)
+            {
+                if (!coordStr.IsEmpty)
+                {
+                    if (char.IsNumber(coordStr[0]))
+                    {
+                        // Normal map coordinate
+                        offset = ScreenOffset.Normal;
+                        return short.TryParse(coordStr, out coord);
+                    }
+                    else if (coordStr.Length > 1
+                        && Enum.TryParse(coordStr[..1], true, out offset)
+                        && short.TryParse(coordStr[1..], out coord))
+                    {
+                        // Relative screen coordinate
+                        return true;
+                    }
+                }
+                
+                coord = 0;
+                offset = ScreenOffset.Normal;
+                return false;
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = "<id> <image>",
+            Description = "Change the image associated with an object id.\n" +
+            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+        private void Command_objimage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> imageStr);
+            if (!idStr.IsEmpty
+                && short.TryParse(idStr, out short id)
+                && !(imageStr = imageStr.TrimStart(' ')).IsEmpty
+                && byte.TryParse(imageStr, out byte image))
+            {
+                ((ILvzObjects)this).SetImage(target, id, image);
+            }
+            else
+            {
+                _chat.SendMessage(player, "Invalid syntax. Please read help for ?objimage");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = "<id> <layer code>",
+            Description = "Change the layer associated with an object id. Layer codes:\n" +
+            "BelowAll  AfterBackground  AfterTiles  AfterWeapons\n" +
+            "AfterShips  AfterGauges  AfterChat  TopMost\n" +
+            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+        private void Command_objlayer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> layerStr);
+
+            if (!idStr.IsEmpty
+                && short.TryParse(idStr, out short id)
+                && !(layerStr = layerStr.TrimStart(' ')).IsEmpty
+                && Enum.TryParse(layerStr, true, out DisplayLayer layer))
+            {
+                ((ILvzObjects)this).SetLayer(target, id, layer);
+            }
+            else
+            {
+                _chat.SendMessage(player, "Invalid syntax. Please read help for ?objlayer");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = "<id> <time>",
+            Description = "Change the timer associated with an object id.\n" +
+            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+        private void Command_objtimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> timeStr);
+            if (!idStr.IsEmpty
+                && short.TryParse(idStr, out short id)
+                && !(timeStr = timeStr.TrimStart(' ')).IsEmpty
+                && ushort.TryParse(timeStr, out ushort time))
+            {
+                ((ILvzObjects)this).SetTimer(target, id, time);
+            }
+            else
+            {
+                _chat.SendMessage(player, "Invalid syntax. Please read help for ?objtimer");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Any,
+            Args = "<id> <mode code>",
+            Description = "Change the mode associated with an object id. Mode codes:\n" +
+            "ShowAlways  EnterZone  EnterArena  Kill  Death  ServerControlled\n" +
+            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+        private void Command_objmode(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> modeStr);
+            if (!idStr.IsEmpty
+                && short.TryParse(idStr, out short id)
+                && !(modeStr = modeStr.TrimStart(' ')).IsEmpty
+                && Enum.TryParse(modeStr, true, out DisplayMode mode))
+            {
+                ((ILvzObjects)this).SetMode(target, id, mode);
+            }
+            else
+            {
+                _chat.SendMessage(player, "Invalid syntax. Please read help for ?objmode");
             }
         }
 
@@ -233,7 +599,7 @@ namespace SS.Core.Modules
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
         private void Command_objinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             if (!short.TryParse(parameters, out short objectId))
@@ -253,7 +619,7 @@ namespace SS.Core.Modules
                         }
                         else
                         {
-                            _chat.SendMessage(player, $"lvz: Id:{objectId} Off:{lvzData.Off} Image:{lvzData.Current.ImageId} Layer:{lvzData.Current.Layer} Mode:{lvzData.Current.Mode} Time:{lvzData.Current.Time} screen object coords ({lvzData.Current.ScreenX}, {lvzData.Current.ScreenY}). X-offset: {lvzData.Current.ScreenXType}. Y-offset: {lvzData.Current.ScreenYType}.");
+                            _chat.SendMessage(player, $"lvz: Id:{objectId} Off:{lvzData.Off} Image:{lvzData.Current.ImageId} Layer:{lvzData.Current.Layer} Mode:{lvzData.Current.Mode} Time:{lvzData.Current.Time} screen object coords ({lvzData.Current.ScreenX}, {lvzData.Current.ScreenY}). X-offset: {lvzData.Current.ScreenXOffset}. Y-offset: {lvzData.Current.ScreenYOffset}.");
                         }
 
                         count++;
@@ -275,7 +641,7 @@ namespace SS.Core.Modules
             "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
         private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
             int count = 0;
@@ -319,7 +685,7 @@ namespace SS.Core.Modules
         private void Packet_Rebroadcast(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
             Arena arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -345,33 +711,102 @@ namespace SS.Core.Modules
             {
                 return;
             }
-            else if (type == S2CPacketType.ToggleObj)
+            else if (type == S2CPacketType.ToggleLVZ)
             {
-                if (length < 6 || (length - 4) % ToggledObject.Length != 0)
+                if (length < (3 + 1 + LvzObjectToggle.Length) || (length - 4) % LvzObjectToggle.Length != 0)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({length}).");
                     return;
                 }
 
-                if (toPlayerId == -1)
+                if (toPlayerId == -1) // To whole arena.
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                         return;
 
-                    Span<ToggledObject> toggleSpan = MemoryMarshal.Cast<byte, ToggledObject>(packet[4..]);
+                    Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(packet[4..]);
 
-                    lock (ad.Lock)
+                    lock (arenaData.Lock)
                     {
-                        foreach (ref readonly ToggledObject toggleObj in toggleSpan)
+                        foreach (ref readonly LvzObjectToggle toggleObj in toggleSpan)
                         {
-                            UpdateArenaToggleTracking(arena, ad, toggleObj.Id, !toggleObj.IsDisabled);
+                            UpdateArenaToggleTracking(arena, arenaData, toggleObj.Id, toggleObj.IsEnabled);
                         }
                     }
                 }
             }
-            else if (type == S2CPacketType.MoveObj)
+            else if (type == S2CPacketType.ChangeLVZ)
             {
-                // TODO:
+                if (length < (3 + 1 + LvzObjectChange.Length) || (length - 4) % LvzObjectChange.Length != 0)
+                {
+                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({length}).");
+                    return;
+                }
+
+                if (toPlayerId == -1) // To whole arena.
+                {
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                        return;
+
+                    Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(packet[4..]);
+
+                    lock (arenaData.Lock)
+                    {
+                        foreach (ref LvzObjectChange change in changeSpan)
+                        {
+                            LvzData lvzData = arenaData.GetObjectData(change.Data.Id);
+                            if (lvzData is null)
+                                continue;
+
+                            bool isChanged = lvzData.Current != lvzData.Default;
+                            bool isChanging = false;
+
+                            // Note: MapX and MapY include the entire bitfield, so don't have to worry about whether it's a screen vs map object.
+                            if (change.Change.Position
+                                && (change.Data.MapX != lvzData.Default.MapX || change.Data.MapY != lvzData.Default.MapY))
+                            {
+                                isChanging = true;
+                                lvzData.Current.MapX = change.Data.MapX;
+                                lvzData.Current.MapY = change.Data.MapY;
+                            }
+
+                            if (change.Change.Image
+                                && change.Data.ImageId != lvzData.Default.ImageId)
+                            {
+                                isChanging = true;
+                                lvzData.Current.ImageId = change.Data.ImageId;
+                            }
+
+                            if (change.Change.Layer
+                                && change.Data.Layer != lvzData.Default.Layer)
+                            {
+                                isChanging = true;
+                                lvzData.Current.Layer = change.Data.Layer;
+                            }
+
+                            if (change.Change.Mode
+                                && change.Data.Mode != lvzData.Default.Mode)
+                            {
+                                isChanging = true;
+                                lvzData.Current.Mode = change.Data.Mode;
+                            }
+
+                            if (change.Change.Time
+                                && change.Data.Time != lvzData.Default.Time)
+                            {
+                                isChanging = true;
+                                lvzData.Current.Time = change.Data.Time;
+                            }
+
+                            if (isChanging && !isChanged)
+                                arenaData.ExtraDifferences++;
+                            else if (!isChanging && isChanged)
+                                arenaData.ExtraDifferences--;
+
+                            _logManager.LogA(LogLevel.Drivel, nameof(LvzObjects), arena, $"Changed object {change.Data.Id}. Tracking {arenaData.ExtraDifferences} changed objects.");
+                        }
+                    }
+                }
             }
             else
             {
@@ -389,12 +824,14 @@ namespace SS.Core.Modules
             else
             {
                 Player toPlayer = _playerData.PidToPlayer(toPlayerId);
-                if (toPlayer != null && toPlayer.Status == PlayerState.Playing && player.Arena == toPlayer.Arena)
+                if (toPlayer is not null && toPlayer.Status == PlayerState.Playing && player.Arena == toPlayer.Arena)
                 {
                     _network.SendToOne(toPlayer, packet[4..], NetSendFlags.Reliable);
                 }
             }
         }
+
+        #region Callbacks
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -419,38 +856,38 @@ namespace SS.Core.Modules
 
                 ad.List.Clear();
             }
-        }
 
-        private void ThreadPoolWork_ArenaActionWork(Arena arena)
-        {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return;
-
-            foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
+            void ThreadPoolWork_ArenaActionWork(Arena arena)
             {
-                try
-                {
-                    LvzReader.ReadObjects(fileInfo.Filename, ObjectDataRead);
-                }
-                catch (Exception ex)
-                {
-                    _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
-                }
-            }
+                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                    return;
 
-            _arenaManager.UnholdArena(arena);
-
-            void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan)
-            {
-                lock (ad.Lock)
+                foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
                 {
-                    foreach (ref readonly ObjectData objectData in objectDataSpan)
+                    try
                     {
-                        LvzData lvzData = _lvzDataObjectPool.Get();
-                        lvzData.Off = true;
-                        lvzData.Current = lvzData.Default = objectData;
+                        LvzReader.ReadObjects(fileInfo.Filename, ObjectDataRead);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
+                    }
+                }
 
-                        ad.List.Add(lvzData);
+                _arenaManager.UnholdArena(arena);
+
+                void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan)
+                {
+                    lock (ad.Lock)
+                    {
+                        foreach (ref readonly ObjectData objectData in objectDataSpan)
+                        {
+                            LvzData lvzData = _lvzDataObjectPool.Get();
+                            lvzData.Off = true;
+                            lvzData.Current = lvzData.Default = objectData;
+
+                            ad.List.Add(lvzData);
+                        }
                     }
                 }
             }
@@ -470,153 +907,24 @@ namespace SS.Core.Modules
             }
             else if(action == PlayerAction.EnterGame)
             {
-                SendState(player);
+                ((ILvzObjects)this).SendState(player);
             }
         }
 
-        private void SendState(Player player)
-        {
-            if (player == null)
-                return;
-
-            if (player.Arena == null)
-                return;
-
-            if (!player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
-                return;
-
-            byte[] toggleBuffer = null;
-            byte[] extraBuffer = null;
-
-            try
-            {
-                Monitor.Enter(ad.Lock);
-                
-                int numToggleBytes = 1 + 2 * ad.ToggleDifferences;
-                toggleBuffer = numToggleBytes > Constants.MaxPacket ? ArrayPool<byte>.Shared.Rent(numToggleBytes) : null;
-                Span<byte> toggleSpan = toggleBuffer != null ? toggleBuffer : stackalloc byte[numToggleBytes];
-                toggleSpan[0] = (byte)S2CPacketType.ToggleObj;
-                int toggleCount = 0;
-
-                int numExtraBytes = 1 + 11 * ad.ExtraDifferences;
-                extraBuffer = numExtraBytes > Constants.MaxPacket ? ArrayPool<byte>.Shared.Rent(numExtraBytes) : null;
-                Span<byte> extraSpan = extraBuffer != null ? extraBuffer : stackalloc byte[numExtraBytes];
-                extraSpan[0] = (byte)S2CPacketType.MoveObj;
-                int extraCount = 0;
-
-                foreach (LvzData lvzData in ad.List)
-                {
-                    // toggle
-                    if (!lvzData.Off)
-                    {
-                        if (toggleCount >= ad.ToggleDifferences)
-                        {
-                            _logManager.LogP(LogLevel.Error, nameof(LvzObjects), player, $"SendState: invalid arena state (tog_diffs), not enough memory has been allocated.");
-                            break;
-                        }
-
-                        BinaryPrimitives.WriteInt16LittleEndian(
-                            toggleSpan.Slice(1 + 2 * toggleCount, 2),
-                            (short)(lvzData.Default.Id & 0x7FF)); // disabled bit is 0
-
-                        toggleCount++;
-                    }
-
-                    // TODO: extra
-                }
-
-                Monitor.Exit(ad.Lock);
-
-                // TODO: Access to ArenaData is synchronized. However, it probably isn't ok if another thread were to send an object packet to the same player between the unlock and these sends.
-                // Like most synchronization in the server, that shouldn't happen long as everything is done by the mainloop thread (in which case none of the locking is needed).
-
-                if (toggleCount > 0)
-                    _network.SendToOne(player, toggleSpan[..(1 + 2 * toggleCount)], NetSendFlags.Reliable);
-
-                if (extraCount > 0)
-                    _network.SendToOne(player, extraSpan[..(1 + 11 * extraCount)], NetSendFlags.Reliable);
-            }
-            finally
-            {
-                if (toggleBuffer != null)
-                    ArrayPool<byte>.Shared.Return(toggleBuffer);
-
-                if (extraBuffer != null)
-                    ArrayPool<byte>.Shared.Return(extraBuffer);
-            }
-        }
-
-        private void Toggle(ITarget target, short id, bool enabled)
-        {
-            if (target == null)
-                return;
-
-            ReadOnlySpan<LvzToggle> toggleSpan = stackalloc LvzToggle[1] { new LvzToggle(id, enabled) };
-            ToggleSet(target, toggleSpan);
-        }
-
-        private void ToggleSet(ITarget target, ReadOnlySpan<LvzToggle> set)
-        {
-            if (target == null)
-                return;
-
-            if (set.Length == 0)
-                return;
-
-            // Maximum Continuum allows at once.
-            if (set.Length > 1023) // TODO: loop instead filling up to the max on each iteration
-                throw new ArgumentOutOfRangeException(nameof(set), "Length was > 1023.");
-
-            int packetLength = 1 + 2 * set.Length;
-
-            byte[] byteArray = null;
-            if (packetLength > Constants.MaxPacket)
-                byteArray = ArrayPool<byte>.Shared.Rent(packetLength);
-
-            try
-            {
-                Span<byte> packet = byteArray != null ? byteArray : stackalloc byte[packetLength];
-                packet[0] = (byte)S2CPacketType.ToggleObj;
-
-                ArenaData ad = null;
-                if (target.TryGetArenaTarget(out Arena arena))
-                {
-                    arena.TryGetExtraData(_adKey, out ad);
-                }
-
-                for (int i = 0; i < set.Length; i++)
-                {
-                    BinaryPrimitives.WriteInt16LittleEndian(
-                        packet.Slice(1 + 2 * i, 2),
-                        (short)(set[i].Id & 0x7FF | (set[i].IsEnabled ? 0x0000 : 0x8000)));
-
-                    if (arena != null && ad != null)
-                    {
-                        UpdateArenaToggleTracking(arena, ad, set[i].Id, set[i].IsEnabled);
-                    }
-                }
-
-                _network.SendToTarget(target, packet, NetSendFlags.Reliable);
-            }
-            finally
-            {
-                if (byteArray != null)
-                    ArrayPool<byte>.Shared.Return(byteArray);
-            }
-        }
+        #endregion
 
         private void UpdateArenaToggleTracking(Arena arena, ArenaData ad, short id, bool isEnabled)
         {
-            if (arena == null)
+            if (arena is null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (ad == null)
+            if (ad is null)
                 throw new ArgumentNullException(nameof(ad));
 
             lock (ad.Lock)
             {
                 LvzData lvzData = ad.GetObjectData(id);
-                if (lvzData != null && lvzData.Current.Time == 0)
+                if (lvzData is not null && lvzData.Current.Time == 0)
                 {
                     if (isEnabled && lvzData.Off)
                         ad.ToggleDifferences++;
@@ -624,12 +932,60 @@ namespace SS.Core.Modules
                         ad.ToggleDifferences--;
 
                     lvzData.Off = !isEnabled;
-                    _logManager.LogA(LogLevel.Drivel, nameof(LvzObjects), arena, $"Toggled object {id}. Tracking {ad.ToggleDifferences} objects.");
+                    _logManager.LogA(LogLevel.Drivel, nameof(LvzObjects), arena, $"Toggled object {id}. Tracking {ad.ToggleDifferences} toggled objects.");
                 }
             }
         }
 
+        private void ChangeObject(ITarget target, short id, ChangeObjectDelegate changeCallback)
+        {
+            if (!target.TryGetArenaTarget(out Arena arena))
+            {
+                if (target.TryGetPlayerTarget(out Player player))
+                    arena = player.Arena;
+            }
+
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                return;
+
+            Span<byte> packetBytes = stackalloc byte[1 + LvzObjectChange.Length];
+            packetBytes[0] = (byte)S2CPacketType.ChangeLVZ;
+            ref LvzObjectChange objectChange = ref MemoryMarshal.AsRef<LvzObjectChange>(packetBytes[1..]);
+
+            lock (arenaData.Lock)
+            {
+                LvzData lvzData = arenaData.GetObjectData(id);
+                if (lvzData is null)
+                    return;
+
+                objectChange.Data = lvzData.Current;
+
+                changeCallback(ref objectChange);
+
+                if (target.Type == TargetType.Arena)
+                {
+                    if (lvzData.Default != objectChange.Data
+                        && lvzData.Default == lvzData.Current)
+                    {
+                        arenaData.ExtraDifferences++;
+                    }
+                    else if (lvzData.Default != lvzData.Current)
+                    {
+                        arenaData.ExtraDifferences--;
+                    }
+
+                    lvzData.Current = objectChange.Data;
+
+                    _logManager.LogA(LogLevel.Drivel, nameof(LvzObjects), arena, $"Changed object {id}. Tracking {arenaData.ExtraDifferences} changed objects.");
+                }
+
+                _network.SendToTarget(target, packetBytes, NetSendFlags.Reliable);
+            }
+        }
+
         #region Helper types
+
+        private delegate void ChangeObjectDelegate(ref LvzObjectChange objectChange);
 
         private enum BroadcastAuthorization
         {
@@ -724,7 +1080,7 @@ namespace SS.Core.Modules
 
             public override bool Return(LvzData obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Off = true;

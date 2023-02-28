@@ -29,16 +29,19 @@ namespace SS.Packets.Game
         Security = 0x18, 
         RequestForFile = 0x19,
         TimedGame = 0x1A,
+
         /// <summary>
         /// just 1 byte, tells client they need to reset their ship
         /// </summary>
         ShipReset = 0x1B, 
+
         /// <summary>
         /// two bytes, if byte two is true, client needs to send their item info in
         /// position packets, OR
         /// three bytes, parameter is the player id of a player going into spectator mode
         /// </summary>
         SpecData = 0x1C, 
+
         ShipChange = 0x1D, 
         BannerToggle = 0x1E, 
         Banner = 0x1F, 
@@ -46,14 +49,17 @@ namespace SS.Packets.Game
         Brick = 0x21, 
         TurfFlags = 0x22, 
         PeriodicReward = 0x23, 
+
         /// <summary>
         /// Complex speed stats
         /// </summary>
         Speed = 0x24, 
+
         /// <summary>
         /// two bytes, if byte two is true, you can use UFO if you want to
         /// </summary>
         Ufo = 0x25,
+
         // subspace client does no operation with 0x26
         KeepAlive = 0x27, 
         Position = 0x28, 
@@ -64,33 +70,46 @@ namespace SS.Packets.Game
         AddCrownTimer = 0x2D,
         Ball = 0x2E, 
         Arena = 0x2F, 
+
         /// <summary>
         /// vie's old method of showing ads
         /// </summary>
         AdBanner = 0x30,
+
         /// <summary>
         /// vie sent it after a good login, only with billing
         /// </summary>
         LoginOK = 0x31, 
+
         /// <summary>
         /// u8 type - ui16 x tile coords - ui16 y tile coords
         /// </summary>
         WarpTo = 0x32, 
+
         LoginText = 0x33, 
+
         ContVersion = 0x34, 
+
         /// <summary>
-        /// u8 type - unlimited number of ui16 with obj id (if & 0xF000, means turning off)
+        /// Toggles one or multiple LVZ objects.
         /// </summary>
-        ToggleObj = 0x35, 
-        MoveObj = 0x36, 
+        ToggleLVZ = 0x35, 
+
+        /// <summary>
+        /// Changes one or multiple LVZ objects.
+        /// </summary>
+        ChangeLVZ = 0x36, 
+
         /// <summary>
         /// two bytes, if byte two is true, client should send damage info
         /// </summary>
         ToggleDamage = 0x37, 
+
         /// <summary>
         /// complex, the info used from a *watchdamage
         /// </summary>
         Damage = 0x38,
+
         // missing 39 3A
         Redirect = 0x3B, 
     }
