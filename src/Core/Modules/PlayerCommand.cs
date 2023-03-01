@@ -3276,9 +3276,41 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None, 
-            Description = "Displays information about server internals. It currently includes information about object pooling.")]
+            Description = "Displays stats about server internals, including information about garbage collection and object pooling.")]
         private void Command_serverstats(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            //
+            // Garbage Collection stats
+            //
+
+            _chat.SendMessage(player, $"Garbage Collector> Total Allocated: {GC.GetTotalAllocatedBytes(false):N0} bytes, Total Memory: {GC.GetTotalMemory(false):N0} bytes");
+
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                sb.Append($"Garbage Collector> Total Pause Duration: {GC.GetTotalPauseDuration()}, Collection counts: ");
+
+                for (int generation = 0; generation <= GC.MaxGeneration; generation++)
+                {
+                    if (generation != 0)
+                    {
+                        sb.Append(" / ");
+                    }
+
+                    sb.Append(GC.CollectionCount(generation));
+                }
+
+                _chat.SendMessage(player, sb);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
+            
+            //
+            // Object Pooling stats
+            //
+
             IObjectPoolManager poolManager = _broker.GetInterface<IObjectPoolManager>();
             if (poolManager != null)
             {
