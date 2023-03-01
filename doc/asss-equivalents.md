@@ -60,7 +60,7 @@ This document provides an overview of the various server parts and their relatio
 | log_console | SS.Core.Modules.LogConsole | |
 | log_file | SS.Core.Modules.LogFile | |
 | logman | SS.Core.Modules.LogManager | |
-| log_staff | | |
+| log_staff | SS.Core.Modules.CommandWatch | |
 | log_sysop | SS.Core.Modules.LogSysop | |
 | mainloop | SS.Core.Modules.Mainloop | |
 | mapdata | SS.Core.Modules.MapData | |
