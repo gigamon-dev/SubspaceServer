@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
@@ -420,7 +421,7 @@ namespace SS.Core.Modules
             {
                 if (Allowed(player, cmd, prefix, remoteArena))
                 {
-                    LogCommand(player, target, cmd, parameters);
+                    LogCommand(player, target, cmd, parameters, sound);
 
                     basicHandlers?.Invoke(cmd, parameters, player, target);
                     soundHandlers?.Invoke(cmd, parameters, player, target, sound);
@@ -428,7 +429,7 @@ namespace SS.Core.Modules
 #if CFG_LOG_ALL_COMMAND_DENIALS
                 else
                 {
-                    _logManager.LogP(LogLevel.Drivel, nameof(CommandManager), p, "Permission denied for command '{0}'.", cmd);
+                    _logManager.LogP(LogLevel.Drivel, nameof(CommandManager), player, "Permission denied for command '{0}'.", cmd);
                 }
 #endif
             }
@@ -525,7 +526,7 @@ namespace SS.Core.Modules
                 return _capabilityManager.HasCapability(player, capability);
         }
 
-        private void LogCommand(Player player, ITarget target, ReadOnlySpan<char> cmd, ReadOnlySpan<char> parameters)
+        private void LogCommand(Player player, ITarget target, ReadOnlySpan<char> cmd, ReadOnlySpan<char> parameters, ChatSound sound)
         {
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
@@ -535,9 +536,6 @@ namespace SS.Core.Modules
 
             if (cmd.IsEmpty)
                 throw new ArgumentException("Cannot be empty.", nameof(cmd));
-
-            if (_logManager == null)
-                return;
 
             // don't log the parameters to some commands
             _rwLock.EnterReadLock();
@@ -578,6 +576,8 @@ namespace SS.Core.Modules
             {
                 _objectPoolManager.StringBuilderPool.Return(sb);
             }
+
+            CommandExecutedCallback.Fire(player.Arena ?? _broker, player, target, cmd, parameters, sound);
         }
 
         private void InitializeUnloggedCommands()
