@@ -55,6 +55,28 @@ namespace SS.Core.Modules.FlagGame
             // or maybe just a delay for neuted flags? since there's already an optional delay for starting the game
         }
 
+        void ICarryFlagBehavior.SpawnFlags(Arena arena)
+        {
+            if (arena is null)
+                return;
+
+            var settings = _carryFlagGame.GetSettings(arena);
+            if (settings == null)
+                return;
+
+            short flagCount = _carryFlagGame.GetFlagCount(arena);
+            for (short flagId = 0; flagId < flagCount; flagId++)
+            {
+                if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                    continue;
+
+                if (flagInfo.State == FlagState.None)
+                {
+                    SpawnFlag(arena, flagId, settings.SpawnCoordinate, settings.SpawnRadius, -1);
+                }
+            }
+        }
+
         short ICarryFlagBehavior.PlayerKill(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds)
         {
             if (arena == null

@@ -226,7 +226,11 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena the flag game is being started in.</param>
         void StartGame(Arena arena);
 
-        //void SpawnFlag(Arena arena, short flagId);
+        /// <summary>
+        /// Called when neuted flags should be spawned.
+        /// </summary>
+        /// <param name="arena">The arena that flags should be spawned in.</param>
+        void SpawnFlags(Arena arena);
 
         /// <summary>
         /// Called when a player is killed.

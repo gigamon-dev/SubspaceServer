@@ -8,6 +8,11 @@ namespace SS.Core.Map
     /// </summary>
     public readonly struct MapCoordinate : IEquatable<MapCoordinate>, IComparable<MapCoordinate>
     {
+        /// <summary>
+        /// Special coordinate for moving carryable flags outside of the map (to fake neuting).
+        /// </summary>
+        public static readonly MapCoordinate FlagOutsideMapCoordinate = new() { X = -1, Y = -1 };
+
         public MapCoordinate(short x, short y)
         {
             if (x < 0 || x > 1023)

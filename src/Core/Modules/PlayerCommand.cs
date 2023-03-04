@@ -185,6 +185,9 @@ namespace SS.Core.Modules
                     Commands = new[]
                     {
                         new CommandInfo("flagreset", Command_flagreset),
+                        new CommandInfo("flaginfo", Command_flaginfo),
+                        new CommandInfo("neutflag", Command_neutflag),
+                        new CommandInfo("moveflag", Command_moveflag),
                     }
                 });
 
@@ -2979,17 +2982,227 @@ namespace SS.Core.Modules
         private void Command_flagreset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             IFlagGame flagGame = arena.GetInterface<IFlagGame>();
-            if (flagGame == null)
+            if (flagGame is null)
             {
                 _chat.SendMessage(player, $"No flag game to reset.");
                 return;
             }
 
-            flagGame.ResetGame(player.Arena);
+            try
+            {
+                flagGame.ResetGame(player.Arena);
+            }
+            finally
+            {
+                arena.ReleaseInterface(ref flagGame);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<none> | <flag id>",
+            Description = "Displays information (status, location, carrier) about the flag(s) in the arena.")]
+        private void Command_flaginfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame is null)
+                return;
+
+            try
+            {
+                if (!parameters.IsWhiteSpace())
+                {
+                    if (!short.TryParse(parameters, out short flagId))
+                    {
+                        _chat.SendMessage(player, "Invalid input for flag id.");
+                        return;
+                    }
+
+                    if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                    {
+                        _chat.SendMessage(player, $"Flag {flagId} not found");
+                        return;
+                    }
+
+                    PrintFlagInfo(player, flagId, flagInfo);
+                }
+                else
+                {
+                    const short MaxFlagsToPrint = 20;
+                    short count = short.Min(carryFlagGame.GetFlagCount(arena), MaxFlagsToPrint);
+
+                    for (short flagId = 0; flagId < count; flagId++)
+                    {
+                        if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                            continue;
+
+                        PrintFlagInfo(player, flagId, flagInfo);
+                    }
+                }
+            }
+            finally
+            {
+                arena.ReleaseInterface(ref carryFlagGame);
+            }
+
+            void PrintFlagInfo(Player player, short flagId, IFlagInfo flagInfo)
+            {
+                switch (flagInfo.State)
+                {
+                    case FlagState.None:
+                        _chat.SendMessage(player, $"flag {flagId}: doesn't exist");
+                        break;
+
+                    case FlagState.OnMap:
+                        if (flagInfo.Location is not null)
+                        {
+                            var x = (flagInfo.Location.Value.X * 20 / 1024);
+                            var y = (flagInfo.Location.Value.Y * 20 / 1024);
+                            _chat.SendMessage(player, $"flag {flagId}: on the map at {(char)('A' + x)}{y + 1} ({flagInfo.Location.Value.X}, {flagInfo.Location.Value.Y}), owned by freq {flagInfo.Freq}");
+                        }
+                        break;
+
+                    case FlagState.Carried:
+                        if (flagInfo.Carrier is not null)
+                        {
+                            _chat.SendMessage(player, $"flag {flagId}: carried by {flagInfo.Carrier.Name}, freq {flagInfo.Carrier.Freq}");
+                        }
+                        break;
+                }
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<flag id>",
+            Description = "Neuts the specified flag. The flag must be on the map.")]
+        private void Command_neutflag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ReadOnlySpan<char> flagIdStr = parameters.GetToken(' ', out ReadOnlySpan<char> remaining);
+            if (flagIdStr.IsEmpty || !short.TryParse(flagIdStr, out short flagId))
+                return;
+
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame is null)
+                return;
+
+            try
+            {
+                if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                    return;
+
+                if (flagInfo.State != FlagState.OnMap 
+                    || !carryFlagGame.TrySetFlagNeuted(arena, flagId))
+                {
+                    _chat.SendMessage(player, $"Flag {flagId} could not be neuted.");
+                }
+            }
+            finally
+            {
+                arena.ReleaseInterface(ref carryFlagGame);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<flag id> <owning freq> [<x coord> <y coord>]",
+            Description = """
+                Moves the specified flag. You must always specify the freq that will own
+                the flag. The coordinates are optional: if they are specified, the flag
+                will be moved there, otherwise it will remain where it is.
+                """)]
+        private void Command_moveflag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ReadOnlySpan<char> flagIdStr = parameters.GetToken(' ', out ReadOnlySpan<char> remaining);
+            if (!short.TryParse(flagIdStr, out short flagId))
+            {
+                _chat.SendMessage(player, "Invalid flag id.");
+                return;
+            }
+
+            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            if (carryFlagGame is null)
+                return;
+
+            try
+            {
+                if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                {
+                    _chat.SendMessage(player, $"Flag {flagId} not found.");
+                    return;
+                }
+
+                if (flagInfo.State != FlagState.OnMap)
+                {
+                    _chat.SendMessage(player, $"Flag {flagId} isn't on the map.");
+                    return;
+                }
+
+                ReadOnlySpan<char> freqStr = remaining.GetToken(' ', out remaining);
+                if (!short.TryParse(freqStr, out short freq)
+                    || freq < -1 // allow -1 to mean not owned
+                    || freq > 9999)
+                {
+                    _chat.SendMessage(player, "Invalid freq.");
+                    return;
+                }
+
+                MapCoordinate? location = flagInfo.Location;
+
+                if (!remaining.IsWhiteSpace())
+                {
+                    ReadOnlySpan<char> xStr = remaining.GetToken(" ,", out remaining);
+                    if (!short.TryParse(xStr, out short x)
+                        || x < 0 
+                        || x > 1023)
+                    {
+                        _chat.SendMessage(player, "Invalid x-coordinate.");
+                        return;
+                    }
+
+                    remaining = remaining.TrimStart(" ,");
+                    if (!short.TryParse(remaining, out short y)
+                        || y < 0 
+                        || y > 1023)
+                    {
+                        _chat.SendMessage(player, "Invalid y-coordinate.");
+                        return;
+                    }
+
+                    location = new MapCoordinate(x, y);
+                }
+
+                if (location is null)
+                {
+                    _chat.SendMessage(player, "Missing coordinates.");
+                    return;
+                }
+
+                if (!carryFlagGame.TrySetFlagOnMap(arena, flagId, location.Value, freq))
+                {
+                    _chat.SendMessage(player, $"Flag {flagId} could not be moved.");
+                }
+            }
+            finally
+            {
+                arena.ReleaseInterface(ref carryFlagGame);
+            }
         }
 
         [CommandHelp(

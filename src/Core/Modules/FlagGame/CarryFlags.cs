@@ -275,24 +275,21 @@ namespace SS.Core.Modules.FlagGame
             }
             else if (flagInfo.State == FlagState.OnMap)
             {
-                /*
-                // hacky move of flag out of playable area
                 // Removing a flag on the map. Fake it by moving it outside of the playable area.
                 S2C_FlagLocation packet = new(flagId, -1, -1, -1);
                 _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
 
                 flagInfo.State = FlagState.None;
-                flagInfo.Location = location;
-                flagInfo.Freq = freq;
+                flagInfo.Location = MapCoordinate.FlagOutsideMapCoordinate;
+                flagInfo.Freq = -1;
 
                 _logManager.LogA(LogLevel.Warn, nameof(CarryFlags), arena, $"Faked removing flag {flagId}.");
 
                 return true;
-                */
-                return false;
             }
             else if (flagInfo.State == FlagState.Carried)
             {
+                // Note: Could do hacky drop/re-pickup, but that seems undesirable. So disallow it.
                 /*
                 // hacky drop/re-pickup
                 Player carrier = flagInfo.Carrier;
@@ -378,8 +375,7 @@ namespace SS.Core.Modules.FlagGame
             }
             else if (flagInfo.State == FlagState.Carried)
             {
-                // could do hacky drop/re-pickup
-
+                // Note: Could do hacky drop/re-pickup, but that seems undesirable. So disallow it.
                 return false;
             }
 
@@ -434,8 +430,7 @@ namespace SS.Core.Modules.FlagGame
             }
             else if (flagInfo.State == FlagState.Carried)
             {
-                // could do hacky drop/re-pickup/pickup
-
+                // Note: Could do hacky drop/re-pickup/pickup, but that seems undesirable. So disallow it.
                 return false;
             }
 
@@ -692,17 +687,10 @@ namespace SS.Core.Modules.FlagGame
                 ad.GameState = GameState.Running;
                 ad.CarryFlagBehavior.StartGame(arena);
             }
-            //else if (ad.GameState == GameState.Running)
-            //{
-            //    for (short flagId = 0; flagId < ad.Flags.Count; flagId++)
-            //    {
-            //        FlagInfo flagInfo = ad.Flags[flagId];
-            //        if (flagInfo.State == FlagState.None)
-            //        {
-
-            //        }
-            //    }
-            //}
+            else if (ad.GameState == GameState.Running)
+            {
+                ad.CarryFlagBehavior.SpawnFlags(arena);
+            }
 
             return true;
         }
