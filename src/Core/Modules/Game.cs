@@ -27,6 +27,7 @@ namespace SS.Core.Modules
         private ICapabilityManager _capabilityManager;
         private IChat _chat;
         //private IChatNet _chatnet;
+        private IClientSettings _clientSettings;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private ILagCollect _lagCollect;
@@ -44,6 +45,7 @@ namespace SS.Core.Modules
 
         private PlayerDataKey<PlayerData> _pdkey;
         private ArenaDataKey<ArenaData> _adkey;
+        private readonly ClientSettingIdentifier[] _shipBombFireDelayIds = new ClientSettingIdentifier[8];
 
         private DelegatePersistentData<Player> _persistRegistration;
 
@@ -60,6 +62,7 @@ namespace SS.Core.Modules
             ICapabilityManager capabilityManager,
             IChat chat,
             //IChatNet chatnet,
+            IClientSettings clientSettings,
             ICommandManager commandManager, 
             IConfigManager configManager,
             ILagCollect lagCollect,
@@ -76,6 +79,7 @@ namespace SS.Core.Modules
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             //_chatnet = chatnet ?? throw new ArgumentNullException(nameof(chatnet));
+            _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
@@ -91,6 +95,18 @@ namespace SS.Core.Modules
 
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
+
+            string[] shipNames = System.Enum.GetNames<ShipType>();
+            for (int i = 0; i < 8; i++)
+            {
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[i], "BombFireDelay", out ClientSettingIdentifier id))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Game), $"Error getting ClientSettingIdentifier {shipNames[i]}:BombFireDelay");
+                    return false;
+                }
+
+                _shipBombFireDelayIds[i] = id;
+            }
 
             if (_persist != null)
             {
@@ -638,12 +654,6 @@ namespace SS.Core.Modules
                 ad.CheckFastBombing = _configManager.GetEnum(arena.Cfg, "Misc", "CheckFastBombing", CheckFastBombing.None);
                 ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(arena.Cfg, "Misc", "FastBombingThreshold", 30));
 
-                string[] shipNames = System.Enum.GetNames<ShipType>();
-                for (int i = 0; i < 8; i++)
-                {
-                    ad.ShipBombDelay[i] = (short)_configManager.GetInt(arena.Cfg, shipNames[i], "BombFireDelay", 0);
-                }
-
                 PersonalGreen pg = PersonalGreen.None;
 
                 if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareThor", 0) != 0)
@@ -1057,7 +1067,7 @@ namespace SS.Core.Modules
                         && pd.LastBomb != null)
                     {
                         int bombDiff = Math.Abs(pos.Time - pd.LastBomb.Value);
-                        int minDiff = ad.ShipBombDelay[(int)player.Ship] - ad.FastBombingThreshold;
+                        int minDiff = _clientSettings.GetSetting(player, _shipBombFireDelayIds[(int)player.Ship]) - ad.FastBombingThreshold;
 
                         if (bombDiff < minDiff)
                         {
@@ -2598,7 +2608,6 @@ namespace SS.Core.Modules
 
             public CheckFastBombing CheckFastBombing;
             public short FastBombingThreshold;
-            public readonly short[] ShipBombDelay = new short[8];
 
             public int cfg_pospix;
             public int cfg_sendanti;
@@ -2621,7 +2630,6 @@ namespace SS.Core.Modules
                 WarpThresholdDelta = 0;
                 CheckFastBombing = CheckFastBombing.None;
                 FastBombingThreshold = 0;
-                Array.Clear(ShipBombDelay);
                 cfg_pospix = 0;
                 cfg_sendanti = 0;
                 cfg_AntiwarpRange = 0;
