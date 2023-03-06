@@ -58,7 +58,10 @@ namespace SS.Core.Modules
 
             try
             {
-                sb.Append($"{player.Name} ");
+                if (player.Arena is not null)
+                    sb.Append($"{{{player.Arena.Name}}} ");
+
+                sb.Append($"{player.Name} command ");
 
                 if (target.TryGetArenaTarget(out _))
                     sb.Append("(arena)");
