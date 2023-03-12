@@ -219,7 +219,189 @@ namespace SS.Core.Modules
             }
         }
 
-        void IBalls.GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out int? ownerFreq) => GetGoalInfo(arena, freq, coordinate, out isScorable, out ownerFreq);
+        void IBalls.GetGoalInfo(Arena arena, short freq, MapCoordinate coordinate, out bool isScorable, out short? ownerFreq)
+        {
+            if (arena == null)
+                throw new ArgumentNullException(nameof(arena));
+
+            if (_mapData.GetTile(arena, coordinate)?.IsGoal != true)
+            {
+                isScorable = false;
+                ownerFreq = null;
+                return;
+            }
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            {
+                isScorable = false;
+                ownerFreq = null;
+                return;
+            }
+
+            SoccerMode mode;
+
+            lock (ad.Lock)
+            {
+                mode = ad.Settings.Mode;
+            }
+
+            (short x, short y) = coordinate;
+
+            switch (mode)
+            {
+                case SoccerMode.All:
+                    isScorable = true; // any freq can score on it
+                    ownerFreq = null; // it's not any team's own goal
+                    return;
+
+                case SoccerMode.LeftRight:
+                    freq %= 2;
+                    ownerFreq = x < 512 ? (short)0 : (short)1;
+                    isScorable = freq != ownerFreq;
+                    return;
+
+                case SoccerMode.TopBottom:
+                    freq %= 2;
+                    ownerFreq = y < 512 ? (short)0 : (short)1;
+                    isScorable = freq != ownerFreq;
+                    return;
+
+                case SoccerMode.QuadrantsDefend1:
+                    freq %= 4;
+
+                    if (x < 512)
+                    {
+                        if (y < 512)
+                        {
+                            // top left
+                            ownerFreq = 0;
+                        }
+                        else
+                        {
+                            // bottom left
+                            ownerFreq = 2;
+                        }
+                    }
+                    else
+                    {
+                        if (y < 512)
+                        {
+                            // top right
+                            ownerFreq = 1;
+                        }
+                        else
+                        {
+                            // bottom right
+                            ownerFreq = 3;
+                        }
+                    }
+
+                    isScorable = freq != ownerFreq;
+                    return;
+
+                case SoccerMode.QuadrantsDefend3:
+                    freq %= 4;
+
+                    if (x < 512)
+                    {
+                        if (y < 512)
+                        {
+                            // top left
+                            isScorable = freq == 0;
+                        }
+                        else
+                        {
+                            // bottom left
+                            isScorable = freq == 2;
+                        }
+                    }
+                    else
+                    {
+                        if (y < 512)
+                        {
+                            // top right
+                            isScorable = freq == 1;
+                        }
+                        else
+                        {
+                            // bottom right
+                            isScorable = freq == 3;
+                        }
+                    }
+
+                    ownerFreq = null; // no team is the sole owner
+                    return;
+
+                case SoccerMode.SidesDefend1:
+                    freq %= 4;
+
+                    if (x < y)
+                    {
+                        if (x < 1024 - y)
+                        {
+                            // left
+                            ownerFreq = 0;
+                        }
+                        else
+                        {
+                            // bottom
+                            ownerFreq = 1;
+                        }
+                    }
+                    else
+                    {
+                        if (x < 1024 - y)
+                        {
+                            // top
+                            ownerFreq = 2;
+                        }
+                        else
+                        {
+                            // right
+                            ownerFreq = 3;
+                        }
+                    }
+
+                    isScorable = ownerFreq != freq;
+                    return;
+
+                case SoccerMode.SidesDefend3:
+                    freq %= 4;
+
+                    if (x < y)
+                    {
+                        if (x < 1024 - y)
+                        {
+                            // left
+                            isScorable = freq == 0;
+                        }
+                        else
+                        {
+                            // bottom
+                            isScorable = freq == 1;
+                        }
+                    }
+                    else
+                    {
+                        if (x < 1024 - y)
+                        {
+                            // top
+                            isScorable = freq == 2;
+                        }
+                        else
+                        {
+                            // right
+                            isScorable = freq == 3;
+                        }
+                    }
+
+                    ownerFreq = null; // no team is the sole owner
+                    return;
+
+                default:
+                    throw new Exception("Invalid Soccer:Mode.");
+            }
+        }
 
         #endregion
 
@@ -1040,193 +1222,6 @@ namespace SS.Core.Modules
 
                     _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Goal with ball {ballId} at ({mapCoordinate.X},{mapCoordinate.Y}).");
                 }
-            }
-        }
-
-        private void GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out int? ownerFreq)
-        {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            if (_mapData.GetTile(arena, coordinate)?.IsGoal != true)
-            {
-                isScorable = false;
-                ownerFreq = null;
-                return;
-            }
-
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-            {
-                isScorable = false;
-                ownerFreq = null;
-                return;
-            }
-
-            SoccerMode mode;
-
-            lock (ad.Lock)
-            {
-                mode = ad.Settings.Mode;
-            }
-
-            (short x, short y) = coordinate;
-            
-            switch (mode)
-            {
-                case SoccerMode.All:
-                    isScorable = true; // any freq can score on it
-                    ownerFreq = null; // it's not any team's own goal
-                    return;
-
-                case SoccerMode.LeftRight:
-                    freq %= 2;
-                    ownerFreq = x < 512 ? 0 : 1;
-                    isScorable = freq != ownerFreq;
-                    return;
-
-                case SoccerMode.TopBottom:
-                    freq %= 2;
-                    ownerFreq = y < 512 ? 0 : 1;
-                    isScorable = freq != ownerFreq;
-                    return;
-
-                case SoccerMode.QuadrantsDefend1:
-                    freq %= 4;
-                    if (x < 512)
-                    {
-                        if (y < 512)
-                        {
-                            // top left
-                            ownerFreq = 0;
-                        }
-                        else
-                        {
-                            // bottom left
-                            ownerFreq = 2;
-                        }
-                    }
-                    else
-                    {
-                        if (y < 512)
-                        {
-                            // top right
-                            ownerFreq = 1;
-                        }
-                        else
-                        {
-                            // bottom right
-                            ownerFreq = 3;
-                        }
-                    }
-
-                    isScorable = freq != ownerFreq;
-                    return;
-
-                case SoccerMode.QuadrantsDefend3:
-                    freq %= 4;
-                    if (x < 512)
-                    {
-                        if (y < 512)
-                        {
-                            // top left
-                            isScorable = freq == 3;
-                        }
-                        else
-                        {
-                            // bottom left
-                            isScorable = freq == 1;
-                        }
-                    }
-                    else
-                    {
-                        if (y < 512)
-                        {
-                            // top right
-                            isScorable = freq == 2;
-                        }
-                        else
-                        {
-                            // bottom right
-                            isScorable = freq == 0;
-                        }
-                    }
-                    ownerFreq = null; // no team is the sole owner
-                    return;
-
-                case SoccerMode.SidesDefend1:
-                    freq %= 4;
-
-                    if (x < y)
-                    {
-                        if (x < 1023 - y)
-                        {
-                            // left
-                            ownerFreq = 0;
-                        }
-                        else
-                        {
-                            // bottom
-                            ownerFreq = 1;
-                        }
-                    }
-                    else if (x > y)
-                    {
-                        if (x < 1023 - y)
-                        {
-                            // top
-                            ownerFreq = 2;
-                        }
-                        else
-                        {
-                            // right
-                            ownerFreq = 3;
-                        }
-                    }
-                    else
-                    {
-                        ownerFreq = null;
-                    }
-
-                    isScorable = ownerFreq != null && ownerFreq != freq;
-                    return;
-
-                case SoccerMode.SidesDefend3:
-                    freq %= 4;
-                    int? scorableFreq = null;
-
-                    if (x < y)
-                    {
-                        if (x < 1023 - y)
-                        {
-                            // left
-                            scorableFreq = 3;
-                        }
-                        else
-                        {
-                            // bottom
-                            scorableFreq = 2;
-                        }
-                    }
-                    else if (x > y)
-                    {
-                        if (x < 1023 - y)
-                        {
-                            // top
-                            scorableFreq = 1;
-                        }
-                        else
-                        {
-                            // right
-                            scorableFreq = 3;
-                        }
-                    }
-
-                    isScorable = scorableFreq == freq;
-                    ownerFreq = null; // no team is the sole owner
-                    return;
-
-                default:
-                    throw new Exception("Invalid Soccer:Mode.");
             }
         }
 

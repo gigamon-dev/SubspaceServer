@@ -213,7 +213,7 @@ namespace SS.Core.Modules.Scoring
             if (scoringFreq < 0)
                 return;
 
-            _balls.GetGoalInfo(arena, scoringFreq, coordinate, out _, out int? ownerFreq);
+            _balls.GetGoalInfo(arena, scoringFreq, coordinate, out _, out short? ownerFreq);
 
             bool nullGoal = false;
 

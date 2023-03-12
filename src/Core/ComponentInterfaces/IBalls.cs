@@ -200,6 +200,6 @@ namespace SS.Core.ComponentInterfaces
         /// </param>
         /// <exception cref="ArgumentNullException">Arena is null.</exception>
         /// <exception cref="Exception">Invalid <see cref="SoccerMode"/> for the arena.</exception>
-        void GetGoalInfo(Arena arena, int freq, MapCoordinate coordinate, out bool isScorable, out int? ownerFreq);
+        void GetGoalInfo(Arena arena, short freq, MapCoordinate coordinate, out bool isScorable, out short? ownerFreq);
     }
 }
