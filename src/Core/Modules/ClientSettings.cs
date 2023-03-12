@@ -832,15 +832,13 @@ namespace SS.Core.Modules
             if (id.FieldType == ClientSettingIdentifierFieldType.Bit8)
             {
                 uint mask = 0xFFu >> (8 - bitLength) << bitOffset;
-                Span<byte> maskBytes = overrideData.MaskBytes.Slice(byteOffset, 1);
-                if ((maskBytes[byteOffset] & mask) != mask)
+                if ((overrideData.MaskBytes[byteOffset] & mask) != mask)
                 {
                     value = default;
                     return false;
                 }
 
-                Span<byte> dataBytes = overrideData.DataBytes.Slice(byteOffset, 1);
-                value = (int)(dataBytes[byteOffset] & mask) << (32 - (bitOffset + bitLength));
+                value = (int)(overrideData.DataBytes[byteOffset] & mask) << (32 - (bitOffset + bitLength));
                 if (id.IsSigned)
                 {
                     value >>= (32 - bitLength);
@@ -920,8 +918,7 @@ namespace SS.Core.Modules
             if (id.FieldType == ClientSettingIdentifierFieldType.Bit8)
             {
                 uint mask = 0xFFu >> (8 - bitLength) << bitOffset;
-                Span<byte> dataBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref settings, 1)).Slice(byteOffset, 1);
-                int value = (int)(dataBytes[byteOffset] & mask) << (32 - (bitOffset + bitLength));
+                int value = (int)(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref settings, 1))[byteOffset] & mask) << (32 - (bitOffset + bitLength));
                 if (id.IsSigned)
                 {
                     value >>= (32 - bitLength);
