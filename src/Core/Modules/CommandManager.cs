@@ -423,13 +423,20 @@ namespace SS.Core.Modules
                 {
                     LogCommand(player, target, cmd, parameters, sound);
 
-                    basicHandlers?.Invoke(cmd, parameters, player, target);
-                    soundHandlers?.Invoke(cmd, parameters, player, target, sound);
+                    try
+                    {
+                        basicHandlers?.Invoke(cmd, parameters, player, target);
+                        soundHandlers?.Invoke(cmd, parameters, player, target, sound);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogP(LogLevel.Error, nameof(CommandManager), player, $"Handler for command '{cmd}' threw an exception. {ex}");
+                    }
                 }
 #if CFG_LOG_ALL_COMMAND_DENIALS
                 else
                 {
-                    _logManager.LogP(LogLevel.Drivel, nameof(CommandManager), player, "Permission denied for command '{0}'.", cmd);
+                    _logManager.LogP(LogLevel.Drivel, nameof(CommandManager), player, $"Permission denied for command '{cmd}'.");
                 }
 #endif
             }
