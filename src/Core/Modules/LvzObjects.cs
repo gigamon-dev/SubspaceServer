@@ -838,8 +838,10 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (action == ArenaAction.Create)
+            if (action == ArenaAction.PreCreate)
             {
+                // NOTE: LVZ files are loaded on ArenaAction.PreCreate so that LVZ functionality will be ready to use on ArenaAction.Create.
+
                 _arenaManager.HoldArena(arena);
                 if (!_mainloop.QueueThreadPoolWorkItem(ThreadPoolWork_ArenaActionWork, arena))
                 {
