@@ -38,6 +38,8 @@ cmd_commands
 
 cmd_lag
 privcmd_lag
+cmd_laghist
+privcmd_laghist
 
 cmd_last
 cmd_listarena

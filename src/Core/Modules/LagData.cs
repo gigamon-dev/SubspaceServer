@@ -64,13 +64,13 @@ namespace SS.Core.Modules
 
         #region ILagCollect Members
 
-        void ILagCollect.Position(Player player, int ms, int? clientPing, uint serverWeaponCount)
+        void ILagCollect.Position(Player player, int ms, int? clientS2CPing, uint serverWeaponCount)
         {
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
 
             if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
-                lagStats.UpdatePositionStats(ms, clientPing, serverWeaponCount);
+                lagStats.UpdatePositionStats(ms, clientS2CPing, serverWeaponCount);
         }
 
         void ILagCollect.RelDelay(Player player, int ms)
@@ -197,6 +197,22 @@ namespace SS.Core.Modules
                 return lagStats.QueryTimeSyncDrift();
             else
                 return 0;
+        }
+
+        bool ILagQuery.GetPositionPingHistogram(Player player, List<PingHistogramBucket> data)
+        {
+            if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+                return false;
+
+            return lagStats.GetPositionPingHistogram(data);
+        }
+
+        bool ILagQuery.GetReliablePingHistogram(Player player, List<PingHistogramBucket> data)
+        {
+            if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+                return false;
+
+            return lagStats.GetReliablePingHistogram(data);
         }
 
         #endregion
@@ -372,14 +388,14 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void UpdatePositionStats(int ms, int? clientPing, uint serverWeaponCount)
+            public void UpdatePositionStats(int ms, int? clientS2CPing, uint serverWeaponCount)
             {
                 lock (lockObj)
                 {
                     PositionPacketPing.Add(ms * 2); // convert one-way to round-trip
                     LastWeaponSentCount = serverWeaponCount;
 
-                    // TODO: do something with clientPing?
+                    // TODO: do something with clientS2CPing?
                 }
             }
 
@@ -499,6 +515,61 @@ namespace SS.Core.Modules
                 {
                     return TimeSync.Drift;
                 }
+            }
+
+            public bool GetPositionPingHistogram(List<PingHistogramBucket> data)
+            {
+                lock (lockObj)
+                {
+                    return GetPingHistogram(PositionPacketPing, data);
+                }
+            }
+
+            public bool GetReliablePingHistogram(List<PingHistogramBucket> data)
+            {
+                lock (lockObj)
+                {
+                    return GetPingHistogram(ReliablePing, data);
+                }
+            }
+
+            private static bool GetPingHistogram(PingStats stats, List<PingHistogramBucket> data)
+            {
+                if (stats is null || data is null)
+                    return false;
+
+                int endIndex = stats.Buckets.Length - 1;
+                do
+                {
+                    if (stats.Buckets[endIndex] > 0)
+                        break;
+                }
+                while (--endIndex >= 0);
+
+                if (endIndex < 0)
+                    return false;
+
+                int i;
+                for (i = 0; i <= endIndex; i++)
+                {
+                    if (stats.Buckets[i] > 0)
+                        break;
+                }
+
+                data.Clear();
+
+                for (; i <= endIndex; i++)
+                {
+                    data.Add(
+                        new PingHistogramBucket()
+                        {
+                            Start = i * BucketWidth,
+                            End = ((i + 1) * BucketWidth) - 1,
+                            Count = stats.Buckets[i]
+                        });
+                }
+
+                return true;
             }
         }
 

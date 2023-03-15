@@ -19,6 +19,13 @@ namespace SS.Core.ComponentInterfaces
         public double s2c, c2s, s2cwpn;
     }
 
+    public record struct PingHistogramBucket()
+    {
+        public required int Start;
+        public required int End;
+        public required int Count;
+    }
+
     /// <summary>
     /// Interface for querying player lag data.
     /// </summary>
@@ -72,8 +79,20 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to get data about.</param>
         int QueryTimeSyncDrift(Player player);
 
-        // DoPHistogram
+        /// <summary>
+        /// Gets a player's ping histogram data based on C2S position packets.
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="data">A list to populate with data.</param>
+        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
+        bool GetPositionPingHistogram(Player player, List<PingHistogramBucket> data);
 
-        // DoRHistogram
+        /// <summary>
+        /// Gets a player's ping histogram data based on reliable packets.
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="data">A list to populate with data.</param>
+        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
+        bool GetReliablePingHistogram(Player player, List<PingHistogramBucket> data);
     }
 }

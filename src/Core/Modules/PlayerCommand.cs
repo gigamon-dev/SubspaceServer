@@ -60,6 +60,7 @@ namespace SS.Core.Modules
 
         private readonly ObjectPool<ArenaListItem> _arenaListItemPool = new NonTransientObjectPool<ArenaListItem>(new ArenaListItemPooledObjectPolicy());
         private readonly ObjectPool<List<ArenaListItem>> _arenaListItemListPool = new DefaultObjectPool<List<ArenaListItem>>(new ArenaListItemListPooledObjectPolicy());
+        private readonly ObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new DefaultObjectPool<List<PingHistogramBucket>>(new PingHistogramBucketListObjectPolicy());
 
         public PlayerCommand()
         {
@@ -218,6 +219,7 @@ namespace SS.Core.Modules
                     Commands = new[]
                     {
                         new CommandInfo("lag", Command_lag),
+                        new CommandInfo("laghist", Command_laghist),
                     }
                 });
 
@@ -576,6 +578,55 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal} s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 
                 PrintCommonBandwidthInfo(player, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "[-r]",
+            Description =
+            "Displays a historgram containing lag information about you or a target player.\n" +
+            "By default, c2s position ping data is returned. Use -r to get reliable ping data.")]
+        private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = player;
+
+            List<PingHistogramBucket> histogramData = _pingHistogramBucketListPool.Get();
+
+            try
+            {
+
+                if (parameters.Contains("-r", StringComparison.OrdinalIgnoreCase)
+                    ? _lagQuery.GetReliablePingHistogram(targetPlayer, histogramData)
+                    : _lagQuery.GetPositionPingHistogram(targetPlayer, histogramData))
+                {
+                    int max = 0;
+                    int sum = 0;
+                    for (int i = 0; i < histogramData.Count; i++)
+                    {
+                        if (histogramData[i].Count > max)
+                            max = histogramData[i].Count;
+
+                        sum += histogramData[i].Count;
+                    }
+
+                    ReadOnlySpan<char> hist = "****************************************";
+                    string prefix = targetPlayer == player ? "laghist" : targetPlayer.Name;
+                    for (int i = 0; i < histogramData.Count; i++)
+                    {
+                        float histRatio = (float)histogramData[i].Count / max;
+                        _chat.SendMessage(player, $"{prefix}: {histogramData[i].Start,3} - {histogramData[i].End,3}: {histogramData[i].Count,7} | {hist[..(int)(hist.Length * histRatio)]}");
+                    }
+                }
+                else
+                {
+                    _chat.SendMessage(player, "Data is not available.");
+                }
+            }
+            finally
+            {
+                _pingHistogramBucketListPool.Return(histogramData);
             }
         }
 
@@ -3690,6 +3741,23 @@ namespace SS.Core.Modules
             }
 
             public bool Return(List<ArenaListItem> obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class PingHistogramBucketListObjectPolicy : IPooledObjectPolicy<List<PingHistogramBucket>>
+        {
+            public List<PingHistogramBucket> Create()
+            {
+                return new List<PingHistogramBucket>();
+            }
+
+            public bool Return(List<PingHistogramBucket> obj)
             {
                 if (obj is null)
                     return false;
