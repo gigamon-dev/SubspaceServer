@@ -178,7 +178,7 @@ namespace SS.Core
                     Console.WriteLine($"I <{nameof(Server)}> Saving scores.");
 
                     using AutoResetEvent autoResetEvent = new(false);
-                    persistExecutor.SaveAll(() => autoResetEvent.Set()); // TODO: use the callback to wait until complete
+                    persistExecutor.SaveAll(() => autoResetEvent.Set());
                     autoResetEvent.WaitOne();
                 }
                 finally

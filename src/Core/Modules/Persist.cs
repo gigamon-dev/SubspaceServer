@@ -47,7 +47,7 @@ namespace SS.Core.Modules
 
         #region Module memebers
 
-        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180", 
+        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
             Description = "The interval at which all persistent data is synced to the database.")]
         [ConfigHelp("Persist", "MaxRecordLength", ConfigScope.Global, typeof(int), DefaultValue = "4096",
             Description = "The maximum # of bytes to store per record.")]
@@ -156,10 +156,26 @@ namespace SS.Core.Modules
         #region IPersistExecutor
 
         void IPersistExecutor.PutPlayer(Player player, Arena arena, Action<Player> callback)
-            => QueuePlayerWorkItem(PersistCommand.PutPlayer, player, arena, callback);
+        {
+            if (!player.Flags.Authenticated)
+            {
+                callback?.Invoke(player);
+                return;
+            }
+
+            QueuePlayerWorkItem(PersistCommand.PutPlayer, player, arena, callback);
+        }
 
         void IPersistExecutor.GetPlayer(Player player, Arena arena, Action<Player> callback)
-            => QueuePlayerWorkItem(PersistCommand.GetPlayer, player, arena, callback);
+        {
+            if (!player.Flags.Authenticated)
+            {
+                callback?.Invoke(player);
+                return;
+            }
+
+            QueuePlayerWorkItem(PersistCommand.GetPlayer, player, arena, callback);
+        }
 
         private void QueuePlayerWorkItem(PersistCommand command, Player player, Arena arena, Action<Player> callback)
         {
@@ -172,10 +188,10 @@ namespace SS.Core.Modules
             _workQueue.Add(workItem);
         }
 
-        void IPersistExecutor.PutArena(Arena arena, Action<Arena> callback) 
+        void IPersistExecutor.PutArena(Arena arena, Action<Arena> callback)
             => QueueArenaWorkItem(PersistCommand.PutArena, arena, callback);
 
-        void IPersistExecutor.GetArena(Arena arena, Action<Arena> callback) 
+        void IPersistExecutor.GetArena(Arena arena, Action<Arena> callback)
             => QueueArenaWorkItem(PersistCommand.GetArena, arena, callback);
 
         private void QueueArenaWorkItem(PersistCommand command, Arena arena, Action<Arena> callback)
@@ -241,7 +257,7 @@ namespace SS.Core.Modules
         #endregion
 
         [ConfigHelp("General", "ScoreGroup", ConfigScope.Arena, typeof(string),
-            Description = 
+            Description =
             "If this is set, it will be used as the score identifier for" +
             "shared scores for this arena(unshared scores, e.g. per - game" +
             "scores, always use the arena name as the identifier).Setting" +
@@ -339,7 +355,7 @@ namespace SS.Core.Modules
                         {
                             lock (_lock)
                             {
-                                foreach(PersistentData<Arena> registration in _arenaRegistrations)
+                                foreach (PersistentData<Arena> registration in _arenaRegistrations)
                                 {
                                     GetOneArena(registration, arenaWorkItem.Arena);
                                 }
@@ -386,7 +402,7 @@ namespace SS.Core.Modules
                                 DoResetGameInterval(resetIntervalWorkItem.Arena);
                             }
                         }
-                        
+
                         break;
 
                     //case PersistCommand.GetGeneric:
@@ -697,7 +713,7 @@ namespace SS.Core.Modules
                 return;
 
             // Check correct scope.
-            if(registration.Scope == PersistScope.Global && arena != null
+            if (registration.Scope == PersistScope.Global && arena != null
                 || registration.Scope == PersistScope.PerArena && arena == null)
             {
                 return;
@@ -812,7 +828,7 @@ namespace SS.Core.Modules
             {
                 return arena.Name;
             }
-        }        
+        }
 
         public class ArenaData : IPooledExtraData
         {
@@ -849,7 +865,7 @@ namespace SS.Core.Modules
         private abstract class PersistWorkItem : PooledObject
         {
             protected PersistCommand _command;
-            public abstract PersistCommand Command { get; set;  }
+            public abstract PersistCommand Command { get; set; }
 
             public virtual void ExecuteCallback()
             {
@@ -893,7 +909,7 @@ namespace SS.Core.Modules
                 base.Dispose(isDisposing);
 
                 if (isDisposing)
-                {                    
+                {
                     Arena = null;
                     Callback = null;
                 }
@@ -961,7 +977,7 @@ namespace SS.Core.Modules
             {
                 base.Dispose(isDisposing);
 
-                if(isDisposing)
+                if (isDisposing)
                 {
                     Callback = null;
                 }

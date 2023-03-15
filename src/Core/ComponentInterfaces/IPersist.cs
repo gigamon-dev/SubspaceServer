@@ -3,6 +3,12 @@ using System.IO;
 
 namespace SS.Core.ComponentInterfaces
 {
+    /// <summary>
+    /// Known built-in keys for persisting data.
+    /// </summary>
+    /// <remarks>
+    /// The values of these keys match the ones used in ASSS. However, this server doesn't serialize data in the same binary format as ASSS. So it's not compatible.
+    /// </remarks>
     public enum PersistKey
     {
         Stats = 1,
@@ -13,10 +19,13 @@ namespace SS.Core.ComponentInterfaces
         Chat = 47,
     }
 
+    /// <summary>
+    /// Represents the interval for persistent data.
+    /// </summary>
     public enum PersistInterval
     {
         /// <summary>
-        /// Stats stored forever.
+        /// Data stored forever.
         /// </summary>
         Forever = 0,
 
@@ -25,6 +34,9 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         Reset,
 
+        /// <summary>
+        /// For the duration of a map rotation.
+        /// </summary>
         MapRotation,
 
         /// <summary>
@@ -32,20 +44,21 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         Game = 5,
 
-        ForeverNotShared,
-
         /// <summary>
-        /// For a single period within a game.
-        /// e.g., hockey has 2 periods, football has 2 halves, a flag game can be split up too (each reward within in a Turf game)
+        /// Data stored forever, but not shared between arenas.
         /// </summary>
-        //Period, // TODO: Maybe? need to investigate more into how the Persist module works...
+        ForeverNotShared,
     }
 
     public static class PersistIntervalExtensions
     {
         /// <summary>
-        /// Gets whether a <see cref="PersistInterval"/> is shared between arenas.
+        /// Gets whether <see cref="PersistScope.PerArena"/> data for a <see cref="PersistInterval"/> is shared between arenas with the same base arena name.
         /// </summary>
+        /// <remarks>
+        /// For example, whether the data is shared amongst arenas: "foo", "foo1", "foo2", ...
+        /// Similarly, for the public arenas "0", "1", ...
+        /// </remarks>
         /// <param name="interval"></param>
         /// <returns></returns>
         public static bool IsShared(this PersistInterval interval)
@@ -54,16 +67,44 @@ namespace SS.Core.ComponentInterfaces
         }
     }
 
+    /// <summary>
+    /// Represents the scope for persistent data.
+    /// </summary>
     public enum PersistScope
     {
+        /// <summary>
+        /// Data is stored separately for each arena.
+        /// </summary>
         PerArena,
+
+        /// <summary>
+        /// Data is stored globally (entire zone).
+        /// </summary>
         Global,
     }
 
+    /// <summary>
+    /// Base class for a persistent data registration.
+    /// </summary>
+    /// <typeparam name="T"><see cref="Player"/> or <see cref="Arena"/></typeparam>
     public abstract class PersistentData<T>
     {
+        /// <summary>
+        /// Uniquely identifies the type of persistent data.
+        /// </summary>
+        /// <remarks>
+        /// When adding another type of persistent data, use a value that is not used. See <see cref="PersistKey"/> for some known used keys to avoid.
+        /// </remarks>
         public int Key { get; private set; }
+
+        /// <summary>
+        /// The interval to persist data for.
+        /// </summary>
         public PersistInterval Interval { get; private set; }
+
+        /// <summary>
+        /// The scope of the data to persist.
+        /// </summary>
         public PersistScope Scope { get; private set; }
 
         protected PersistentData(int key, PersistInterval interval, PersistScope scope)
@@ -73,8 +114,42 @@ namespace SS.Core.ComponentInterfaces
             Scope = scope;
         }
 
+        /// <summary>
+        /// Gets data that should be written to the persist database.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Implementors should write data about the <paramref name="target"/> to the <paramref name="outStream"/>.
+        /// Not writing any data to <paramref name="outStream"/> means no persistent data should be saved for the <paramref name="target"/>, 
+        /// and any existing data should be removed.
+        /// </para>
+        /// <para>
+        /// This method is called on a worker thread. Remember to use thead sychronization techniques (e.g. locking) when accessing the data that's being written to <paramref name="outStream"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="target">The target to get data for.</param>
+        /// <param name="outStream">The stream to write the data to.</param>
         public abstract void GetData(T target, Stream outStream);
+
+        /// <summary>
+        /// Sets data that was retrieved from the persist database.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Implementors should read data about the <paramref name="target"/> from the <paramref name="inStream"/>.
+        /// </para>
+        /// <para>
+        /// This method is called on a worker thread. Remember to use thead sychronization techniques (e.g. locking) when saving the data that's being read from <paramref name="inStream"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="target">The target to set data for.</param>
+        /// <param name="inStream">The stream to read the data from.</param>
         public abstract void SetData(T target, Stream inStream);
+
+        /// <summary>
+        /// Clears/resets the data being persisted for the <paramref name="target"/>.
+        /// </summary>
+        /// <param name="target">The target to clear/reset data for.</param>
         public abstract void ClearData(T target);
     }
 
@@ -203,10 +278,6 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="registration">The registration to remove.</param>
         void UnregisterPersistentData(PersistentData<Arena> registration);
-
-        // TODO: Add [Get|Put]Generic methods
-        //Task<(IMemoryOwner<byte> Data, int Length)> GetGeneric(int key);
-        //Task SetGeneric(int key, IMemoryOwner<byte> data, int dataLength);
     }
 
     /// <summary>
@@ -234,9 +305,12 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// This method does not block. It adds a request into a work queue which will be processed by a worker thread.
         /// </remarks>
-        /// <param name="player"></param>
-        /// <param name="arena"></param>
-        /// <param name="callback"></param>
+        /// <param name="player">The player to save persistent data for.</param>
+        /// <param name="arena">The arena to save persistent data for <see cref="PersistScope.PerArena"/>. <see langword="null"/> for <see cref="PersistScope.Global"/>.</param>
+        /// <param name="callback">
+        /// An optional callback to be called after the <paramref name="player"/>'s persistent data has been saved.
+        /// It is guaranteed to be executed on the mainloop thread.
+        /// </param>
         void PutPlayer(Player player, Arena arena, Action<Player> callback);
 
         /// <summary>
@@ -246,9 +320,12 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// This method does not block. It adds a request into a work queue which will be processed by a worker thread.
         /// </remarks>
-        /// <param name="player"></param>
-        /// <param name="arena"></param>
-        /// <param name="callback"></param>
+        /// <param name="player">The player to retrieve persistent data for.</param>
+        /// <param name="arena">The arena to retrieve persistent data for <see cref="PersistScope.PerArena"/>. <see langword="null"/> for <see cref="PersistScope.Global"/>.</param>
+        /// <param name="callback">
+        /// An optional callback to be called after the <paramref name="player"/>'s persistent data has been retrieved.
+        /// It is guaranteed to be executed on the mainloop thread.
+        /// </param>
         void GetPlayer(Player player, Arena arena, Action<Player> callback);
 
         #endregion
@@ -256,23 +333,29 @@ namespace SS.Core.ComponentInterfaces
         #region Arena methods
 
         /// <summary>
-        /// Adds a request to save an <see cref="Arena"/>'s persistent data.
+        /// Adds a request to save an <see cref="Arena"/>'s persistent data from the database.
         /// </summary>
         /// <remarks>
         /// This method does not block. It adds a request into a work queue which will be processed by a worker thread.
         /// </remarks>
-        /// <param name="arena"></param>
-        /// <param name="callback"></param>
+        /// <param name="arena">The arena to save persistent data for.</param>
+        /// <param name="callback">
+        /// An optional callback to be called after the <paramref name="arena"/>'s persistent data has been saved.
+        /// It is guaranteed to be executed on the mainloop thread.
+        /// </param>
         void PutArena(Arena arena, Action<Arena> callback);
 
         /// <summary>
-        /// Adds a request to 
+        /// Adds a request to retrieve an <see cref="Arena"/>'s persistent data from the database.
         /// </summary>
         /// <remarks>
         /// This method does not block. It adds a request into a work queue which will be processed by a worker thread.
         /// </remarks>
-        /// <param name="arena"></param>
-        /// <param name="callback"></param>
+        /// <param name="arena">The arena to retrieve persistent data for.</param>
+        /// <param name="callback">
+        /// An optional callback to be called after the <paramref name="arena"/>'s persistent data has been retrieved.
+        /// It is guaranteed to be executed on the mainloop thread.
+        /// </param>
         void GetArena(Arena arena, Action<Arena> callback);
 
         #endregion
@@ -339,13 +422,13 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// This is called when the Persist module is loaded. It provides a time to create/initialize the database.
         /// </summary>
-        /// <returns></returns>
+        /// <returns><see langword="true"/> on success. <see langword="false"/> on failure.</returns>
         bool Open();
 
         /// <summary>
         /// This is called when the Persist module is unloaded. It provides a time to perform any closing tasks. (e.g. ASSS does a 'sync' for Berkeley DB).
         /// </summary>
-        /// <returns></returns>
+        /// <returns><see langword="true"/> on success. <see langword="false"/> on failure.</returns>
         bool Close();
 
         /// <summary>
