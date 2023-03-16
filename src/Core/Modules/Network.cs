@@ -1172,7 +1172,7 @@ namespace SS.Core.Modules
 
             Monitor.Enter(conn.relmtx);
 
-            if ((sn - conn.c2sn) >= Constants.CFG_INCOMING_BUFFER || sn < 0)
+            if ((sn - conn.c2sn) >= conn.relbuf.Length || sn < 0)
             {
                 Monitor.Exit(conn.relmtx);
 
@@ -1188,7 +1188,7 @@ namespace SS.Core.Modules
                 bool canProcess = false;
 
                 // add to rel stuff to be processed
-                int spot = sn % Constants.CFG_INCOMING_BUFFER;
+                int spot = sn % conn.relbuf.Length;
                 if ((sn < conn.c2sn) || (conn.relbuf[spot] != null))
                 {
                     // a dup
@@ -2634,7 +2634,7 @@ namespace SS.Core.Modules
                 // now clear out the connection's incoming rel buffer
                 lock (conn.relmtx)
                 {
-                    for (int i = 0; i < Constants.CFG_INCOMING_BUFFER; i++)
+                    for (int i = 0; i < conn.relbuf.Length; i++)
                     {
                         if (conn.relbuf[i] != null)
                         {
@@ -2684,9 +2684,9 @@ namespace SS.Core.Modules
                 {
                     int processedCount = 0;
                     SubspaceBuffer buf;
-                    for (int spot = conn.c2sn % Constants.CFG_INCOMING_BUFFER;
-                        (buf = conn.relbuf[spot]) != null && processedCount <= Constants.CFG_INCOMING_BUFFER;
-                        spot = conn.c2sn % Constants.CFG_INCOMING_BUFFER)
+                    for (int spot = conn.c2sn % conn.relbuf.Length;
+                        (buf = conn.relbuf[spot]) != null && processedCount <= conn.relbuf.Length;
+                        spot = conn.c2sn % conn.relbuf.Length)
                     {
                         if (!Monitor.TryEnter(conn.ReliableProcessingLock))
                             break; // another thread is already processing a reliable packet for this connection
@@ -2706,9 +2706,9 @@ namespace SS.Core.Modules
                         Monitor.Enter(conn.relmtx);
                     }
 
-                    if (processedCount > Constants.CFG_INCOMING_BUFFER)
+                    if (processedCount > conn.relbuf.Length)
                     {
-                        if (conn.relbuf[conn.c2sn % Constants.CFG_INCOMING_BUFFER] != null)
+                        if (conn.relbuf[conn.c2sn % conn.relbuf.Length] != null)
                         {
                             // there is more to process, but we don't want to hog all the processing time on 1 connection
                             // re-queue and we'll get back to it
@@ -3652,7 +3652,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Incoming reliable packets
             /// </summary>
-            public readonly SubspaceBuffer[] relbuf = new SubspaceBuffer[Constants.CFG_INCOMING_BUFFER];
+            public readonly SubspaceBuffer[] relbuf;
 
             /// <summary>
             /// mutex for <see cref="outlist"/>
@@ -3679,7 +3679,24 @@ namespace SS.Core.Modules
             /// </summary>
             public readonly object bigmtx = new();
 
-            public ConnData()
+            /// <summary>
+            /// Initializes a new instance of the <see cref="ConnData"/> class.
+            /// </summary>
+            /// <remarks>
+            /// This is the constructor that the per-player data uses.
+            /// </remarks>
+            public ConnData() : this(Constants.IncomingReliableBufferLength_Player)
+            {
+            }
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="ConnData"/> class with a specified length for the incoming reliable data buffer.
+            /// </summary>
+            /// <remarks>
+            /// This is the constructor that the per-player data uses.
+            /// </remarks>
+            /// <param name="reliableBufferLength">The length of the reliable data buffer (# of reliable packets to allow</param>
+            public ConnData(int reliableBufferLength)
             {
                 outlist = new LinkedList<SubspaceBuffer>[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
 
@@ -3687,6 +3704,8 @@ namespace SS.Core.Modules
                 {
                     outlist[x] = new LinkedList<SubspaceBuffer>();
                 }
+
+                relbuf = new SubspaceBuffer[reliableBufferLength];
             }
 
             public void Initalize(IEncrypt enc, string iEncryptName, IBandwidthLimiter bandwidthLimiter)
@@ -3797,7 +3816,7 @@ namespace SS.Core.Modules
             public NetClientConnection(IPEndPoint remoteEndpoint, Socket socket, IClientConnectionHandler handler, IClientEncrypt encryptor, string encryptorName, IBandwidthLimiter bwLimit)
                 : base(handler, encryptorName)
             {
-                ConnData = new();
+                ConnData = new ConnData(Constants.IncomingReliableBufferLength_ClientConnection);
                 ConnData.cc = this;
                 ConnData.RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
                 ConnData.whichSock = socket ?? throw new ArgumentNullException(nameof(socket));

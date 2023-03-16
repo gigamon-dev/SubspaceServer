@@ -65,9 +65,14 @@ namespace SS.Core
         #region Network related
 
         /// <summary>
-        /// how many incoming rel packets to buffer for a client
+        /// The maximum number of incoming reliable packets to buffer for a player connection.
         /// </summary>
-        public const int CFG_INCOMING_BUFFER = 32;
+        public const int IncomingReliableBufferLength_Player = 32;
+
+        /// <summary>
+        /// The maximum number of incoming reliable packets to buffer for a client connection.
+        /// </summary>
+        public const int IncomingReliableBufferLength_ClientConnection = 32; // TODO: Maybe use a larger buffer for client connections? e.g., to allow the connection to the biller to receive a large amount of data, such as chat
 
         /// <summary>
         /// Maximum # of bytes a game packet can be.
@@ -101,8 +106,6 @@ namespace SS.Core
         public const int ChunkSize = 480;
 
         #endregion
-
-        public const int MaxLvzFiles = 16;
 
         public const int RandMax = 0x7fff;
 

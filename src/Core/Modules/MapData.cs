@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
+using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -128,7 +129,7 @@ namespace SS.Core.Modules
 
                     yield return new LvzFileInfo(fname, (lvzName[0] == '+'));
 
-                    if (++count >= Constants.MaxLvzFiles)
+                    if (++count >= S2C_MapFilename.MaxLvzFiles)
                         yield break;
                 }
             }
