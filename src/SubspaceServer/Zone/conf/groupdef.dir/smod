@@ -11,10 +11,6 @@ higher_than_mod
 prefix_>
 
 privcmd_info
-privcmd_sg_info
-privcmd_sg_einfo
-privcmd_sg_tinfo
-
 cmd_aa
 cmd_az
 

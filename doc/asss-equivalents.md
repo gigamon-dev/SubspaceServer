@@ -88,7 +88,7 @@ This document provides an overview of the various server parts and their relatio
 | redirect | SS.Core.Modules.Redirect | |
 | security | SS.Core.Modules.Security | |
 | sendfile | - | No plans to add it. |
-| funky:sgcompat | - | No plans to add it. |
+| funky:sgcompat | SS.Core.Modules.SubgameCompatibility | Partial, might add more later, low priority |
 | - | SS.Core.Modules.Scoring.SpeedGame | |
 | stats | SS.Core.Modules.Scoring.Stats | |
 | unixsignal | | No plans to add it. |
@@ -175,6 +175,7 @@ This document provides an overview of the various server parts and their relatio
 | CB_BALLPICKUP | SS.Core.ComponentCallbacks.BallPickupCallback | |
 | - | SS.Core.ComponentCallbacks.BricksPlacedCallback | |
 | CB_CHATMSG | SS.Core.ComponentCallbacks.ChatMessageCallback | |
+| - | SS.Core.ComponentCallbacks.CommandExecutedCallback | |
 | CB_CONNINIT | n/a | Use INetworkEncryption.AppendConnectionInitHandler instead. |
 | CB_CROWNCHANGE | SS.Core.ComponentCallbacks.CrownToggledCallback | |
 | CB_DOBRICKMODE | SS.Core.ComponentCallbacks.DoBrickModeCallback | |
@@ -212,7 +213,7 @@ This document provides an overview of the various server parts and their relatio
 ## Advisors
 | ASSS  | Subspace Server .NET | Notes |
 | --- | --- | --- |
-| Aballs | SS.Core.ComponentAdvisors.IBallsAdvsior | |
-| Aenforcer | SS.Core.ComponentAdvisors.IFreqManagerEnforcerAdvsior | |
+| Aballs | SS.Core.ComponentAdvisors.IBallsAdvisor | |
+| Aenforcer | SS.Core.ComponentAdvisors.IFreqManagerEnforcerAdvisor | |
 | Akill | SS.Core.ComponentAdvisors.IKillAdvisor | |
 | Appk | SS.Core.ComponentAdvisors.IPlayerPositionAdvisor | |

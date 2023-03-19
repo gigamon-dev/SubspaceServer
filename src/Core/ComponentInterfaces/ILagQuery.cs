@@ -19,6 +19,12 @@ namespace SS.Core.ComponentInterfaces
         public double s2c, c2s, s2cwpn;
     }
 
+    public record struct TimeSyncRecord()
+    {
+        public required uint ServerTime;
+        public required uint ClientTime;
+    }
+
     public record struct PingHistogramBucket()
     {
         public required int Start;
@@ -70,29 +76,30 @@ namespace SS.Core.ComponentInterfaces
         /// Gets a player's history of time sync requests (0x00 0x05 core packet).
         /// </summary>
         /// <param name="player">The player to get data about.</param>
-        /// <param name="history">A collection to be filled with a copy of the data.</param>
-        void QueryTimeSyncHistory(Player player, in ICollection<(uint ServerTime, uint ClientTime)> history);
+        /// <param name="records">A collection to be filled with a copy of the data.</param>
+        void QueryTimeSyncHistory(Player player, ICollection<TimeSyncRecord> records);
 
         /// <summary>
-        /// Gets a player's drift in time sync request.
+        /// Gets a player's average drift in time sync request.
         /// </summary>
         /// <param name="player">The player to get data about.</param>
-        int QueryTimeSyncDrift(Player player);
+        /// <returns>The average drift in time sync. <see langword="null"/> if not available.</returns>
+        int? QueryTimeSyncDrift(Player player);
 
         /// <summary>
         /// Gets a player's ping histogram data based on C2S position packets.
         /// </summary>
         /// <param name="player">The player to get data for.</param>
-        /// <param name="data">A list to populate with data.</param>
+        /// <param name="data">A collection to populate with data.</param>
         /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetPositionPingHistogram(Player player, List<PingHistogramBucket> data);
+        bool GetPositionPingHistogram(Player player, ICollection<PingHistogramBucket> data);
 
         /// <summary>
         /// Gets a player's ping histogram data based on reliable packets.
         /// </summary>
         /// <param name="player">The player to get data for.</param>
-        /// <param name="data">A list to populate with data.</param>
+        /// <param name="data">A collection to populate with data.</param>
         /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetReliablePingHistogram(Player player, List<PingHistogramBucket> data);
+        bool GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data);
     }
 }

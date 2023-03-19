@@ -1,0 +1,15 @@
+cmd_sg_einfo
+privcmd_sg_einfo
+cmd_sg_tinfo
+privcmd_sg_tinfo
+cmd_sg_listmod
+cmd_sg_where
+privcmd_sg_where
+cmd_sg_info
+privcmd_sg_info
+cmd_sg_lag
+privcmd_sg_lag
+privcmd_sg_spec
+cmd_sg_lock
+cmd_sg_scorereset
+privcmd_sg_scorereset

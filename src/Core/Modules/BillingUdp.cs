@@ -191,6 +191,20 @@ namespace SS.Core.Modules
             }
         }
 
+        bool IBilling.TryGetUserId(Player player, out uint userId)
+        {
+            if (player is null
+                || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
+                || !playerData.IsKnownToBiller)
+            {
+                userId = default;
+                return false;
+            }
+
+            userId = playerData.BillingUserId;
+            return true;
+        }
+
         #endregion
 
         #region IAuth
@@ -797,16 +811,14 @@ namespace SS.Core.Modules
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = player;
 
-            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
-                return;
-
-            if (!targetPlayerData.IsKnownToBiller)
+            if (((IBilling)this).TryGetUserId(targetPlayer, out uint userId))
+            {
+                _chat.SendMessage(player, $"{targetPlayer.Name} has User ID {userId}");
+            }
+            else
             {
                 _chat.SendMessage(player, $"User ID unknown for {targetPlayer.Name}");
-                return;
             }
-
-            _chat.SendMessage(player, $"{targetPlayer.Name} has User ID {targetPlayerData.BillingUserId}");
         }
 
         [CommandHelp(

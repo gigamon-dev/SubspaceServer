@@ -52,7 +52,6 @@ cmd_reloadconf
 cmd_addallowed
 privcmd_set_local_password
 
-; temporary
 cmd_dropturret
 cmd_makefake
 privcmd_killfake
@@ -60,3 +59,4 @@ privcmd_killfake
 cmd_py
 privcmd_py
 
+rprivcmd_send

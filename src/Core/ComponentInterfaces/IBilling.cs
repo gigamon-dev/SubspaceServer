@@ -39,6 +39,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <returns>The identity data, or <see cref="ReadOnlySpan{byte}.Empty"/> is no identity data was provided.</returns>
         ReadOnlySpan<byte> GetIdentity();
+
+        /// <summary>
+        /// Gets the user database id of a player.
+        /// </summary>
+        /// <param name="player">The player to get the id of.</param>
+        /// <param name="userId">When this method returns, the id of the player if found. Otherwise, 0.</param>
+        /// <returns><see langword="true"/> if the user id could be retrieved. Otherwise, <see langword="false"/></returns>
+        bool TryGetUserId(Player player, out uint userId);
     }
 
     /// <summary>

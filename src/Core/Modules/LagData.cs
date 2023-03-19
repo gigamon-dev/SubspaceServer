@@ -1,5 +1,4 @@
-﻿using SS.Core.ComponentCallbacks;
-using SS.Core.ComponentInterfaces;
+﻿using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -17,6 +16,7 @@ namespace SS.Core.Modules
         private const int PacketlossMinPackets = 200;
         private const int MaxBucket = 25;
         private const int BucketWidth = 20;
+        private const int TimeSyncSamples = 10;
 
         private ComponentBroker _broker;
         private IPlayerData _playerData;
@@ -37,8 +37,6 @@ namespace SS.Core.Modules
 
             _lagkey = _playerData.AllocatePlayerData<PlayerLagStats>();
 
-            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
-
             _iLagCollectToken = _broker.RegisterInterface<ILagCollect>(this);
             _iLagQueryToken = _broker.RegisterInterface<ILagQuery>(this);
 
@@ -53,8 +51,6 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iLagQueryToken) != 0)
                 return false;
 
-            PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
-
             _playerData.FreePlayerData(ref _lagkey);
 
             return true;
@@ -66,55 +62,37 @@ namespace SS.Core.Modules
 
         void ILagCollect.Position(Player player, int ms, int? clientS2CPing, uint serverWeaponCount)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdatePositionStats(ms, clientS2CPing, serverWeaponCount);
         }
 
         void ILagCollect.RelDelay(Player player, int ms)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateReliableAckStats(ms);
         }
 
         void ILagCollect.ClientLatency(Player player, in ClientLatencyData data)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateClientLatencyStats(in data);
         }
 
         void ILagCollect.TimeSync(Player player, in TimeSyncData data)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateTimeSyncStats(in data);
         }
 
         void ILagCollect.RelStats(Player player, in ReliableLagData data)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.UpdateReliableStats(in data);
         }
 
         void ILagCollect.Clear(Player player)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.Reset();
         }
 
@@ -124,10 +102,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryPositionPing(Player player, out PingSummary ping)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryPositionPing(out ping);
             else
                 ping = default;
@@ -135,10 +110,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryClientPing(Player player, out ClientPingSummary ping)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryClientPing(out ping);
             else
                 ping = default;
@@ -146,10 +118,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryReliablePing(Player player, out PingSummary ping)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryReliablePing(out ping);
             else
                 ping = default;
@@ -157,10 +126,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary packetloss)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryPacketloss(out packetloss);
             else
                 packetloss = default;
@@ -168,71 +134,53 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryReliableLag(Player player, out ReliableLagData data)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 lagStats.QueryReliableLag(out data);
             else
                 data = default;
         }
 
-        void ILagQuery.QueryTimeSyncHistory(Player player, in ICollection<(uint ServerTime, uint ClientTime)> history)
+        void ILagQuery.QueryTimeSyncHistory(Player player, ICollection<TimeSyncRecord> records)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
-                lagStats.QueryTimeSyncHistory(in history);
+            if (player is not null && records is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+                lagStats.QueryTimeSyncHistory(records);
             else
-                history.Clear();
+                records.Clear();
         }
 
-        int ILagQuery.QueryTimeSyncDrift(Player player)
+        int? ILagQuery.QueryTimeSyncDrift(Player player)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
                 return lagStats.QueryTimeSyncDrift();
             else
-                return 0;
+                return null;
         }
 
-        bool ILagQuery.GetPositionPingHistogram(Player player, List<PingHistogramBucket> data)
+        bool ILagQuery.GetPositionPingHistogram(Player player, ICollection<PingHistogramBucket> data)
         {
-            if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+                return lagStats.GetPositionPingHistogram(data);
+            else
                 return false;
-
-            return lagStats.GetPositionPingHistogram(data);
         }
 
-        bool ILagQuery.GetReliablePingHistogram(Player player, List<PingHistogramBucket> data)
+        bool ILagQuery.GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data)
         {
-            if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+                return lagStats.GetReliablePingHistogram(data);
+            else
                 return false;
-
-            return lagStats.GetReliablePingHistogram(data);
         }
 
         #endregion
-
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
-        {
-            if (player == null)
-                return;
-
-            if (!player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
-                return;
-
-            if (action == PlayerAction.Connect)
-                lagStats.Reset();
-        }
 
         #region Helper classes
 
         private class PingStats
         {
+            /// <summary>
+            /// Buckets for a histogram of pings.
+            /// </summary>
             public int[] Buckets = new int[MaxBucket];
 
             /// <summary>
@@ -294,39 +242,43 @@ namespace SS.Core.Modules
 
         private class TimeSyncHistory
         {
-            private const int TimeSyncSamples = 10;
+            private TimeSyncRecord[] _records = new TimeSyncRecord[TimeSyncSamples];
+            private int _next = 0;
+            private int _count = 0;
 
-            public uint[] ServerTime = new uint[TimeSyncSamples];
-            public uint[] ClientTime = new uint[TimeSyncSamples];
-            private int next;
-
-            public void Update(in TimeSyncData data)
+            public void Update(uint serverTime, uint clientTime)
             {
-                int sampleIndex = next;
-                ServerTime[sampleIndex] = data.ServerTime;
-                ClientTime[sampleIndex] = data.ClientTime;
-                next = (sampleIndex + 1) % TimeSyncSamples;
+                int sampleIndex = _next;
+                _records[sampleIndex].ServerTime = serverTime;
+                _records[sampleIndex].ClientTime = clientTime;
+                _next = (sampleIndex + 1) % _records.Length;
+
+                if (_count < _records.Length)
+                    _count++;
             }
 
             public void Reset()
             {
-                ServerTime.Initialize();
-                ClientTime.Initialize();
-                next = 0;
+                _records.Initialize();
+                _next = 0;
+                _count = 0;
             }
 
-            public int Drift
+            public int? Drift
             {
                 get
                 {
                     int drift = 0;
                     int count = 0;
 
-                    for (int i = 0; i < TimeSyncSamples; i++)
+                    for (int i = _count; i > 1; i--)
                     {
-                        int j = (i + next) % TimeSyncSamples;
-                        int k = (i + next - 1) % TimeSyncSamples;
-                        int delta = (new ServerTick(ServerTime[j]) - new ServerTick(ClientTime[j])) - (new ServerTick(ServerTime[k]) - new ServerTick(ClientTime[k]));
+                        int j = (_next + _records.Length - i) % _records.Length;
+                        int k = (_next + _records.Length - (i - 1)) % _records.Length;
+
+                        int delta = (new ServerTick(_records[j].ServerTime) - new ServerTick(_records[j].ClientTime))
+                            - (new ServerTick(_records[k].ServerTime) - new ServerTick(_records[k].ClientTime));
+
                         if (delta >= -10000 && delta <= 10000)
                         {
                             drift += delta;
@@ -334,44 +286,47 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    return count != 0 ? drift / count : 0;
+                    return count > 0 ? drift / count : null;
                 }
             }
 
-            public void GetHistory(in ICollection<(uint ServerTime, uint ClientTime)> history)
+            public void GetHistory(ICollection<TimeSyncRecord> records)
             {
-                history.Clear();
+                if (records is null)
+                    return;
 
-                for (int i = 0; i < TimeSyncSamples; i++)
+                records.Clear();
+
+                for (int i = _count; i > 0; i--)
                 {
-                    history.Add((ServerTime[i], ClientTime[i]));
+                    records.Add(_records[(_next + _records.Length - i) % _records.Length]);
                 }
             }
         }
 
         private class PlayerLagStats : IPooledExtraData
         {
-            public PingStats PositionPacketPing = new();
-            public PingStats ReliablePing = new();
-            public ClientLatencyData ClientReportedPing;
-            public TimeSyncData Packetloss;
-            public TimeSyncHistory TimeSync = new();
-            public ReliableLagData ReliableLagData;
+            private PingStats PositionPacketPing = new();
+            private PingStats ReliablePing = new();
+            private ClientLatencyData ClientReportedPing;
+            private TimeSyncData Packetloss;
+            private TimeSyncHistory TimeSync = new();
+            private ReliableLagData ReliableLagData;
 
             /// <summary>
             /// The latest # of weapon packets that the server sent to the client.
             /// </summary>
-            public uint LastWeaponSentCount;
+            private uint LastWeaponSentCount;
 
             /// <summary>
             /// The # of weapon packets that the server sent to the client, as of the last successful security check.
             /// </summary>
-            public uint WeaponSentCount;
+            private uint WeaponSentCount;
 
             /// <summary>
             /// The # of weapon packets that the client reported it received, as of the last successful security check.
             /// </summary>
-            public uint WeaponReceiveCount;
+            private uint WeaponReceiveCount;
 
             private readonly object lockObj = new();
 
@@ -422,7 +377,7 @@ namespace SS.Core.Modules
                 lock (lockObj)
                 {
                     Packetloss = data;
-                    TimeSync.Update(in data);
+                    TimeSync.Update(data.ServerTime, data.ClientTime);
                 }
             }
 
@@ -501,15 +456,15 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void QueryTimeSyncHistory(in ICollection<(uint ServerTime, uint ClientTime)> history)
+            public void QueryTimeSyncHistory(ICollection<TimeSyncRecord> records)
             {
                 lock (lockObj)
                 {
-                    TimeSync.GetHistory(in history);
+                    TimeSync.GetHistory(records);
                 }
             }
 
-            public int QueryTimeSyncDrift()
+            public int? QueryTimeSyncDrift()
             {
                 lock (lockObj)
                 {
@@ -517,7 +472,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool GetPositionPingHistogram(List<PingHistogramBucket> data)
+            public bool GetPositionPingHistogram(ICollection<PingHistogramBucket> data)
             {
                 lock (lockObj)
                 {
@@ -525,7 +480,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool GetReliablePingHistogram(List<PingHistogramBucket> data)
+            public bool GetReliablePingHistogram(ICollection<PingHistogramBucket> data)
             {
                 lock (lockObj)
                 {
@@ -533,7 +488,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            private static bool GetPingHistogram(PingStats stats, List<PingHistogramBucket> data)
+            private static bool GetPingHistogram(PingStats stats, ICollection<PingHistogramBucket> data)
             {
                 if (stats is null || data is null)
                     return false;
