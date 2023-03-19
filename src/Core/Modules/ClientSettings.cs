@@ -67,8 +67,8 @@ namespace SS.Core.Modules
             ("Misc", "SlowFrameCheck", 11, 3),
             ("Misc", "DisableScreenshot", 14, 1),
             ("Misc", "MaxTimerDrift", 16, 3),
-            ("Misc", "DisableBallThroughWalls", 19, 1),
-            ("Misc", "DisableBallKilling", 20, 1),
+            ("Soccer", "DisableWallPass", 19, 1),
+            ("Soccer", "DisableBallKilling", 20, 1),
         };
 
         #endregion
@@ -391,6 +391,7 @@ namespace SS.Core.Modules
                 {
                     int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("BitSet");
                     id = new ClientSettingIdentifier(false, ClientSettingIdentifierFieldType.Bit32, byteOffset, bitOffset, bitLength);
+                    return true;
                 }
             }
 
