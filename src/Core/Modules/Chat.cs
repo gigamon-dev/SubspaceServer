@@ -1,6 +1,7 @@
 ﻿using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -1058,10 +1059,10 @@ namespace SS.Core.Modules
             {
                 if (Ok(player, ChatMessageType.Command))
                 {
-                    Player d = _playerData.FindPlayer(dest);
-                    if (d != null && d.Status == PlayerState.Playing)
+                    Player targetPlayer = _playerData.FindPlayer(dest);
+                    if (targetPlayer != null && targetPlayer.Status == PlayerState.Playing)
                     {
-                        RunCommands(message, player, d, sound);
+                        RunCommands(message, player, targetPlayer, sound);
                     }
                 }
             }
@@ -1110,7 +1111,7 @@ namespace SS.Core.Modules
 
             Arena arena = player.Arena; // this can be null
 
-            if ((IsCommandChar(text[0]) && text.Length > 1) || isAllCmd)
+            if ((text.Length > 1 && IsCommandChar(text[0])) || isAllCmd)
             {
                 if (Ok(player, ChatMessageType.Command))
                 {
@@ -1159,7 +1160,7 @@ namespace SS.Core.Modules
 
             ChatMessageType type = player.Freq == freq ? ChatMessageType.Freq : ChatMessageType.EnemyFreq;
 
-            if (IsCommandChar(text[0]) && text.Length > 1)
+            if (text.Length > 1 && IsCommandChar(text[0]))
             {
                 if (Ok(player, ChatMessageType.Command))
                 {
@@ -1270,7 +1271,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if ((IsCommandChar(msg[0]) && (msg.Length > 1)) || isAllCmd)
+            if ((msg.Length > 1 && IsCommandChar(msg[0])) || isAllCmd)
             {
                 if (Ok(player, ChatMessageType.Command))
                 {
@@ -1307,48 +1308,66 @@ namespace SS.Core.Modules
 
         private void RunCommands(Span<char> msg, Player player, ITarget target, ChatSound sound)
         {
-            if (player == null)
+            if (player is null)
                 throw new ArgumentNullException(nameof(player));
 
-            if (target == null)
+            if (target is null)
                 throw new ArgumentNullException(nameof(target));
+
+            if (msg.Length < 2)
+                return;
 
             if (MemoryExtensions.IsWhiteSpace(msg))
                 return;
 
-            // skip initial ? or *
+            char commandChar = '\0';
+
+            // Skip initial ? or *
             if (IsCommandChar(msg[0]))
             {
+                commandChar = msg[0];
                 msg = msg[1..];
 
                 if (MemoryExtensions.IsWhiteSpace(msg))
                     return;
             }
 
-            bool multi = msg[0] == MultiChar;
-
-            if (multi)
+            if (msg[0] == MultiChar)
             {
                 ReadOnlySpan<char> remaining = msg;
                 int count = 0;
+
                 while (!remaining.IsEmpty && count++ < _cfg.CommandLimit)
                 {
                     ReadOnlySpan<char> token = StringUtils.GetToken(remaining, '|', out remaining);
                     if (token.IsWhiteSpace())
                         continue;
 
-                    // TODO: give modules a chance to rewrite the command
-
-                    // run the command
-                    _commandManager.Command(token, player, target, sound);
+                    RunCommand(commandChar, token, player, target, sound);
                 }
             }
             else
             {
-                // TODO: give modules a chance to rewrite the command
+                RunCommand(commandChar, msg, player, target, sound);
+            }
 
-                // run the command
-                _commandManager.Command(msg, player, target, sound);
+            void RunCommand(char commandChar, scoped ReadOnlySpan<char> line, Player player, ITarget target, ChatSound sound)
+            {
+                Span<char> buffer = stackalloc char[ChatPacket.MaxMessageChars];
+
+                // Give modules a chance to rewrite the command.
+                var advisors = _broker.GetAdvisors<IChatAdvisor>();
+                foreach (IChatAdvisor advisor in advisors)
+                {
+                    if (advisor.TryRewriteCommand(commandChar, line, buffer, out int charsWritten))
+                    {
+                        line = buffer[..charsWritten];
+                        break;
+                    }
+                }
+
+                // Run the command.
+                _commandManager.Command(line, player, target, sound);
             }
         }
 

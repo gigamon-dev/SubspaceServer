@@ -45,8 +45,17 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to get the id of.</param>
         /// <param name="userId">When this method returns, the id of the player if found. Otherwise, 0.</param>
-        /// <returns><see langword="true"/> if the user id could be retrieved. Otherwise, <see langword="false"/></returns>
+        /// <returns><see langword="true"/> if the user id could be retrieved. Otherwise, <see langword="false"/>.</returns>
         bool TryGetUserId(Player player, out uint userId);
+
+        /// <summary>
+        /// Gets a player's usage.
+        /// </summary>
+        /// <param name="player">The player to get usage data for.</param>
+        /// <param name="usage">The amount of time the player has played. This does not include the current session.</param>
+        /// <param name="firstLoginTimestamp">The timestamp of the player's first login.</param>
+        /// <returns><see langword="true"/> if usage data could be retrieved. Otherwise, <see langword="false"/>.</returns>
+        bool TryGetUsage(Player player, out TimeSpan usage, out DateTime firstLoginTimestamp);
     }
 
     /// <summary>

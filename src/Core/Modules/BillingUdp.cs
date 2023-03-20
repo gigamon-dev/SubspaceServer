@@ -205,6 +205,22 @@ namespace SS.Core.Modules
             return true;
         }
 
+        bool IBilling.TryGetUsage(Player player, out TimeSpan usage, out DateTime firstLoginTimestamp)
+        {
+            if (player is null
+                || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
+                || !playerData.IsKnownToBiller)
+            {
+                usage = default;
+                firstLoginTimestamp = default;
+                return false;
+            }
+
+            usage = playerData.Usage;
+            firstLoginTimestamp = playerData.FirstLogin ?? DateTime.MinValue;
+            return true;
+        }
+
         #endregion
 
         #region IAuth
@@ -783,11 +799,8 @@ namespace SS.Core.Modules
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
                 targetPlayer = player;
-            
-            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
-                return;
 
-            if (!targetPlayerData.IsKnownToBiller)
+            if (!((IBilling)this).TryGetUsage(targetPlayer, out TimeSpan usage, out DateTime firstLoginTimestamp))
             {
                 _chat.SendMessage(player, $"Usage unknown for {targetPlayer.Name}.");
                 return;
@@ -797,8 +810,8 @@ namespace SS.Core.Modules
 
             _chat.SendMessage(player, $"Usage: {targetPlayer.Name}");
             _chat.SendMessage(player, $"session: {session}");
-            _chat.SendMessage(player, $"  total: {session + targetPlayerData.Usage}");
-            _chat.SendMessage(player, $"first played: {targetPlayerData.FirstLogin}");
+            _chat.SendMessage(player, $"  total: {session + usage}");
+            _chat.SendMessage(player, $"first played: {firstLoginTimestamp}");
         }
 
         [CommandHelp(

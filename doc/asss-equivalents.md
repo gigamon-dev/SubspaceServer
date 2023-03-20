@@ -88,7 +88,7 @@ This document provides an overview of the various server parts and their relatio
 | redirect | SS.Core.Modules.Redirect | |
 | security | SS.Core.Modules.Security | |
 | sendfile | - | No plans to add it. |
-| funky:sgcompat | SS.Core.Modules.SubgameCompatibility | Partial, might add more later, low priority |
+| funky:sgcompat | SS.Core.Modules.SubgameCompatibility | |
 | - | SS.Core.Modules.Scoring.SpeedGame | |
 | stats | SS.Core.Modules.Scoring.Stats | |
 | unixsignal | | No plans to add it. |
