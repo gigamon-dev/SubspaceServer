@@ -1200,8 +1200,21 @@ namespace SS.Core.Modules
                 line = line[2..];
             }
 
-            Configuration.ConfFile.ParseConfProperty(line, out string section, out string key, out ReadOnlySpan<char> value, out _);
-            _configManager.SetStr(ch, section, key, value.ToString(), $"Set by {player.Name} on {DateTime.Now}", permanent);
+            ReadOnlySpan<char> section = line.GetToken(':', out line);
+            section = section.Trim();
+            if (section.IsEmpty || line.IsEmpty)
+                return;
+
+            // Allow '=' or ':' as the second delimiter.
+            // ':' is used when the SubGameCompatibility module rewrites ?set to seta
+            ReadOnlySpan<char> key = line.GetToken("=:", out line);
+            key = key.Trim();
+            if (key.IsEmpty || line.IsEmpty)
+                return;
+
+            line = line[1..].Trim();
+
+            _configManager.SetStr(ch, section.ToString(), key.ToString(), line.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent);
         }
 
         [CommandHelp(
@@ -2483,7 +2496,7 @@ namespace SS.Core.Modules
 
             if (permanent)
             {
-                _groupManager.SetPermGroup(targetPlayer, groupName, global, $"Set by {player.Name} on {DateTime.Now}.");
+                _groupManager.SetPermGroup(targetPlayer, groupName, global, $"Set by {player.Name} on {DateTime.UtcNow}.");
                 _chat.SendMessage(player, $"{targetPlayer.Name} is now in group {groupName}.");
                 _chat.SendMessage(targetPlayer, $"You have been assigned to group {groupName} by {player.Name}.");
             }
@@ -2515,7 +2528,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            _groupManager.RemoveGroup(targetPlayer, $"Set by {player.Name} on {DateTime.Now}");
+            _groupManager.RemoveGroup(targetPlayer, $"Set by {player.Name} on {DateTime.UtcNow}");
 
             _chat.SendMessage(player, $"{targetPlayer.Name} has been removed from group {currentGroup}.");
             _chat.SendMessage(targetPlayer, $"You have been removed from group {currentGroup}.");

@@ -182,7 +182,8 @@ namespace SS.Core.Modules
 
             if (!nameFilter.IsEmpty)
             {
-                MemoryExtensions.TryWrite(nameFilter, $"[{targetPlayer.Name}]", out _);
+                if (!nameFilter.TryWrite($"[{targetPlayer.Name}]", out _))
+                    nameFilter = Span<char>.Empty;
             }
 
             ReadOnlySpan<char> args = parameters;

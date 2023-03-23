@@ -76,47 +76,62 @@ namespace SS.Core.Modules
 
             string comment = $"Set by {player.Name} with ?quickfix on {DateTime.UtcNow}";
             bool permanent = true;
-            int position = 1;
-
-            while (position < length)
+            Span<byte> dataSpan = data.AsSpan(1, length - 1);
+            while (!dataSpan.IsEmpty)
             {
-                int nullIndex = Array.IndexOf<byte>(data, 0, position);
-                if (nullIndex == -1 || nullIndex == position)
+                int nullIndex = dataSpan.IndexOf((byte)0);
+                if (nullIndex == -1 || nullIndex == 0)
                     break;
-                
-                if (nullIndex > position)
+
+                ReadOnlySpan<byte> strBytes = dataSpan[..nullIndex];
+                if (!ProcessOneChange(player, strBytes, ref permanent))
                 {
-                    string delimitedSetting = StringUtils.ReadNullTerminatedString(data.AsSpan(position, nullIndex - position));
-                    string[] tokens = delimitedSetting.Split(':', 3, StringSplitOptions.None);
-
-                    if (tokens.Length != 3)
-                    {
-                        _logManager.LogP(LogLevel.Malicious, nameof(Quickfix), player, "Badly formatted setting change.");
-                        return;
-                    }
-
-                    if (string.Equals(tokens[0], "__pragma", StringComparison.Ordinal))
-                    {
-                        if (string.Equals(tokens[1], "perm", StringComparison.Ordinal))
-                        {
-                            // send __pragma:perm:0 to make further settings changes temporary
-                            permanent = tokens[2] != "0";
-                        }
-                        else if (string.Equals(tokens[1], "flush", StringComparison.Ordinal)
-                            && tokens[2] == "1")
-                        {
-                            // send __pragma:flush:1 to flush settings changes
-                            //TODO: configManager.FlushDirtyValues();
-                        }
-                    }
-                    else
-                    {
-                        _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {tokens[0]}:{tokens[1]} = {tokens[2]}");
-                        _configManager.SetStr(arenaConfigHandle, tokens[0], tokens[1], tokens[2], comment, permanent);
-                    }
+                    _logManager.LogP(LogLevel.Malicious, nameof(Quickfix), player, "Badly formatted setting change.");
+                    return;
                 }
 
-                position = nullIndex + 1;
+                dataSpan = dataSpan[(nullIndex + 1)..];
+            }
+
+            bool ProcessOneChange(Player player, ReadOnlySpan<byte> strBytes, ref bool permanent)
+            {
+                Span<char> delimitedString = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(strBytes)];
+                if (StringUtils.DefaultEncoding.GetChars(strBytes, delimitedString) != strBytes.Length)
+                    return false;
+
+                ReadOnlySpan<char> token1 = delimitedString.GetToken(':', out delimitedString);
+                if (token1.IsEmpty || delimitedString.IsEmpty)
+                    return false;
+
+                ReadOnlySpan<char> token2 = delimitedString.GetToken(':', out delimitedString);
+                if (token2.IsEmpty || delimitedString.IsEmpty)
+                    return false;
+
+                ReadOnlySpan<char> token3 = delimitedString[1..];
+                if (token3.IsEmpty)
+                    return false;
+
+                if (token1.Equals("__pragma", StringComparison.Ordinal))
+                {
+                    if (token2.Equals("perm", StringComparison.Ordinal))
+                    {
+                        // send __pragma:perm:0 to make further settings changes temporary
+                        permanent = !token3.Equals("0", StringComparison.Ordinal);
+                    }
+                    else if (token2.Equals("flush", StringComparison.Ordinal)
+                        && token3.Equals("1", StringComparison.Ordinal))
+                    {
+                        // send __pragma:flush:1 to flush settings changes
+                        //TODO: configManager.FlushDirtyValues();
+                    }
+                }
+                else
+                {
+                    _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {token1}:{token2} = {token3}");
+                    _configManager.SetStr(arenaConfigHandle, token1.ToString(), token2.ToString(), token3.ToString(), comment, permanent);
+                }
+
+                return true;
             }
         }
 

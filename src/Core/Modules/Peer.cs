@@ -935,7 +935,7 @@ namespace SS.Core.Modules
                 Span<char> sectionSpan = stackalloc char[7];
                 for (int i = 0; i < 255; i++)
                 {
-                    if (!MemoryExtensions.TryWrite(sectionSpan, $"Peer{i}", out int charsWritten))
+                    if (!sectionSpan.TryWrite($"Peer{i}", out int charsWritten))
                         continue;
 
                     ReadOnlySpan<char> peerSection = sectionSpan[..charsWritten];

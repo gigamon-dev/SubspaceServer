@@ -166,12 +166,12 @@ X. Exit
 
             runTask = server.RunAsync();
 
-            Console.WriteLine($"Started Server at {DateTime.Now:s}");
+            Console.WriteLine($"Started Server at {DateTime.UtcNow:s}");
 
             runTask.ContinueWith(
                 (task) =>
                 {
-                    Console.WriteLine($"Server stopped at {DateTime.Now:s} with exit code:{task.Result}");
+                    Console.WriteLine($"Server stopped at {DateTime.UtcNow:s} with exit code:{task.Result}");
                 });
         }
 

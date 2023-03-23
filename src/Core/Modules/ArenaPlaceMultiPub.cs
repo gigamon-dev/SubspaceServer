@@ -94,8 +94,8 @@ namespace SS.Core.Modules
                     {
                         int bufferWritten;
                         bool success = pass == 0
-                            ? MemoryExtensions.TryWrite(buffer, $"{name}", out bufferWritten)
-                            : MemoryExtensions.TryWrite(buffer, $"{name}{pass}", out bufferWritten);
+                            ? buffer.TryWrite($"{name}", out bufferWritten)
+                            : buffer.TryWrite($"{name}{pass}", out bufferWritten);
 
                         if (!success)
                             continue;

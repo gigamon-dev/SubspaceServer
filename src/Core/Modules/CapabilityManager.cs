@@ -152,7 +152,12 @@ namespace SS.Core.Modules
             if (!b.TryGetExtraData(_pdkey, out PlayerData bPlayerData))
                 return false;
 
-            return ((ICapabilityManager)this).HasCapability(a, $"higher_than_{bPlayerData.Group}");
+            const string prefix = "higher_than_";
+            Span<char> capability = stackalloc char[prefix.Length + bPlayerData.Group.Length];
+            if (!capability.TryWrite($"{prefix}{bPlayerData.Group}", out _))
+                return false;
+
+            return ((ICapabilityManager)this).HasCapability(a, capability);
         }
 
         #endregion
