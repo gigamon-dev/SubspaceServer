@@ -223,11 +223,7 @@ namespace SS.Core.Configuration
                 {
                     CurrentFile.LineNumber++;
 
-                    return new LineReference()
-                    {
-                        Line = CurrentFile.Enumerator.Current,
-                        File = CurrentFile.File,
-                    };
+                    return new LineReference(CurrentFile.Enumerator.Current, CurrentFile.File);
                 }
             }
 

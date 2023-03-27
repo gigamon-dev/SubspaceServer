@@ -35,9 +35,9 @@ namespace SS.Core.Configuration
         private readonly List<LineReference> _lines = new();
 
         /// <summary>
-        /// Active Properties
+        /// Active settings
         /// </summary>
-        private readonly Trie<PropertyInfo> _propertyLookup = new(false);
+        private readonly Trie<SettingInfo> _settings = new(false);
 
         /// <summary>
         /// The file currently being updated.
@@ -96,7 +96,7 @@ namespace SS.Core.Configuration
 
             _files.Clear();
             _lines.Clear();
-            _propertyLookup.Clear();
+            _settings.Clear();
             _updatingFile = null;
             IsReloadNeeded = false;
 
@@ -105,7 +105,7 @@ namespace SS.Core.Configuration
             //
 
             _baseFile = _fileProvider.GetFile(_name);
-            if (_baseFile == null)
+            if (_baseFile is null)
             {
                 _logger?.Log(ComponentInterfaces.LogLevel.Error, $"Failed to load base conf file '{_name}'.");
                 return; // can't do anything without a file to start with
@@ -116,7 +116,7 @@ namespace SS.Core.Configuration
             using (PreprocessorReader reader = new(_fileProvider, _baseFile, _logger))
             {
                 LineReference lineReference;
-                while ((lineReference = reader.ReadLine()) != null)
+                while ((lineReference = reader.ReadLine()) is not null)
                 {
                     RawLine rawLine = lineReference.Line;
 
@@ -151,10 +151,10 @@ namespace SS.Core.Configuration
                     RawProperty rawProperty = (RawProperty)lineRef.Line;
                     string section = rawProperty.SectionOverride ?? currentSection;
 
-                    PropertyLookup_AddOrReplace(
+                    Settings_AddOrReplace(
                         section,
                         rawProperty.Key,
-                        new PropertyInfo()
+                        new SettingInfo()
                         {
                             Value = rawProperty.Value,
                             PropertyReference = lineRef,
@@ -165,7 +165,7 @@ namespace SS.Core.Configuration
 
         private void AddFile(ConfFile file)
         {
-            if (file == null)
+            if (file is null)
                 throw new ArgumentNullException(nameof(file));
 
             _files.Add(file);
@@ -180,13 +180,13 @@ namespace SS.Core.Configuration
             }
         }
 
-        private void PropertyLookup_AddOrReplace(ReadOnlySpan<char> section, ReadOnlySpan<char> key, PropertyInfo propertyInfo)
+        private void Settings_AddOrReplace(ReadOnlySpan<char> section, ReadOnlySpan<char> key, SettingInfo settingInfo)
         {
             if (section.IsEmpty && key.IsEmpty)
                 throw new Exception("No section or key specified");
 
-            if (propertyInfo is null)
-                throw new ArgumentNullException(nameof(propertyInfo));
+            if (settingInfo is null)
+                throw new ArgumentNullException(nameof(settingInfo));
 
             Span<char> trieKey = stackalloc char[!section.IsEmpty && !key.IsEmpty ? section.Length + 1 + key.Length : (!section.IsEmpty ? section.Length : key.Length)];
             if (!section.IsEmpty && !key.IsEmpty)
@@ -203,11 +203,11 @@ namespace SS.Core.Configuration
                 key.CopyTo(trieKey);
             }
 
-            _propertyLookup.Remove(trieKey, out _);
-            _propertyLookup.TryAdd(trieKey, propertyInfo);    
+            _settings.Remove(trieKey, out _);
+            _settings.TryAdd(trieKey, settingInfo);    
         }
 
-        private bool PropertyLookup_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out PropertyInfo propertyInfo)
+        private bool Settings_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out SettingInfo settingInfo)
         {
             if (section.IsEmpty && key.IsEmpty)
                 throw new Exception("No section or key specified");
@@ -227,153 +227,7 @@ namespace SS.Core.Configuration
                 key.CopyTo(trieKey);
             }
 
-            return _propertyLookup.TryGetValue(trieKey, out propertyInfo);
-        }
-
-        /// <summary>
-        /// Sets a property's value. An existing property will be updated, otherwise a new one will be added.
-        /// </summary>
-        /// <param name="section">The section of the property to add.</param>
-        /// <param name="key">The key of the property to add.</param>
-        /// <param name="value">The value of the property.</param>
-        /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
-        /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
-        public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string comment = null)
-        {
-            //
-            // try to update first
-            //
-
-            if (TryUpdateProperty(section, key, value, permanent, comment))
-                return;
-
-            //
-            // otherwise, add
-            //
-
-            if (permanent)
-            {
-                // try to find an existing section to insert it into
-                (ConfFile file, int docIndex)? lastMatchingSection = null;
-
-                foreach (LineReference lineReference in _lines)
-                {
-                    if (lineReference.Line.LineType != ConfLineType.Section
-                        || lineReference.Line is not RawSection rawSection
-                        || !string.Equals(section, rawSection.Name, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    int docIndex = _lines.IndexOf(lineReference);
-                    if (docIndex == -1) // sanity
-                    {
-                        continue;
-                    }
-
-                    lastMatchingSection = (lineReference.File, docIndex);
-                }
-
-                if (lastMatchingSection != null)
-                {
-                    var (file, docIndex) = lastMatchingSection.Value;
-
-                    // find the last property in the section, as long as it's in the same file
-                    for (int i = docIndex + 1; i < _lines.Count; i++)
-                    {
-                        if (_lines[i].File != file || _lines[i].Line.LineType == ConfLineType.Section)
-                            break;
-
-                        if (_lines[i].Line.LineType == ConfLineType.Property)
-                            docIndex = i;
-                    }
-
-                    // find the spot in the file to insert the property
-                    int fileIndex = file.Lines.IndexOf(_lines[docIndex].Line);
-                    if (fileIndex != -1)
-                    {
-                        var propertyToInsert =
-                            new RawProperty(
-                                sectionOverride: null, 
-                                key: key, 
-                                value: value,
-                                hasDelimiter: value != null);
-
-                        // change the file
-                        _updatingFile = file;
-
-                        if (!string.IsNullOrWhiteSpace(comment))
-                        {
-                            file.Lines.Insert(
-                                ++fileIndex,
-                                new RawComment(RawComment.DefaultCommentChar, comment));
-                        }
-
-                        file.Lines.Insert(++fileIndex, propertyToInsert);
-                        file.SetDirty();
-
-                        _updatingFile = null;
-
-                        // add it to the lines we consider active
-                        LineReference lineReference = new()
-                        {
-                            Line = propertyToInsert,
-                            File = file,
-                        };
-
-                        _lines.Insert(docIndex + 1, lineReference);
-
-                        // add it to the properties we know about
-                        PropertyLookup_AddOrReplace(
-                            section,
-                            key,
-                            new PropertyInfo()
-                            {
-                                Value = value,
-                                PropertyReference = lineReference,
-                            });
-
-                        return;
-                    }
-                }
-
-                // otherwise add it to the end of the base file (effectively how ASSS saves conf changes)
-                var propertyToAdd =
-                    new RawProperty(
-                        sectionOverride: section,
-                        key: key,
-                        value: value,
-                        hasDelimiter: value != null);
-
-                _updatingFile = _baseFile;
-
-                if (!string.IsNullOrWhiteSpace(comment))
-                {
-                    _baseFile.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
-                }
-
-                _baseFile.Lines.Add(propertyToAdd);
-                _baseFile.SetDirty();
-                
-                _updatingFile = null;
-
-                LineReference lineRef = new()
-                {
-                    Line = propertyToAdd,
-                    File = _baseFile,
-                };
-
-                _lines.Add(lineRef);
-
-                PropertyLookup_AddOrReplace(
-                    section,
-                    key,
-                    new PropertyInfo()
-                    {
-                        Value = value,
-                        PropertyReference = lineRef
-                    });
-            }
+            return _settings.TryGetValue(trieKey, out settingInfo);
         }
 
         /// <summary>
@@ -385,98 +239,271 @@ namespace SS.Core.Configuration
         /// <returns><see langword="true"/> if the property was found; otherwise, <see langword="false"/>.</returns>
         public bool TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out string value)
         {
-            if (!PropertyLookup_TryGetValue(section, key, out PropertyInfo propertyInfo))
+            if (!Settings_TryGetValue(section, key, out SettingInfo settingInfo))
             {
                 value = default;
                 return false;
             }
 
-            value = propertyInfo.Value;
+            value = settingInfo.Value;
             return true;
         }
 
         /// <summary>
-        /// Updates the value of an existing property.
+        /// Sets a property's value. An existing property will be updated, otherwise a new one will be added.
         /// </summary>
-        /// <param name="section">The section of the property to update.</param>
-        /// <param name="key">The key of the property to update.</param>
-        /// <param name="value">The value to set the property to.</param>
+        /// <remarks>
+        /// This method does not block.
+        /// The appropriate underlying <see cref="ConfFile"/> will be modified for changes that are <paramref name="permanent"/>.
+        /// However, this method does not save the modified <see cref="ConfFile"/> to disk.
+        /// Writing dirty <see cref="ConfFile"/>s to disk is done separately.
+        /// </remarks>
+        /// <param name="section">The section of the property to add.</param>
+        /// <param name="key">The key of the property to add.</param>
+        /// <param name="value">The value of the property.</param>
         /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
         /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
-        /// <returns>True if the property was found and updated.  Otherwise, false.</returns>
-        public bool TryUpdateProperty(ReadOnlySpan<char> section, ReadOnlySpan<char> key, string value, bool permanent, string comment = null)
+        public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string comment = null)
         {
-            if (!PropertyLookup_TryGetValue(section, key, out PropertyInfo propertyInfo))
+            if (Settings_TryGetValue(section, key, out SettingInfo settingInfo))
             {
-                return false;
+                // The setting exists, update it.
+                settingInfo.Value = value;
             }
+            else
+            {
+                // The setting does not exist yet.
 
-            propertyInfo.Value = value;
+                // Create the setting.
+                settingInfo = new SettingInfo()
+                {
+                    Value = value,
+                };
+
+                // Add the setting to our in-memory collection of settings.
+                Settings_AddOrReplace(section, key, settingInfo);
+            }
 
             if (permanent)
             {
-                _updatingFile = propertyInfo.PropertyReference.File;
-
-                int fileIndex = _updatingFile.Lines.IndexOf(propertyInfo.PropertyReference.Line);
-                int docIndex = _lines.IndexOf(propertyInfo.PropertyReference);
-
-                if (fileIndex != -1 && docIndex != -1)
+                // The setting is permanent, meaning it needs to be changed in a ConfFile.
+                if (settingInfo.PropertyReference is not null)
                 {
-                    RawProperty old = (RawProperty)propertyInfo.PropertyReference.Line;
-                    RawProperty replacement = new(
-                        sectionOverride: old.SectionOverride,
-                        key: old.Key,
-                        value: value,
-                        hasDelimiter: value != null || old.HasDelimiter);
-
-                    _updatingFile.Lines[fileIndex] = replacement;
-
-                    LineReference lineReference = new()
-                    {
-                        File = _updatingFile,
-                        Line = replacement,
-                    };
-
-                    _lines[docIndex] = lineReference;
-                    propertyInfo.PropertyReference = lineReference;
-
-                    // update comment line(s)
-                    if (!string.IsNullOrWhiteSpace(comment))
-                    {
-                        _updatingFile.Lines.Insert(
-                            fileIndex,
-                            new RawComment(RawComment.DefaultCommentChar, comment));
-
-                        // remove old comments (comment lines immediately before the property line)
-                        int commentIndex = fileIndex;
-                        while (--commentIndex >= 0 && _updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
-                        {
-                            _updatingFile.Lines.RemoveAt(commentIndex);
-                        }
-                    }
-
-                    _updatingFile.SetDirty();
+                    // The setting has a reference to an existing ConfFile's RawProperty.
+                    // This means we can update the existing line.
+                    UpdatePermanent(settingInfo, value, comment);
                 }
-
-                _updatingFile = null;
+                else
+                {
+                    // There is no reference to a ConfFile's RawProperty.
+                    // This means we only can add it.
+                    // Add the setting as a RawProperty to the underlying conf file.
+                    // This figures out which ConfFile to add it to and what line(s) to change within it.
+                    settingInfo.PropertyReference = AddPermanent(section, key, value, comment);
+                }
             }
 
-            return true;
+
+            // Local function that adds a RawProperty to the underlying ConfFile.
+            LineReference AddPermanent(string section, string key, string value, string comment)
+            {
+                // First, try to add the setting to the proper section (if the section already exists).
+                if (TryAddToExistingSection(section, key, value, comment, out LineReference propertyReference))
+                {
+                    return propertyReference;
+                }
+
+                // Otherwise, add it to the end of the base file (effectively how ASSS saves conf changes).
+                return AddToBaseAsOverride(section, key, value, comment);
+
+
+                // Local function that tries to add a RawProperty to an existing section.
+                bool TryAddToExistingSection(string section, string key, string value, string comment, out LineReference propertyReference)
+                {
+                    // Find the section.
+                    int docIndex = IndexOfSection(section);
+                    if (docIndex == -1)
+                    {
+                        // The section doesn't exist yet.
+                        propertyReference = null;
+                        return false;
+                    }
+
+                    ConfFile file = _lines[docIndex].File;
+
+                    // Find the last property in the section, as long as it's in the same file.
+                    for (int i = docIndex + 1; i < _lines.Count; i++)
+                    {
+                        if (_lines[i].File != file || _lines[i].Line.LineType == ConfLineType.Section)
+                            break;
+
+                        if (_lines[i].Line.LineType == ConfLineType.Property)
+                            docIndex = i;
+                    }
+
+                    // Find the spot in the file to insert the property.
+                    int fileIndex = file.Lines.IndexOf(_lines[docIndex].Line);
+                    if (fileIndex == -1)
+                    {
+                        // Couldn't find the spot in the file to insert the property to.
+                        propertyReference = null;
+                        return false;
+                    }
+
+                    RawProperty propertyToInsert = new(
+                        sectionOverride: null,
+                        key: key,
+                        value: value,
+                        hasDelimiter: value is not null);
+
+                    // Change the file
+                    _updatingFile = file;
+
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(comment))
+                        {
+                            file.Lines.Insert(
+                                ++fileIndex,
+                                new RawComment(RawComment.DefaultCommentChar, comment));
+                        }
+
+                        file.Lines.Insert(++fileIndex, propertyToInsert);
+                        file.SetDirty();
+                    }
+                    finally
+                    {
+                        _updatingFile = null;
+                    }
+
+                    propertyReference = new LineReference(propertyToInsert, file);
+
+                    // Add it to the lines we consider active.
+                    _lines.Insert(docIndex + 1, propertyReference);
+
+                    return true;
+
+
+                    // Local function that finds the index of a section in _lines. -1 if not found.
+                    int IndexOfSection(ReadOnlySpan<char> section)
+                    {
+                        for (int docIndex = _lines.Count - 1; docIndex >= 0; docIndex--)
+                        {
+                            LineReference lineReference = _lines[docIndex];
+                            if (lineReference.Line.LineType == ConfLineType.Section
+                                && lineReference.Line is RawSection rawSection
+                                && section.Equals(rawSection.Name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return docIndex;
+                            }
+                        }
+
+                        return -1; // not found
+                    }
+                }
+
+                // Local function that adds a RawProperty to the end of the base ConfFile with a section override.
+                LineReference AddToBaseAsOverride(string section, string key, string value, string comment)
+                {
+                    RawProperty propertyToAdd = new(
+                        sectionOverride: section,
+                        key: key,
+                        value: value,
+                        hasDelimiter: value is not null);
+
+                    _updatingFile = _baseFile;
+
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(comment))
+                        {
+                            _baseFile.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
+                        }
+
+                        _baseFile.Lines.Add(propertyToAdd);
+                        _baseFile.SetDirty();
+                    }
+                    finally
+                    {
+                        _updatingFile = null;
+                    }
+
+                    LineReference lineRef = new(propertyToAdd, _baseFile);
+                    _lines.Add(lineRef);
+                    return lineRef;
+                }
+            }
+
+            // Local function that updates the value of an existing ConfFile's RawProperty.
+            void UpdatePermanent(SettingInfo settingInfo, string value, string comment)
+            {
+                _updatingFile = settingInfo.PropertyReference.File;
+
+                try
+                {
+                    int fileIndex = _updatingFile.Lines.IndexOf(settingInfo.PropertyReference.Line);
+                    int docIndex = _lines.IndexOf(settingInfo.PropertyReference);
+
+                    if (fileIndex != -1 && docIndex != -1)
+                    {
+                        RawProperty old = (RawProperty)settingInfo.PropertyReference.Line;
+                        RawProperty replacement = new(
+                            sectionOverride: old.SectionOverride,
+                            key: old.Key,
+                            value: value,
+                            hasDelimiter: value is not null || old.HasDelimiter);
+
+                        _updatingFile.Lines[fileIndex] = replacement;
+
+                        LineReference lineReference = new(replacement, _updatingFile);
+
+                        _lines[docIndex] = lineReference;
+                        settingInfo.PropertyReference = lineReference;
+
+                        // update comment line(s)
+                        if (!string.IsNullOrWhiteSpace(comment))
+                        {
+                            _updatingFile.Lines.Insert(
+                                fileIndex,
+                                new RawComment(RawComment.DefaultCommentChar, comment));
+
+                            // remove old comments (comment lines immediately before the property line)
+                            int commentIndex = fileIndex;
+                            while (--commentIndex >= 0 && _updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
+                            {
+                                _updatingFile.Lines.RemoveAt(commentIndex);
+                            }
+                        }
+
+                        _updatingFile.SetDirty();
+                    }
+                }
+                finally
+                {
+                    _updatingFile = null;
+                }
+            }
         }
 
+        #region Helper types
+
         /// <summary>
-        /// For keeping track of a property's value and what <see cref="ConfFile"/> line it came from.
+        /// Information for one setting, including its value and optionally, what <see cref="ConfFile"/> line it is related to.
         /// </summary>
-        private class PropertyInfo
+        private class SettingInfo
         {
             /// <summary>
-            /// The value.  
-            /// This normally is the value from <see cref="PropertyReference"/>, 
-            /// but it can differ if a setting was changed to not be permanent.
+            /// The current value of the setting.
             /// </summary>
             public string Value { get; set; }
 
+            /// <summary>
+            /// The underlying line and file that the setting is related to.
+            /// <see langword="null"/> for a newly added, non-permanent setting.
+            /// </summary>
             public LineReference PropertyReference { get; set; }
         }
+
+        #endregion
     }
 }

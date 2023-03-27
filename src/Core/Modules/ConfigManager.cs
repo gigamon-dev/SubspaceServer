@@ -119,123 +119,116 @@ namespace SS.Core.Modules
 
         private bool ServerTimer_ReloadModified()
         {
-            bool IsReloadNeeded()
+            List<DocumentInfo> notifyList = null;
+
+            try
             {
-                foreach(DocumentInfo documentInfo in _documents.Values)
-                    if (documentInfo.Document.IsReloadNeeded)
+                _rwLock.EnterUpgradeableReadLock();
+
+                try
+                {
+                    // check if any document needs to be reloaded
+                    // or any file has been modified on disk and needs to be reloaded
+                    // note: checking files second since it requires I/O
+                    if (HasWork())
+                    {
+                        _rwLock.EnterWriteLock();
+
+                        try
+                        {
+                            // reload files that have been modified on disk
+                            // note: this is done first, because it affects documents
+                            // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
+                            foreach (ConfFile file in _files.Values)
+                            {
+                                if (file.IsReloadNeeded)
+                                {
+                                    Log(LogLevel.Info, $"Reloading conf file '{file.Path}' from disk.");
+
+                                    try
+                                    {
+                                        file.Load();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Log(LogLevel.Warn, $"Failed to reload conf file '{file.Path}'. {ex.Message}");
+                                    }
+                                }
+                            }
+
+                            // reload each document that needs to be reloaded
+                            // note: a document may need to be reloaded if any of the files it consists of was reloaded
+                            // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
+                            foreach (DocumentInfo docInfo in _documents.Values)
+                            {
+                                if (docInfo.Document.IsReloadNeeded)
+                                {
+                                    Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
+                                    docInfo.Document.Load();
+                                    docInfo.IsChangeNotificationPending = true;
+                                }
+
+                                if (docInfo.IsChangeNotificationPending)
+                                {
+                                    docInfo.IsChangeNotificationPending = false;
+                                    notifyList ??= _documentInfoListPool.Get();
+                                    notifyList.Add(docInfo);
+                                }
+                            }
+
+                            // TODO: remove documents that are no longer referenced by a handle
+
+                            // TODO: remove files that are no longer referenced by a document
+                        }
+                        finally
+                        {
+                            _rwLock.ExitWriteLock();
+                        }
+                    }
+                }
+                finally
+                {
+                    _rwLock.ExitUpgradeableReadLock();
+                }
+            }
+            finally
+            {
+                if (notifyList is not null)
+                {
+                    // Fire pending document change notifications (outside of reader/writer lock).
+                    foreach (DocumentInfo docInfo in notifyList)
+                    {
+                        _mainloop.QueueMainWorkItem(MainloopWork_NotifyChanged, docInfo);
+                    }
+
+                    _documentInfoListPool.Return(notifyList);
+                }
+            }
+
+            return true;
+
+
+            bool HasWork()
+            {
+                foreach (DocumentInfo documentInfo in _documents.Values)
+                    if (documentInfo.Document.IsReloadNeeded || documentInfo.IsChangeNotificationPending)
                         return true;
 
-                foreach(ConfFile file in _files.Values)
+                foreach (ConfFile file in _files.Values)
                     if (file.IsReloadNeeded)
                         return true;
 
                 return false;
             }
 
-            List<DocumentInfo> notifyList = null;
-
-            _rwLock.EnterUpgradeableReadLock();
-
-            try
+            static void MainloopWork_NotifyChanged(DocumentInfo docInfo)
             {
-                // check if any document needs to be reloaded
-                // or any file has been modified on disk and needs to be reloaded
-                // note: checking files second since it requires I/O
-                if (IsReloadNeeded())
-                {
-                    _rwLock.EnterWriteLock();
-
-                    try
-                    {
-                        // reload files that have been modified on disk
-                        // note: this is done first, because it affects documents
-                        // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
-                        foreach (ConfFile file in _files.Values)
-                        {
-                            if (file.IsReloadNeeded)
-                            {
-                                Log(LogLevel.Info, $"Reloading conf file '{file.Path}' from disk.");
-
-                                try
-                                {
-                                    file.Load();
-                                }
-                                catch (Exception ex)
-                                {
-                                    Log(LogLevel.Warn, $"Failed to reload conf file '{file.Path}'. {ex.Message}");
-                                }
-                            }
-                        }
-
-                        // reload each document that needs to be reloaded
-                        // note: a document may need to be reloaded if any of the files it consists of was reloaded
-                        // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
-                        foreach (var docInfo in _documents.Values)
-                        {
-                            if (docInfo.Document.IsReloadNeeded)
-                            {
-                                Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
-                                docInfo.Document.Load();
-                                docInfo.IsChangeNotificationPending = true;
-                            }
-
-                            if (docInfo.IsChangeNotificationPending)
-                            {
-                                notifyList ??= _documentInfoListPool.Get();
-                                notifyList.Add(docInfo);
-                            }
-                        }
-
-                        // TODO: remove documents that are no longer referenced by a handle
-
-                        // TODO: remove files that are no longer referenced by a document
-                    }
-                    finally
-                    {
-                        _rwLock.ExitWriteLock();
-                    }
-                }
-            }
-            finally
-            {
-                _rwLock.ExitUpgradeableReadLock();
-            }
-
-            // notify of changes (outside of reader/writer lock)
-            if (notifyList != null)
-            {
-                _mainloop.QueueMainWorkItem(MainloopWork_NotifyChanged, notifyList);
-            }
-
-            return true;
-        }
-
-        private void MainloopWork_NotifyChanged(List<DocumentInfo> notifyList)
-        {
-            try
-            {
-                foreach (var docInfo in notifyList)
-                {
-                    docInfo.NotifyChanged();
-                }
-            }
-            finally
-            {
-                _documentInfoListPool.Return(notifyList);
+                docInfo.NotifyChanged();
             }
         }
 
         private bool ServerTimer_SaveChanges()
         {
-            bool IsAnyFileDirty()
-            {
-                foreach (ConfFile file in _files.Values)
-                    if (file.IsDirty)
-                        return true;
-
-                return false;
-            }
-
             _rwLock.EnterUpgradeableReadLock();
 
             try
@@ -277,6 +270,16 @@ namespace SS.Core.Modules
             }
 
             return true;
+
+
+            bool IsAnyFileDirty()
+            {
+                foreach (ConfFile file in _files.Values)
+                    if (file.IsDirty)
+                        return true;
+
+                return false;
+            }
         }
 
         public ConfigHandle Global { get; private set; }
@@ -286,7 +289,7 @@ namespace SS.Core.Modules
             // fire the callback on the mainloop thread
             _mainloop.QueueMainWorkItem<object>(
                 _ => { GlobalConfigChangedCallback.Fire(_broker); }, 
-                null);            
+                null);
         }
 
         public ConfigHandle OpenConfigFile(string arena, string name)
@@ -785,8 +788,6 @@ namespace SS.Core.Modules
                     {
                         handle.NotifyConfigChanged();
                     }
-
-                    IsChangeNotificationPending = false;
                 }
             }
         }
