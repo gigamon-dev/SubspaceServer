@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Configuration;
 using SS.Core.Map;
 using SS.Packets;
 using SS.Packets.Game;
@@ -1174,47 +1175,91 @@ namespace SS.Core.Modules
         [CommandHelp(
             Command = "seta",
             Targets = CommandTarget.None,
-            Args = "[{-t}] section:key=value",
-            Description = "Sets the value of an arena setting. Make sure there are no\n" +
-            "spaces around either the colon or the equals sign. A {-t} makes\n" +
-            "the setting temporary.\n")]
+            Args = "[-t] [-o] [-c] section:key=value [<comment>]",
+            Description = """
+                Sets the value of an arena setting. Make sure there are no
+                spaces around either the colon or the equals sign. 
+                Use -t to make the setting temporary.
+                Use -o to override the setting instead of edit the existing.
+                Use -c to append comments instead of overwrite comments.
+                """)]
         [CommandHelp(
             Command = "setg",
             Targets = CommandTarget.None,
-            Args = "[{-t}] section:key=value",
-            Description = "Sets the value of a global setting. Make sure there are no\n" +
-            "spaces around either the colon or the equals sign. A {-t} makes\n" +
-            "the setting temporary.\n")]
+            Args = "[-t] [-o] [-c] section:key=value [<comment>]",
+            Description = """
+                Sets the value of a global setting. Make sure there are no
+                spaces around either the colon or the equals sign. 
+                Use -t to make the setting temporary.
+                Use -o to override the setting instead of edit the existing.
+                Use -c to append comments instead of overwrite comments.
+                """)]
         private void Command_setX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsWhiteSpace())
                 return;
 
-            ConfigHandle ch = command.Equals("seta", StringComparison.OrdinalIgnoreCase) ? player.Arena.Cfg : _configManager.Global;
             bool permanent = true;
+            ModifyOptions options = ModifyOptions.None;
+            ReadOnlySpan<char> section = ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> key = ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> value = ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> comment;
 
-            ReadOnlySpan<char> line = parameters;
-            if (line.StartsWith("-t"))
+            ReadOnlySpan<char> remaining = parameters;
+            ReadOnlySpan<char> token;
+            while (!(token = remaining.GetToken(' ', out remaining)).IsEmpty)
             {
-                permanent = false;
-                line = line[2..];
+                if (token[0] == '-')
+                {
+                    token = token[1..];
+                    if (token.IsEmpty)
+                        continue;
+
+                    if (token.Equals("t", StringComparison.OrdinalIgnoreCase))
+                    {
+                        permanent = false;
+                    }
+                    else if (token.Equals("o", StringComparison.OrdinalIgnoreCase))
+                    {
+                        options |= ModifyOptions.AppendOverrideOnly;
+                    }
+                    else if (token.Equals("c", StringComparison.OrdinalIgnoreCase))
+                    {
+                        options |= ModifyOptions.LeaveExistingComments;
+                    }
+                }
+                else
+                {
+                    section = token.GetToken(':', out token);
+                    section = section.Trim();
+                    if (section.IsEmpty || token.IsEmpty)
+                        return;
+
+                    // Allow '=' or ':' as the second delimiter.
+                    // ':' is used when the SubGameCompatibility module rewrites ?set to seta
+                    key = token.GetToken("=:", out token);
+                    key = key.Trim();
+                    if (key.IsEmpty || token.IsEmpty)
+                        return;
+
+                    value = token[1..].Trim();
+
+                    break;
+                }
             }
 
-            ReadOnlySpan<char> section = line.GetToken(':', out line);
-            section = section.Trim();
-            if (section.IsEmpty || line.IsEmpty)
+            comment = remaining;
+
+            if (section.IsEmpty || key.IsEmpty)
                 return;
 
-            // Allow '=' or ':' as the second delimiter.
-            // ':' is used when the SubGameCompatibility module rewrites ?set to seta
-            ReadOnlySpan<char> key = line.GetToken("=:", out line);
-            key = key.Trim();
-            if (key.IsEmpty || line.IsEmpty)
-                return;
+            ConfigHandle ch = command.Equals("seta", StringComparison.OrdinalIgnoreCase) ? player.Arena.Cfg : _configManager.Global;
 
-            line = line[1..].Trim();
-
-            _configManager.SetStr(ch, section.ToString(), key.ToString(), line.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent);
+            if (comment.IsEmpty)
+                _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent, options);
+            else
+                _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow} - {comment}", permanent, options);
         }
 
         [CommandHelp(
@@ -3154,8 +3199,7 @@ namespace SS.Core.Modules
             if (arena is null)
                 return;
 
-            ReadOnlySpan<char> flagIdStr = parameters.GetToken(' ', out ReadOnlySpan<char> remaining);
-            if (flagIdStr.IsEmpty || !short.TryParse(flagIdStr, out short flagId))
+            if (!short.TryParse(parameters, out short flagId))
                 return;
 
             ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();

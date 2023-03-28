@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Core.Configuration;
+using System;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -189,7 +190,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="value">the new value of the key</param>
         /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
         /// <param name="permanent">Whether this change should be written back to the config file.</param>
-        void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent);
+        /// <param name="options">Options that affect how the setting is saved.</param>
+        void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent, ModifyOptions options = ModifyOptions.None);
 
         /// <summary>
         /// Changes a config file value.
@@ -201,7 +203,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="value">the new value of the key</param>
         /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
         /// <param name="permanent">Whether this change should be written back to the config file.</param>
-        void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent);
+        /// <param name="options">Options that affect how the setting is saved.</param>
+        void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent, ModifyOptions options = ModifyOptions.None);
 
         /// <summary>
         /// Changes a config file value.
@@ -214,6 +217,18 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="value">The value to write.</param>
         /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
         /// <param name="permanent">Whether this change should be written back to the config file.</param>
-        void SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent) where T : struct, Enum;
+        /// <param name="options">Options that affect how the setting is saved.</param>
+        void SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent, ModifyOptions options = ModifyOptions.None) where T : struct, Enum;
+
+        /// <summary>
+        /// Creates a standalone copy of a config file.
+        /// </summary>
+        /// <remarks>
+        /// The resulting file is flattened, such that there are no #include or other preprocessor directives.
+        /// </remarks>
+        /// <param name="handle">Handle to the config to copy.</param>
+        /// <param name="filePath">The complete path and filename to save the copy to.</param>
+        /// <exception cref="Exception">Error creating file.</exception>
+        void SaveStandaloneCopy(ConfigHandle handle, string filePath);
     }
 }

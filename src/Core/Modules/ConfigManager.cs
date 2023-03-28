@@ -38,6 +38,8 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IConfigManager> _iConfigManagerToken;
 
+        private ConfigHandle _globalConfigHandle;
+
         /// <summary>
         /// Path --> ConfFile
         /// </summary>
@@ -53,6 +55,8 @@ namespace SS.Core.Modules
 
         private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new DocumentInfoListPooledObjectPolicy());
 
+        #region Module members
+
         public bool Load(
             ComponentBroker broker, 
             IMainloop mainloop,
@@ -62,8 +66,8 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
-            Global = OpenConfigFile(null, null, GlobalChanged);
-            if (Global == null)
+            _globalConfigHandle = ((IConfigManager)this).OpenConfigFile(null, null, GlobalChanged);
+            if (_globalConfigHandle is null)
             {
                 Log(LogLevel.Error, "Failed to open global.conf.");
                 return false;
@@ -72,6 +76,28 @@ namespace SS.Core.Modules
             SetTimers();
 
             _iConfigManagerToken = broker.RegisterInterface<IConfigManager>(this);
+
+            return true;
+
+            void GlobalChanged()
+            {
+                // fire the callback on the mainloop thread
+                _mainloop.QueueMainWorkItem<object>(
+                    _ => { GlobalConfigChangedCallback.Fire(_broker); },
+                    null);
+            }
+        }
+
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        {
+            _logManager = broker.GetInterface<ILogManager>();
+            return true;
+        }
+
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
+        {
+            if (_logManager is not null)
+                broker.ReleaseInterface(ref _logManager);
 
             return true;
         }
@@ -84,23 +110,9 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #region IModuleLoaderAware Members
-
-        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
-        {
-            _logManager = broker.GetInterface<ILogManager>();
-            return true;
-        }
-
-        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
-        {
-            if (_logManager != null)
-                broker.ReleaseInterface(ref _logManager);
-
-            return true;
-        }
-
         #endregion
+
+        #region Timers
 
         [ConfigHelp("Config", "FlushDirtyValuesInterval", ConfigScope.Global,  typeof(int), DefaultValue = "500", 
             Description = "How often to write modified config settings back to disk (in ticks).")]
@@ -108,11 +120,11 @@ namespace SS.Core.Modules
             Description = "How often to check for modified config files on disk (in ticks).")]
         private void SetTimers()
         {
-            int dirty = GetInt(Global, "Config", "FlushDirtyValuesInterval", 500);
+            int dirty = ((IConfigManager)this).GetInt(_globalConfigHandle, "Config", "FlushDirtyValuesInterval", 500);
             _serverTimer.ClearTimer(ServerTimer_SaveChanges, null);
             _serverTimer.SetTimer(ServerTimer_SaveChanges, 700, dirty * 10, null);
 
-            int files = GetInt(Global, "Config", "CheckModifiedFilesInterval", 1500);
+            int files = ((IConfigManager)this).GetInt(_globalConfigHandle, "Config", "CheckModifiedFilesInterval", 1500);
             _serverTimer.ClearTimer(ServerTimer_ReloadModified, null);
             _serverTimer.SetTimer(ServerTimer_ReloadModified, 1500, files * 10, null);
         }
@@ -282,86 +294,48 @@ namespace SS.Core.Modules
             }
         }
 
-        public ConfigHandle Global { get; private set; }
+        #endregion
 
-        private void GlobalChanged()
-        {
-            // fire the callback on the mainloop thread
-            _mainloop.QueueMainWorkItem<object>(
-                _ => { GlobalConfigChangedCallback.Fire(_broker); }, 
-                null);
-        }
+        #region IConfigManager
 
-        public ConfigHandle OpenConfigFile(string arena, string name)
+        ConfigHandle IConfigManager.Global => _globalConfigHandle;
+
+        ConfigHandle IConfigManager.OpenConfigFile(string arena, string name)
         {
             return OpenConfigFile(
                 arena, 
                 name, 
                 (documentInfo) => documentInfo.CreateHandle(
-                    arena != null ? ConfigScope.Arena : ConfigScope.Global, 
+                    arena is not null ? ConfigScope.Arena : ConfigScope.Global, 
                     name));
         }
 
-        public ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate changedCallback)
+        ConfigHandle IConfigManager.OpenConfigFile(string arena, string name, ConfigChangedDelegate changedCallback)
         {
             return OpenConfigFile(
                 arena,
                 name,
                 (documentInfo) => documentInfo.CreateHandle(
-                    arena != null ? ConfigScope.Arena : ConfigScope.Global,
+                    arena is not null ? ConfigScope.Arena : ConfigScope.Global,
                     name,
                     changedCallback));
         }
 
-        public ConfigHandle OpenConfigFile<TState>(string arena, string name, ConfigChangedDelegate<TState> changedCallback, TState state)
+        ConfigHandle IConfigManager.OpenConfigFile<TState>(string arena, string name, ConfigChangedDelegate<TState> changedCallback, TState state)
         {
             return OpenConfigFile(
                 arena, 
                 name, 
                 (documentInfo) => documentInfo.CreateHandle(
-                    arena != null ? ConfigScope.Arena : ConfigScope.Global,
+                    arena is not null ? ConfigScope.Arena : ConfigScope.Global,
                     name,
                     changedCallback,
                     state));
         }
 
-        private ConfigHandle OpenConfigFile(string arena, string name, Func<DocumentInfo, ConfigHandle> createHandle)
+        void IConfigManager.CloseConfigFile(ConfigHandle handle)
         {
-            if (createHandle == null)
-                throw new ArgumentNullException(nameof(createHandle));
-
-            string path = LocateConfigFile(arena, name);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                Log(LogLevel.Warn, $"File not found in search paths (arena='{arena}', name='{name}').");
-                return null;
-            }
-
-            _rwLock.EnterWriteLock();
-
-            try
-            {
-                if (!_documents.TryGetValue(path, out DocumentInfo documentInfo))
-                {
-                    ConfFileProvider fileProvider = new(this, arena);
-                    ConfDocument document = new(name, fileProvider, this);
-                    document.Load();
-
-                    documentInfo = new DocumentInfo(path, document);
-                    _documents.Add(path, documentInfo);
-                }
-
-                return createHandle(documentInfo);
-            }
-            finally
-            {
-                _rwLock.ExitWriteLock();
-            }
-        }
-
-        public void CloseConfigFile(ConfigHandle handle)
-        {
-            if (handle == null)
+            if (handle is null)
                 throw new ArgumentNullException(nameof(handle));
 
             if (handle is not DocumentHandle documentHandle)
@@ -379,12 +353,47 @@ namespace SS.Core.Modules
             }
         }
 
-        public int GetInt(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, int defaultValue)
+        string IConfigManager.GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key)
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            if (handle is not DocumentHandle documentHandle)
+                throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
+
+            if (documentHandle.DocumentInfo is not null)
+            {
+                _rwLock.EnterReadLock();
+
+                try
+                {
+                    if (documentHandle.DocumentInfo is not null)
+                    {
+                        if (documentHandle.DocumentInfo.Document.TryGetValue(section, key, out string value))
+                        {
+                            return value;
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                    }
+                }
+                finally
+                {
+                    _rwLock.ExitReadLock();
+                }
+            }
+
+            throw new InvalidOperationException("Handle is closed.");
+        }
+
+        int IConfigManager.GetInt(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, int defaultValue)
         {
             if (handle is not DocumentHandle documentHandle)
                 throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
 
-            string value = GetStr(handle, section, key);
+            string value = ((IConfigManager)this).GetStr(handle, section, key);
 
             if (string.IsNullOrWhiteSpace(value))
                 return defaultValue;
@@ -394,7 +403,7 @@ namespace SS.Core.Modules
 
             // Check if there's a ConfigHelp attribute for it being an enum type.
             IConfigHelp configHelp = _broker.GetInterface<IConfigHelp>();
-            if (configHelp != null)
+            if (configHelp is not null)
             {
                 try
                 {
@@ -444,80 +453,35 @@ namespace SS.Core.Modules
             return defaultValue; // Note: This differs from ASSS which returns 0.
         }
 
-        public T GetEnum<T>(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, T defaultValue) where T : struct, Enum
+        T IConfigManager.GetEnum<T>(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, T defaultValue)
         {
-            string value = GetStr(handle, section, key);
+            string value = ((IConfigManager)this).GetStr(handle, section, key);
 
             if (string.IsNullOrWhiteSpace(value))
                 return defaultValue;
 
             return Enum.TryParse(value, true, out T enumValue)
-                ? enumValue 
+                ? enumValue
                 : defaultValue;
         }
 
-        public string GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key)
+        void IConfigManager.SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent, ModifyOptions options)
         {
-            if (handle == null)
-                throw new ArgumentNullException(nameof(handle));
-
-            if (handle is not DocumentHandle documentHandle)
-                throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
-
-            if (documentHandle.DocumentInfo != null)
-            {
-                _rwLock.EnterReadLock();
-
-                try
-                {
-                    if (documentHandle.DocumentInfo != null)
-                    {
-                        if (documentHandle.DocumentInfo.Document.TryGetValue(section, key, out string value))
-                        {
-                            return value;
-                        }
-                        else
-                        {
-                            return null;
-                        }
-                    }
-                }
-                finally
-                {
-                    _rwLock.ExitReadLock();
-                }
-            }
-
-            throw new InvalidOperationException("Handle is closed.");
-        }
-
-        public void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent)
-        {
-            SetStr(handle, section, key, value.ToString("D", CultureInfo.InvariantCulture), comment, permanent);
-        }
-
-        public void SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent) where T : struct, Enum
-        {
-            SetStr(handle, section, key, value.ToString("G"), comment, permanent);
-        }
-
-        public void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent)
-        {
-            if (handle == null)
+            if (handle is null)
                 throw new ArgumentNullException(nameof(handle));
 
             if (handle is not DocumentHandle documentHandle)
                 throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));    
 
-            if (documentHandle.DocumentInfo != null)
+            if (documentHandle.DocumentInfo is not null)
             {
                 _rwLock.EnterWriteLock();
 
                 try
                 {
-                    if (documentHandle.DocumentInfo != null)
+                    if (documentHandle.DocumentInfo is not null)
                     {
-                        documentHandle.DocumentInfo.Document.UpdateOrAddProperty(section, key, value, permanent, comment);
+                        documentHandle.DocumentInfo.Document.UpdateOrAddProperty(section, key, value, permanent, comment, options);
 
                         // set a flag so that we remember to fire change notifications (done in a timer)
                         documentHandle.DocumentInfo.IsChangeNotificationPending = true;
@@ -534,14 +498,53 @@ namespace SS.Core.Modules
             throw new InvalidOperationException("Handle is closed.");
         }
 
+        void IConfigManager.SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent, ModifyOptions options)
+        {
+            ((IConfigManager)this).SetStr(handle, section, key, value.ToString("D", CultureInfo.InvariantCulture), comment, permanent, options);
+        }
+
+        void IConfigManager.SetEnum<T>(ConfigHandle handle, string section, string key, T value, string comment, bool permanent, ModifyOptions options)
+        {
+            ((IConfigManager)this).SetStr(handle, section, key, value.ToString("G"), comment, permanent, options);
+        }
+
+        void IConfigManager.SaveStandaloneCopy(ConfigHandle handle, string filePath)
+        {
+            if (handle is null)
+                throw new ArgumentNullException(nameof(handle));
+
+            if (handle is not DocumentHandle documentHandle)
+                throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
+
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                if (documentHandle.DocumentInfo is null)
+                    throw new InvalidOperationException("Handle is closed.");
+
+                documentHandle.DocumentInfo.Document.SaveAsStandaloneConf(filePath);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        #endregion
+
+        #region IConfigLogger
+
         void IConfigLogger.Log(LogLevel level, string message)
         {
             Log(level, message);
         }
 
+        #endregion
+
         private void Log(LogLevel level, string message)
         {
-            if (_logManager != null)
+            if (_logManager is not null)
             {
                 _logManager.LogM(level, nameof(ConfigManager), message);
             }
@@ -559,7 +562,7 @@ namespace SS.Core.Modules
 
             // determine the path of the file
             string path = LocateConfigFile(arena, name);
-            if (path == null)
+            if (path is null)
             {
                 Log(LogLevel.Warn, $"File not found for arena '{arena}', name '{name}'.");
                 return null;
@@ -585,6 +588,40 @@ namespace SS.Core.Modules
 
             _files.Add(path, file);
             return file;
+        }
+
+        private ConfigHandle OpenConfigFile(string arena, string name, Func<DocumentInfo, ConfigHandle> createHandle)
+        {
+            if (createHandle is null)
+                throw new ArgumentNullException(nameof(createHandle));
+
+            string path = LocateConfigFile(arena, name);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                Log(LogLevel.Warn, $"File not found in search paths (arena='{arena}', name='{name}').");
+                return null;
+            }
+
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                if (!_documents.TryGetValue(path, out DocumentInfo documentInfo))
+                {
+                    ConfFileProvider fileProvider = new(this, arena);
+                    ConfDocument document = new(name, fileProvider, this);
+                    document.Load();
+
+                    documentInfo = new DocumentInfo(path, document);
+                    _documents.Add(path, documentInfo);
+                }
+
+                return createHandle(documentInfo);
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
         }
 
         private static string LocateConfigFile(string arena, string name)
@@ -738,7 +775,7 @@ namespace SS.Core.Modules
                     this,
                     scope,
                     fileName,
-                    callback != null ? new ConfigChangedInvoker(callback) : null);
+                    callback is not null ? new ConfigChangedInvoker(callback) : null);
 
                 lock (_lockObj)
                 {
@@ -754,7 +791,7 @@ namespace SS.Core.Modules
                     this,
                     scope,
                     fileName,
-                    callback != null ? new ConfigChangedInvoker<TState>(callback, state) : null);
+                    callback is not null ? new ConfigChangedInvoker<TState>(callback, state) : null);
 
                 lock (_lockObj)
                 {
@@ -766,7 +803,7 @@ namespace SS.Core.Modules
 
             public bool CloseHandle(DocumentHandle handle)
             {
-                if (handle == null)
+                if (handle is null)
                     throw new ArgumentNullException(nameof(handle));
 
                 if (handle.DocumentInfo != this)
@@ -801,7 +838,7 @@ namespace SS.Core.Modules
 
             public override bool Return(List<DocumentInfo> obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 obj.Clear();

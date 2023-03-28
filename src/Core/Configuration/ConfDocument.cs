@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 namespace SS.Core.Configuration
 {
@@ -168,8 +169,10 @@ namespace SS.Core.Configuration
             if (file is null)
                 throw new ArgumentNullException(nameof(file));
 
-            _files.Add(file);
-            file.Changed += File_Changed;
+            if (_files.Add(file))
+            {
+                file.Changed += File_Changed;
+            }
         }
 
         private void File_Changed(object sender, EventArgs e)
@@ -250,6 +253,29 @@ namespace SS.Core.Configuration
         }
 
         /// <summary>
+        /// Saves a copy of the document as a single standalone conf file.
+        /// </summary>
+        /// <param name="filePath">The complete file path to save the resulting file to.</param>
+        /// <exception cref="Exception">Error writing to file.</exception>
+        public void SaveAsStandaloneConf(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(filePath);
+
+            if (File.Exists(filePath))
+                throw new Exception("A file already exists at the specified path.");
+
+            using StreamWriter writer = new(filePath, false, StringUtils.DefaultEncoding);
+            using PreprocessorReader reader = new(_fileProvider, _baseFile, _logger);
+
+            LineReference lineReference;
+            while ((lineReference = reader.ReadLine()) is not null)
+            {
+                RawLine rawLine = lineReference.Line;
+                rawLine.WriteTo(writer);
+            }
+        }
+
+        /// <summary>
         /// Sets a property's value. An existing property will be updated, otherwise a new one will be added.
         /// </summary>
         /// <remarks>
@@ -263,7 +289,8 @@ namespace SS.Core.Configuration
         /// <param name="value">The value of the property.</param>
         /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
         /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
-        public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string comment = null)
+        /// <param name="options">Options that affect how <paramref name="permanent"/> settings are saved to conf files.</param>
+        public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string comment = null, ModifyOptions options = ModifyOptions.None)
         {
             if (Settings_TryGetValue(section, key, out SettingInfo settingInfo))
             {
@@ -287,28 +314,31 @@ namespace SS.Core.Configuration
             if (permanent)
             {
                 // The setting is permanent, meaning it needs to be changed in a ConfFile.
-                if (settingInfo.PropertyReference is not null)
+                if (settingInfo.PropertyReference is not null
+                    && (options & ModifyOptions.AppendOverrideOnly) != ModifyOptions.AppendOverrideOnly)
                 {
-                    // The setting has a reference to an existing ConfFile's RawProperty.
+                    // The setting has a reference to an existing ConfFile's RawProperty
+                    // and we're not being told to override only.
                     // This means we can update the existing line.
-                    UpdatePermanent(settingInfo, value, comment);
+                    UpdatePermanent(settingInfo, value, comment, options);
                 }
                 else
                 {
-                    // There is no reference to a ConfFile's RawProperty.
+                    // There is no reference to a ConfFile's RawProperty or we're being told override only.
                     // This means we only can add it.
                     // Add the setting as a RawProperty to the underlying conf file.
                     // This figures out which ConfFile to add it to and what line(s) to change within it.
-                    settingInfo.PropertyReference = AddPermanent(section, key, value, comment);
+                    settingInfo.PropertyReference = AddPermanent(section, key, value, comment, options);
                 }
             }
 
 
             // Local function that adds a RawProperty to the underlying ConfFile.
-            LineReference AddPermanent(string section, string key, string value, string comment)
+            LineReference AddPermanent(string section, string key, string value, string comment, ModifyOptions options)
             {
                 // First, try to add the setting to the proper section (if the section already exists).
-                if (TryAddToExistingSection(section, key, value, comment, out LineReference propertyReference))
+                if ((options & ModifyOptions.AppendOverrideOnly) != ModifyOptions.AppendOverrideOnly
+                    && TryAddToExistingSection(section, key, value, comment, out LineReference propertyReference))
                 {
                     return propertyReference;
                 }
@@ -435,7 +465,7 @@ namespace SS.Core.Configuration
             }
 
             // Local function that updates the value of an existing ConfFile's RawProperty.
-            void UpdatePermanent(SettingInfo settingInfo, string value, string comment)
+            void UpdatePermanent(SettingInfo settingInfo, string value, string comment, ModifyOptions options)
             {
                 _updatingFile = settingInfo.PropertyReference.File;
 
@@ -467,11 +497,14 @@ namespace SS.Core.Configuration
                                 fileIndex,
                                 new RawComment(RawComment.DefaultCommentChar, comment));
 
-                            // remove old comments (comment lines immediately before the property line)
-                            int commentIndex = fileIndex;
-                            while (--commentIndex >= 0 && _updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
+                            if ((options & ModifyOptions.LeaveExistingComments) != ModifyOptions.LeaveExistingComments)
                             {
-                                _updatingFile.Lines.RemoveAt(commentIndex);
+                                // remove old comments (comment lines immediately before the property line)
+                                int commentIndex = fileIndex;
+                                while (--commentIndex >= 0 && _updatingFile.Lines[commentIndex].LineType == ConfLineType.Comment)
+                                {
+                                    _updatingFile.Lines.RemoveAt(commentIndex);
+                                }
                             }
                         }
 

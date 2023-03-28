@@ -243,9 +243,6 @@ namespace SS.Core.Configuration
             {
                 RawLine rawLine = lineReference.Line;
 
-                if (rawLine.LineType == ConfLineType.Empty)
-                    continue;
-
                 if (rawLine.LineType == ConfLineType.PreprocessorIfdef)
                 {
                     RawPreprocessorIfdef ifdef = (RawPreprocessorIfdef)rawLine;
@@ -285,10 +282,16 @@ namespace SS.Core.Configuration
                             PushFile(includeFile);
                         }
                     }
-                    else if (rawLine.LineType == ConfLineType.Section
-                        || rawLine.LineType == ConfLineType.Property)
+                    else
                     {
-                        return lineReference;
+                        switch (rawLine.LineType)
+                        {
+                            case ConfLineType.Section:
+                            case ConfLineType.Property:
+                            case ConfLineType.Empty:
+                            case ConfLineType.Comment:
+                                return lineReference;
+                        }
                     }
                 }
             }

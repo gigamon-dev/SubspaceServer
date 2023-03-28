@@ -53,6 +53,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("putfile", Command_putfile);
             _commandManager.AddCommand("putzip", Command_putzip);
             _commandManager.AddCommand("putmap", Command_putmap);
+            _commandManager.AddCommand("makearena", Command_makearena);
             _commandManager.AddCommand("botfeature", Command_botfeature);
             _commandManager.AddCommand("cd", Command_cd);
             _commandManager.AddCommand("pwd", Command_pwd);
@@ -69,6 +70,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("putfile", Command_putfile);
             _commandManager.RemoveCommand("putzip", Command_putzip);
             _commandManager.RemoveCommand("putmap", Command_putmap);
+            _commandManager.RemoveCommand("makearena", Command_makearena);
             _commandManager.RemoveCommand("botfeature", Command_botfeature);
             _commandManager.RemoveCommand("cd", Command_cd);
             _commandManager.RemoveCommand("pwd", Command_pwd);
@@ -325,6 +327,81 @@ namespace SS.Core.Modules
                     false,
                     "General:Map",
                     player.Arena));
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<arena name>",
+            Description = """
+                Creates a directory for a new arena: 'arenas/<arena name>'.
+                The current arena's arena.conf is used as a template.
+                The generated arena.conf file is standalone (flattened, such 
+                that there are no #include or other preprocessor directives).
+                This is so that changing settings in the new arena will only
+                affect that arena, since no files will be shared.
+                """)]
+        private void Command_makearena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (parameters.IsWhiteSpace()
+                || parameters.Length > Constants.MaxArenaNameLength)
+            {
+                _chat.SendMessage(player, "Invalid arena name.");
+                return;
+            }
+
+            Span<char> arenaName = stackalloc char[parameters.Length];
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if ((parameters[i] == '#' && i != 0)
+                    || !char.IsAsciiLetterOrDigit(parameters[i]))
+                {
+                    _chat.SendMessage(player, "Invalid arena name.");
+                    return;
+                }
+
+                arenaName[i] = char.ToLower(parameters[i]);
+            }
+
+            string directoryPath = Path.Join("arenas", arenaName);
+
+            if (!Directory.Exists(directoryPath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+                catch (Exception ex)
+                {
+                    _chat.SendMessage(player, $"Error creating directory '{directoryPath}'. {ex.Message}");
+                    _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player, $"Error creating directory '{directoryPath}'. {ex.Message}");
+                    return;
+                }
+            }
+
+            string arenaConfPath = Path.Join(directoryPath, "arena.conf");
+
+            if (File.Exists(arenaConfPath))
+            {
+                _chat.SendMessage(player, $"Arena '{arenaName}' already exists.");
+                return;
+            }
+
+            try
+            {
+                _configManager.SaveStandaloneCopy(arena.Cfg, arenaConfPath);
+            }
+            catch (Exception ex)
+            {
+                _chat.SendMessage(player, $"Error creating arena.conf '{arenaConfPath}'. {ex.Message}");
+                _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player, $"Error creating arena.conf '{arenaConfPath}'. {ex.Message}");
+                return;
+            }
+
+            _chat.SendMessage(player, $"Successfuly created arena '{arenaName}'.");
         }
 
         [CommandHelp(
