@@ -408,27 +408,12 @@ namespace SS.Core.Modules
             }
         }
 
-        IImmutableSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
+        ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
-
-            ad.Lock.EnterReadLock();
-
-            try
-            {
-                return ad.Lvl.RegionsAtCoord(coord.X, coord.Y);
-            }
-            finally
-            {
-                ad.Lock.ExitReadLock();
-            }
+            return ((IMapData)this).RegionsAt(arena, coord.X, coord.Y);
         }
 
-        IImmutableSet<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
+        ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
         {
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));

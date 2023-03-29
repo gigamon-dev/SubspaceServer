@@ -131,7 +131,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="x">X coordinate to check.</param>
         /// <param name="y">Y coordinate to check.</param>
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
-        IImmutableSet<MapRegion> RegionsAt(Arena arena, short x, short y);
+        ImmutableHashSet<MapRegion> RegionsAt(Arena arena, short x, short y);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
@@ -140,7 +140,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="coord">The coordinates to check.</param>
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
-        IImmutableSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
+        ImmutableHashSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
 
         /// <summary>
         /// Saves an image of the map to a file.

@@ -208,7 +208,7 @@ namespace SS.Core.Map
             return region;
         }
 
-        public IImmutableSet<MapRegion> RegionsAtCoord(short x, short y)
+        public ImmutableHashSet<MapRegion> RegionsAtCoord(short x, short y)
         {
             if (!_regionSetCoordinateLookup.TryGetValue(x, y, out ImmutableHashSet<MapRegion> regionSet))
                 return ImmutableHashSet<MapRegion>.Empty;

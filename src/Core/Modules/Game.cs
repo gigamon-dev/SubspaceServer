@@ -1400,8 +1400,8 @@ namespace SS.Core.Modules
                 return;
 
             Arena arena = player.Arena;
-            IImmutableSet<MapRegion> oldRegions = pd.LastRegionSet;
-            IImmutableSet<MapRegion> newRegions = _mapData.RegionsAt(player.Arena, x, y);
+            ImmutableHashSet<MapRegion> oldRegions = pd.LastRegionSet;
+            ImmutableHashSet<MapRegion> newRegions = _mapData.RegionsAt(player.Arena, x, y);
 
             pd.MapRegionNoAnti = pd.MapRegionNoWeapons = false;
 
@@ -2541,7 +2541,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Set of regions the player was in during the last region check.
             /// </summary>
-            public IImmutableSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+            public ImmutableHashSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
 
             public ShipType? PlayerPostitionPacket_LastShip;
 
