@@ -2236,9 +2236,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = null,
-            Description =
-            "Displays players spectating you. When private, displays players\n" +
-            "spectating the target.")]
+            Description = """
+                Displays players spectating you. When private, displays players
+                spectating the target.
+                """)]
         private void Command_spec(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -2304,13 +2305,14 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Arena | CommandTarget.Player,
             Args = "[-t] [-n] [-s]",
-            Description =
-            "If sent as a priv message, turns energy viewing on for that player.\n" +
-            "If sent as a pub message, turns energy viewing on for the whole arena\n" +
-            "(note that this will only affect new players entering the arena).\n" +
-            "If {-t} is given, turns energy viewing on for teammates only.\n" +
-            "If {-n} is given, turns energy viewing off.\n" +
-            "If {-s} is given, turns energy viewing on/off for spectator mode.\n")]
+            Description = """
+                If sent as a priv message, turns energy viewing on for that player.
+                If sent as a pub message, turns energy viewing on for the whole arena
+                (note that this will only affect new players entering the arena).
+                If -t is given, turns energy viewing on for teammates only.
+                If -n is given, turns energy viewing off.
+                If -s is given, turns energy viewing on/off for spectator mode.
+                """)]
         private void Command_energy(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             target.TryGetPlayerTarget(out Player targetPlayer);

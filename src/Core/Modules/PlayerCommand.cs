@@ -436,9 +436,11 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-all} | <command group>]",
-            Description = "Enables all the commands in the specified command group. This is only\n" +
-            "useful after using ?disablecmdgroup. Use {-all} to enable all command groups.")]
+            Args = "[-all | <command group>]",
+            Description = """
+                Enables all the commands in the specified command group. This is only
+                useful after using ?disablecmdgroup. Use -all to enable all command groups.
+                """)]
         private void Command_enablecmdgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsWhiteSpace())
@@ -478,11 +480,13 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-all} | <command group>]",
-            Description = "Disables all the commands in the specified command group and released the\n" +
-            "modules that they require. This can be used to release interfaces so that\n" +
-            $"modules can be unloaded or upgraded without unloading the {nameof(PlayerCommand)}\n" +
-            "module which would be irreversible). Use {-all} to disable all command groups.")]
+            Args = "[-all | <command group>]",
+            Description = $"""
+            Disables all the commands in the specified command group and released the
+            modules that they require. This can be used to release interfaces so that
+            modules can be unloaded or upgraded without unloading the {nameof(PlayerCommand)}
+            module which would be irreversible). Use -all to disable all command groups.
+            """)]
         private void Command_disablecmdgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsWhiteSpace())
@@ -535,11 +539,12 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "[{-v}]",
-            Description =
-            "Displays lag information about you or a target player.\n" +
-            "Use {-v} for more detail. The format of the ping fields is\n" +
-            "\"last average (min-max)\".")]
+            Args = "[-v]",
+            Description = """
+                Displays lag information about you or a target player.
+                Use -v for more detail. The format of the ping fields is
+                "last average (min-max)".
+                """)]
         private void Command_lag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -585,9 +590,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "[-r]",
-            Description =
-            "Displays a historgram containing lag information about you or a target player.\n" +
-            "By default, c2s position ping data is returned. Use -r to get reliable ping data.")]
+            Description = """
+                Displays a historgram containing lag information about you or a target player.
+                By default, c2s position ping data is returned. Use -r to get reliable ping data.
+                """)]
         private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -634,10 +640,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[[-g] | [-a <arena group name>]] <interval name>",
-            Description =
-            "Causes the specified interval to be reset. If {-g} is specified, reset the interval\n" +
-            "at the global scope. If {-a} is specified, use the named arena group. Otherwise, use\n" +
-            "the current arena's scope. Interval names can be \"game\", \"reset\", or \"maprotation\".")]
+            Description = """
+                Causes the specified interval to be reset. If -g is specified, reset the interval
+                at the global scope. If -a is specified, use the named arena group. Otherwise, use
+                the current arena's scope. Interval names can be "game", "reset", or "maprotation".
+                """)]
         private void Command_endinterval(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> remaining = parameters;
@@ -801,12 +808,13 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-a}] [{-t}]",
-            Description =
-            "Lists the available arenas. Specifying {-a} will also include\n" +
-            "empty arenas that the server knows about. The {-t} switch forces\n" +
-            "the output to be in text even for regular clients (useful when using\n" +
-            "the Continuum chat window).")]
+            Args = "[-a] [-t]",
+            Description = """
+                Lists the available arenas. Specifying -a will also include
+                empty arenas that the server knows about. The -t switch forces
+                the output to be in text even for regular clients (useful when using
+                the Continuum chat window).
+                """)]
         private void Command_arena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool isChatOutput = player.Type == ClientType.Chat || parameters.Contains("-t", StringComparison.OrdinalIgnoreCase);
@@ -941,12 +949,13 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-r}]",
-            Description =
-            "Immediately shuts down the server, exiting with {EXIT_NONE}. If\n" +
-            "{-r} is specified, exit with {EXIT_RECYCLE} instead. The {run-asss}\n" +
-            "script, if it is being used, will notice {EXIT_RECYCLE} and restart\n" +
-            "the server.")]
+            Args = "[-r]",
+            Description = """
+                Immediately shuts down the server, exiting with 0 (None). 
+                If -r is specified, exit with 1 (Recycle) instead. 
+                It is up to the run script, if it is being used, to interpret 
+                the process's exit code and restart the server if specified.
+                """)]
         private void Command_shutdown(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ExitCode code = parameters.Equals("-r", StringComparison.OrdinalIgnoreCase)
@@ -959,10 +968,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description =
-            "Immediately shuts down the server, exiting with {EXIT_RECYCLE}. The\n" +
-            "{run-asss} script, if it is being used, will notice {EXIT_RECYCLE}\n" +
-            "and restart the server.")]
+            Description = """
+                Immediately shuts down the server, exiting with 1 (Recycle). 
+                It is up to the run script, if it is being used, to interpret 
+                the process's exit code and restart the server.
+                """)]
         private void Command_recyclezone(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             _mainloop.Quit(ExitCode.Recycle);
@@ -1018,18 +1028,17 @@ namespace SS.Core.Modules
             Description = "Displays how long the server has been running.")]
         private void Command_uptime(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            TimeSpan ts = DateTime.UtcNow - _startedAt;
-
-            _chat.SendMessage(player, $"uptime: {ts.Days} days {ts.Hours} hours {ts.Minutes} minutes {ts.Seconds} seconds");
+            _chat.SendMessage(player, $"uptime: {DateTime.UtcNow - _startedAt:c}");
         }
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-v}]",
-            Description =
-            "Prints out information about the server.\n" +
-            "For staff members, it will print more detailed version information.\n" +
-            "If staff members specify the {-v} arg, it will print even more verbose information.")]
+            Args = "[-v]",
+            Description = """
+                Prints out information about the server.
+                For staff members, it will print more detailed version information.
+                If staff members specify the -v arg, it will print even more verbose information.
+                """)]
         private void Command_version(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             _chat.SendMessage(player, $"Subspace Server .NET");
@@ -1071,7 +1080,7 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "none or <arena name> or all",
+            Args = "[<arena name> | all]",
             Description = "Displays the current jackpot for this arena, the named arena, or all arenas.")]
         private void Command_jackpot(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -1139,14 +1148,18 @@ namespace SS.Core.Modules
             Command = "geta",
             Targets = CommandTarget.None,
             Args = "section:key",
-            Description = "Displays the value of an arena setting. Make sure there are no\n" +
-            "spaces around the colon.")]
+            Description = """
+                Displays the value of an arena setting.
+                Make sure there are no spaces around the colon.
+                """)]
         [CommandHelp(
             Command = "getg",
             Targets = CommandTarget.None,
             Args = "section:key",
-            Description = "Displays the value of a global setting. Make sure there are no\n" +
-            "spaces around the colon.")]
+            Description = """
+                Displays the value of a global setting.
+                Make sure there are no spaces around the colon.
+                """)]
         private void Command_getX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> remaining = parameters;
@@ -1265,9 +1278,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Arena | CommandTarget.Player,
             Args = "<section>:<key>",
-            Description = "Gets a client setting.\n" +
-            "When targeting a player, this is the current value for that player (including any overrides)." +
-            "When targeting an arena, this is the configured value for the arena.")]
+            Description = """
+                Gets a client setting.
+                When targeting a player, this is the current value for that player (including any overrides).
+                When targeting an arena, this is the configured value for the arena.
+                """)]
         private void Command_getcs(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (_clientSettings is null)
@@ -1554,10 +1569,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player,
             Args = null,
-            Description =
-            "Displays various information on the target player, including which\n" +
-            "client they are using, their resolution, IP address, how long they have\n" +
-            "been connected, and bandwidth usage information.")]
+            Description = """
+                Displays various information on the target player, including which
+                client they are using, their resolution, IP address, how long they have
+                been connected, and bandwidth usage information.
+                """)]
         private void Command_info(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -1730,8 +1746,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player,
             Args = "<message>",
-            Description = "Sends a private message to a player.\n" +
-            "Useful for logging replies to moderator help requests.")]
+            Description = """
+                Sends a private message to a player.
+                Useful for logging replies to moderator help requests.
+                """)]
         private void Command_reply(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -1873,14 +1891,16 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "see description",
-            Description = "Gives the specified prizes to the target player(s).\n" +
-            "\n" +
-            "Prizes are specified with an optional count, and then a prize name (e.g.\n" +
-            "{3 reps}, {anti}). Negative prizes can be specified with a '-' before\n" +
-            "the prize name or the count (e.g. {-prox}, {-3 bricks}, {5 -guns}). More\n" +
-            "than one prize can be specified in one command. A count without a prize\n" +
-            "name means {random}. For compatability, numerical prize ids with {#} are\n" +
-            "supported.")]
+            Description = """
+                Gives the specified prizes to the target player(s).
+
+                Prizes are specified with an optional count, and then a prize name (e.g.
+                "3 reps", "anti"). Negative prizes can be specified with a '-' before
+                the prize name or the count (e.g. "-prox", "-3 bricks", "5 -guns"). More
+                than one prize can be specified in one command. A count without a prize
+                name means random. For compatability, numerical prize ids with # are
+                supported.
+                """)]
         private void Command_prize(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             short count = 1;
@@ -1961,11 +1981,13 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "[-n] [-s] [-t <timeout>]",
-            Description = "Locks the specified targets so that they can't change ships. Use ?unlock\n" +
-            "to unlock them. By default, ?lock won't change anyone's ship. If {-s} is\n" +
-            "present, it will spec the targets before locking them. If {-n} is present,\n" +
-            "it will notify players of their change in status. If {-t} is present, you\n" +
-            "can specify a timeout in seconds for the lock to be effective.")]
+            Description = """
+                Locks the specified targets so that they can't change ships. Use ?unlock
+                to unlock them. By default, ?lock won't change anyone's ship. If -s is
+                present, it will spec the targets before locking them. If -n is present,
+                it will notify players of their change in status. If -t is present, you
+                can specify a timeout in seconds for the lock to be effective.
+                """)]
         private void Command_lock(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             int index = parameters.IndexOf("-t", StringComparison.OrdinalIgnoreCase);
@@ -1983,8 +2005,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
             Args = "[-n]",
-            Description = "Unlocks the specified targets so that they can now change ships. An optional\n" +
-            "{-n} notifies players of their change in status.")]
+            Description = """
+                Unlocks the specified targets so that they can now change ships. 
+                An optional -n notifies players of their change in status.
+                """)]
         private void Command_unlock(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             _game.Unlock(target, parameters.Contains("-n", StringComparison.OrdinalIgnoreCase));
@@ -1993,12 +2017,14 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Arena,
             Args = "[-n] [-a] [-i] [-s]",
-            Description = "Changes the default locked state for the arena so entering players will be locked\n" +
-            "to spectator mode. Also locks everyone currently in the arena to their ships. The {-n}\n" +
-            "option means to notify players of their change in status. The {-a} options means to\n" +
-            "only change the arena's state, and not lock current players. The {-i} option means to\n" +
-            "only lock entering players to their initial ships, instead of spectator mode. The {-s}\n" +
-            "means to spec all players before locking the arena.")]
+            Description = """
+                Changes the default locked state for the arena so entering players will be locked
+                to spectator mode. Also locks everyone currently in the arena to their ships. The -n
+                option means to notify players of their change in status. The -a options means to
+                only change the arena's state, and not lock current players. The -i option means to
+                only lock entering players to their initial ships, instead of spectator mode. The -s
+                option means to spec all players before locking the arena.
+                """)]
         private void Command_lockarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetArenaTarget(out Arena arena))
@@ -2015,10 +2041,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Arena,
             Args = "[-n] [-a]",
-            Description = "Changes the default locked state for the arena so entering players will not be\n" +
-            "locked to spectator mode. Also unlocks everyone currently in the arena to their ships.\n" +
-            "The {-n} options means to notify players of their change in status. The {-a} option\n" +
-            "means to only change the arena's state, and not unlock current players.")]
+            Description = """
+                Changes the default locked state for the arena so entering players will not be
+                locked to spectator mode. Also unlocks everyone currently in the arena to their ships.
+                The -n options means to notify players of their change in status. The -a option
+                means to only change the arena's state, and not unlock current players.
+                """)]
         private void Command_unlockarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetArenaTarget(out Arena arena))
@@ -2032,9 +2060,11 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
-            Args = "[{-f}] <freq number>",
-            Description = "Moves the targets to the specified freq.\n" +
-            "If -f is specified, this command ignores the arena freqman.")]
+            Args = "[-f] <freq number>",
+            Description = """
+                Moves the targets to the specified freq.
+                If -f is specified, this command ignores the arena freqman.
+                """)]
         private void Command_setfreq(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool useFreqManager = true;
@@ -2111,10 +2141,12 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
-            Args = "[{-f}] <ship number>",
-            Description = "Sets the targets to the specified ship. The argument must be a\n" +
-            "number from 1 (Warbird) to 8 (Shark), or 9 (Spec).\n" +
-            "If -f is specified, this command ignores the arena freqman.\n")]
+            Args = "[-f] <ship number>",
+            Description = """
+                Sets the targets to the specified ship. The argument must be a
+                number from 1 (Warbird) to 8 (Shark), or 9 (Spec).
+                If -f is specified, this command ignores the arena freq manager.
+                """)]
         private void Command_setship(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool useFreqManager = true;
@@ -2234,12 +2266,14 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-a}] [{-s}] [<text>]",
-            Description =
-            "Lists all the modules currently loaded into the server. With {-a}, lists\n" +
-            "only modules attached to this arena. With {-s}, sorts by name.\n" +
-            "With optional `text`, limits modules displayed to those whose names\n" +
-            "contain the given text.")]
+            Args = "[-a] [-s] [<text>]",
+            Description = """
+                Lists all the modules currently loaded into the server. 
+                With -a, lists only modules attached to this arena. 
+                With -s, sorts by name.
+                With optional <text>, limits modules displayed to those whose names
+                contain the given text.
+                """)]
         private void Command_lsmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool sort = false;
@@ -2307,10 +2341,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<module name>",
-            Description =
-            "Displays information about the specified module. This might include a\n" +
-            "version number, contact information for the author, and a general\n" +
-            "description of the module.")]
+            Description = """
+                Displays information about the specified module. This might include a
+                version number, contact information for the author, and a general
+                description of the module.
+                """)]
         private void Command_modinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             string parametersStr = parameters.ToString();
@@ -2411,10 +2446,11 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[{-d}] <module name>",
-            Description =
-            "Attaches the specified module to this arena. Or with {-d},\n" +
-            "detaches the module from the arena.")]
+            Args = "[-d] <module name>",
+            Description = """
+                Attaches the specified module to this arena. 
+                Or with -d, detaches the module from the arena.
+                """)]
         private void Command_attmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsEmpty)
@@ -2490,16 +2526,20 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player,
-            Args = "[{-a}] [{-p}] <group name>",
-            Description = "Assigns the group given as an argument to the target player. The player\n" +
-            "must be in group {default}, or the server will refuse to change his\n" +
-            "group. Additionally, the player giving the command must have an\n" +
-            "appropriate capability: {setgroup_foo}, where {foo} is the\n" +
-            "group that he's trying to set the target to.\n\n" +
-            "The optional {-p} means to assign the group permanently. Otherwise, when\n" +
-            "the target player logs out or changes arenas, the group will be lost.\n\n" +
-            "The optional {-a} means to make the assignment local to the current\n" +
-            "arena, rather than being valid in the entire zone.")]
+            Args = "[-a] [-p] <group name>",
+            Description = """
+                Assigns the group given as an argument to the target player. The player
+                must be in group 'default', or the server will refuse to change his
+                group. Additionally, the player giving the command must have an
+                appropriate capability: 'setgroup_foo', where 'foo' is the
+                group that he's trying to set the target to.
+
+                The optional -p means to assign the group permanently. Otherwise, when
+                the target player logs out or changes arenas, the group will be lost.
+
+                The optional -a means to make the assignment local to the current
+                arena, rather than being valid in the entire zone.
+                """)]
         private void Command_setgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -2556,10 +2596,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player,
             Args = null,
-            Description = "Removes the group from a player, returning him to group 'default'. If\n" +
-            "the group was assigned for this session only, then it will be removed\n" +
-            "for this session; if it is a global group, it will be removed globally;\n" +
-            "and if it is an arena group, it will be removed for this arena.")]
+            Description = """
+                Removes the group from a player, returning him to group 'default'. If
+                the group was assigned for this session only, then it will be removed
+                for this session; if it is a global group, it will be removed globally;
+                and if it is an arena group, it will be removed for this arena.
+                """)]
         private void Command_rmgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -2609,8 +2651,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = "Lists all staff members logged on, which arena they are in, and\n" +
-            "which group they belong to.\n")]
+            Description = """
+                Lists all staff members logged on, which arena they are in, and
+                which group they belong to.
+                """)]
         private void Command_listmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool canSeePrivateArenas = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
@@ -2648,9 +2692,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<all or part of a player name>",
-            Description = "Tells you where the specified player is right now. If you specify\n" +
-            "only part of a player name, it will try to find a matching name\n" +
-            "using a case insensitive substring search.")]
+            Description = """
+                Tells you where the specified player is right now. If you specify
+                only part of a player name, it will try to find a matching name
+                using a case insensitive substring search.
+                """)]
         private void Command_find(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.Type != TargetType.Arena 
@@ -2781,23 +2827,25 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Arena,
             Args = "see description", 
-            Description = "Modifies the chat mask for the target player, or if no target, for the\n" +
-            "current arena. The arguments must all be of the form\n" +
-            "{(-|+)(pub|pubmacro|freq|nmefreq|priv|chat|modchat|all)} or {-t <seconds>}.\n" +
-            "A minus sign and then a word disables that type of chat, and a plus sign\n" +
-            "enables it. The special type {all} means to apply the plus or minus to\n" +
-            "all of the above types. {-t} lets you specify a timeout in seconds.\n" +
-            "The mask will be effective for that time, even across logouts.\n" +
-            "\n" +
-            "Examples:\n" +
-            " * If someone is spamming public macros: {:player:?setcm -pubmacro -t 600}\n" +
-            " * To disable all blue messages for this arena: {?setcm -pub -pubmacro}\n" +
-            " * An equivalent to *shutup: {:player:?setcm -all}\n" +
-            " * To restore chat to normal: {?setcm +all}\n" +
-            "\n" +
-            "Current limitations: You can't currently restrict a particular\n" +
-            "frequency. Leaving and entering an arena will remove a player's chat\n" +
-            "mask, unless it has a timeout.\n")]
+            Description = """
+                Modifies the chat mask for the target player, or if no target, for the
+                current arena. The arguments must all be of the form
+                {(-|+)(pub|pubmacro|freq|nmefreq|priv|chat|modchat|all)} or {-t <seconds>}.
+                A minus sign and then a word disables that type of chat, and a plus sign
+                enables it. The special type {all} means to apply the plus or minus to
+                all of the above types. {-t} lets you specify a timeout in seconds.
+                The mask will be effective for that time, even across logouts.
+
+                Examples:
+                 * If someone is spamming public macros: {:player:?setcm -pubmacro -t 600}
+                 * To disable all blue messages for this arena: {?setcm -pub -pubmacro}
+                 * An equivalent to *shutup: {:player:?setcm -all}
+                 * To restore chat to normal: {?setcm +all}
+
+                Current limitations: You can't currently restrict a particular
+                frequency. Leaving and entering an arena will remove a player's chat
+                mask, unless it has a timeout.
+                """)]
         private void Command_setcm(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ChatMask mask;
@@ -2885,9 +2933,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Arena,
             Args = null,
-            Description = "Prints out the chat mask for the target player, or if no target, for the\n" +
-            "current arena. The chat mask specifies which types of chat messages are\n" +
-            "allowed.")]
+            Description = """
+                Prints out the chat mask for the target player, or if no target, for the
+                current arena. The chat mask specifies which types of chat messages are
+                allowed.
+                """)]
         private void Command_getcm(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ChatMask mask;
@@ -3032,8 +3082,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[<image file extension>]",
-            Description = "Downloads an image of the map.\n" +
-            $"The image format can optionally be specified. The default is '{DefaultMapImageFormat}'.")]
+            Description = $"""
+                Downloads an image of the map.
+                The image format can optionally be specified. The default is '{DefaultMapImageFormat}'.
+                """)]
         private void Command_mapimage(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.IsStandard)
@@ -3316,11 +3368,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[<new # of balls> | +<balls to add> | -<balls to remove>]",
-            Description =
-            "Displays or changes the number of balls in the arena.\n" +
-            "A number without a plus or minus sign is taken as a new count.\n" +
-            "A plus signifies adding that many, and a minus removes that many.\n" +
-            "Continuum currently supports only eight balls.")]
+            Description = """
+                Displays or changes the number of balls in the arena.
+                A number without a plus or minus sign is taken as a new count.
+                A plus signifies adding that many, and a minus removes that many.
+                Continuum currently supports only eight balls.
+                """)]
         private void Command_ballcount(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;
@@ -3353,12 +3406,15 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "[{-f} [<ball id>]",
-            Description =
-            "Moves the specified ball to you, or a targeted player.\n" +
-            "If no ball is specified, ball id = is assumed.\n" +
-            "If -f is specified, the ball is forced onto the player and there will be no shot timer, and if the player is already carrying a ball it will be dropped where they are standing.\n" +
-            "If -f is not specified, then the ball is simply moved underneath a player for him to pick up, but any balls already carried are not dropped.")]
+            Args = "[-f] [<ball id>]",
+            Description = """
+                Moves the specified ball to you, or a targeted player.
+                If no ball is specified, ball id = is assumed.
+                If -f is specified, the ball is forced onto the player and there will be no shot timer,
+                and if the player is already carrying a ball it will be dropped where they are standing.
+                If -f is not specified, then the ball is simply moved underneath a player for him to pick up,
+                but any balls already carried are not dropped.
+                """)]
         private void Command_giveball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;
@@ -3515,9 +3571,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[<ball id>]",
-            Description =
-            "Resets the specified existing ball back to its spawn location.\n" +
-            "If no ball is specified, ball id 0 is assumed.")]
+            Description = """
+                Resets the specified existing ball back to its spawn location.
+                If no ball is specified, ball id 0 is assumed.
+                """)]
         private void Command_spawnball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;
@@ -3549,7 +3606,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = "Displays the last known position of balls, as well as the player who is carrying it or who fired it, if applicable.")]
+            Description = """
+                Displays the last known position of balls, as well as the player 
+                who is carrying it or who fired it, if applicable.
+                """)]
         private void Command_ballinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;

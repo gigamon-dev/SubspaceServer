@@ -168,10 +168,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<command name> | <setting name (section:key)>",
-            Description =
-            "Displays help on a command or config file setting. Use {section:}\n" +
-            "to list known keys in that section. Use {:} to list known section\n" +
-            "names.")]
+            Description = """
+                Displays help on a command or config file setting. Use {section:}
+                to list known keys in that section. Use {:} to list known section
+                names.
+                """)]
         private void Command_help(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!parameters.IsWhiteSpace())

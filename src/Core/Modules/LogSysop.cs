@@ -167,11 +167,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "[<number of lines>] [<limiting text>]",
-            Description =
-            "Displays the last <number> lines in the server log (default: 10).\n" +
-            "If limiting text is specified, only lines that contain that text will\n" +
-            "be displayed. If a player is targeted, only lines mentioning that player\n" +
-            "will be displayed.")]
+            Description = """
+                Displays the last <number> lines in the server log (default: 10).
+                If limiting text is specified, only lines that contain that text will
+                be displayed. If a player is targeted, only lines mentioning that player
+                will be displayed.
+                """)]
         private void Command_lastlog(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             target.TryGetPlayerTarget(out Player targetPlayer);

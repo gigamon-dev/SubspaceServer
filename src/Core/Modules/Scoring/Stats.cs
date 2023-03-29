@@ -1110,10 +1110,12 @@ namespace SS.Core.Modules.Scoring
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.None,
             Args = "[-g] [{forever} | {game} | {reset}]",
-            Description = "Prints out some basic statistics about the target player, or if no\n" +
-            "target, yourself. By default, it will show arena stats. Use {-g} to switch it to\n" +
-            "show global (zone-wide) stats. An interval name can be specified as an argument.\n" +
-            "By default, the per-reset interval is used.")]
+            Description = """
+                Prints out some basic statistics about the target player, or if no
+                target, yourself. By default, it will show arena stats. Use -g to switch it to
+                show global (zone-wide) stats. An interval name can be specified as an argument.
+                By default, the per-reset interval is used.
+                """)]
         private void Command_stats(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))

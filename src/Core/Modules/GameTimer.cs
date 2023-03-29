@@ -226,8 +226,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = "Toggles the time between paused and unpaused.\n" +
-            "The timer must have been created with ?timer.")]
+            Description = """
+                Toggles the time between paused and unpaused.
+                The timer must have been created with ?timer.
+                """)]
         private void Command_pausetimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;

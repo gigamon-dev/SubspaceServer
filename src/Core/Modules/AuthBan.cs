@@ -154,10 +154,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player,
             Args = "[-s seconds | -t seconds | -m minutes | seconds] [reason]",
-            Description = 
-            "Kicks the player off of the server, with an optional timeout. (-s number, -t number, or number for seconds, -m number for minutes.)\n" +
-            "For kicks with a timeout, you may provide a message to be displayed to the user.\n" +
-            "Messages appear to users on timeout as \"You have been temporarily kicked for <reason>.\"")]
+            Description = """
+                Kicks the player off of the server, with an optional timeout. (-s number, -t number, or number for seconds, -m number for minutes.)
+                For kicks with a timeout, you may provide a message to be displayed to the user.
+                Messages appear to users on timeout as "You have been temporarily kicked for <reason>."
+                """)]
         private void Command_kick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))

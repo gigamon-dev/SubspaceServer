@@ -312,9 +312,11 @@ namespace SS.Core.Modules.Scoring
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<freq 0 score> [<freq 1 score> [... [<freq 7 score>]]]",
-            Description = "Changes score of current soccer game, based on arguments. Only supports\n" +
-            "first eight freqs, and arena must be in absolute scoring mode \n" +
-            "(Soccer:CapturePoints < 0).")]
+            Description = """
+                Changes score of current soccer game, based on arguments. Only supports
+                first eight freqs, and arena must be in absolute scoring mode 
+                (Soccer:CapturePoints < 0).
+                """)]
         private void Command_setscore(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena arena = player.Arena;

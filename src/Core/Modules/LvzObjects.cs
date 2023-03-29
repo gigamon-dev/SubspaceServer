@@ -18,6 +18,8 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class LvzObjects : IModule, ILvzObjects
     {
+        private const string CommonHelpText = "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist";
+
         private IArenaManager _arenaManager;
         private ICapabilityManager _capabilityManager;
         private IChat _chat;
@@ -393,8 +395,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<object id>",
-            Description = "Toggles the specified object on.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Toggles the specified object on.
+                {CommonHelpText}
+                """)]
         private void Command_objon(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
@@ -404,8 +408,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<object id>",
-            Description = "Toggles the specified object off.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Toggles the specified object off.
+                {CommonHelpText}
+                """)]
         private void Command_objoff(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (short.TryParse(parameters, out short id) && id >= 0)
@@ -415,8 +421,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "[+|-]<object id 0> [+|-]<object id 1> ... [+|-]<object id N>",
-            Description = "Toggles the specified objects on/off.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Toggles the specified objects on/off.
+                {CommonHelpText}
+                """)]
         private void Command_objset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             int count = 0;
@@ -456,8 +464,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<id> <x> <y> (for map obj) or <id> [CBSGFETROWV]<x> [CBSGFETROWV]<y> (screen obj)",
-            Description = "Moves an LVZ map or screen object. Coordinates are in pixels.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Moves an LVZ map or screen object. Coordinates are in pixels.
+                {CommonHelpText}
+                """)]
         private void Command_objmove(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> remaining = parameters;
@@ -507,8 +517,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<id> <image>",
-            Description = "Change the image associated with an object id.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Change the image associated with an object id.
+                {CommonHelpText}
+                """)]
         private void Command_objimage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> imageStr);
@@ -528,10 +540,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<id> <layer code>",
-            Description = "Change the layer associated with an object id. Layer codes:\n" +
-            "BelowAll  AfterBackground  AfterTiles  AfterWeapons\n" +
-            "AfterShips  AfterGauges  AfterChat  TopMost\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Change the layer associated with an object id. Layer codes:
+                BelowAll  AfterBackground  AfterTiles  AfterWeapons
+                AfterShips  AfterGauges  AfterChat  TopMost
+                {CommonHelpText}
+                """)]
         private void Command_objlayer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> layerStr);
@@ -552,8 +566,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<id> <time>",
-            Description = "Change the timer associated with an object id.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Change the timer associated with an object id.
+                {CommonHelpText}
+                """)]
         private void Command_objtimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> timeStr);
@@ -573,9 +589,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Any,
             Args = "<id> <mode code>",
-            Description = "Change the mode associated with an object id. Mode codes:\n" +
-            "ShowAlways  EnterZone  EnterArena  Kill  Death  ServerControlled\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Change the mode associated with an object id. Mode codes:
+                ShowAlways  EnterZone  EnterArena  Kill  Death  ServerControlled
+                {CommonHelpText}
+                """)]
         private void Command_objmode(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> modeStr);
@@ -595,8 +613,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<id>",
-            Description = "Reports all known information about the object.\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+                Reports all known information about the object.
+                {CommonHelpText}
+                """)]
         private void Command_objinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -637,8 +657,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = "List all ServerControlled object id's. Use ?objinfo <id> for attributes\n" +
-            "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist")]
+            Description = $"""
+            List all ServerControlled object id's. Use ?objinfo <id> for attributes
+            {CommonHelpText}
+            """)]
         private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))

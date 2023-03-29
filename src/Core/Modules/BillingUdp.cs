@@ -791,10 +791,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player  | CommandTarget.None,
             Args = null,
-            Description =
-            "Displays the usage information (current hours and minutes logged in, and\n" +
-            "total hours and minutes logged in), as well as the first login time, of\n" +
-            "the target player, or you if no target.")]
+            Description = """
+                Displays the usage information (current hours and minutes logged in, and
+                total hours and minutes logged in), as well as the first login time, of
+                the target player, or you if no target.
+                """)]
         private void Command_usage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -817,8 +818,7 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.None,
             Args = null,
-            Description =
-            "Displays the user database id of the target player, or yours if no target.")]
+            Description = "Displays the user database id of the target player, or yours if no target.")]
         private void Command_userid(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))
@@ -837,10 +837,11 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "status|drop|connect",
-            Description =
-            "The subcommand 'status' reports the status of the user database server\n" +
-            "connection. 'drop' disconnects the connection if it's up, and 'connect'\n" +
-            "reconnects after dropping or failed login.")]
+            Description = """
+                The subcommand 'status' reports the status of the user database server
+                connection. 'drop' disconnects the connection if it's up, and 'connect'
+                reconnects after dropping or failed login.
+                """)]
         private void Command_userdbadm(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             lock (_lockObj)

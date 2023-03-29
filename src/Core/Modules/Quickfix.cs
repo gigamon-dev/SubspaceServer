@@ -138,11 +138,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<limiting text>",
-            Description = 
-            "Lets you quickly change arena settings. This will display some list of\n" +
-            "settings with their current values and allow you to change them. The\n" +
-            "argument to this command can be used to limit the list of settings\n" +
-            "displayed. (With no arguments, equivalent to ?getsettings in subgame.)")]
+            Description = """
+                Lets you quickly change arena settings. This will display some list of
+                settings with their current values and allow you to change them. The
+                argument to this command can be used to limit the list of settings
+                displayed. (With no arguments, equivalent to ?getsettings in subgame.)
+                """)]
         private void Command_quickfix(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))

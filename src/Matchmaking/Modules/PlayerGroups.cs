@@ -132,19 +132,20 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "<none> | [invite <player> | deinvite <player> | accept <player> | decline <player> | leave | kick <player> | leader <player> | disband]",
-            Description =
-            "Commands for managing player groups.\n" +
-            "  no sub-command (e.g. ?group or /?group) - prints group information.\n" +
-            "  invite - invites a player to your group ^\n" +
-            "  deinvite - cancels a pending invite ^\n" +
-            "  accept - accepts an invite\n" +
-            "  decline - declines an invite\n" +
-            "  leave - leaves the current group\n" +
-            "  kick - kicks a member of the group ^\n" +
-            "  leader - makes the chosen group member the leader of the group ^\n" +
-            "  disband - disbands the group ^\n" +
-            "^ must be the group leader to use this command\n" +
-            "For sub-commands that take a <player>, the command can be sent privately to that player (e.g. /?group invite), rather than having to type the player's name.")]
+            Description = """
+                Commands for managing player groups.
+                  no sub-command (e.g. ?group or /?group) - prints group information.
+                  invite - invites a player to your group ^
+                  deinvite - cancels a pending invite ^
+                  accept - accepts an invite
+                  decline - declines an invite
+                  leave - leaves the current group
+                  kick - kicks a member of the group ^
+                  leader - makes the chosen group member the leader of the group ^
+                  disband - disbands the group ^
+                ^ must be the group leader to use this command
+                For sub-commands that take a <player>, the command can be sent privately to that player (e.g. /?group invite), rather than having to type the player's name.
+                """)]
         private void Command_group(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))

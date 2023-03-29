@@ -830,12 +830,13 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[<queue name>]",
-            Description = 
-            "Searches for the next available slot in any ongoing matches and substitutes the player into the slot.\n" +
-            "When matched with a slot to sub in for, the switch may not happen immediately." +
-            "First, the player may need to be moved to the proper arena." +
-            "Also, the slot may currently contain an active player (that requested to be subbed out), " +
-            "in which case the active player needs to get to full energy to become eligible to be switched out.")]
+            Description = """
+                Searches for the next available slot in any ongoing matches and substitutes the player into the slot.
+                When matched with a slot to sub in for, the switch may not happen immediately.
+                First, the player may need to be moved to the proper arena.
+                Also, the slot may currently contain an active player (that requested to be subbed out),
+                in which case the active player needs to get to full energy to become eligible to be switched out.
+                """)]
         private void Command_sub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // TODO: maybe the sub command should be in the MatchMakingQueues module, and this method is an advisor method?
@@ -1032,8 +1033,10 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = $"Cancels a ?{CommandNames.Sub} attempt that's in progress.\n" +
-            "Use this if you no longer want to wait to be subbed in.")]
+            Description = $"""
+                Cancels a ?{CommandNames.Sub} attempt that's in progress."
+                "Use this if you no longer want to wait to be subbed in.
+                """)]
         private void Command_cancelsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -1181,9 +1184,10 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = 
-            "Request that teams be randomized and the game restarted, needs a majority vote.\n" +
-            "Using this ignores player groups, all players in the match will be randomized.")]
+            Description = """
+                Request that teams be randomized and the game restarted, needs a majority vote.
+                Using this ignores player groups, all players in the match will be randomized.
+                """)]
         private void Command_randomize(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             //_chat.SendMessage(, $"{player.Name} requests to re-randomize the teams and restart the game. To agree, type: ?randomize");
@@ -1194,10 +1198,11 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = null,
-            Description = 
-            "Request that the game be ended as a loss for the team, " +
-            "if all remaining players on a team agree (type the command), " +
-            "the game will end as a loss to that team without having to be killed out.")]
+            Description = """
+                Request that the game be ended as a loss for the team,
+                if all remaining players on a team agree (type the command), 
+                the game will end as a loss to that team without having to be killed out.
+                """)]
         private void Command_end(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // To the opposing team (voting begin)

@@ -617,15 +617,14 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Description =
-            "Displays all the commands that you (or the specified player) can use.\n" +
-            "Commands in the arena section are specific to the current arena.\n" +
-            "The symbols before each command specify how the command can be used:\n" +
-            "A dot '.' means you use the command without sending it to a player, " +
-            "it might apply to the entire zone, the current arena or to yourself.\n" +
-            "A slash '/' means you can send the command in a private message to a player, " +
-            "the effects will then apply to that player only.\n" +
-            "A colon ':' means you can send the command in a private message to a player in a different arena")]
+            Description = """
+                Displays all the commands that you (or the specified player) can use.
+                Commands in the arena section are specific to the current arena.
+                The symbols before each command specify how the command can be used:
+                A dot '.' means you use the command without sending it to a player, it might apply to the entire zone, the current arena or to yourself.
+                A slash '/' means you can send the command in a private message to a player, the effects will then apply to that player only.
+                A colon ':' means you can send the command in a private message to a player in a different arena.
+                """)]
         private void Command_commands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (_chat == null)
@@ -651,16 +650,15 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Description =
-            "Displays all commands, including those you don't have access to use.\n" +
-            "Commands in the arena section are specific to the current arena.\n" +
-            "The symbols before each command specify how the command can be used:\n" +
-            "An exclamation mark '!' means you don't have access to use the command.\n" +
-            "A dot '.' means you use the command without sending it to a player, " +
-            "it might apply to the entire zone, the current arena or to yourself.\n" +
-            "A slash '/' means you can send the command in a private message to a player, " +
-            "the effects will then apply to that player only.\n" +
-            "A colon ':' means you can send the command in a private message to a player in a different arena")]
+            Description = """
+            Displays all commands, including those you don't have access to use.
+            Commands in the arena section are specific to the current arena.
+            The symbols before each command specify how the command can be used:
+            An exclamation mark '!' means you don't have access to use the command.
+            A dot '.' means you use the command without sending it to a player, it might apply to the entire zone, the current arena or to yourself.
+            A slash '/' means you can send the command in a private message to a player, the effects will then apply to that player only.
+            A colon ':' means you can send the command in a private message to a player in a different arena.
+            """)]
         private void Command_allcommands(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (_chat == null)

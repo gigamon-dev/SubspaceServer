@@ -314,11 +314,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None, 
             Args = "<new password>",
-            Description =
-            "Changes your local server password. Note that this command only changes\n" +
-            $"the password used by the {nameof(AuthFile)} authentication mechanism (used when the\n" +
-            "billing server is disconnected). This command does not involve the billing\n" +
-            "server.\n")]
+            Description = $"""
+                Changes your local server password. Note that this command only changes
+                the password used by the {nameof(AuthFile)} authentication mechanism (used when the
+                billing server is disconnected). This command does not involve the billing 
+                server.
+                """)]
         [ConfigHelp("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
             Description = "If true, you must be authenticated (have used a correct password) according to this module or some other module before using ?local_password to change your local password.")]
         private void Command_passwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -351,9 +352,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None, 
             Args = "<player name>", 
-            Description =
-            "Adds a player to passwd.conf with no set password. This will allow them\n" +
-            "to log in when AllowUnknown is set to false, and has no use otherwise.\n")]
+            Description = """
+                Adds a player to passwd.conf with no set password. This will allow them
+                to log in when AllowUnknown is set to false, and has no use otherwise.
+                """)]
         private void Command_addallowed(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsWhiteSpace())
@@ -369,9 +371,10 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.Player,
             Args = null,
-            Description =
-            "If used on a player that has no local password set, it will set their\n" +
-            "local password to the password they used to log in to this session.\n")]
+            Description = """
+                If used on a player that has no local password set, it will set their
+                local password to the password they used to log in to this session.
+                """)]
         private void Command_set_local_password(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!target.TryGetPlayerTarget(out Player targetPlayer))

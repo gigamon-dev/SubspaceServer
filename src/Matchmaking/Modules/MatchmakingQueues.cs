@@ -492,9 +492,10 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<none> | <queue name>[, <queue name>[, ...]]] | -list | -listall | -auto",
-            Description = 
-            "Starts a matchmaking search.\n" +
-            "An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.")]
+            Description = """
+                Starts a matchmaking search.
+                An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.
+                """)]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Status != PlayerState.Playing || player.Arena is null)
@@ -889,8 +890,10 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<none> | [<queue name>[, <queue name>[, ...]]]",
-            Description = "Cancels a matchmaking search.\n" +
-            "Use the command without specifying a <queue name> to remove from all matchmaking queues.")]
+            Description = """
+                Cancels a matchmaking search.
+                Use the command without specifying a <queue name> to remove from all matchmaking queues.
+                """)]
         private void Command_cancel(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // Check if the player is in a group.

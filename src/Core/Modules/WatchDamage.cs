@@ -234,10 +234,12 @@ namespace SS.Core.Modules
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "[0 | 1]",
-            Description = "Turns damage watching on and off. If sent to a player, an argument of 1\n" +
-            "turns it on, 0 turns it off, and no argument toggles. If sent as a\n" +
-            "public command, only {?watchdamage 0} is meaningful, and it turns off\n" +
-            "damage watching on all players.")]
+            Description = """
+                Turns damage watching on and off. If sent to a player, an argument of 1
+                turns it on, 0 turns it off, and no argument toggles. If sent as a
+                public command, only {?watchdamage 0} is meaningful, and it turns off
+                damage watching on all players.
+                """)]
         private void Command_watchdamage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.Type == TargetType.Arena)
