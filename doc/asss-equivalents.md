@@ -200,9 +200,9 @@ This document provides an overview of the various server parts and their relatio
 | CB_PPK | SS.Core.ComponentCallbacks.PlayerPositionCallback | |
 | CB_PRESHIPFREQCHANGE | SS.Core.ComponentCallbacks.PreShipFreqChangeCallback | |
 | CB_REGION | SS.Core.ComponentCallbacks.MapRegionCallback | |
-| CB_REWRITECOMMAND | | |
+| CB_REWRITECOMMAND | - | Use IChatAdvisor instead.  |
 | CB_SAFEZONE | SS.Core.ComponentCallbacks.SafeZoneCallback | |
-| CB_SET_BANNER | SS.Core.ComponentCallbacks.SetBannerCallback | |
+| CB_SET_BANNER | SS.Core.ComponentCallbacks.BannerSetCallback | |
 | CB_SHIPFREQCHANGE | SS.Core.ComponentCallbacks.ShipFreqChangeCallback | |
 | CB_SPAWN | SS.Core.ComponentCallbacks.SpawnCallback | |
 | CB_TIMESUP | SS.Core.ComponentCallbacks.GameTimerEndedCallback<br>SS.Core.ComponentCallbacks.GameTimerChangedCallback | |
@@ -214,6 +214,9 @@ This document provides an overview of the various server parts and their relatio
 | ASSS  | Subspace Server .NET | Notes |
 | --- | --- | --- |
 | Aballs | SS.Core.ComponentAdvisors.IBallsAdvisor | |
+| - | SS.Core.ComponentAdvisors.IBannersAdvisor | |
+| - | SS.Core.ComponentAdvisors.IChatAdvisor | |
 | Aenforcer | SS.Core.ComponentAdvisors.IFreqManagerEnforcerAdvisor | |
 | Akill | SS.Core.ComponentAdvisors.IKillAdvisor | |
 | Appk | SS.Core.ComponentAdvisors.IPlayerPositionAdvisor | |
+| - | SS.Core.ComponentAdvisors.IStatsAdvisor | |

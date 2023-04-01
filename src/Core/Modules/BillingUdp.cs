@@ -116,7 +116,7 @@ namespace SS.Core.Modules
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             ChatMessageCallback.Register(broker, Callback_ChatMessage);
-            SetBannerCallback.Register(broker, Callback_SetBanner);
+            BannerSetCallback.Register(broker, Callback_BannerSet);
 
             _commandManager.AddCommand("usage", Command_usage);
             _commandManager.AddCommand("userid", Command_userid);
@@ -147,7 +147,7 @@ namespace SS.Core.Modules
             NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             ChatMessageCallback.Unregister(broker, Callback_ChatMessage);
-            SetBannerCallback.Unregister(broker, Callback_SetBanner);
+            BannerSetCallback.Unregister(broker, Callback_BannerSet);
 
             _mainloopTimer.ClearTimer(MainloopTimer_DoWork, null);
 
@@ -767,7 +767,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_SetBanner(Player player, in Banner banner, bool isFromPlayer)
+        private void Callback_BannerSet(Player player, in Banner banner, bool isFromPlayer)
         {
             if (!isFromPlayer)
                 return;
@@ -780,7 +780,7 @@ namespace SS.Core.Modules
                 if (!playerData.IsKnownToBiller)
                     return;
 
-                _bannerUploadDictionary[player.Id] = new S2B_UserBanner(player.Id, banner);
+                _bannerUploadDictionary[player.Id] = new S2B_UserBanner(player.Id, in banner);
             }
         }
 
@@ -1235,7 +1235,7 @@ namespace SS.Core.Modules
                     {
                         try
                         {
-                            banners.SetBanner(player, in packet.Banner, false);
+                            banners.SetBanner(player, in packet.Banner);
                         }
                         finally
                         {

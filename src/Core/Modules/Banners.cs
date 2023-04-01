@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using SS.Core.ComponentAdvisors;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets;
 using SS.Packets.Game;
@@ -11,13 +12,18 @@ namespace SS.Core.Modules
     /// Module that provides functionality for banners (the small 12 x 8 bitmap image a player can choose to display next to their name).
     /// </summary>
     [CoreModuleInfo]
-    public class Banners : IModule, IBanners
+    public class Banners : IModule, IBanners, IBannersAdvisor
     {
+        private ComponentBroker _broker;
         private ICapabilityManager _capabilityManager;
         private IChat _chat;
+        private IConfigManager _configManager;
         private ILogManager _logManager;
         private INetwork _network;
         private IPlayerData _playerData;
+
+        private AdvisorRegistrationToken<IBannersAdvisor> _iBannersAdvisor;
+        private InterfaceRegistrationToken<IBanners> _iBannersToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
@@ -27,12 +33,15 @@ namespace SS.Core.Modules
             ComponentBroker broker,
             ICapabilityManager capabilityManager,
             IChat chat,
+            IConfigManager configManager,
             ILogManager logManager,
             INetwork network,
             IPlayerData playerData)
         {
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -41,14 +50,106 @@ namespace SS.Core.Modules
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _network.AddPacket(C2SPacketType.Banner, Packet_Banner);
 
+            _iBannersAdvisor = _broker.RegisterAdvisor<IBannersAdvisor>(this);
+            _iBannersToken = _broker.RegisterInterface<IBanners>(this);
             return true;
         }
 
         public bool Unload(ComponentBroker broker)
         {
+            if (_broker.UnregisterInterface(ref _iBannersToken) != 0)
+                return false;
+
+            if (!_broker.UnregisterAdvisor(ref _iBannersAdvisor))
+                return false;
+
             _network.RemovePacket(C2SPacketType.Banner, Packet_Banner);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             _playerData.FreePlayerData(ref _pdKey);
+
+            return true;
+        }
+
+        #endregion
+
+        #region IBanners
+
+        bool IBanners.TryGetBanner(Player player, out Banner banner)
+        {
+            if (player is null
+                || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+            {
+                banner = default;
+                return false;
+            }
+
+            lock (pd.Lock)
+            {
+                if (!pd.Banner.IsSet)
+                {
+                    banner = default;
+                    return false;
+                }
+
+                banner = pd.Banner;
+                return true;
+            }
+        }
+
+        void IBanners.SetBanner(Player player, in Banner banner)
+        {
+            SetBanner(player, in banner, false);
+        }
+
+        void IBanners.CheckAndSendBanner(Player player)
+        {
+            CheckAndSendBanner(player);
+        }
+
+        #endregion
+
+        #region IBannerAdvisor
+
+        [ConfigHelp("Misc", "BannerPoints", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            Description = "Number of points required to display a banner.")]
+        bool IBannersAdvisor.IsAllowedBanner(Player player)
+        {
+            if (player is null
+                || !_capabilityManager.HasCapability(player, Constants.Capabilities.SetBanner))
+            {
+                return false;
+            }
+
+            Arena arena = player.Arena;
+            if (arena is null)
+            {
+                return false;
+            }
+
+            // TODO: Add logic to automatically use a pending banner when the player passes the required point threshold.
+            // This would require adding a StatChangedCallback (for being able to watch KillPoints a FlagPoints).
+
+            int bannerPoints = _configManager.GetInt(arena.Cfg, "Misc", "BannerPoints", 0);
+            if (bannerPoints > 0)
+            {
+                IScoreStats scoreStats = arena.GetInterface<IScoreStats>();
+                if (scoreStats is not null)
+                {
+                    try
+                    {
+                        scoreStats.GetScores(player, out int killPoints, out int flagPoints, out _, out _);
+
+                        if ((killPoints + flagPoints) < bannerPoints)
+                        {
+                            return false;
+                        }
+                    }
+                    finally
+                    {
+                        arena.ReleaseInterface(ref scoreStats);
+                    }
+                }
+            }
 
             return true;
         }
@@ -60,7 +161,9 @@ namespace SS.Core.Modules
             if (action == PlayerAction.EnterArena)
             {
                 // A biller module could have set the player's banner prior to this.
-                CheckAndSendBanner(player, false, false);
+                // Or, the player could have have just switched arenas.
+                // Check if the player has a banner that can be used, and if so, send it to all the players in the arena.
+                CheckAndSendBanner(player);
 
                 // Send everyone else's banner to the player.
                 _playerData.Lock();
@@ -90,6 +193,23 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
             }
+            else if (action == PlayerAction.LeaveArena)
+            {
+                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                    return;
+
+                lock (pd.Lock)
+                {
+                    if (pd.Status == BannerStatus.Good)
+                    {
+                        pd.Status = BannerStatus.Pending;
+                    }
+                    else if (pd.Status == BannerStatus.PendingClear)
+                    {
+                        pd.Status = BannerStatus.NoBanner;
+                    }
+                }
+            }
         }
 
         private void Packet_Banner(Player player, byte[] data, int length, NetReceiveFlags flags)
@@ -101,7 +221,7 @@ namespace SS.Core.Modules
             }
 
             // This implicitly catches setting from pre-playing states.
-            if (player.Arena == null)
+            if (player.Arena is null)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, $"Tried to set a banner from outside an arena.");
                 return;
@@ -114,32 +234,72 @@ namespace SS.Core.Modules
                 return;
             }
 
+            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                return;
+
+            // Rate limit banner changes.
+            lock (pd.Lock)
+            {
+                if (pd.LastSetByPlayer is not null 
+                    && (DateTime.UtcNow - pd.LastSetByPlayer.Value) < TimeSpan.FromSeconds(5))
+                {
+                    _chat.SendMessage(player, "You set your banner too recently.");
+                    return;
+                }
+
+                pd.LastSetByPlayer = DateTime.UtcNow;
+            }
+
             ref C2S_Banner pkt = ref MemoryMarshal.AsRef<C2S_Banner>(data);
             SetBanner(player, in pkt.Banner, true);
             _logManager.LogP(LogLevel.Drivel, nameof(Banners), player, "Set banner.");
         }
 
-        public void SetBanner(Player player, in Banner banner, bool isFromPlayer)
+        private void SetBanner(Player player, in Banner banner, bool isFromPlayer)
         {
-            if (player == null)
-                return;
-
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
             {
-                pd.Banner = banner; // copy
-                pd.Status = BannerStatus.Pending;
+                if (banner.IsSet)
+                {
+                    // The banner is being set. We need to check if it can be used.
+                    pd.Status = BannerStatus.Pending;
+                }
+                else
+                {
+                    // The banner is being cleared.
+                    if (pd.Status == BannerStatus.Good)
+                    {
+                        // The banner was previously in use. We need to tell players that it's been cleared.
+                        pd.Status = BannerStatus.PendingClear;
+                    }
+                    else if (pd.Status == BannerStatus.Pending)
+                    {
+                        // The banner was not previously in use.
+                        pd.Status = BannerStatus.NoBanner;
+                    }
+                }
 
-                if (player.Status == PlayerState.Playing)
-                    CheckAndSendBanner(player, true, isFromPlayer);
+                pd.Banner = banner; // copy
+
+                CheckAndSendBanner(player);
             }
+
+            BannerSetCallback.Fire(player.Arena ?? _broker, player, in pd.Banner, isFromPlayer);
         }
 
-        private void CheckAndSendBanner(Player player, bool notify, bool isFromPlayer)
+        private void CheckAndSendBanner(Player player)
         {
-            if (player == null)
+            if (player is null)
+                return;
+
+            if (player.Status != PlayerState.Playing)
+                return; // The player is not playing yet, nothing to do.
+
+            Arena arena = player.Arena;
+            if (arena is null)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -147,66 +307,100 @@ namespace SS.Core.Modules
 
             lock (pd.Lock)
             {
-                if (pd.Status == BannerStatus.NoBanner)
-                    return;
-
-                if (pd.Status == BannerStatus.Pending)
+                if ((pd.Status == BannerStatus.Pending && IsAllowedBanner(player))
+                    || pd.Status == BannerStatus.PendingClear)
                 {
-                    if (IsAllowedBanner(player))
+                    // Send the change to everyone.
+                    S2C_Banner packet = new((short)player.Id, in pd.Banner);
+                    _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
+
+                    if (pd.Status == BannerStatus.Pending)
                     {
                         pd.Status = BannerStatus.Good;
                     }
-                    else
+                    else if (pd.Status == BannerStatus.PendingClear)
                     {
                         pd.Status = BannerStatus.NoBanner;
-
-                        if (isFromPlayer)
-                        {
-                            _logManager.LogP(LogLevel.Drivel, nameof(Banners), player, "Denied permission to use a banner.");
-                        }
-                    }
-                }
-
-                if (pd.Status == BannerStatus.Good)
-                {
-                    Arena arena = player.Arena;
-                    if (arena == null) // This can be null if the banner is from a biller module, and we'll come back later in the PlayerActionCallback to send it.
-                        return;
-
-                    // send to everyone
-                    S2C_Banner packet = new((short)player.Id, pd.Banner);
-                    _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
-
-                    if (notify)
-                    {
-                        SetBannerCallback.Fire(arena, player, in pd.Banner, isFromPlayer);
                     }
                 }
             }
-        }
 
-        private bool IsAllowedBanner(Player player) => player != null && _capabilityManager.HasCapability(player, Constants.Capabilities.SetBanner);
+
+            static bool IsAllowedBanner(Player player)
+            {
+                Arena arena = player.Arena;
+                if (arena is null)
+                    return false;
+
+                foreach (var advisor in arena.GetAdvisors<IBannersAdvisor>())
+                {
+                    if (!advisor.IsAllowedBanner(player))
+                        return false;
+                }
+
+                return true;
+            }
+        }
 
         #region Helper types
 
         private enum BannerStatus
         {
+            /// <summary>
+            /// No banner present.
+            /// </summary>
+            /// <remarks>Transitions to: <see cref="Pending"/> (banner set by biller or player).</remarks>
             NoBanner = 0,
+
+            /// <summary>
+            /// Present but waiting to be used when allowed.
+            /// </summary>
+            /// <remarks>Transitions to: <see cref="Good"/> or <see cref="NoBanner"/>.</remarks>
             Pending,
+
+            /// <summary>
+            /// Present and in use.
+            /// </summary>
+            /// <remarks>Transitions to: <see cref="PendingClear"/> (player wants to remove banner) or <see cref="Pending"/> (player changes arena).</remarks>
             Good,
+
+            /// <summary>
+            /// Previously present but removed. Needs to be cleared on other players.
+            /// </summary>
+            /// <remarks>Transitions to: <see cref="NoBanner"/> or <see cref="Pending"/>.</remarks>
+            PendingClear,
         }
 
         private class PlayerData : IPooledExtraData
         {
+            /// <summary>
+            /// Timestamp that the player last set their banner in the current session.
+            /// </summary>
+            public DateTime? LastSetByPlayer = null;
+
+            /// <summary>
+            /// The banner.
+            /// </summary>
             public Banner Banner;
+
+            /// <summary>
+            /// Used to track the state of the banner:
+            /// whether the banner is set,
+            /// whether the banner is in use,
+            /// whether there is a pending action on the banner.
+            /// </summary>
             public BannerStatus Status;
 
             public readonly object Lock = new();
 
             public void Reset()
             {
-                Banner = default;
-                Status = BannerStatus.NoBanner;
+                lock (Lock)
+                {
+                    LastSetByPlayer = null;
+                    Banner = default;
+                    Status = BannerStatus.NoBanner;
+                }
             }
         }
 
