@@ -125,95 +125,6 @@ namespace SS.Core.ComponentInterfaces
             int PlayerCount { get; }
         }
 
-        [InterpolatedStringHandler]
-        public struct SendMessageInterpolatedStringHandler
-        {
-            private readonly IStringBuilderPoolProvider _stringBuilderPoolProvider;
-            private StringBuilder _stringBuilder;
-            private StringBuilder.AppendInterpolatedStringHandler _wrappedHandler;
-
-            public SendMessageInterpolatedStringHandler(int literalLength, int formatCount, IPeer peer)
-            {
-                if (peer is null)
-                    throw new ArgumentNullException(nameof(peer));
-
-                _stringBuilderPoolProvider = peer as IStringBuilderPoolProvider;
-                if (_stringBuilderPoolProvider is null)
-                    throw new ArgumentException("Does not implement IStringBuilderPoolProvider.", nameof(peer));
-
-                _stringBuilder = _stringBuilderPoolProvider.StringBuilderPool.Get();
-                _wrappedHandler = new StringBuilder.AppendInterpolatedStringHandler(literalLength, formatCount, _stringBuilder);
-            }
-
-            public SendMessageInterpolatedStringHandler(int literalLength, int formatCount, IPeer peer, IFormatProvider provider)
-            {
-                if (peer is null)
-                    throw new ArgumentNullException(nameof(peer));
-
-                _stringBuilderPoolProvider = peer as IStringBuilderPoolProvider;
-                if (_stringBuilderPoolProvider is null)
-                    throw new ArgumentException("Does not implement IStringBuilderPoolProvider.", nameof(peer));
-
-                _stringBuilder = _stringBuilderPoolProvider.StringBuilderPool.Get();
-                _wrappedHandler = new StringBuilder.AppendInterpolatedStringHandler(literalLength, formatCount, _stringBuilder, provider);
-            }
-
-            public void AppendLiteral(string value)
-            {
-                _wrappedHandler.AppendLiteral(value);
-            }
-
-            #region AppendFormatted
-
-            #region AppendFormatted T
-
-            public void AppendFormatted<T>(T value) => _wrappedHandler.AppendFormatted<T>(value);
-
-            public void AppendFormatted<T>(T value, string format) => _wrappedHandler.AppendFormatted<T>(value, format);
-
-            public void AppendFormatted<T>(T value, int alignment) => _wrappedHandler.AppendFormatted<T>(value, alignment);
-
-            public void AppendFormatted<T>(T value, int alignment, string format) => _wrappedHandler.AppendFormatted<T>(value, alignment, format);
-
-            #endregion
-
-            #region AppendFormatted ReadOnlySpan<char>
-
-            public void AppendFormatted(ReadOnlySpan<char> value) => _wrappedHandler.AppendFormatted(value);
-
-            public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-            #endregion
-
-            #region AppendFormatted string
-
-            public void AppendFormatted(string value) => _wrappedHandler.AppendFormatted(value);
-
-            public void AppendFormatted(string value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-            #endregion
-
-            #region AppendFormatted object
-
-            public void AppendFormatted(object value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-            #endregion
-
-            #endregion
-
-            public StringBuilder StringBuilder => _stringBuilder;
-
-            public void Clear()
-            {
-                if (_stringBuilder != null)
-                {
-                    _stringBuilderPoolProvider.StringBuilderPool.Return(_stringBuilder);
-                    _stringBuilder = null;
-                    _wrappedHandler = default;
-                }
-            }
-        }
-
         #endregion
 
         /// <summary>
@@ -253,7 +164,7 @@ namespace SS.Core.ComponentInterfaces
         /// Sends a zone chat message to all peer zones.
         /// </summary>
         /// <param name="handler">The message to send.</param>
-        void SendZoneMessage([InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendZoneMessage([InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a zone chat message to all peer zones.
@@ -281,7 +192,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="playerName">The name of the player that is sending the alert.</param>
         /// <param name="arenaName">The name of the arena that the player is in.</param>
         /// <param name="handler">The message to send.</param>
-        void SendAlertMessage(ReadOnlySpan<char> alertName, ReadOnlySpan<char> playerName, ReadOnlySpan<char> arenaName, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendAlertMessage(ReadOnlySpan<char> alertName, ReadOnlySpan<char> playerName, ReadOnlySpan<char> arenaName, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends an alert message to all connected staff in all the peer zones.

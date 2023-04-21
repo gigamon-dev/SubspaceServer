@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.ObjectPool;
-using System;
+﻿using System;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -57,7 +56,17 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="level"></param>
         /// <param name="handler">The interpolated string.</param>
-        void Log(LogLevel level, [InterpolatedStringHandlerArgument("")] ref LogManagerInterpolatedStringHandler handler);
+        void Log(LogLevel level, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+
+        /// <summary>
+        /// Adds a line to the server log.
+        /// Lines should look like:
+        /// <example>"&lt;module&gt; {arena} [player] did something"</example>
+        /// </summary>
+        /// <param name="level"></param>
+        /// <param name="provider">An object that supplies culture-specific formatting information.</param>
+        /// <param name="handler">The interpolated string.</param>
+        void Log(LogLevel level, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Adds a line to the server log.
@@ -96,7 +105,16 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="level"></param>
         /// <param name="module"></param>
         /// <param name="handler">The interpolated string.</param>
-        void LogM(LogLevel level, string module, [InterpolatedStringHandlerArgument("")] ref LogManagerInterpolatedStringHandler handler);
+        void LogM(LogLevel level, string module, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+
+        /// <summary>
+        /// Adds a line to the server log, specialized for module-specific messages.
+        /// </summary>
+        /// <param name="level"></param>
+        /// <param name="module"></param>
+        /// <param name="provider">An object that supplies culture-specific formatting information.</param>
+        /// <param name="handler">The interpolated string.</param>
+        void LogM(LogLevel level, string module, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Adds a line to the server log, specialized for module-specific messages.
@@ -133,7 +151,17 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="module"></param>
         /// <param name="arena"></param>
         /// <param name="handler">The interpolated string.</param>
-        void LogA(LogLevel level, string module, Arena arena, [InterpolatedStringHandlerArgument("")] ref LogManagerInterpolatedStringHandler handler);
+        void LogA(LogLevel level, string module, Arena arena, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+
+        /// <summary>
+        /// Adds a line to the server log, specialized for arena-specific messages.
+        /// </summary>
+        /// <param name="level"></param>
+        /// <param name="module"></param>
+        /// <param name="arena"></param>
+        /// <param name="provider">An object that supplies culture-specific formatting information.</param>
+        /// <param name="handler">The interpolated string.</param>
+        void LogA(LogLevel level, string module, Arena arena, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Adds a line to the server log, specialized for arena-specific messages.
@@ -173,7 +201,17 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="module"></param>
         /// <param name="player"></param>
         /// <param name="handler">The interpolated string.</param>
-        void LogP(LogLevel level, string module, Player player, [InterpolatedStringHandlerArgument("")] ref LogManagerInterpolatedStringHandler handler);
+        void LogP(LogLevel level, string module, Player player, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+
+        /// <summary>
+        /// Adds a line to the server log, specialized for player-specific messages.
+        /// </summary>
+        /// <param name="level"></param>
+        /// <param name="module"></param>
+        /// <param name="player"></param>
+        /// <param name="provider">An object that supplies culture-specific formatting information.</param>
+        /// <param name="handler">The interpolated string.</param>
+        void LogP(LogLevel level, string module, Player player, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Adds a line to the server log, specialized for player-specific messages.
@@ -214,92 +252,5 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="logModuleName">the module name of the log handler (e.g., log_file)</param>
         /// <returns>true if the message should be logged, otherwise false</returns>
         bool FilterLog(in LogEntry logEntry, string logModuleName);
-
-        /// <summary>
-        /// Pool of StringBuilder objects.
-        /// </summary>
-        /// <remarks>
-        /// Only for use by <see cref="LogManagerInterpolatedStringHandler"/>.
-        /// </remarks>
-        ObjectPool<StringBuilder> StringBuilderPool { get; } // TODO: Maybe move this to another interface, IStringBuilderPoolProvider, and cast ILogManager to it?
-    }
-
-    [InterpolatedStringHandler]
-    public struct LogManagerInterpolatedStringHandler
-    {
-        private readonly ILogManager _logManager;
-        private StringBuilder _stringBuilder;
-        private StringBuilder.AppendInterpolatedStringHandler _wrappedHandler;
-
-        public LogManagerInterpolatedStringHandler(int literalLength, int formatCount, ILogManager logManager)
-        {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _stringBuilder = _logManager.StringBuilderPool.Get();
-            _wrappedHandler = new StringBuilder.AppendInterpolatedStringHandler(literalLength, formatCount, _stringBuilder);
-        }
-
-        public LogManagerInterpolatedStringHandler(int literalLength, int formatCount, ILogManager logManager, IFormatProvider provider)
-        {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _stringBuilder = _logManager.StringBuilderPool.Get();
-            _wrappedHandler = new StringBuilder.AppendInterpolatedStringHandler(literalLength, formatCount, _stringBuilder, provider);
-        }
-
-        public void AppendLiteral(string value)
-        {
-            _wrappedHandler.AppendLiteral(value);
-        }
-
-        #region AppendFormatted
-
-        #region AppendFormatted T
-
-        public void AppendFormatted<T>(T value) => _wrappedHandler.AppendFormatted<T>(value);
-
-        public void AppendFormatted<T>(T value, string format) => _wrappedHandler.AppendFormatted<T>(value, format);
-
-        public void AppendFormatted<T>(T value, int alignment) => _wrappedHandler.AppendFormatted<T>(value, alignment);
-
-        public void AppendFormatted<T>(T value, int alignment, string format) => _wrappedHandler.AppendFormatted<T>(value, alignment, format);
-
-        #endregion
-
-        #region AppendFormatted ReadOnlySpan<char>
-
-        public void AppendFormatted(ReadOnlySpan<char> value) => _wrappedHandler.AppendFormatted(value);
-
-        public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-        #endregion
-
-        #region AppendFormatted string
-
-        public void AppendFormatted(string value) => _wrappedHandler.AppendFormatted(value);
-
-        public void AppendFormatted(string value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-        #endregion
-
-        #region AppendFormatted object
-
-        public void AppendFormatted(object value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-        #endregion
-
-        #endregion
-
-        public void CopyToAndClear(StringBuilder destination)
-        {
-            if (destination == null)
-                throw new ArgumentNullException(nameof(destination));
-
-            if (_stringBuilder != null)
-            {
-                destination.Append(_stringBuilder);
-                _logManager.StringBuilderPool.Return(_stringBuilder);
-                _stringBuilder = null;
-                _wrappedHandler = default;
-            }
-        }
     }
 }

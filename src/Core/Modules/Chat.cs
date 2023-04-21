@@ -34,7 +34,7 @@ namespace SS.Core.Modules
     /// </list>
     /// </remarks>
     [CoreModuleInfo]
-    public class Chat : IModule, IChat
+    public class Chat : IModule, IChat, IStringBuilderPoolProvider
     {
         private const char CmdChar1 = '?';
         private const char CmdChar2 = '*';
@@ -53,7 +53,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
 
         // optional dependencies
-        private IChatNet _chatNet;
+        private IChatNetwork _chatNetwork;
         private INetwork _network;
         private IObscene _obscene;
         private IPersist _persist;
@@ -88,19 +88,12 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _network = broker.GetInterface<INetwork>();
-            _chatNet = broker.GetInterface<IChatNet>();
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
 
-            if (_network is null && _chatNet is null)
+            if (_network is null && _chatNetwork is null)
             {
                 // need at least one of the network interfaces
-                _logManager.LogM(LogLevel.Error, nameof(Chat), "Failed to get at least one of the network interfaces (INetwork or IChatNet).");
-
-                if (_network is not null)
-                    broker.ReleaseInterface(ref _network);
-
-                if (_chatNet is not null)
-                    broker.ReleaseInterface(ref _chatNet);
-
+                _logManager.LogM(LogLevel.Error, nameof(Chat), "Failed to get at least one of the network interface dependencies (INetwork or IChatNetwork).");
                 return false;
             }
 
@@ -123,7 +116,7 @@ namespace SS.Core.Modules
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
 
             _network?.AddPacket(C2SPacketType.Chat, Packet_Chat);
-            _chatNet?.AddHandler("SEND", ChatNet_Chat);
+            _chatNetwork?.AddHandler("SEND", ChatHandler_Send);
 
             _iChatToken = _broker.RegisterInterface<IChat>(this);
 
@@ -136,7 +129,7 @@ namespace SS.Core.Modules
                 return false;
 
             _network?.RemovePacket(C2SPacketType.Chat, Packet_Chat);
-            _chatNet?.RemoveHandler("SEND", ChatNet_Chat);
+            _chatNetwork?.RemoveHandler("SEND", ChatHandler_Send);
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
@@ -156,8 +149,8 @@ namespace SS.Core.Modules
             if (_network is not null)
                 _broker.ReleaseInterface(ref _network);
 
-            if (_chatNet is not null)
-                _broker.ReleaseInterface(ref _chatNet);
+            if (_chatNetwork is not null)
+                _broker.ReleaseInterface(ref _chatNetwork);
 
             return true;
         }
@@ -166,7 +159,7 @@ namespace SS.Core.Modules
 
         #region IChat Members
 
-        void IChat.SendMessage(Player player, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendMessage(Player player, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -178,7 +171,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendMessage(Player player, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendMessage(Player player, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendMessage(player, ref handler);
         }
@@ -198,7 +191,7 @@ namespace SS.Core.Modules
             ((IChat)this).SendMessage(player, ChatSound.None, message);
         }
 
-        void IChat.SendMessage(Player player, ChatSound sound, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendMessage(Player player, ChatSound sound, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -210,7 +203,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendMessage(Player player, ChatSound sound, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendMessage(Player player, ChatSound sound, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendMessage(player, sound, ref handler);
         }
@@ -242,7 +235,7 @@ namespace SS.Core.Modules
             ((IChat)this).SendMessage(player, sound, text);
         }
 
-        void IChat.SendSetMessage(HashSet<Player> set, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendSetMessage(HashSet<Player> set, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -254,7 +247,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendSetMessage(HashSet<Player> set, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendSetMessage(HashSet<Player> set, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendSetMessage(set, ref handler);
         }
@@ -274,7 +267,7 @@ namespace SS.Core.Modules
             ((IChat)this).SendSetMessage(set, ChatSound.None, message);
         }
 
-        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -286,7 +279,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendSetMessage(HashSet<Player> set, ChatSound sound, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendSetMessage(set, sound, ref handler);
         }
@@ -308,7 +301,7 @@ namespace SS.Core.Modules
             ((IChat)this).SendSetMessage(set, sound, text);
         }
 
-        void IChat.SendArenaMessage(Arena arena, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendArenaMessage(Arena arena, ref StringBuilderBackedInterpolatedStringHandler handler)
         {            
             try
             {
@@ -320,7 +313,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendArenaMessage(Arena arena, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendArenaMessage(Arena arena, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendArenaMessage(arena, ref handler);
         }
@@ -340,7 +333,7 @@ namespace SS.Core.Modules
             ((IChat)this).SendArenaMessage(arena, ChatSound.None, message);
         }
 
-        void IChat.SendArenaMessage(Arena arena, ChatSound sound, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendArenaMessage(Arena arena, ChatSound sound, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -352,7 +345,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendArenaMessage(Arena arena, ChatSound sound, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendArenaMessage(Arena arena, ChatSound sound, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendArenaMessage(arena, sound, ref handler);
         }
@@ -391,7 +384,7 @@ namespace SS.Core.Modules
             ((IChat)this).SendArenaMessage(arena, sound, text);
         }
 
-        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -403,7 +396,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendAnyMessage(set, type, sound, from, ref handler);
         }
@@ -425,7 +418,7 @@ namespace SS.Core.Modules
             SendMessage(set, type, sound, from, text);
         }
 
-        void IChat.SendModMessage(ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendModMessage(ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -437,7 +430,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChat.SendModMessage(IFormatProvider provider, ref ChatSendMessageInterpolatedStringHandler handler)
+        void IChat.SendModMessage(IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChat)this).SendModMessage(ref handler);
         }
@@ -487,7 +480,7 @@ namespace SS.Core.Modules
 
         void IChat.SendRemotePrivMessage(HashSet<Player> set, ChatSound sound, ReadOnlySpan<char> squad, ReadOnlySpan<char> sender, ReadOnlySpan<char> message)
         {
-            if (_network != null)
+            if (_network is not null)
             {
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
@@ -521,18 +514,22 @@ namespace SS.Core.Modules
                 }
             }
 
-            if (_chatNet != null)
+            if (_chatNetwork is not null)
             {
-                // TODO: chatnet
-                //_chatNet.SendToSet(
-                //    set,
-                //    )
+                if (!squad.IsEmpty)
+                {
+                    _chatNetwork.SendToSet(set, $"MSG:SQUAD:{squad}:{sender}:{message}");
+                }
+                else
+                {
+                    _chatNetwork.SendToSet(set, $"MSG:PRIV:{sender}:{message}");
+                }
             }
         }
 
         ChatMask IChat.GetArenaChatMask(Arena arena)
         {
-            if(arena == null)
+            if(arena is null)
                 return new ChatMask();
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -552,7 +549,7 @@ namespace SS.Core.Modules
 
         void IChat.SetArenaChatMask(Arena arena, ChatMask mask)
         {
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -572,7 +569,7 @@ namespace SS.Core.Modules
 
         ChatMask IChat.GetPlayerChatMask(Player player)
         {
-            if (player == null)
+            if (player is null)
                 return new ChatMask();
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -587,7 +584,7 @@ namespace SS.Core.Modules
 
         void IChat.GetPlayerChatMask(Player player, out ChatMask mask, out TimeSpan? remaining)
         {
-            if (player == null
+            if (player is null
                 || !player.TryGetExtraData(_pdKey, out PlayerData pd))
             {
                 mask = default;
@@ -602,13 +599,13 @@ namespace SS.Core.Modules
                 ExpireMask(player);
                 mask = pd.Mask;
 
-                remaining = pd.Expires == null ? new TimeSpan?() : now - pd.Expires.Value;
+                remaining = pd.Expires is null ? new TimeSpan?() : now - pd.Expires.Value;
             }
         }
 
         void IChat.SetPlayerChatMask(Player player, ChatMask mask, int timeout)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -627,7 +624,7 @@ namespace SS.Core.Modules
 
         void IChat.SendWrappedText(Player player, string text)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (string.IsNullOrWhiteSpace(text))
@@ -654,10 +651,10 @@ namespace SS.Core.Modules
 
         void IChat.SendWrappedText(Player player, StringBuilder sb)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
-            if (sb == null || sb.Length == 0)
+            if (sb is null || sb.Length == 0)
                 return;
 
             StringBuilder tempBuilder = _objectPoolManager.StringBuilderPool.Get();
@@ -679,7 +676,11 @@ namespace SS.Core.Modules
             }
         }
 
-        ObjectPool<StringBuilder> IChat.StringBuilderPool => _objectPoolManager.StringBuilderPool;
+        #endregion
+
+        #region IStringBuilderPoolProvider
+
+        ObjectPool<StringBuilder> IStringBuilderPoolProvider.StringBuilderPool => _objectPoolManager.StringBuilderPool;
 
         #endregion
 
@@ -687,19 +688,19 @@ namespace SS.Core.Modules
 
         private void Persist_GetData(Player player, Stream outStream)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             SSProto.ChatMask protoChatMask;
 
             lock (pd.Lock)
             {
-                if (pd.Expires == null)
+                if (pd.Expires is null)
                     return;
 
                 protoChatMask = new();
                 protoChatMask.Mask = pd.Mask.Value;
-                protoChatMask.Expires = pd.Expires != null ? Timestamp.FromDateTime(pd.Expires.Value) : null;
+                protoChatMask.Expires = pd.Expires is not null ? Timestamp.FromDateTime(pd.Expires.Value) : null;
                 protoChatMask.MessageCount = pd.MessageCount;
                 protoChatMask.LastCheck = Timestamp.FromDateTime(pd.LastCheck);
             }
@@ -709,7 +710,7 @@ namespace SS.Core.Modules
 
         private void Persist_SetData(Player player, Stream inStream)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             SSProto.ChatMask protoChatMask = SSProto.ChatMask.Parser.ParseFrom(inStream);
@@ -725,7 +726,7 @@ namespace SS.Core.Modules
 
         private void Persist_ClearData(Player player)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
             lock (pd.Lock)
@@ -740,7 +741,7 @@ namespace SS.Core.Modules
             Description = "This specifies an initial chat mask for the arena. Don't use this unless you know what you're doing.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
@@ -754,7 +755,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -768,10 +769,10 @@ namespace SS.Core.Modules
 
         private void Packet_Chat(Player player, byte[] data, int len, NetReceiveFlags flags)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
-            if (data == null)
+            if (data is null)
                 return;
 
             if (len < ChatPacket.MinLength
@@ -782,7 +783,7 @@ namespace SS.Core.Modules
             }
 
             Arena arena = player.Arena;
-            if (arena == null || player.Status != PlayerState.Playing)
+            if (arena is null || player.Status != PlayerState.Playing)
                 return;
 
             ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
@@ -819,7 +820,7 @@ namespace SS.Core.Modules
 
                 case ChatMessageType.EnemyFreq:
                     target = _playerData.PidToPlayer(from.PlayerId);
-                    if (target == null)
+                    if (target is null)
                         break;
 
                     if (target.Arena == arena)
@@ -834,7 +835,7 @@ namespace SS.Core.Modules
 
                 case ChatMessageType.Private:
                     target = _playerData.PidToPlayer(from.PlayerId);
-                    if (target == null)
+                    if (target is null)
                         break;
 
                     if (target.Arena == arena)
@@ -874,16 +875,63 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ChatNet_Chat(Player player, ReadOnlySpan<char> message)
+        private void ChatHandler_Send(Player player, ReadOnlySpan<char> message)
         {
-            // TODO: chatnet
+            if (player is null
+                || player.Arena is null
+                || player.Status != PlayerState.Playing
+                || message.Length > ChatPacket.MaxMessageChars)
+            {
+                return;
+            }
+
+            ReadOnlySpan<char> subtype = message.GetToken(":", out ReadOnlySpan<char> remaining);
+            if (subtype.IsEmpty || remaining.IsEmpty)
+                return;
+
+            if (subtype.StartsWith("PUB", StringComparison.Ordinal) || subtype.Equals("CMD", StringComparison.Ordinal))
+            {
+                HandlePub(player, remaining[1..], subtype.Equals("PUBM", StringComparison.Ordinal), subtype.Equals("CMD", StringComparison.Ordinal), ChatSound.None);
+            }
+            else if (subtype.Equals("PRIV", StringComparison.Ordinal) || subtype.Equals("PRIVCMD", StringComparison.Ordinal))
+            {
+                ReadOnlySpan<char> name = remaining.GetToken(':', out ReadOnlySpan<char> privRemaining);
+                if (name.IsEmpty || privRemaining.IsEmpty)
+                    return;
+
+                Player targetPlayer = _playerData.FindPlayer(name);
+                if (targetPlayer is not null && targetPlayer.Arena == player.Arena)
+                {
+                    HandlePrivate(player, targetPlayer, privRemaining[1..], subtype.Equals("PRIVCMD", StringComparison.Ordinal), ChatSound.None);
+                }
+                else
+                {
+                    HandleRemotePrivate(player, remaining, subtype.Equals("PRIVCMD", StringComparison.Ordinal), ChatSound.None);
+                }
+            }
+            else if (subtype.Equals("FREQ", StringComparison.Ordinal))
+            {
+                ReadOnlySpan<char> freqStr = remaining.GetToken(':', out remaining);
+                if (freqStr.IsEmpty || remaining.IsEmpty || !short.TryParse(freqStr, out short freq))
+                    return;
+
+                HandleFreq(player, freq, remaining[1..], ChatSound.None);
+            }
+            else if (subtype.Equals("CHAT", StringComparison.Ordinal))
+            {
+                HandleChat(player, remaining[1..], ChatSound.None);
+            }
+            else if (subtype.Equals("MOD", StringComparison.Ordinal))
+            {
+                HandleModChat(player, remaining[1..], ChatSound.None);
+            }
 
             CheckFlood(player);
         }
 
         private void GetArenaSet(HashSet<Player> set, Arena arena, Player except)
         {
-            if (set == null)
+            if (set is null)
                 throw new ArgumentNullException(nameof(set));
 
             _playerData.Lock();
@@ -893,7 +941,7 @@ namespace SS.Core.Modules
                 foreach (Player p in _playerData.Players)
                 {
                     if (p.Status == PlayerState.Playing &&
-                        (p.Arena == arena || arena == null) &&
+                        (p.Arena == arena || arena is null) &&
                         p != except)
                     {
                         set.Add(p);
@@ -908,7 +956,7 @@ namespace SS.Core.Modules
 
         private void GetCapabilitySet(HashSet<Player> set, string capability, Player except)
         {
-            if (set == null)
+            if (set is null)
                 throw new ArgumentNullException(nameof(set));
 
             if (string.IsNullOrWhiteSpace(capability))
@@ -949,7 +997,7 @@ namespace SS.Core.Modules
                 {
                     pd.MessageCount >>= 1;
 
-                    if (pd.Expires != null)
+                    if (pd.Expires is not null)
                     {
                         // already has a mask, add time
                         pd.Expires = pd.Expires.Value.AddSeconds(_cfg.FloodShutup);
@@ -981,13 +1029,13 @@ namespace SS.Core.Modules
             if (type == ChatMessageType.ModChat)
                 type = ChatMessageType.SysopWarning;
 
-            if (_network != null)
+            if (_network is not null)
             {
                 ChatPacket cp = new();
                 cp.Type = (byte)S2CPacketType.Chat;
                 cp.ChatType = (byte)type;
                 cp.Sound = (byte)sound;
-                cp.PlayerId = from != null ? (short)from.Id : (short)-1;
+                cp.PlayerId = from is not null ? (short)from.Id : (short)-1;
                 int length = ChatPacket.LengthWithoutMessage + cp.SetMessage(message);
 
                 _network.SendToSet(
@@ -997,16 +1045,22 @@ namespace SS.Core.Modules
             }
 
             string ctype = GetChatType(type);
-            if (_chatNet != null && ctype != null)
+            if (_chatNetwork is not null && ctype is not null)
             {
-                // TODO: chatnet
-                //if(from != null)
+                if (from is not null)
+                {
+                    _chatNetwork.SendToSet(set, $"MSG:{ctype}:{from.Name}:{message}");
+                }
+                else
+                {
+                    _chatNetwork.SendToSet(set, $"MSG:{ctype}:{message}");
+                }
             }
         }
 
-        private void HandleChat(Player player, Span<char> text, ChatSound sound)
+        private void HandleChat(Player player, ReadOnlySpan<char> text, ChatSound sound)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             // Fix for broken clients that include an extra ; as the first character.
@@ -1020,14 +1074,14 @@ namespace SS.Core.Modules
                 FireChatMessageCallback(null, player, ChatMessageType.Chat, sound, null, -1, text);
 
 #if CFG_LOG_PRIVATE
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, $"chat msg: {text}");
+                _logManager.LogP(LogLevel.Drivel, "Chat", player, $"chat msg: {text}");
 #endif
             }
         }
 
-        private void HandleRemotePrivate(Player player, Span<char> text, bool isAllCmd, ChatSound sound)
+        private void HandleRemotePrivate(Player player, ReadOnlySpan<char> text, bool isAllCmd, ChatSound sound)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (MemoryExtensions.IsWhiteSpace(text))
@@ -1039,7 +1093,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<char> dest = text.GetToken(':', out Span<char> remaining);
+            ReadOnlySpan<char> dest = text.GetToken(':', out ReadOnlySpan<char> remaining);
 
             if (MemoryExtensions.IsWhiteSpace(dest))
             {
@@ -1053,14 +1107,14 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<char> message = remaining[1..]; // remove the ':', everything after it is the message
+            ReadOnlySpan<char> message = remaining[1..]; // remove the ':', everything after it is the message
 
             if ((message.Length > 1 && IsCommandChar(message[0])) || isAllCmd)
             {
                 if (Ok(player, ChatMessageType.Command))
                 {
                     Player targetPlayer = _playerData.FindPlayer(dest);
-                    if (targetPlayer != null && targetPlayer.Status == PlayerState.Playing)
+                    if (targetPlayer is not null && targetPlayer.Status == PlayerState.Playing)
                     {
                         RunCommands(message, player, targetPlayer, sound);
                     }
@@ -1068,10 +1122,10 @@ namespace SS.Core.Modules
             }
             else if (Ok(player, ChatMessageType.RemotePrivate))
             {
-                Player d = _playerData.FindPlayer(dest);
-                if (d != null)
+                Player destPlayer = _playerData.FindPlayer(dest);
+                if (destPlayer is not null)
                 {
-                    if (d.Status != PlayerState.Playing)
+                    if (destPlayer.Status != PlayerState.Playing)
                         return;
 
                     Span<char> messageToSend = stackalloc char[1 + player.Name.Length + 3 + message.Length];
@@ -1084,7 +1138,7 @@ namespace SS.Core.Modules
                     HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
                     try
                     {
-                        set.Add(d);
+                        set.Add(destPlayer);
                         SendReply(set, ChatMessageType.RemotePrivate, sound, player, -1, messageToSend, player.Name.Length + 4);
                     }
                     finally
@@ -1093,17 +1147,18 @@ namespace SS.Core.Modules
                     }
                 }
 
-                FireChatMessageCallback(null, player, ChatMessageType.RemotePrivate, sound, d, -1, d != null ? message : text);
+                // NOTE: The billing module looks for these if where destPlayer is null.
+                FireChatMessageCallback(null, player, ChatMessageType.RemotePrivate, sound, destPlayer, -1, destPlayer is not null ? message : text);
 
 #if CFG_LOG_PRIVATE
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, $"to [{dest}] remote priv: {message}");
+                _logManager.LogP(LogLevel.Drivel, "Chat", player, $"to [{dest}] remote priv: {message}");
 #endif
             }
         }
 
-        private void HandlePrivate(Player player, Player targetPlayer, Span<char> text, bool isAllCmd, ChatSound sound)
+        private void HandlePrivate(Player player, Player targetPlayer, ReadOnlySpan<char> text, bool isAllCmd, ChatSound sound)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (MemoryExtensions.IsWhiteSpace(text))
@@ -1132,10 +1187,10 @@ namespace SS.Core.Modules
                     _objectPoolManager.PlayerSetPool.Return(set);
                 }
 
-                FireChatMessageCallback(arena, player, ChatMessageType.Private, sound, null, -1, text);
+                FireChatMessageCallback(arena, player, ChatMessageType.Private, sound, targetPlayer, -1, text);
 
 #if CFG_LOG_PRIVATE
-                _logManager.LogP(LogLevel.Drivel, "Chat", p, $"to [{dst.Name}] priv msg: {text}");
+                _logManager.LogP(LogLevel.Drivel, "Chat", player, $"to [{targetPlayer.Name}] priv msg: {text}");
 #endif
             }
         }
@@ -1146,16 +1201,16 @@ namespace SS.Core.Modules
             ChatMessageCallback.Fire(arena ?? _broker, arena, playerFrom, type, sound, playerTo, freq, message);
         }
 
-        private void HandleFreq(Player player, short freq, Span<char> text, ChatSound sound)
+        private void HandleFreq(Player player, short freq, ReadOnlySpan<char> text, ChatSound sound)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (MemoryExtensions.IsWhiteSpace(text))
                 return;
 
             Arena arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             ChatMessageType type = player.Freq == freq ? ChatMessageType.Freq : ChatMessageType.EnemyFreq;
@@ -1214,9 +1269,9 @@ namespace SS.Core.Modules
             return c == CmdChar1 || c == CmdChar2;
         }
 
-        private void HandleModChat(Player player, Span<char> message, ChatSound sound)
+        private void HandleModChat(Player player, ReadOnlySpan<char> message, ChatSound sound)
         {
-            if (_capabilityManager == null)
+            if (_capabilityManager is null)
             {
                 ((IChat)this).SendMessage(player, "Staff chat is currently disabled.");
                 return;
@@ -1259,16 +1314,16 @@ namespace SS.Core.Modules
             }
         }
 
-        private void HandlePub(Player player, Span<char> msg, bool isMacro, bool isAllCmd, ChatSound sound)
+        private void HandlePub(Player player, ReadOnlySpan<char> msg, bool isMacro, bool isAllCmd, ChatSound sound)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (MemoryExtensions.IsWhiteSpace(msg))
                 return;
 
             Arena arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if ((msg.Length > 1 && IsCommandChar(msg[0])) || isAllCmd)
@@ -1306,7 +1361,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void RunCommands(Span<char> msg, Player player, ITarget target, ChatSound sound)
+        private void RunCommands(ReadOnlySpan<char> msg, Player player, ITarget target, ChatSound sound)
         {
             if (player is null)
                 throw new ArgumentNullException(nameof(player));
@@ -1371,9 +1426,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendReply(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player player, int fromPid, Span<char> msg, int chatNetOffset)
+        private void SendReply(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player player, int fromPid, ReadOnlySpan<char> msg, int chatNetOffset)
         {
-            //string ctype = GetChatType(type);
+            string ctype = GetChatType(type);
 
             NetSendFlags flags = NetSendFlags.None;
             if (type == ChatMessageType.PubMacro)
@@ -1396,7 +1451,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_obscene != null)
+                if (_obscene is not null)
                 {
                     foreach (Player otherPlayer in set)
                     {
@@ -1410,21 +1465,32 @@ namespace SS.Core.Modules
 
                 ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1))[..length];
                 _network?.SendToSet(set, bytes, flags);
-                //_chatNet?.SendToSet(set, $"MSG:{ctype}:{p.Name}:{msg[chatNetOffset..]}");
+
+                if (_chatNetwork is not null && ctype is not null)
+                {
+                    _chatNetwork.SendToSet(set, $"MSG:{ctype}:{player.Name}:{msg[chatNetOffset..]}");
+                }
 
                 if (filteredSet.Count > 0)
                 {
-                    bool replaced = _obscene.Filter(msg);
+                    Span<char> filteredMsg = stackalloc char[msg.Length];
+                    msg.CopyTo(filteredMsg);
+
+                    bool replaced = _obscene.Filter(filteredMsg);
                     if (replaced && _cfg.ObsceneFilterSendGarbageText)
                     {
-                        length = ChatPacket.LengthWithoutMessage + to.SetMessage(msg);
+                        length = ChatPacket.LengthWithoutMessage + to.SetMessage(filteredMsg);
                         bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1))[..length];
                     }
 
                     if (!replaced || (replaced && _cfg.ObsceneFilterSendGarbageText))
                     {
                         _network?.SendToSet(filteredSet, bytes, flags);
-                        //_chatNet?.SendToSet(filteredSet, $"MSG:{ctype}:{p.Name}:{msg[chatNetOffset..]}");
+
+                        if (_chatNetwork is not null && ctype is not null)
+                        {
+                            _chatNetwork.SendToSet(filteredSet, $"MSG:{ctype}:{player.Name}:{filteredMsg[chatNetOffset..]}");
+                        }
                     }
                 }
             }
@@ -1451,7 +1517,7 @@ namespace SS.Core.Modules
 
         private bool Ok(Player player, ChatMessageType messageType)
         {
-            if (player == null)
+            if (player is null)
                 return false;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -1468,7 +1534,7 @@ namespace SS.Core.Modules
 
                 mask = pd.Mask;
 
-                if (ad != null)
+                if (ad is not null)
                 {
                     ad.Lock.EnterReadLock();
 
@@ -1488,7 +1554,7 @@ namespace SS.Core.Modules
 
         private void ExpireMask(Player player)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
@@ -1499,7 +1565,7 @@ namespace SS.Core.Modules
             lock (pd.Lock)
             {
                 // handle expiring masks
-                if (pd.Expires != null
+                if (pd.Expires is not null
                     && now > pd.Expires)
                 {
                     pd.Mask.Clear();

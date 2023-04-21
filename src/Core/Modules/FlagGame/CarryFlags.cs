@@ -20,6 +20,7 @@ namespace SS.Core.Modules.FlagGame
     {
         public const int MaxFlags = 256; // continuum supports 303
 
+        // required dependencies
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
@@ -27,6 +28,9 @@ namespace SS.Core.Modules.FlagGame
         private IMainloopTimer _mainloopTimer;
         private INetwork _network;
         private IPrng _prng;
+
+        // optional dependencies
+        private IChatNetwork _chatNetwork;
 
         private static readonly NonTransientObjectPool<FlagInfo> _flagInfoPool = new(new FlagInfoPooledObjectPolicy());
 
@@ -54,6 +58,8 @@ namespace SS.Core.Modules.FlagGame
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
+
             _defaultCarryFlagBehavior = new(this, _logManager, _mapData, _prng);
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -80,6 +86,11 @@ namespace SS.Core.Modules.FlagGame
             _network.RemovePacket(C2SPacketType.DropFlags, Packet_DropFlags);
 
             _arenaManager.FreeArenaData(ref _adKey);
+
+            if (_chatNetwork is not null)
+            {
+                broker.ReleaseInterface(ref _chatNetwork);
+            }
 
             return true;
         }
@@ -704,6 +715,24 @@ namespace SS.Core.Modules.FlagGame
             {
                 S2C_FlagReset flagResetPacket = new(winnerFreq, points);
                 _network.SendToArena(arena, null, ref flagResetPacket, NetSendFlags.Reliable);
+
+                // Standard clients print an arena message when they receive the S2C_FlagReset packet.
+                // However, chat clients need to be sent the arena message.
+
+                if (winnerFreq == -1)
+                {
+                    _chatNetwork?.SendToArena(arena, null, "MSG:ARENA:Flag game reset.");
+                    _logManager.LogA(LogLevel.Info, nameof(CarryFlags), arena, "Flag game reset.");
+                }
+                else
+                {
+                    if (winnerFreq >= 100)
+                        _chatNetwork?.SendToArena(arena, null, $"MSG:ARENA:Flag victory: freq (private) won {points} points.");
+                    else
+                        _chatNetwork?.SendToArena(arena, null, $"MSG:ARENA:Flag victory: freq {winnerFreq} won {points} points.");
+
+                    _logManager.LogA(LogLevel.Info, nameof(CarryFlags), arena, $"Flag victory: freq {winnerFreq} won {points} points.");
+                }
             }
 
             for (int i = ad.Flags.Count - 1; i >= 0; i--)

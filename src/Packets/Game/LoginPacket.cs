@@ -44,11 +44,19 @@ namespace SS.Packets.Game
         private const int PasswordBytesLength = 32;
         public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
 
-        public uint MacId => LittleEndianConverter.Convert(macId);
+        public uint MacId
+        {
+            get => LittleEndianConverter.Convert(macId);
+            set => macId = LittleEndianConverter.Convert(value);
+        }
 
         public ushort TimeZoneBias => LittleEndianConverter.Convert(timeZoneBias);
 
-        public ushort CVersion => LittleEndianConverter.Convert(cVersion);
+        public ushort CVersion
+        {
+            get => LittleEndianConverter.Convert(cVersion);
+            set => cVersion = LittleEndianConverter.Convert(value);
+        }
 
         public uint D2 => LittleEndianConverter.Convert(d2);
 

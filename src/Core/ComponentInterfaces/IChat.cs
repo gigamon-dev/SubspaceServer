@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.ObjectPool;
-using SS.Utilities;
+﻿using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -120,7 +119,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to send the message to.</param>
         /// <param name="handler">The message to send.</param>
-        void SendMessage(Player player, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendMessage(Player player, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green message to a player.
@@ -128,7 +127,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to send the message to.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendMessage(Player player, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendMessage(Player player, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green message to a player.
@@ -161,7 +160,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="handler">The message to send.</param>
-        void SendMessage(Player player, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendMessage(Player player, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
@@ -170,7 +169,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendMessage(Player player, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendMessage(Player player, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a player.
@@ -205,7 +204,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="set">The players to send the message to.</param>
         /// <param name="handler">The message to send.</param>
-        void SendSetMessage(HashSet<Player> set, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendSetMessage(HashSet<Player> set, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message to a set of players.
@@ -214,7 +213,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
         /// <summary>
-        void SendSetMessage(HashSet<Player> set, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendSetMessage(HashSet<Player> set, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message to a set of players.
@@ -247,7 +246,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send the message to.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="handler">The message to send.</param>
-        void SendSetMessage(HashSet<Player> set, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendSetMessage(HashSet<Player> set, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a set of players.
@@ -256,7 +255,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendSetMessage(HashSet<Player> set, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendSetMessage(HashSet<Player> set, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to a set of players.
@@ -291,7 +290,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena arena, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
@@ -299,7 +298,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena arena, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
@@ -332,7 +331,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena arena, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
@@ -341,7 +340,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena arena, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
@@ -379,7 +378,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="handler">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -390,7 +389,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="from">The player the message if from.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -430,14 +429,14 @@ namespace SS.Core.ComponentInterfaces
         /// Sends a moderator chat message to all connected staff.
         /// </summary>
         /// <param name="handler">The message to send.</param>
-        void SendModMessage([InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendModMessage([InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a moderator chat message to all connected staff.
         /// </summary>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendModMessage(IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref ChatSendMessageInterpolatedStringHandler handler);
+        void SendModMessage(IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a moderator chat message to all connected staff.
@@ -530,91 +529,5 @@ namespace SS.Core.ComponentInterfaces
         void SendWrappedText(Player player, StringBuilder sb);
 
         #endregion
-
-        /// <summary>
-        /// Pool of StringBuilder objects.
-        /// </summary>
-        /// <remarks>
-        /// Only for use by <see cref="ChatSendMessageInterpolatedStringHandler"/>.
-        /// </remarks>
-        ObjectPool<StringBuilder> StringBuilderPool { get; } // TODO: Maybe move this to another interface, IStringBuilderPoolProvider, and cast IChat to it?
-    }
-
-    // TODO: change Append methods to return bool and return false if the length is >= ChatPacket.MaxMessageChars
-    [InterpolatedStringHandler]
-    public struct ChatSendMessageInterpolatedStringHandler
-    {
-        private readonly IChat _chat;
-        private StringBuilder _stringBuilder;
-        private StringBuilder.AppendInterpolatedStringHandler _wrappedHandler;
-
-        public ChatSendMessageInterpolatedStringHandler(int literalLength, int formatCount, IChat chat)
-        {
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _stringBuilder = _chat.StringBuilderPool.Get();
-            _wrappedHandler = new StringBuilder.AppendInterpolatedStringHandler(literalLength, formatCount, _stringBuilder);
-        }
-
-        public ChatSendMessageInterpolatedStringHandler(int literalLength, int formatCount, IChat chat, IFormatProvider provider)
-        {
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _stringBuilder = _chat.StringBuilderPool.Get();
-            _wrappedHandler = new StringBuilder.AppendInterpolatedStringHandler(literalLength, formatCount, _stringBuilder, provider);
-        }
-
-        public void AppendLiteral(string value)
-        {
-            _wrappedHandler.AppendLiteral(value);
-        }
-
-        #region AppendFormatted
-
-        #region AppendFormatted T
-
-        public void AppendFormatted<T>(T value) => _wrappedHandler.AppendFormatted<T>(value);
-
-        public void AppendFormatted<T>(T value, string format) => _wrappedHandler.AppendFormatted<T>(value, format);
-
-        public void AppendFormatted<T>(T value, int alignment) => _wrappedHandler.AppendFormatted<T>(value, alignment);
-
-        public void AppendFormatted<T>(T value, int alignment, string format) => _wrappedHandler.AppendFormatted<T>(value, alignment, format);
-
-        #endregion
-
-        #region AppendFormatted ReadOnlySpan<char>
-
-        public void AppendFormatted(ReadOnlySpan<char> value) => _wrappedHandler.AppendFormatted(value);
-
-        public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-        #endregion
-
-        #region AppendFormatted string
-
-        public void AppendFormatted(string value) => _wrappedHandler.AppendFormatted(value);
-
-        public void AppendFormatted(string value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-        #endregion
-
-        #region AppendFormatted object
-
-        public void AppendFormatted(object value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
-
-        #endregion
-
-        #endregion
-
-        public StringBuilder StringBuilder => _stringBuilder;
-
-        public void Clear()
-        {
-            if (_stringBuilder != null)
-            {
-                _chat.StringBuilderPool.Return(_stringBuilder);
-                _stringBuilder = null;
-                _wrappedHandler = default;
-            }
-        }
     }
 }

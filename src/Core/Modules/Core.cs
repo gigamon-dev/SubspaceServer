@@ -25,18 +25,23 @@ namespace SS.Core.Modules
     public class Core : IModule, IModuleLoaderAware, IAuth
     {
         private ComponentBroker _broker;
+
+        // required dependencies
         private IArenaManagerInternal _arenaManagerInternal;
         private ICapabilityManager _capabiltyManager;
-        //private IChatNet _chatnet;
         private IConfigManager _configManager;
         private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
         private IMapNewsDownload _mapNewsDownload;
-        private INetwork _network;
         private IPersistExecutor _persistExecutor;
         private IPlayerData _playerData;
         private IScoreStats _scoreStats;
+
+        // optional dependencies
+        private IChatNetwork _chatNetwork;
+        private INetwork _network;
+
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
         private readonly ObjectPool<AuthRequest> _authRequestPool = new NonTransientObjectPool<AuthRequest>(new AuthRequestPooledObjectPolicy());
@@ -63,7 +68,6 @@ namespace SS.Core.Modules
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             IMapNewsDownload mapNewsDownload,
-            INetwork network,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -74,8 +78,16 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _mapNewsDownload = mapNewsDownload ?? throw new ArgumentNullException(nameof(mapNewsDownload));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+
+            _network = broker.GetInterface<INetwork>();
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
+
+            if (_network is null && _chatNetwork is null)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Core), $"At least one network dependency is required ({nameof(INetwork)} and/or {nameof(IChatNetwork)}.");
+                return false;
+            }
 
             _continuumChecksum = GetChecksum(ContinuumExeFile);
             _codeChecksum = GetUInt32(ContinuumChecksumFile, 4);
@@ -85,10 +97,9 @@ namespace SS.Core.Modules
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
 
             _network.AddPacket(C2SPacketType.Login, Packet_Login);
-            _network.AddPacket(C2SPacketType.ContLogin, Packet_Login);
-
-            //if(_chatnet != null)
-                //_chatnet.AddHandler("LOGIN", chatLogin);
+            _network.AddPacket(C2SPacketType.ContLogin, Packet_Login);          
+            
+            _chatNetwork?.AddHandler("LOGIN", ChatHandler_Login);
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerStates, 100, 100, null);
             _mainloopTimer.SetTimer(MainloopTimer_SendKeepAlive, 5000, 5000, null); // every 5 seconds
@@ -129,17 +140,26 @@ namespace SS.Core.Modules
 
             _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessPlayerStates, null);
-            
-            _network.RemovePacket(C2SPacketType.Login, Packet_Login);
-            _network.RemovePacket(C2SPacketType.ContLogin, Packet_Login);
+
+            _network?.RemovePacket(C2SPacketType.Login, Packet_Login);
+            _network?.RemovePacket(C2SPacketType.ContLogin, Packet_Login);
+
+            _chatNetwork?.RemoveHandler("LOGIN", ChatHandler_Login);
 
             NewPlayerCallback.Unregister(broker, Callback_NewPlayer);
 
-            // TODO: chatnet
-            //if (_chatnet != null)
-            //_chatnet.RemoveHandler("LOGIN", chatLogin);
-
             _playerData.FreePlayerData(ref _pdkey);
+
+            if (_network is not null)
+            {
+                broker.ReleaseInterface(ref _network);
+            }
+
+            if (_chatNetwork is not null)
+            {
+                broker.ReleaseInterface(ref _chatNetwork);
+            }
+
             return true;
         }
 
@@ -469,7 +489,7 @@ namespace SS.Core.Modules
 
             if (!player.IsStandard)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={player.Id}] Login packet from wrong client type ({player.Type}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Login packet from wrong client type ({player.Type}).");
             }
 #if CFG_RELAX_LENGTH_CHECKS
             else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) 
@@ -479,11 +499,11 @@ namespace SS.Core.Modules
                 || (player.Type == ClientType.Continuum && len != LoginPacket.ContinuumLength))
 #endif
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={player.Id}] Bad login packet length ({len}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Bad login packet length ({len}).");
             }
             else if (player.Status != PlayerState.Connected)
             {
-                _logManager.LogM(LogLevel.Malicious, nameof(Core), $"[pid={player.Id}] Login request from wrong stage: {player.Status}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Login request from wrong stage: {player.Status}.");
             }
             else
             {
@@ -514,26 +534,21 @@ namespace SS.Core.Modules
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
                 // name
-                CleanupName(pkt.NameBytes); // first, manipulate name as bytes (fewer string object allocations)
-
                 Span<byte> nameBytes = pkt.NameBytes.SliceNullTerminated();
                 Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
+                Span<char> cleanName = stackalloc char[name.Length];
+                CleanupPlayerName(name, ref cleanName);
 
-                // if nothing could be salvaged from their name, disconnect them
-                if (MemoryExtensions.IsWhiteSpace(name))
+                if (cleanName.IsEmpty)
                 {
+                    // Nothing could be salvaged from the provided name.
                     FailLoginWith(player, AuthCode.BadName, "Your player name contains no valid characters.", "all invalid chars");
                     return;
                 }
 
-                // must start with number or letter
-                if (!char.IsLetterOrDigit(name[0]))
-                {
-                    FailLoginWith(player, AuthCode.BadName, "Your player name must start with a letter or number.", "name doesn't start with alphanumeric");
-                    return;
-                }
+                StringUtils.WriteNullPaddedString(pkt.NameBytes, cleanName, false);
 
                 // pass must be nul-terminated
                 pkt.PasswordBytes[^1] = 0;
@@ -560,37 +575,153 @@ namespace SS.Core.Modules
 
                 _logManager.LogP(LogLevel.Drivel, nameof(Core), player, $"Login request: '{name}'.");
             }
+        }
 
-            static void CleanupName(Span<byte> nameSpan)
+        private void ChatHandler_Login(Player player, ReadOnlySpan<char> message)
+        {
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
             {
-                // limit name to 20 bytes
-                // the last byte must be the nul-terminator
-                nameSpan[19..].Fill(0);
-                nameSpan = nameSpan.Slice(0, 20);
-
-                // only allow printable characters in names, excluding colon.
-                // while we're at it, remove leading, trailing, and series of spaces
-                byte c, cc = (byte)' ';
-                int s = 0;
-                int l = 0;
-
-                while ((c = nameSpan[s++]) != 0)
-                {
-                    if (c >= 32 && c <= 126 && c != (byte)':')
-                    {
-                        if (c == (byte)' ' && cc == (byte)' ')
-                            continue;
-
-                        nameSpan[l++] = cc = c;
-                    }
-                }
-
-                // check for a trailing space
-                if (l > 0 && nameSpan[l - 1] == (byte)' ')
-                    l--;
-
-                nameSpan[l..].Fill(0);
+                _chatNetwork.SendToOne(player, "LOGINBAD:Internal Server Error");
+                return;
             }
+
+            if (player.Status != PlayerState.Connected)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Login request from wrong stage: {player.Status}.");
+                return;
+            }
+
+            ReadOnlySpan<char> versionClient = message.GetToken(':', out ReadOnlySpan<char> remaining);
+            if (versionClient.IsEmpty)
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            ReadOnlySpan<char> versionSpan = versionClient.GetToken(';', out ReadOnlySpan<char> clientInfo);
+            if (versionClient.IsEmpty)
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            if (!ushort.TryParse(versionSpan, out ushort version))
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            if (!clientInfo.IsEmpty)
+                clientInfo = clientInfo[1..]; // skip the ;
+
+            ReadOnlySpan<char> name = remaining.GetToken(':', out remaining);
+            if (name.IsEmpty || remaining.IsEmpty)
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            // Cleanup the name.
+            Span<char> cleanName = stackalloc char[name.Length];
+            CleanupPlayerName(name, ref cleanName);
+            if (cleanName.IsEmpty)
+            {
+                _chatNetwork.SendToOne(player, $"LOGINBAD:{GetAuthCodeMessage(AuthCode.BadName)}");
+                return;
+            }
+
+            ReadOnlySpan<char> password = remaining[1..]; // skip the :
+            if (remaining.IsEmpty)
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            player.ClientName = $"chat: {clientInfo}"; // TODO: string allocation
+
+            // Build a login packet.
+            LoginPacket loginPacket = new();
+            loginPacket.CVersion = version;
+
+            if (StringUtils.DefaultEncoding.GetByteCount(cleanName) > loginPacket.NameBytes.Length)
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            StringUtils.WriteNullPaddedString(loginPacket.NameBytes, cleanName, false);
+            loginPacket.NameBytes.Clear();
+            StringUtils.DefaultEncoding.GetBytes(cleanName, loginPacket.NameBytes);
+
+            if (StringUtils.DefaultEncoding.GetByteCount(password) > loginPacket.PasswordBytes.Length)
+            {
+                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                return;
+            }
+
+            loginPacket.PasswordBytes.Clear();
+            StringUtils.DefaultEncoding.GetBytes(password, loginPacket.PasswordBytes);
+
+            loginPacket.MacId = 101;
+
+            // Add an auth request.
+            if (playerData.AuthRequest is not null)
+            {
+                _authRequestPool.Return(playerData.AuthRequest);
+            }
+
+            playerData.AuthRequest = _authRequestPool.Get();
+            playerData.AuthRequest.SetRequestInfo(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref loginPacket, 1)), AuthDone);
+
+            // Set the player's status.
+            _playerData.WriteLock();
+
+            try
+            {
+                player.Status = PlayerState.NeedAuth;
+            }
+            finally
+            {
+                _playerData.WriteUnlock();
+            }
+
+            _logManager.LogP(LogLevel.Drivel, nameof(Core), player, $"Login request: '{cleanName}'.");
+        }
+
+        /// <summary>
+        /// Cleans up a player's name.
+        /// </summary>
+        /// <remarks>
+        /// Valid characters are copied from <paramref name="name"/> to <paramref name="cleanName"/>.
+        /// <list type="bullet">
+        /// <item>Only allow printable ASCII characters, except colon (colon is used to delimit the target in private messages, and also used to delimit in the chat protocol).</item>
+        /// <item>The first character must be a letter or digit.</item>
+        /// <item>No leading or trailing spaces.</item>
+        /// <item>No consecutive spaces.</item>
+        /// </list>
+        /// </remarks>
+        /// <param name="name">The source.</param>
+        /// <param name="cleanName">The destination.</param>
+        /// <exception cref="ArgumentException">The length of <paramref name="cleanName"/> was less than the length of <paramref name="name"/>.</exception>
+        private static void CleanupPlayerName(ReadOnlySpan<char> name, ref Span<char> cleanName)
+        {
+            if (name.Length > cleanName.Length)
+                throw new ArgumentException(paramName: nameof(cleanName), message: "The length must be greater than or equal to the source length.");
+
+            int cleanIndex = 0;
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (char.IsBetween(c, (char)32, (char)126) // printable character
+                    && c != ':' // excluding colon
+                    && (cleanIndex > 0 || char.IsLetter(c) || char.IsDigit(c)) // first character must be a letter or digit
+                    && (!char.IsWhiteSpace(c) || (cleanIndex > 0 && !char.IsWhiteSpace(cleanName[cleanIndex - 1])))) // no leading or consecutive spaces
+                {
+                    cleanName[cleanIndex++] = c;
+                }
+            }
+
+            cleanName = cleanName[..cleanIndex].TrimEnd(); // no trailing spaces
         }
 
         private void FailLoginWith(Player player, AuthCode authCode, string text, string logmsg)
@@ -673,7 +804,7 @@ namespace SS.Core.Modules
                 // Try to locate an existing player with the same name.
                 Player oldPlayer = _playerData.FindPlayer(authResult.Name);
 
-                // Set new player's name.
+                // Set new player's name. 
                 player.Packet.SetName(authResult.SendName); // this can truncate
                 player.Name = Truncate(authResult.Name, Constants.MaxPlayerNameLength).ToString(); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
                 player.Packet.SetSquad(authResult.Squad); // this can truncate
@@ -806,7 +937,22 @@ namespace SS.Core.Modules
                 }
                 else if (player.IsChat)
                 {
-                    // TODO: chatnet
+                    if (authResult.Code is null)
+                    {
+                        _chatNetwork.SendToOne(player, "LOGINBAD:Internal Server Error");
+                    }
+                    else if (authResult.Code.Value.IsOK())
+                    {
+                        _chatNetwork.SendToOne(player, $"LOGINOK:{player.Name}");
+                    }
+                    else if (authResult.Code.Value == AuthCode.CustomText)
+                    {
+                        _chatNetwork.SendToOne(player, $"LOGINBAD:{authResult.CustomText}");
+                    }
+                    else
+                    {
+                        _chatNetwork.SendToOne(player, $"LOGINBAD:{GetAuthCodeMessage(authResult.Code.Value)}");
+                    }
                 }
             }
             finally
@@ -891,7 +1037,7 @@ namespace SS.Core.Modules
             AuthCode.NoNewConn => "the server is not accepting new connections",
             AuthCode.BadName => "bad player name",
             AuthCode.OffensiveName => "offensive player name",
-            AuthCode.NoScores => "the server is not recordng scores",
+            AuthCode.NoScores => "the server is not recording scores",
             AuthCode.ServerBusy => "the server is busy",
             AuthCode.TooLowUsage => "too low usage",
             AuthCode.AskDemographics => "need demographics",

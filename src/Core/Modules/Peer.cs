@@ -254,7 +254,7 @@ namespace SS.Core.Modules
             return false;
         }
 
-        void IPeer.SendZoneMessage([InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler)
+        void IPeer.SendZoneMessage([InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -278,7 +278,7 @@ namespace SS.Core.Modules
             SendMessageToPeer(PeerPacketType.Chat, 0x00, message);
         }
 
-        void IPeer.SendAlertMessage(ReadOnlySpan<char> alertName, ReadOnlySpan<char> playerName, ReadOnlySpan<char> arenaName, [InterpolatedStringHandlerArgument("")] ref ChatSendMessageInterpolatedStringHandler handler)
+        void IPeer.SendAlertMessage(ReadOnlySpan<char> alertName, ReadOnlySpan<char> playerName, ReadOnlySpan<char> arenaName, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {

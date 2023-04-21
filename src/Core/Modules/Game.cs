@@ -26,7 +26,7 @@ namespace SS.Core.Modules
         private IArenaManager _arenaManager;
         private ICapabilityManager _capabilityManager;
         private IChat _chat;
-        //private IChatNet _chatnet;
+        private IChatNetwork _chatNetwork;
         private IClientSettings _clientSettings;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
@@ -61,7 +61,6 @@ namespace SS.Core.Modules
             IArenaManager arenaManager,
             ICapabilityManager capabilityManager,
             IChat chat,
-            //IChatNet chatnet,
             IClientSettings clientSettings,
             ICommandManager commandManager, 
             IConfigManager configManager,
@@ -78,7 +77,6 @@ namespace SS.Core.Modules
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            //_chatnet = chatnet ?? throw new ArgumentNullException(nameof(chatnet));
             _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -91,6 +89,7 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
             _persist = broker.GetInterface<IPersist>();
 
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -108,7 +107,7 @@ namespace SS.Core.Modules
                 _shipBombFireDelayIds[i] = id;
             }
 
-            if (_persist != null)
+            if (_persist is not null)
             {
                 _persistRegistration = new(
                     (int)PersistKey.GameShipLock, PersistInterval.ForeverNotShared, PersistScope.PerArena, Persist_GetShipLockData, Persist_SetShipLockData, null);
@@ -129,10 +128,9 @@ namespace SS.Core.Modules
             _net.AddPacket(C2SPacketType.AttachTo, Packet_AttachTo);
             _net.AddPacket(C2SPacketType.TurretKickOff, Packet_TurretKickoff);
 
-            //if(_chatnet != null)
-                //_chatnet.
+            _chatNetwork?.AddHandler("CHANGEFREQ", ChatHandler_ChangeFreq);
 
-            if (_commandManager != null)
+            if (_commandManager is not null)
             {
                 _commandManager.AddCommand("spec", Command_spec);
                 _commandManager.AddCommand("energy", Command_energy);
@@ -148,13 +146,13 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iGameToken) != 0)
                 return false;
 
-            //if(_chatnet != null)
-
-            if (_commandManager != null)
+            if (_commandManager is not null)
             {
                 _commandManager.RemoveCommand("spec", Command_spec, null);
                 _commandManager.RemoveCommand("energy", Command_energy, null);
             }
+
+            _chatNetwork?.RemoveHandler("CHANGEFREQ", ChatHandler_ChangeFreq);
 
             _net.RemovePacket(C2SPacketType.Position, Packet_Position);
             _net.RemovePacket(C2SPacketType.SpecRequest, Packet_SpecRequest);
@@ -171,9 +169,18 @@ namespace SS.Core.Modules
 
             _mainloop.WaitForMainWorkItemDrain();
 
-            if (_persist != null && _persistRegistration != null)
+            if (_chatNetwork is not null)
             {
-                _persist.UnregisterPersistentData(_persistRegistration);
+                broker.ReleaseInterface(ref _chatNetwork);
+            }
+
+            if (_persist is not null)
+            {
+                if (_persistRegistration is not null)
+                {
+                    _persist.UnregisterPersistentData(_persistRegistration);
+                }
+
                 broker.ReleaseInterface(ref _persist);
             }
 
@@ -1703,9 +1710,7 @@ namespace SS.Core.Modules
 
             // send it to everyone else
             _net.SendToArena(arena, player, data, NetSendFlags.Reliable);
-
-            //if(_chatnet != null)
-
+            _chatNetwork?.SendToArena(arena, null, $"SHIPFREQCHANGE:{player.Name}:{ship:D}:{freq:D}");
 
             PreShipFreqChangeCallback.Fire(arena, player, ship, oldShip, freq, oldFreq);
             DoShipFreqChangeCallback(player, ship, oldShip, freq, oldFreq);
@@ -1776,8 +1781,7 @@ namespace SS.Core.Modules
                 
             // everyone else
             _net.SendToArena(arena, player, data, NetSendFlags.Reliable);
-
-            //if(_chatNet != null)
+            _chatNetwork?.SendToArena(arena, null, $"SHIPFREQCHANGE:{player.Name}:{player.Ship:D}:{freq:D}");
 
             PreShipFreqChangeCallback.Fire(arena, player, player.Ship, player.Ship, freq, oldFreq);
             DoShipFreqChangeCallback(player, player.Ship, player.Ship, freq, oldFreq);
@@ -2019,8 +2023,7 @@ namespace SS.Core.Modules
 
             S2C_Kill packet = new(green, (short)killer.Id, (short)killed.Id, pts, flagCount);
             _net.SendToArena(killer.Arena, null, ref packet, NetSendFlags.Reliable);
-
-            //if(_chatnet != null)
+            _chatNetwork?.SendToArena(killer.Arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
         private void Packet_Green(Player player, byte[] data, int len, NetReceiveFlags flags)
@@ -2230,6 +2233,14 @@ namespace SS.Core.Modules
             finally
             {
                 _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        private void ChatHandler_ChangeFreq(Player player, ReadOnlySpan<char> message)
+        {
+            if (short.TryParse(message, out short freq))
+            {
+                FreqChangeRequest(player, freq);
             }
         }
 

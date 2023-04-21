@@ -15,7 +15,7 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IPlayerData _playerData;
 
-        private IChatNet _chatNet;
+        private IChatNetwork _chatNetwork;
         private INetwork _network;
 
         private InterfaceRegistrationToken<IFake> _iFakeToken;
@@ -34,7 +34,7 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            _chatNet = broker.GetInterface<IChatNet>();
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
             _network = broker.GetInterface<INetwork>();
 
             _commandManager.AddCommand("makefake", Command_makefake);
@@ -52,8 +52,8 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("makefake", Command_makefake);
             _commandManager.RemoveCommand("killfake", Command_killfake);
 
-            if (_chatNet != null)
-                broker.ReleaseInterface(ref _chatNet);
+            if (_chatNetwork != null)
+                broker.ReleaseInterface(ref _chatNetwork);
 
             if (_network != null)
                 broker.ReleaseInterface(ref _network);
@@ -105,7 +105,7 @@ namespace SS.Core.Modules
             player.Arena = arena;
 
             _network?.SendToArena(arena, player, ref player.Packet, NetSendFlags.Reliable);
-            //_chatNet?.SendToArena(
+            _chatNetwork?.SendToArena(arena, player, $"ENTERING:{player.Name}:{ship:D}:{freq:D}");
 
             player.Status = PlayerState.Playing;
 
@@ -136,7 +136,7 @@ namespace SS.Core.Modules
                 {
                     S2C_PlayerLeaving packet = new((short)player.Id);
                     _network?.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
-                    //_chatNet?.SendToArena(
+                    _chatNetwork?.SendToArena(arena, player, $"LEAVING:{player.Name}");
                 }
 
                 _logManager.LogP(LogLevel.Info, nameof(Fake), player, $"Fake player destroyed.");

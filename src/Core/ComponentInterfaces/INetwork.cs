@@ -368,7 +368,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="index">Index of the data to get.</param>
         /// <param name="endPoint">The endpoint being listened to.</param>
         /// <param name="connectAs">The base arena name the listening endpoint is configured with.</param>
-        /// <returns>True if data was found for the given index.  Otheriwse, false.</returns>
+        /// <returns><see langword="true"/> if data was found for the given index.  Otheriwse, <see langword="false"/>.</returns>
         bool TryGetListenData(int index, out IPEndPoint endPoint, out string connectAs);
 
         /// <summary>
@@ -377,7 +377,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="connectAs">The base arena name to get stats for.</param>
         /// <param name="total">The total # of players.</param>
         /// <param name="playing">The # of players in ships (not spectating).</param>
-        /// <returns>True if stats were found for the specified <paramref name="connectAs"/>. Otherwise, false.</returns>
+        /// <returns><see langword="true"/> if stats were found for the specified <paramref name="connectAs"/>. Otherwise, <see langword="false"/>.</returns>
         bool TryGetPopulationStats(string connectAs, out uint total, out uint playing);
 
         /// <summary>

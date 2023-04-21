@@ -41,6 +41,53 @@ namespace SS.Utilities
         /// </remarks>
         public static Encoding DefaultEncoding { get; } = Encoding.GetEncoding(1252); // Windows-1252
 
+        #region IsPrintable
+
+        /// <summary>
+        /// Gets whether a character is a printable on a standard game client (VIE or Continuum).
+        /// </summary>
+        /// <param name="c">The character to check.</param>
+        /// <returns><see langword="true"/> if the character is printable. Otherwise, <see langword="false"/>.</returns>
+        public static bool IsPrintable(char c)
+        {
+            // Printable ASCII
+            if (char.IsBetween(c, (char)32, (char)126))
+                return true;
+
+            // ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ ØÙÚÛÜÝÞß
+            // àáâãäåæçèéêëìíîïðñòóôõö øùúûüýþÿ
+            if (char.IsBetween(c, (char)192, (char)255))
+            {
+                return c != (char)215 // not ×
+                    && c != (char)247; // not ÷
+            }
+
+            // Characters from ISO-8859-15
+            return c switch
+            {
+                '€' or 'Š' or 'Ž' or 'š' or 'ž' or 'Ÿ' => true,
+                _ => false,
+            };
+        }
+
+        /// <summary>
+        /// Gets whether a string only contains printable characters for a standard game client (VIE or Continuum).
+        /// </summary>
+        /// <param name="str">The string to check.</param>
+        /// <returns><see langword="true"/> if the string is printable. Otherwise, <see langword="false"/>.</returns>
+        public static bool IsPrintable(ReadOnlySpan<char> str)
+        {
+            for (int i = 0; i < str.Length; i++)
+            {
+                if (!IsPrintable(str[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        #endregion
+
         #region Read Null Terminated
 
         /// <summary>

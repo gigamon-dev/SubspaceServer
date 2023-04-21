@@ -13,54 +13,20 @@ namespace SS.Core.Modules
     /// Module that provides logging functionality.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class LogManager : IModule, IModuleLoaderAware, ILogManager, IDisposable
+    public sealed class LogManager : IModule, IModuleLoaderAware, ILogManager, IStringBuilderPoolProvider, IDisposable
     {
         private ComponentBroker _broker;
         private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<ILogManager> _iLogManagerToken;
 
         private NonTransientObjectPool<StringBuilder> _stringBuilderPool;
-        private readonly BlockingCollection<LogEntry> _logQueue = new(512);
+        private readonly BlockingCollection<LogEntry> _logQueue = new(4096);
         private Thread _loggingThread;
 
         private readonly ReaderWriterLockSlim _rwLock = new();
         private IConfigManager _configManager = null;
 
-        private void LoggingThread()
-        {
-            while (!_logQueue.IsCompleted)
-            {
-                if (!_logQueue.TryTake(out LogEntry logEntry, Timeout.Infinite))
-                    continue;
-
-                try
-                {
-                    LogCallback.Fire(_broker, logEntry);
-                }
-                catch (Exception ex)
-                {
-                    StringBuilder sb = _stringBuilderPool.Get();
-
-                    try
-                    {
-                        sb.Append($"E <{nameof(LogManager)}> An exception was thrown when firing the Log callback. " +
-                            $"This indicates a problem in one of the logging modules that needs to be investigated. {ex}");
-
-                        Console.Error.WriteLine(sb);
-                    }
-                    finally
-                    {
-                        _stringBuilderPool.Return(sb);
-                    }
-                }
-                finally
-                {
-                    _stringBuilderPool.Return(logEntry.LogText);
-                }
-            }
-        }
-
-        #region IModule Members
+        #region Module Members
 
         public bool Load(ComponentBroker broker, IObjectPoolManager objectPoolManager)
         {
@@ -140,7 +106,7 @@ namespace SS.Core.Modules
 
         #region ILogManager Members
 
-        void ILogManager.Log(LogLevel level, ref LogManagerInterpolatedStringHandler handler)
+        void ILogManager.Log(LogLevel level, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             StringBuilder sb = _stringBuilderPool.Get();
             sb.Append(level.ToChar());
@@ -160,6 +126,11 @@ namespace SS.Core.Modules
             {
                 _stringBuilderPool.Return(sb);
             }
+        }
+
+        void ILogManager.Log(LogLevel level, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
+        {
+            ((ILogManager)this).Log(level, ref handler);
         }
 
         void ILogManager.Log(LogLevel level, ReadOnlySpan<char> message)
@@ -228,7 +199,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void ILogManager.LogM(LogLevel level, string module, ref LogManagerInterpolatedStringHandler handler)
+        void ILogManager.LogM(LogLevel level, string module, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             StringBuilder sb = _stringBuilderPool.Get(); 
             sb.Append(level.ToChar());
@@ -251,6 +222,11 @@ namespace SS.Core.Modules
             {
                 _stringBuilderPool.Return(sb);
             }
+        }
+
+        void ILogManager.LogM(LogLevel level, string module, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
+        {
+            ((ILogManager)this).LogM(level, module, ref handler);
         }
 
         void ILogManager.LogM(LogLevel level, string module, ReadOnlySpan<char> message)
@@ -328,7 +304,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void ILogManager.LogA(LogLevel level, string module, Arena arena, ref LogManagerInterpolatedStringHandler handler)
+        void ILogManager.LogA(LogLevel level, string module, Arena arena, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             StringBuilder sb = _stringBuilderPool.Get();
             sb.Append(level.ToChar());
@@ -354,6 +330,11 @@ namespace SS.Core.Modules
             {
                 _stringBuilderPool.Return(sb);
             }
+        }
+
+        void ILogManager.LogA(LogLevel level, string module, Arena arena, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
+        {
+            ((ILogManager)this).LogA(level, module, arena, ref handler);
         }
 
         void ILogManager.LogA(LogLevel level, string module, Arena arena, ReadOnlySpan<char> message)
@@ -440,7 +421,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void ILogManager.LogP(LogLevel level, string module, Player player, ref LogManagerInterpolatedStringHandler handler)
+        void ILogManager.LogP(LogLevel level, string module, Player player, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             Arena arena = player?.Arena;
 
@@ -472,6 +453,11 @@ namespace SS.Core.Modules
             {
                 _stringBuilderPool.Return(sb);
             }
+        }
+
+        void ILogManager.LogP(LogLevel level, string module, Player player, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
+        {
+            ((ILogManager)this).LogP(level, module, player, ref handler);
         }
 
         void ILogManager.LogP(LogLevel level, string module, Player player, ReadOnlySpan<char> message)
@@ -611,9 +597,43 @@ namespace SS.Core.Modules
             }
         }
 
-        ObjectPool<StringBuilder> ILogManager.StringBuilderPool => _objectPoolManager.StringBuilderPool;
+        ObjectPool<StringBuilder> IStringBuilderPoolProvider.StringBuilderPool => _objectPoolManager.StringBuilderPool;
 
         #endregion
+
+        private void LoggingThread()
+        {
+            while (!_logQueue.IsCompleted)
+            {
+                if (!_logQueue.TryTake(out LogEntry logEntry, Timeout.Infinite))
+                    continue;
+
+                try
+                {
+                    LogCallback.Fire(_broker, logEntry);
+                }
+                catch (Exception ex)
+                {
+                    StringBuilder sb = _stringBuilderPool.Get();
+
+                    try
+                    {
+                        sb.Append($"E <{nameof(LogManager)}> An exception was thrown when firing the Log callback. " +
+                            $"This indicates a problem in one of the logging modules that needs to be investigated. {ex}");
+
+                        Console.Error.WriteLine(sb);
+                    }
+                    finally
+                    {
+                        _stringBuilderPool.Return(sb);
+                    }
+                }
+                finally
+                {
+                    _stringBuilderPool.Return(logEntry.LogText);
+                }
+            }
+        }
 
         public void Dispose()
         {

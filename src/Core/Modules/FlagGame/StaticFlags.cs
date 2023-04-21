@@ -28,12 +28,13 @@ namespace SS.Core.Modules.FlagGame
 
         // required dependencies
         private IArenaManager _arenaManager;
+        private IChat _chat;
         private IConfigManager _configManager;
         private ILogManager _logManager;
         private IMainloopTimer _mainloopTimer;
         private IMapData _mapData;
         private INetwork _network;
-        
+
         // optional dependencies
         private IPersist _persist;
 
@@ -46,6 +47,7 @@ namespace SS.Core.Modules.FlagGame
         public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
+            IChat chat,
             IConfigManager configManager,
             ILogManager logManager,
             IMainloopTimer mainloopTimer,
@@ -53,6 +55,7 @@ namespace SS.Core.Modules.FlagGame
             INetwork network)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
@@ -121,6 +124,9 @@ namespace SS.Core.Modules.FlagGame
             }
 
             SendFullFlagUpdate(arena);
+
+            _chat.SendArenaMessage(arena, ChatSound.Ding, "Flag game reset.");
+            _logManager.LogA(LogLevel.Info, nameof(StaticFlags), arena, "Flag game reset.");
 
             FlagGameResetCallback.Fire(arena, arena, -1, 0);
         }

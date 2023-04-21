@@ -28,7 +28,7 @@ This document provides an overview of the various server parts and their relatio
 | capman | SS.Core.Modules.CapabilityManager | |
 | cfghelp | SS.Core.Modules.Help | |
 | chat | SS.Core.Modules.Chat | |
-| chatnet |  | TODO: very low priority |
+| chatnet | SS.Core.Modules.ChatNetwork | |
 | clientset | SS.Core.Modules.ClientSettings | |
 | cmdlist | SS.Core.Modules.CommandManager | |
 | cmdman | SS.Core.Modules.CommandManager | |
@@ -120,7 +120,7 @@ This document provides an overview of the various server parts and their relatio
 | Icapman | SS.Core.ComponentInterfaces.ICapabilityManager | |
 | Icfghelp | SS.Core.ComponentInterfaces.IConfigHelp | |
 | Ichat | SS.Core.ComponentInterfaces.IChat | |
-| Ichatnet | SS.Core.ComponentInterfaces.IChatNet | TODO: Not implemented. |
+| Ichatnet | SS.Core.ComponentInterfaces.IChatNetwork | |
 | Iclientset | SS.Core.ComponentInterfaces.IClientSettings | |
 | Icmdman | SS.Core.ComponentInterfaces.ICommandManager | |
 | Iconfig | SS.Core.ComponentInterfaces.IConfigManager | |

@@ -43,12 +43,13 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
         private IModuleManager _moduleManager;
-        private INetwork _network;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IServerTimer _serverTimer;
 
         // optional dependencies
+        private IChatNetwork _chatNetwork;
+        private INetwork _network;
         private IPersistExecutor _persistExecutor;
 
         private InterfaceRegistrationToken<IArenaManager> _iArenaManagerToken;
@@ -84,7 +85,6 @@ namespace SS.Core.Modules
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             IModuleManager moduleManager,
-            INetwork network,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IServerTimer serverTimer)
@@ -96,22 +96,21 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _moduleManager = moduleManager ?? throw new ArgumentNullException(nameof(moduleManager));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+
+            _network = broker.GetInterface<INetwork>();
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
 
             _spawnkey = _playerData.AllocatePlayerData(new SpawnLocPooledObjectPolicy());
 
             _adkey = ((IArenaManager)this).AllocateArenaData(new ArenaDataPooledObjectPolicy());
 
-            _network.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _network.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+            _network?.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
+            _network?.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
 
-            // TODO: 
-            //_chatnet = Broker.GetInterface<IChatNet>();
-            //if(_chatnet)
-            //{
-            //}
+            _chatNetwork.AddHandler("GO", ChatHandler_GotoArena);
+            _chatNetwork.AddHandler("LEAVE", ChatHandler_LeaveArena);
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
             _mainloopTimer.SetTimer(MainloopTimer_ReapArenas, 1700, 1700, null);
@@ -166,13 +165,11 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
                 return false;
 
-            _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _network.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+            _network?.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
+            _network?.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
 
-            // TODO: 
-            //if(_chatnet)
-            //{
-            //}
+            _chatNetwork?.RemoveHandler("GO", ChatHandler_GotoArena);
+            _chatNetwork?.RemoveHandler("LEAVE", ChatHandler_LeaveArena);
 
             _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessArenaStates, null);
@@ -185,6 +182,16 @@ namespace SS.Core.Modules
 
             _arenaDictionary.Clear();
             _arenaTrie.Clear();
+
+            if (_network is not null)
+            {
+                broker.ReleaseInterface(ref _network);
+            }
+
+            if (_chatNetwork is not null)
+            {
+                broker.ReleaseInterface(ref _chatNetwork);
+            }
 
             return true;
         }
@@ -242,7 +249,7 @@ namespace SS.Core.Modules
                             }
                             else if (player.IsChat)
                             {
-                                //_chatNet.SendToOne(
+                                _chatNetwork.SendToOne(player, $"INARENA:{arena.Name}:{player.Freq}");
                             }
 
                             // actually initiate the client leaving arena on our side
@@ -597,8 +604,7 @@ namespace SS.Core.Modules
             }
             else if (player.IsChat)
             {
-                // TODO: 
-                //_chatnet.SendToOne(player, "INARENA:%s:%d", a.Name, player.Freq);
+                _chatNetwork.SendToOne(player, $"INARENA:{arena.Name}:{player.Freq}");
             }
 
             HashSet<Player> enterPlayerSet = _objectPoolManager.PlayerSetPool.Get();
@@ -715,7 +721,7 @@ namespace SS.Core.Modules
                 }
                 else if (playerTo.IsChat)
                 {
-                    //_chatNet.SendToOne(
+                    _chatNetwork.SendToOne(playerTo, $"{(already ? "PLAYER" : "ENTERING")}:{player.Name}:{player.Ship:d}:{player.Freq}");
                 }
             }
         }
@@ -886,6 +892,58 @@ namespace SS.Core.Modules
                 _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena leaving packet len={len}.");
             }
 #endif
+            LeaveArena(player);
+        }
+
+        #endregion
+
+        #region Chat handlers
+
+        private void ChatHandler_GotoArena(Player player, ReadOnlySpan<char> message)
+        {
+            bool obscenityFilter = player.Flags.ObscenityFilter || _configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0;
+            if (!message.IsEmpty)
+            {
+                CompleteGo(player, message, ShipType.Spec, 0, 0, false, false, obscenityFilter, 0, 0);
+            }
+            else
+            {
+                Span<char> nameBuffer = stackalloc char[Constants.MaxArenaNameLength];
+
+                IArenaPlace arenaPlace = Broker.GetInterface<IArenaPlace>();
+                if (arenaPlace is not null)
+                {
+                    try
+                    {
+                        int spawnX = 0;
+                        int spawnY = 0;
+                        if (arenaPlace.Place(nameBuffer, ref spawnX, ref spawnY, player, out int charsWritten))
+                        {
+                            nameBuffer = nameBuffer[..charsWritten];
+                        }
+                        else
+                        {
+                            nameBuffer[0] = '0';
+                            nameBuffer = nameBuffer[..1];
+                        }
+                    }
+                    finally
+                    {
+                        Broker.ReleaseInterface(ref arenaPlace);
+                    }
+                }
+                else
+                {
+                    nameBuffer[0] = '0';
+                    nameBuffer = nameBuffer[..1];
+                }
+
+                CompleteGo(player, nameBuffer, ShipType.Spec, 0, 0, false, false, obscenityFilter, 0, 0);
+            }
+        }
+
+        private void ChatHandler_LeaveArena(Player player, ReadOnlySpan<char> message)
+        {
             LeaveArena(player);
         }
 
@@ -1535,8 +1593,8 @@ namespace SS.Core.Modules
             if (notify)
             {
                 S2C_PlayerLeaving packet = new((short)player.Id);
-                _network.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
-                //chatnet.SendToArena(
+                _network?.SendToArena(arena, player, ref packet, NetSendFlags.Reliable);
+                _chatNetwork?.SendToArena(arena, player, $"LEAVING:{player.Name}");
 
                 _logManager.LogP(LogLevel.Info, nameof(ArenaManager), player, "Leaving arena.");
             }

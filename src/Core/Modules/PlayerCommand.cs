@@ -552,7 +552,7 @@ namespace SS.Core.Modules
 
             if (!targetPlayer.IsStandard)
             {
-                _chat.SendMessage(player, $"{(targetPlayer == player ? "You" : targetPlayer.Name)} {(targetPlayer == player ? "aren't" : "isn't")} a game client.");
+                _chat.SendMessage(player, $"{(targetPlayer == player ? "You" : targetPlayer.Name)} {(targetPlayer == player ? "aren't" : "isn't")} using a game client.");
                 return;
             }
 
@@ -580,8 +580,8 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: effective ping: {average} (average of above)");
 
                 _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.s2c * 100d:F2} c2s: {packetloss.c2s * 100d:F2} s2cwpn: {packetloss.s2cwpn * 100:F2}");
-                _chat.SendMessage(player, $"{prefix}: reliable dups: {reliableLag.RelDups * 100d / reliableLag.C2SN:F2}% reliable resends: {reliableLag.Retries * 100d / reliableLag.S2CN:F2}%");
-                _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal} s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
+                _chat.SendMessage(player, $"{prefix}: reliable dups: {reliableLag.RelDups * 100d / reliableLag.C2SN:F2}%  reliable resends: {reliableLag.Retries * 100d / reliableLag.S2CN:F2}%");
+                _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal}  s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 
                 PrintCommonBandwidthInfo(player, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
             }
@@ -1585,15 +1585,47 @@ namespace SS.Core.Modules
             string prefix = targetPlayer.Name;
             TimeSpan connectedTimeSpan = DateTime.UtcNow - targetPlayer.ConnectTime;
 
-            _chat.SendMessage(player, $"{prefix}: pid={targetPlayer.Id} name='{targetPlayer.Name}' squad='{targetPlayer.Squad}' " +
-                $"auth={(targetPlayer.Flags.Authenticated ? 'Y' : 'N')} ship={targetPlayer.Ship} freq={targetPlayer.Freq}");
-            _chat.SendMessage(player, $"{prefix}: arena={(targetPlayer.Arena != null ? targetPlayer.Arena.Name : "(none)")} " +
-                $"client={targetPlayer.ClientName} res={targetPlayer.Xres}x{targetPlayer.Yres} onFor={connectedTimeSpan} " +
+            _chat.SendMessage(player, $"{prefix}: pid={targetPlayer.Id}  name='{targetPlayer.Name}'  squad='{targetPlayer.Squad}'  " +
+                $"auth={(targetPlayer.Flags.Authenticated ? 'Y' : 'N')}  ship={targetPlayer.Ship}  freq={targetPlayer.Freq}");
+            _chat.SendMessage(player, $"{prefix}: arena={(targetPlayer.Arena != null ? targetPlayer.Arena.Name : "(none)")}  " +
+                $"client={targetPlayer.ClientName}  res={targetPlayer.Xres}x{targetPlayer.Yres}  onFor={connectedTimeSpan}  " +
                 $"connectAs={(!string.IsNullOrWhiteSpace(targetPlayer.ConnectAs) ? targetPlayer.ConnectAs : "<default>")}");
 
             if (targetPlayer.IsStandard)
             {
                 PrintCommonBandwidthInfo(player, targetPlayer, connectedTimeSpan, prefix, true);
+            }
+
+            if (targetPlayer.IsChat)
+            {
+                IChatNetwork chatNetwork = _broker.GetInterface<IChatNetwork>();
+                if (chatNetwork is not null)
+                {
+                    try
+                    {
+                        Span<char> ip = stackalloc char[45];
+                        if (chatNetwork.TryGetClientStats(targetPlayer, ip, out int ipBytesWritten, out int port, out ChatClientStats stats))
+                        {
+                            ip = ip[..ipBytesWritten];
+                            _chat.SendMessage(player, $"{prefix}: ip={ip}  port={port}");
+                            _chat.SendMessage(player, $"{prefix}: sent={stats.BytesSent} B  received={stats.BytesReceived} B");
+                        }
+                    }
+                    finally
+                    {
+                        _broker.ReleaseInterface(ref chatNetwork);
+                    }
+                }
+            }
+
+            if (targetPlayer.Flags.SeeAllPositionPackets)
+            {
+                _chat.SendMessage(player, $"{prefix}: requested all position packets");
+            }
+
+            if (targetPlayer.Status != PlayerState.Playing)
+            {
+                _chat.SendMessage(player, $"{prefix}: status={targetPlayer.Status}");
             }
         }
 
@@ -1787,16 +1819,16 @@ namespace SS.Core.Modules
 
                 if (includeSensitive)
                 {
-                    _chat.SendMessage(player, $"{prefix}: ip:{stats.IPEndPoint.Address} port:{stats.IPEndPoint.Port} " +
-                        $"encName={stats.EncryptionName} macId={targetPlayer.MacId} permId={targetPlayer.PermId}");
+                    _chat.SendMessage(player, $"{prefix}: ip:{stats.IPEndPoint.Address}  port:{stats.IPEndPoint.Port}  " +
+                        $"encName={stats.EncryptionName}  macId={targetPlayer.MacId}  permId={targetPlayer.PermId}");
                 }
 
                 int ignoringwpns = _game != null ? (int)(100f * _game.GetIgnoreWeapons(targetPlayer)) : 0;
 
                 _chat.SendMessage(player,
                     $"{prefix}: " +
-                    $"ave bw in/out={(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0} " +
-                    $"ignoringWpns={ignoringwpns}% dropped={stats.PacketsDropped}");
+                    $"ave bw in/out={(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0}  " +
+                    $"ignoringWpns={ignoringwpns}%  dropped={stats.PacketsDropped}");
 
                 _chat.SendMessage(player, $"{prefix}: bwlimit={stats.BandwidthLimitInfo}");
             }
