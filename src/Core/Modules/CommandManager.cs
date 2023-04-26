@@ -329,7 +329,7 @@ namespace SS.Core.Modules
             // NOTE: The Chat module has already removed the starting ? or * from typedLine
 
             typedLine = typedLine.Trim();
-            if (typedLine.IsWhiteSpace())
+            if (typedLine.IsEmpty)
                 return;
 
             bool skipLocal = false;
@@ -337,8 +337,8 @@ namespace SS.Core.Modules
             // ?\<command> is a way to send a command straight to the the billing server
             if (typedLine[0] == '\\')
             {
-                typedLine = typedLine[1..];
-                if (typedLine.IsWhiteSpace())
+                typedLine = typedLine[1..].TrimStart();
+                if (typedLine.IsEmpty)
                     return;
 
                 skipLocal = true;

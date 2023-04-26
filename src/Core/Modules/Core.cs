@@ -712,7 +712,7 @@ namespace SS.Core.Modules
             for (int i = 0; i < name.Length; i++)
             {
                 char c = name[i];
-                if (char.IsBetween(c, (char)32, (char)126) // printable character
+                if (StringUtils.IsAsciiPrintable(c) // printable ASCII character (extended ASCII excluded on purpose)
                     && c != ':' // excluding colon
                     && (cleanIndex > 0 || char.IsLetter(c) || char.IsDigit(c)) // first character must be a letter or digit
                     && (!char.IsWhiteSpace(c) || (cleanIndex > 0 && !char.IsWhiteSpace(cleanName[cleanIndex - 1])))) // no leading or consecutive spaces

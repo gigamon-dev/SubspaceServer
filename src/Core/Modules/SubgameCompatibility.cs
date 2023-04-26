@@ -148,6 +148,12 @@ namespace SS.Core.Modules
             }
 
             ReadOnlySpan<char> originalCommand = line.GetToken(" =", out ReadOnlySpan<char> remaining);
+            if (originalCommand.IsEmpty)
+            {
+                charsWritten = 0;
+                return false;
+            }
+
             Span<char> key = stackalloc char[originalCommand.Length + 1];
             if (!key.TryWrite($"{commandChar}{originalCommand}", out _))
             {

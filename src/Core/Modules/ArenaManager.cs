@@ -1401,11 +1401,11 @@ namespace SS.Core.Modules
                 sb.Append(requestName);
                 for (int x = 0; x < sb.Length; x++)
                 {
-                    if (x == 0 && sb[x] == '#')
+                    if (x == 0 && sb[x] == '#') // Initial pound sign is allowed (indicates a private arena).
                         continue;
-                    else if (!char.IsLetterOrDigit(sb[x]))
+                    else if (!char.IsAsciiLetterOrDigit(sb[x])) // A-Z, a-z, and 0-9 only. Purposely, no extended ASCII characters.
                         sb[x] = 'x';
-                    else if (char.IsUpper(sb[x]))
+                    else if (char.IsAsciiLetterUpper(sb[x]))
                         sb[x] = char.ToLower(sb[x]);
                 }
 

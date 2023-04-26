@@ -41,6 +41,36 @@ namespace SS.Utilities
         /// </remarks>
         public static Encoding DefaultEncoding { get; } = Encoding.GetEncoding(1252); // Windows-1252
 
+        #region IsAsciiPrintable
+
+        /// <summary>
+        /// Gets whether a character is a printable ASCII character.
+        /// </summary>
+        /// <param name="c">The character to check.</param>
+        /// <returns><see langword="true"/> if the character is a printable ASCII character. Otherwise, <see langword="false"/>.</returns>
+        public static bool IsAsciiPrintable(char c)
+        {
+            return char.IsBetween(c, (char)32, (char)126);
+        }
+
+        /// <summary>
+        /// Gets whether a string only contains printable ASCII characters.
+        /// </summary>
+        /// <param name="str">The string to check.</param>
+        /// <returns><see langword="true"/> if the string only contains printable ASCII characters. Otherwise, <see langword="false"/>.</returns>
+        public static bool IsAsciiPrintable(ReadOnlySpan<char> str)
+        {
+            for (int i = 0; i < str.Length; i++)
+            {
+                if (!IsAsciiPrintable(str[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        #endregion
+
         #region IsPrintable
 
         /// <summary>
@@ -51,7 +81,7 @@ namespace SS.Utilities
         public static bool IsPrintable(char c)
         {
             // Printable ASCII
-            if (char.IsBetween(c, (char)32, (char)126))
+            if (IsAsciiPrintable(c))
                 return true;
 
             // ¿¡¬√ƒ≈∆«»… ÀÃÕŒœ–—“”‘’÷ ÿŸ⁄€‹›ﬁﬂ
@@ -87,6 +117,22 @@ namespace SS.Utilities
         }
 
         #endregion
+
+        /// <summary>
+        /// Replaces control characters in <paramref name="replacement"/> with <paramref name="replacement"/>.
+        /// </summary>
+        /// <param name="text">The string to replace control characters in.</param>
+        /// <param name="replacement">The character to use as a replacement for any control character that is found.</param>
+        public static void ReplaceControlCharacters(Span<char> text, char replacement = '_')
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (char.IsControl(text[i]))
+                {
+                    text[i] = replacement;
+                }
+            }
+        }
 
         #region Read Null Terminated
 

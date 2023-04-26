@@ -797,7 +797,11 @@ namespace SS.Core.Modules
             StringUtils.DefaultEncoding.GetChars(messageBytes, text);
 
             // Remove control characters from the chat message.
-            RemoveControlCharacters(text);
+            StringUtils.ReplaceControlCharacters(text);
+
+            // Game clients (e.g. Continuum) can display only a subset of the printable, extended ASCII characters.
+            // However, Continuum still sends the proper character if it is typed. It just displays a space in the place of such characters.
+            // We purposely leave them in the message. Chat clients can display the characters.
 
             ChatSound sound = _capabilityManager.HasCapability(player, Constants.Capabilities.SoundMessages)
                 ? (ChatSound)from.Sound
@@ -862,17 +866,6 @@ namespace SS.Core.Modules
             }
 
             CheckFlood(player);
-
-            static void RemoveControlCharacters(Span<char> characters)
-            {
-                for (int i = 0; i < characters.Length; i++)
-                {
-                    if (char.IsControl(characters[i]))
-                    {
-                        characters[i] = '_';
-                    }
-                }
-            }
         }
 
         private void ChatHandler_Send(Player player, ReadOnlySpan<char> message)

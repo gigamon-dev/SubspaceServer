@@ -13,6 +13,18 @@ namespace SS.Utilities
     /// <summary>
     /// An implementation of the trie data structure for storing string keys as <see cref="char"/> symbols.
     /// </summary>
+    /// <remarks>
+    /// This collection was designed to support ASCII characters, or rather extended ASCII.
+    /// The Subspace game protocol uses a subset of Windows-1252.
+    /// It is unlikely that the extended characters would be used as keys in the collection since
+    /// config sections/keys, command names, and arena names are all plain ASCII.
+    /// Player names are expected to be plain ASCII too, though a biller could technically assign a name with extended characters.
+    /// However, since chat messages, and therefore commands, can contain extended characters,
+    /// the collection needs to support searches for keys containing extended characters.
+    /// Rather than limit the collection to just ASCII or extended ASCII, it supports the Unicode characters that can be represented by a single Char struct.
+    /// In other words, it only supports code points in the Basic Multilingual Plane.
+    /// If the Subspace game protocol were ever to be extended to support Unicode, then it might make sense to change this collection to use System.Text.Rune.
+    /// </remarks>
     public class Trie : IEnumerable<ReadOnlyMemory<char>>
     {
         private readonly Trie<byte> _trie;
@@ -100,6 +112,18 @@ namespace SS.Utilities
     /// <summary>
     /// An implementation of the trie data structure for storing string keys as <see cref="char"/> symbols, with a <typeparamref name="TValue"/> value.
     /// </summary>
+    /// <remarks>
+    /// This collection was designed to support ASCII characters, or rather extended ASCII.
+    /// The Subspace game protocol uses a subset of Windows-1252.
+    /// It is unlikely that the extended characters would be used as keys in the collection since
+    /// config sections/keys, command names, and arena names are all plain ASCII.
+    /// Player names are expected to be plain ASCII too, though a biller could technically assign a name with extended characters.
+    /// However, since chat messages, and therefore commands, can contain extended characters,
+    /// the collection needs to support searches for keys containing extended characters.
+    /// Rather than limit the collection to just ASCII or extended ASCII, it supports the Unicode characters that can be represented by a single Char struct.
+    /// In other words, it only supports code points in the Basic Multilingual Plane.
+    /// If the Subspace game protocol were ever to be extended to support Unicode, then it might make sense to change this collection to use System.Text.Rune.
+    /// </remarks>
     public class Trie<TValue> : IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>
     {
         private static readonly ObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
@@ -185,7 +209,7 @@ namespace SS.Utilities
             if (key.IsEmpty)
                 return false;
 
-            ThrowIfNotAsciiOrContainsControlCharacter(key);
+            ThrowIfContainsSurrogateChar(key);
 
             TrieNode current = _root;
 
@@ -230,7 +254,7 @@ namespace SS.Utilities
                 return false;
             }
 
-            ThrowIfNotAsciiOrContainsControlCharacter(key);
+            ThrowIfContainsSurrogateChar(key);
 
             return RemoveFromNode(_root, key, out value);
 
@@ -290,7 +314,7 @@ namespace SS.Utilities
                 return false;
             }
 
-            ThrowIfNotAsciiOrContainsControlCharacter(key);
+            ThrowIfContainsSurrogateChar(key);
 
             TrieNode current = _root;
             for (int i = 0; i < key.Length; i++)
@@ -322,7 +346,7 @@ namespace SS.Utilities
                 return false;
             }
 
-            ThrowIfNotAsciiOrContainsControlCharacter(key);
+            ThrowIfContainsSurrogateChar(key);
 
             TrieNode current = _root;
             for (int i = 0; i < key.Length; i++)
@@ -401,19 +425,13 @@ namespace SS.Utilities
             Count = 0;
         }
 
-        private static void ThrowIfNotAsciiOrContainsControlCharacter(ReadOnlySpan<char> value, [CallerArgumentExpression("value")] string? caller = null)
+        private static void ThrowIfContainsSurrogateChar(ReadOnlySpan<char> value, [CallerArgumentExpression(nameof(value))] string? caller = null)
         {
-            for (int i = 0; i < value.Length; i++)
+            foreach (char c in value)
             {
-                char c = value[i];
-                if (!char.IsAscii(c))
+                if (char.IsSurrogate(c))
                 {
-                    throw new ArgumentException("Cannot contain non-ASCII characters.", caller);
-                }
-
-                if (char.IsControl(c))
-                {
-                    throw new ArgumentException("Cannot contain control characters.", caller);
+                    throw new ArgumentException("The value contained a character that was a surrogate, but the collection only supports code points in the Basic Multilingual Plane.", caller);
                 }
             }
         }

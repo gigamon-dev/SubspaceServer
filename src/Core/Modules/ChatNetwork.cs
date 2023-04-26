@@ -810,17 +810,11 @@ namespace SS.Core.Modules
                     int decodedByteCount = StringUtils.DefaultEncoding.GetChars(data, line);
                     Debug.Assert(decodedByteCount == data.Length);
 
-                    if (!StringUtils.IsPrintable(new ReadOnlySpan<char>(line, 0, charCount)))
-                    {
-                        // The line has a non-printable character. Discard it.
-                        _logManager.LogP(LogLevel.Malicious, nameof(ChatNetwork), player, $"Received a non-printable character.");
-                        ArrayPool<char>.Shared.Return(line);
-                    }
-                    else
-                    {
-                        // Queue it up to be processed on the mainloop thread.
-                        _mainloop.QueueMainWorkItem(MainloopWorkItem_ProcessLine, new CallHandlersDTO(player, line, charCount));
-                    }
+                    // The line shouldn't have any control characters. Replace any that exist.
+                    StringUtils.ReplaceControlCharacters(new Span<char>(line, 0, charCount));
+
+                    // Queue it up to be processed on the mainloop thread.
+                    _mainloop.QueueMainWorkItem(MainloopWorkItem_ProcessLine, new CallHandlersDTO(player, line, charCount));
 
                     // Skip any additional CR or LF (end of line) delimiters.
                     int remainingIndex = lineIndex + 1;

@@ -175,15 +175,16 @@ namespace SS.Core.Modules
                 """)]
         private void Command_help(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!parameters.IsWhiteSpace())
+            parameters = parameters.Trim();
+            if (!parameters.IsEmpty)
             {
                 if (parameters[0] == '?' || parameters[0] == '*' || parameters[0] == '!')
                 {
-                    parameters = parameters[1..];
+                    parameters = parameters[1..].TrimStart();
                 }
             }
 
-            if (parameters.IsWhiteSpace())
+            if (parameters.IsEmpty)
             {
                 parameters = _helpCommandName;
             }
@@ -191,14 +192,14 @@ namespace SS.Core.Modules
             int colonIndex = parameters.IndexOf(':');
             if (colonIndex != -1)
             {
-                ReadOnlySpan<char> section = parameters[..colonIndex];
-                ReadOnlySpan<char> key = parameters[(colonIndex + 1)..];
+                ReadOnlySpan<char> section = parameters[..colonIndex].Trim();
+                ReadOnlySpan<char> key = parameters[(colonIndex + 1)..].Trim();
 
-                if (section.IsWhiteSpace())
+                if (section.IsEmpty)
                 {
                     PrintConfigSections(player);
                 }
-                else if (key.IsWhiteSpace())
+                else if (key.IsEmpty)
                 {
                     PrintConfigSectionKeys(player, section);
                 }
