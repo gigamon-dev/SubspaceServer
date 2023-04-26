@@ -8,11 +8,11 @@ This document provides an overview of the various server parts and their relatio
 | aliasdb | - | No plans to add it. Use billing server functionality instead. |
 | ap_multipub | SS.Core.Modules.ArenaPlaceMultiPub | |
 | arenaman | SS.Core.Modules.ArenaManager | |
-| arenaperm | | |
+| arenaperm | - | No plans to add it. |
 | auth_ban | SS.Core.Modules.AuthBan | |
 | auth_file | SS.Core.Modules.AuthFile | |
 | auth_prefix | | |
-| contrib:auth_vie | - | No plans to add it. |
+| contrib:auth_vie | SS.Core.Modules.AuthVIE | |
 | funky:autoturret | - | No plans to add it. |
 | funky:autowarp | SS.Core.Modules.AutoWarp | |
 | balls | SS.Core.Modules.Balls | |
