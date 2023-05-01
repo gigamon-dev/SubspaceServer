@@ -80,11 +80,20 @@ namespace SS.Utilities
             return _trie.ContainsKey(key);
         }
 
-        // TODO:
-        //public TrieEnumerator StartsWith(ReadOnlySpan<char> keyStart)
-        //{
-        //}
+        /// <summary>
+        /// Returns an enumerator that iterates through keys in the collection that start with a specified <paramref name="prefix"/>.
+        /// </summary>
+        /// <param name="prefix">The prefix of the keys to match.</param>
+        /// <returns>An enumerator that can be used to iterate over the keys in the collection that start with a specified <paramref name="prefix"/>.</returns>
+        public Trie<byte>.KeyEnumerator StartsWith(ReadOnlySpan<char> prefix)
+        {
+            return new Trie<byte>.KeyEnumerator(_trie, prefix);
+        }
 
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         public Trie<byte>.KeyEnumerator GetEnumerator()
         {
             return _trie.Keys;
@@ -128,7 +137,7 @@ namespace SS.Utilities
     {
         private static readonly ObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
         private static readonly ObjectPool<TrieNode> s_caseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(false));
-        private static readonly ObjectPool<LinkedNode> s_linkedNodePool = new NonTransientObjectPool<LinkedNode>(new LinkedNodePooledObjectPolicy());
+        private static readonly ObjectPool<EnumeratorNode> s_enumeratorNodePool = new NonTransientObjectPool<EnumeratorNode>(new EnumeratorNodePooledObjectPolicy());
 
         private readonly ObjectPool<TrieNode> _trieNodePool;
         private readonly TrieNode _root;
@@ -179,9 +188,8 @@ namespace SS.Utilities
                 if (!TryAdd(key, value))
                 {
                     // Replace the existing value.
-                    // TODO: Change to just replace into the existing ndoe instead of removing and then re-adding.
-                    Remove(key, out _);
-                    TryAdd(key, value);
+                    TrieNode node = FindNode(key)!;
+                    node.Value = value;
                 }
             }
         }
@@ -206,9 +214,6 @@ namespace SS.Utilities
         /// <returns><see langword="true"/> if the key/value pair was added; otherwise <see langword="false"/>.</returns>
         public bool TryAdd(ReadOnlySpan<char> key, TValue value)
         {
-            if (key.IsEmpty)
-                return false;
-
             ThrowIfContainsSurrogateChar(key);
 
             TrieNode current = _root;
@@ -219,8 +224,6 @@ namespace SS.Utilities
                 if (!current.Children.TryGetValue(c, out TrieNode? node))
                 {
                     node = _trieNodePool.Get();
-                    node.Symbol = c;
-                    node.Parent = current;
                     current.Children.Add(c, node);
                 }
 
@@ -248,12 +251,6 @@ namespace SS.Utilities
         /// <returns><see langword="true"/> if the element was removed; otherwise <see langword="false"/>.</returns>
         public bool Remove(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
         {
-            if (key.IsEmpty)
-            {
-                value = default;
-                return false;
-            }
-
             ThrowIfContainsSurrogateChar(key);
 
             return RemoveFromNode(_root, key, out value);
@@ -290,8 +287,6 @@ namespace SS.Utilities
                     if (!child.IsLeaf && child.Children.Count == 0)
                     {
                         node.Children.Remove(key[0]);
-                        child.Parent = null;
-                        child.Symbol = default;
                         _trieNodePool.Return(child);
                     }
 
@@ -309,27 +304,10 @@ namespace SS.Utilities
         /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool ContainsKey(ReadOnlySpan<char> key)
         {
-            if (key.IsEmpty)
-            {
-                return false;
-            }
-
             ThrowIfContainsSurrogateChar(key);
 
-            TrieNode current = _root;
-            for (int i = 0; i < key.Length; i++)
-            {
-                if (current.Children.TryGetValue(key[i], out TrieNode? node))
-                {
-                    current = node;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-
-            return current.IsLeaf;
+            TrieNode? node = FindNode(key);
+            return node is not null && node.IsLeaf;
         }
 
         /// <summary>
@@ -340,31 +318,12 @@ namespace SS.Utilities
         /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool TryGetValue(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
         {
-            if (key.IsEmpty)
-            {
-                value = default;
-                return false;
-            }
-
             ThrowIfContainsSurrogateChar(key);
 
-            TrieNode current = _root;
-            for (int i = 0; i < key.Length; i++)
+            TrieNode? node = FindNode(key);
+            if (node is not null && node.IsLeaf)
             {
-                if (current.Children.TryGetValue(key[i], out TrieNode? node))
-                {
-                    current = node;
-                }
-                else
-                {
-                    value = default;
-                    return false;
-                }
-            }
-
-            if (current.IsLeaf)
-            {
-                value = current.Value!;
+                value = node.Value!;
                 return true;
             }
             else
@@ -374,11 +333,20 @@ namespace SS.Utilities
             }
         }
 
-        // TODO:
-        //public TrieEnumerator<TData> StartsWith(ReadOnlySpan<char> keyStart)
-        //{
-        //}
+        /// <summary>
+        /// Returns an enumerator that iterates through items in the collection that have keys that start with a specified <paramref name="prefix"/>.
+        /// </summary>
+        /// <param name="prefix">The prefix of the keys to match.</param>
+        /// <returns>An enumerator that can be used to iterate over the items in the collection that have keys that start with a specified <paramref name="prefix"/>.</returns>
+        public Enumerator StartsWith(ReadOnlySpan<char> prefix)
+        {
+            return new Enumerator(this, prefix);
+        }
 
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         public Enumerator GetEnumerator()
         {
             return new Enumerator(this);
@@ -425,6 +393,24 @@ namespace SS.Utilities
             Count = 0;
         }
 
+        private TrieNode? FindNode(ReadOnlySpan<char> key)
+        {
+            TrieNode current = _root;
+            for (int i = 0; i < key.Length; i++)
+            {
+                if (current.Children.TryGetValue(key[i], out TrieNode? node))
+                {
+                    current = node;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            return current;
+        }
+
         private static void ThrowIfContainsSurrogateChar(ReadOnlySpan<char> value, [CallerArgumentExpression(nameof(value))] string? caller = null)
         {
             foreach (char c in value)
@@ -440,7 +426,9 @@ namespace SS.Utilities
 
         private class TrieNode
         {
-            public readonly Dictionary<char, TrieNode> Children;
+            public readonly Dictionary<char, TrieNode> Children; // TODO: Use Rune instead of char to support all Unicode characters
+            public bool IsLeaf = false;
+            public TValue? Value = default;
 
             public TrieNode()
             {
@@ -451,11 +439,6 @@ namespace SS.Utilities
             {
                 Children = new(equalityComparer);
             }
-
-            public char Symbol;
-            public TrieNode? Parent;
-            public bool IsLeaf = false;
-            public TValue? Value = default;
         }
 
         private class CaseInsensitiveCharEqualityComparer : IEqualityComparer<char>
@@ -493,8 +476,6 @@ namespace SS.Utilities
                     return false;
 
                 obj.Children.Clear();
-                obj.Symbol = default;
-                obj.Parent = null;
                 obj.IsLeaf = false;
                 obj.Value = default;
 
@@ -502,26 +483,26 @@ namespace SS.Utilities
             }
         }
 
-        private class LinkedNode
+        private class EnumeratorNode
         {
-            public TrieNode? TrieNode { get; set; }
-            public LinkedNode? Next { get; set; }
+            public Dictionary<char, TrieNode>.Enumerator Enumerator;
+            public EnumeratorNode? Previous;
         }
 
-        private class LinkedNodePooledObjectPolicy : IPooledObjectPolicy<LinkedNode>
+        private class EnumeratorNodePooledObjectPolicy : IPooledObjectPolicy<EnumeratorNode>
         {
-            public Trie<TValue>.LinkedNode Create()
+            public Trie<TValue>.EnumeratorNode Create()
             {
-                return new LinkedNode();
+                return new EnumeratorNode();
             }
 
-            public bool Return(Trie<TValue>.LinkedNode obj)
+            public bool Return(Trie<TValue>.EnumeratorNode obj)
             {
                 if (obj is null)
                     return false;
 
-                obj.TrieNode = null;
-                obj.Next = null;
+                obj.Enumerator = default;
+                obj.Previous = null;
                 return true;
             }
         }
@@ -533,6 +514,11 @@ namespace SS.Utilities
             internal KeyEnumerator(Trie<TValue> trie)
             {
                 _enumerator = new Enumerator(trie);
+            }
+
+            internal KeyEnumerator(Trie<TValue> trie, ReadOnlySpan<char> prefix)
+            {
+                _enumerator = new Enumerator(trie, prefix);
             }
 
             public KeyEnumerator GetEnumerator() => this;
@@ -590,21 +576,46 @@ namespace SS.Utilities
 
         public struct Enumerator : IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)>
         {
-            private readonly Trie<TValue> _trie;
-            private bool _started = false;
-
-            // stack implemented as a linked list
-            private LinkedNode? _first = null;
-            private LinkedNode? _last = null;
+            // next
+            private TrieNode? _nextNode = null;
+            private EnumeratorNode? _nextEnumerator = null; // stack
 
             // current
-            private LinkedNode? _current = null;
+            private TrieNode? _current = null;
             private char[]? _currentKeyArray = null;
             private int _currentKeyLength = 0;
 
-            internal Enumerator(Trie<TValue> trie)
+            private const int MininumInitialKeyArrayLength = 16;
+
+            /// <summary>
+            /// Initializes an <see cref="Enumerator"/> over an entire Trie.
+            /// </summary>
+            /// <param name="trie">The trie to iterate over.</param>
+            /// <exception cref="ArgumentNullException">The <paramref name="trie"/> was null.</exception>
+            internal Enumerator(Trie<TValue> trie) : this(trie, ReadOnlySpan<char>.Empty)
             {
-                _trie = trie ?? throw new ArgumentNullException(nameof(trie));
+            }
+
+            /// <summary>
+            /// Initializes an <see cref="Enumerator"/> for items starting with a specified key in a Trie.
+            /// </summary>
+            /// <param name="trie">The trie to iterate over.</param>
+            /// <param name="prefix">The prefix of the items to iterate over.</param>
+            /// <exception cref="ArgumentNullException">The <paramref name="trie"/> was null.</exception>
+            internal Enumerator(Trie<TValue> trie, ReadOnlySpan<char> prefix)
+            {
+                if (trie is null)
+                    throw new ArgumentNullException(nameof(trie));
+
+                TrieNode? node = trie.FindNode(prefix);
+                if (node is not null)
+                {
+                    _nextNode = node;
+
+                    _currentKeyArray = ArrayPool<char>.Shared.Rent(Math.Max(prefix.Length, MininumInitialKeyArrayLength));
+                    prefix.CopyTo(_currentKeyArray);
+                    _currentKeyLength = prefix.Length;
+                }
             }
 
             public Enumerator GetEnumerator() => this;
@@ -613,122 +624,117 @@ namespace SS.Utilities
             {
                 get
                 {
-                    if (_current is null)
+                    if (_current is null || _currentKeyArray is null)
                         throw new InvalidOperationException();
 
-                    // Figure out how many characters are in the key.
-                    int charCount = 0;
-                    TrieNode? temp = _current.TrieNode!;
-                    while ((temp = temp.Parent) != null)
-                    {
-                        charCount++;
-                    }
-
-                    // Make sure we have an array large enough to hold it.
-                    if (_currentKeyArray is null || _currentKeyArray.Length < charCount)
-                    {
-                        if (_currentKeyArray is not null)
-                        {
-                            ArrayPool<char>.Shared.Return(_currentKeyArray);
-                        }
-
-                        _currentKeyArray = ArrayPool<char>.Shared.Rent(charCount);
-                    }
-
-                    // Copy the characters to the rented array.
-                    int index = charCount - 1;
-                    temp = _current.TrieNode!;
-                    do
-                    {
-                        _currentKeyArray[index--] = temp.Symbol;
-                        temp = temp.Parent;
-                    }
-                    while (temp != null && temp.Parent != null);
-
-                    _currentKeyLength = charCount;
-
-                    return (new ReadOnlyMemory<char>(_currentKeyArray, 0, _currentKeyLength), _current.TrieNode!.Value);
+                    return (new ReadOnlyMemory<char>(_currentKeyArray, 0, _currentKeyLength), _current.Value);
                 }
             }
 
             object IEnumerator.Current => Current;
 
+            public void Dispose()
+            {
+                _nextNode = null;
+
+                while (_nextEnumerator is not null)
+                {
+                    EnumeratorNode node = _nextEnumerator;
+                    _nextEnumerator = _nextEnumerator.Previous;
+                    node.Enumerator.Dispose();
+                    s_enumeratorNodePool.Return(node);
+                }
+
+                _current = null;
+
+                if (_currentKeyArray is not null)
+                {
+                    ArrayPool<char>.Shared.Return(_currentKeyArray, true);
+                }
+
+                _currentKeyLength = 0;
+            }
+
             public bool MoveNext()
             {
-                if (!_started)
+                while (_nextNode is not null || _nextEnumerator is not null)
                 {
-                    _started = true;
-                    _last = _first = Trie<TValue>.s_linkedNodePool.Get();
-                    _first.TrieNode = _trie._root;
-                    _first.Next = null;
-                }
-
-                if (_first is null)
-                {
-                    return false;
-                }
-
-                while (_first is not null)
-                {
-                    LinkedNode current = _first;
-
-                    // Add child nodes to the end.
-                    foreach (TrieNode child in current.TrieNode!.Children.Values)
+                    if (_nextNode is not null)
                     {
-                        LinkedNode childLink = Trie<TValue>.s_linkedNodePool.Get();
-                        childLink.TrieNode = child;
-                        childLink.Next = null;
-                        _last!.Next = childLink;
-                        _last = childLink;
-                    }
+                        TrieNode node = _nextNode;
+                        _nextNode = null;
 
-                    // Remove the first node (the one we're working on).
-                    _first = _first.Next;
-                    if (_first is null)
-                    {
-                        _last = null;
-                    }
+                        AppendEnumerator(node);
 
-                    if (current.TrieNode.IsLeaf)
-                    {
-                        if (_current is not null)
+                        if (node.IsLeaf)
                         {
-                            Trie<TValue>.s_linkedNodePool.Return(_current);
+                            _current = node;
+                            return true;
                         }
+                    }
 
-                        _current = current;
-                        return true;
+                    if (_nextEnumerator is not null)
+                    {
+                        ref Dictionary<char, TrieNode>.Enumerator enumerator = ref _nextEnumerator.Enumerator;
+                        if (enumerator.MoveNext())
+                        {
+                            KeyValuePair<char, TrieNode> kvp = enumerator.Current;
+                            AppendCurrentKey(kvp.Key);
+                            _nextNode = kvp.Value;
+                        }
+                        else
+                        {
+                            if (_currentKeyLength > 0)
+                                _currentKeyLength--;
+
+                            enumerator.Dispose();
+
+                            EnumeratorNode node = _nextEnumerator;
+                            _nextEnumerator = _nextEnumerator.Previous;
+                            s_enumeratorNodePool.Return(node);
+                        }
                     }
                 }
+
+                // Cleanup
+                Dispose();
 
                 return false;
             }
 
-            public void Dispose()
-            {
-                while (_first is not null)
-                {
-                    LinkedNode? next = _first.Next;
-                    Trie<TValue>.s_linkedNodePool.Return(_first);
-                    _first = next;
-                }
-
-                if (_current is not null)
-                {
-                    Trie<TValue>.s_linkedNodePool.Return(_current);
-                    _current = null;
-                }
-
-                if (_currentKeyArray is not null)
-                {
-                    ArrayPool<char>.Shared.Return(_currentKeyArray);
-                    _currentKeyArray = null;
-                }
-            }
-
-            void IEnumerator.Reset()
+            public void Reset()
             {
                 throw new NotSupportedException();
+            }
+
+            private void AppendEnumerator(TrieNode trieNode)
+            {
+                if (trieNode is null)
+                    return;
+
+                EnumeratorNode node = s_enumeratorNodePool.Get();
+                node.Enumerator = trieNode.Children.GetEnumerator();
+                node.Previous = _nextEnumerator;
+                _nextEnumerator = node;
+            }
+
+            private void AppendCurrentKey(char c)
+            {
+                int length = _currentKeyLength + 1;
+
+                if (_currentKeyArray is null)
+                {
+                    _currentKeyArray = ArrayPool<char>.Shared.Rent(Math.Max(length, MininumInitialKeyArrayLength));
+                }
+                else if (length > _currentKeyArray.Length)
+                {
+                    char[] replacement = ArrayPool<char>.Shared.Rent(length);
+                    _currentKeyArray.CopyTo(replacement, 0);
+                    ArrayPool<char>.Shared.Return(_currentKeyArray, true);
+                    _currentKeyArray = replacement;
+                }
+
+                _currentKeyArray[_currentKeyLength++] = c;
             }
         }
 
