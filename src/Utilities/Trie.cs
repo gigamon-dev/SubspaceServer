@@ -650,6 +650,7 @@ namespace SS.Utilities
                 if (_currentKeyArray is not null)
                 {
                     ArrayPool<char>.Shared.Return(_currentKeyArray, true);
+                    _currentKeyArray = null;
                 }
 
                 _currentKeyLength = 0;
