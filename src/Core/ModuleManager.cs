@@ -1,16 +1,11 @@
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
-using System.Text;
-using System.Threading;
 
 namespace SS.Core
 {
@@ -605,6 +600,9 @@ namespace SS.Core
                     WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}]");
                     
                     _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
+
+                    PluginAssemblyUnloadingCallback.Fire(this, assembly);
+
                     //moduleLoadContext.Unload(); // TODO: Investigate why this sometimes causes a seg fault on Linux and Mac.
                 }
             }
@@ -1126,6 +1124,8 @@ namespace SS.Core
                     _loadedPluginAssemblies[path] = assembly;
 
                     WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\"");
+
+                    PluginAssemblyLoadedCallback.Fire(this, assembly);
                 }
 
                 Type type = assembly.GetType(typeName);

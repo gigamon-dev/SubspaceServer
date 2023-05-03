@@ -407,27 +407,27 @@ namespace SS.Core.Modules
             {
                 try
                 {
-                    // TODO: remove string allocations when the IConfigHelp is spannified
-                    string sectionStr = section.ToString();
-                    string keyStr = key.ToString();
+                    configHelp.Lock();
 
-                    if (configHelp.Sections.Contains(sectionStr))
+                    try
                     {
-                        var helpAttributes =
-                            from helpTuple in configHelp.Sections[sectionStr]
-                            where string.Equals(helpTuple.Attr.Key, keyStr, StringComparison.OrdinalIgnoreCase)
-                                && helpTuple.Attr.Type.IsEnum
-                                && helpTuple.Attr.Scope == documentHandle.Scope
-                                && string.Equals(helpTuple.Attr.FileName, documentHandle.FileName, StringComparison.OrdinalIgnoreCase)
-                            select helpTuple.Attr;
-
-                        foreach (var attribute in helpAttributes)
+                        if (configHelp.TryGetSettingHelp(section, key, out var helpList))
                         {
-                            if (Enum.TryParse(attribute.Type, value, out object enumResult))
+                            foreach ((ConfigHelpAttribute attribute, _) in helpList)
                             {
-                                return (int)enumResult;
+                                if (attribute.Type.IsEnum
+                                    && attribute.Scope == documentHandle.Scope
+                                    && string.Equals(attribute.FileName, documentHandle.FileName, StringComparison.OrdinalIgnoreCase)
+                                    && Enum.TryParse(attribute.Type, value, out object enumResult))
+                                {
+                                    return (int)enumResult;
+                                }
                             }
                         }
+                    }
+                    finally
+                    {
+                        configHelp.Unlock();
                     }
                 }
                 finally

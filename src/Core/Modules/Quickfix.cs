@@ -2,8 +2,9 @@
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -26,6 +27,7 @@ namespace SS.Core.Modules
         private IFileTransfer _fileTransfer;
         private ILogManager _logManager;
         private INetwork _network;
+        private IObjectPoolManager _objectPoolManager;
 
         public bool Load(
             ComponentBroker broker,
@@ -36,7 +38,8 @@ namespace SS.Core.Modules
             IConfigManager configManager,
             IFileTransfer fileTransfer,
             ILogManager logManager,
-            INetwork network)
+            INetwork network,
+            IObjectPoolManager objectPoolManager)
         {
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -46,6 +49,7 @@ namespace SS.Core.Modules
             _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _network = network ?? throw new ArgumentNullException(nameof(network));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
             network.AddPacket(C2SPacketType.SettingChange, Packet_SettingChange);
             commandManager.AddCommand("quickfix", Command_quickfix);
@@ -165,24 +169,33 @@ namespace SS.Core.Modules
                 using FileStream fs = File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                 using StreamWriter writer = new(fs, StringUtils.DefaultEncoding);
 
-                foreach (var sectionGrouping in _configHelp.Sections.OrderBy(s => s.Key))
-                {
-                    if (string.Equals(sectionGrouping.Key, "All", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string[] shipNames = Enum.GetNames<ShipType>();
+                _configHelp.Lock();
 
-                        for (int i = 0; i < (int)ShipType.Spec; i++)
+                try
+                {
+                    foreach (string section in _configHelp.Sections)
+                    {
+                        if (string.Equals(section, "All", StringComparison.OrdinalIgnoreCase))
                         {
-                            TryWriteSection(parameters, sectionGrouping, arenaConfigHandle, writer, shipNames[i]);
+                            string[] shipNames = Enum.GetNames<ShipType>();
+
+                            for (int i = 0; i < (int)ShipType.Spec; i++)
+                            {
+                                TryWriteSection(parameters, section, arenaConfigHandle, writer, shipNames[i]);
+                            }
+                        }
+                        else
+                        {
+                            TryWriteSection(parameters, section, arenaConfigHandle, writer, section);
                         }
                     }
-                    else
-                    {
-                        TryWriteSection(parameters, sectionGrouping, arenaConfigHandle, writer, sectionGrouping.Key);
-                    }
-                }
 
-                hasData = fs.Position > 0;
+                    hasData = fs.Position > 0;
+                }
+                finally
+                {
+                    _configHelp.Unlock();
+                }
             }
             catch (Exception ex)
             {
@@ -220,40 +233,66 @@ namespace SS.Core.Modules
         }
 
         private void TryWriteSection(
-            ReadOnlySpan<char> filter, 
-            IGrouping<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> sectionGrouping, 
+            ReadOnlySpan<char> filter,
+            string helpSection, 
             ConfigHandle configHandle, 
             StreamWriter writer, 
             string sectionName)
         {
             bool sectionMatch = filter.IsWhiteSpace() || sectionName.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
-            foreach ((ConfigHelpAttribute attribute, string moduleTypeName) in sectionGrouping.OrderBy(item => item.Attr.Key))
+            if (!_configHelp.TryGetSectionKeys(helpSection, out IReadOnlyList<string> keyList))
+                return;
+
+            foreach (string key in keyList)
             {
-                bool keyMatch = filter.IsWhiteSpace() || attribute.Key.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
+                bool keyMatch = filter.IsWhiteSpace() || key.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
-                if ((sectionMatch || keyMatch)
-                    && attribute.Scope == ConfigScope.Arena
-                    && string.IsNullOrWhiteSpace(attribute.FileName))
+                if (!sectionMatch && !keyMatch)
+                    continue;
+
+                if (!_configHelp.TryGetSettingHelp(helpSection, key, out IReadOnlyList<ConfigHelpRecord> helpList))
+                    continue;
+
+                foreach ((ConfigHelpAttribute attribute, _) in helpList)
                 {
-                    string value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
-                    value ??= "<unset>";
-
-                    if (!string.IsNullOrWhiteSpace(attribute.Range))
+                    if (attribute.Scope == ConfigScope.Arena
+                        && string.IsNullOrWhiteSpace(attribute.FileName))
                     {
-                        int dashIndex = attribute.Range.IndexOf('-');
+                        string value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
+                        value ??= "<unset>";
 
-                        if (dashIndex != -1
-                            && int.TryParse(attribute.Range[0..dashIndex], out int min)
-                            && int.TryParse(attribute.Range[(dashIndex + 1)..], out int max))
+                        if (!string.IsNullOrWhiteSpace(attribute.Range))
                         {
-                            writer.Write($"{sectionName}:{attribute.Key}:{value}:{min}:{max}:{attribute.Description}\r\n");
-                            continue;
+                            int dashIndex = attribute.Range.IndexOf('-');
+
+                            if (dashIndex != -1
+                                && int.TryParse(attribute.Range[0..dashIndex], out int min)
+                                && int.TryParse(attribute.Range[(dashIndex + 1)..], out int max))
+                            {
+                                writer.Write($"{sectionName}:{attribute.Key}:{value}:{min}:{max}:{attribute.Description}\r\n");
+                                continue;
+                            }
                         }
 
-                    }
+                        StringBuilder description = _objectPoolManager.StringBuilderPool.Get();
 
-                    writer.Write($"{sectionName}:{attribute.Key}:{value}:::{attribute.Description}\r\n");
+                        try
+                        {
+                            description.Append(attribute.Description);
+                            description.Replace('\r', ' ');
+                            description.Replace('\n', ' ');
+
+                            writer.Write($"{sectionName}:{attribute.Key}:{value}:::{description}\r\n");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(description);
+                        }
+                        
+                        // Only the first matching attribute.
+                        break;
+                    }
                 }
             }
         }

@@ -1,18 +1,27 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
     /// <summary>
-    /// Module that provides the help commaand, which by default is ?man.
-    /// This allows users to get information about a command or config file setting.
+    /// Module that provides the help information about commands and config settings.
+    /// <para>
+    /// This module adds a help command, which by default is ?man.
+    /// It allows users to get information about a command or config file setting.
+    /// </para>
+    /// <para>
+    /// This module reads config setting information from <see cref="ConfigHelpAttribute"/>s and 
+    /// makes that data accessible though the <see cref="IConfigHelp"/> interface.
+    /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Help : IModule, IModuleLoaderAware, IHelp, IConfigHelp
+    public sealed class Help : IModule, IModuleLoaderAware, IHelp, IConfigHelp, IDisposable
     {
         private IChat _chat;
         private ICommandManager _commandManager;
@@ -22,10 +31,41 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IConfigHelp> _iConfigHelpToken;
 
         private string _helpCommandName;
-        private ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> _settingsLookup;
-        public ILookup<string, (ConfigHelpAttribute Attr, string ModuleTypeName)> Sections => _settingsLookup;
-        private readonly Trie<string> _sectionAllKeysDictionary = new(false);
-        private string _sectionGroupsStr;
+        
+        /// <summary>
+        /// ConfigHelpRecords for each assembly.
+        /// </summary>
+        private readonly Dictionary<Assembly, List<ConfigHelpRecord>> _assemblyConfigHelpDictionary = new();
+
+        /// <summary>
+        /// ConfigHelpRecords for each setting.
+        /// </summary>
+        /// <remarks>
+        /// <para>Key = section:key</para>
+        /// <para>Can be searched by section: or by section:key.</para>
+        /// </remarks>
+        private readonly Trie<List<ConfigHelpRecord>> _configHelpTrie = new(false);
+
+        /// <summary>
+        /// Known sections.
+        /// </summary>
+        private readonly List<string> _sectionList = new();
+
+        /// <summary>
+        /// Known keys for each known section.
+        /// </summary>
+        /// <remarks>
+        /// Key = section,
+        /// Value = list of known keys
+        /// </remarks>
+        private readonly Trie<List<string>> _sectionKeysTrie = new(false);
+
+        // For use by the writer (there can only be one at a given time).
+        private readonly SortedSet<string> _sortedSet = new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly ReaderWriterLockSlim _rwLock = new();
+
+        #region Module members
 
         public bool Load(
             ComponentBroker broker, 
@@ -39,6 +79,9 @@ namespace SS.Core.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
+            PluginAssemblyLoadedCallback.Register(broker, Callback_PluginAssemblyLoaded);
+            PluginAssemblyUnloadingCallback.Register(broker, Callback_PluginAssemblyUnloading);
+
             _helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
             if (string.IsNullOrWhiteSpace(_helpCommandName))
                 _helpCommandName = "man";
@@ -47,19 +90,6 @@ namespace SS.Core.Modules
 
             _iHelpToken = broker.RegisterInterface<IHelp>(this);
             _iConfigHelpToken = broker.RegisterInterface<IConfigHelp>(this);
-
-            return true;
-        }
-
-        bool IModule.Unload(ComponentBroker broker)
-        {
-            if (broker.UnregisterInterface(ref _iHelpToken) != 0)
-                return false;
-
-            if (broker.UnregisterInterface(ref _iConfigHelpToken) != 0)
-                return false;
-
-            _commandManager.RemoveCommand(_helpCommandName, Command_help);
 
             return true;
         }
@@ -75,95 +105,135 @@ namespace SS.Core.Modules
             return true;
         }
 
+        bool IModule.Unload(ComponentBroker broker)
+        {
+            if (broker.UnregisterInterface(ref _iHelpToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iConfigHelpToken) != 0)
+                return false;
+
+            _commandManager.RemoveCommand(_helpCommandName, Command_help);
+
+            PluginAssemblyLoadedCallback.Unregister(broker, Callback_PluginAssemblyLoaded);
+            PluginAssemblyUnloadingCallback.Unregister(broker, Callback_PluginAssemblyUnloading);
+
+            return true;
+        }
+
+        #endregion
+
+        #region IHelp
+
         string IHelp.HelpCommand => _helpCommandName;
 
-        private void LoadConfigHelp()
-        {
-            static Type GetModuleType(Type type)
-            {
-                if (type == null)
-                    return null;
+        #endregion
 
-                if (typeof(IModule).IsAssignableFrom(type))
-                    return type;
-                else if (type.DeclaringType != null)
-                    return GetModuleType(type.DeclaringType);
-                else
-                    return null;
+        #region IConfigHelp
+
+        void IConfigHelp.Lock()
+        {
+            _rwLock.EnterReadLock();
+        }
+
+        void IConfigHelp.Unlock()
+        {
+            _rwLock.ExitReadLock();
+        }
+
+        IReadOnlyList<string> IConfigHelp.Sections
+        {
+            get
+            {
+                if (!_rwLock.IsReadLockHeld)
+                    throw new InvalidOperationException($"{nameof(IConfigHelp)}.{nameof(IConfigHelp.Lock)} was not called.");
+
+                return _sectionList;
+            }
+        }
+
+        bool IConfigHelp.TryGetSectionKeys(ReadOnlySpan<char> section, out IReadOnlyList<string> keyList)
+        {
+            if (!_rwLock.IsReadLockHeld)
+                throw new InvalidOperationException($"{nameof(IConfigHelp)}.{nameof(IConfigHelp.Lock)} was not called.");
+
+            if (!_sectionKeysTrie.TryGetValue(section, out List<string> keys))
+            {
+                keyList = null;
+                return false;
             }
 
-            var helpAttributes =
-                from assembly in AppDomain.CurrentDomain.GetAssemblies()
-                let assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>()
-                where assemblyProductAttribute != null && !assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)
-                from type in assembly.GetTypes()
-                let typeAttributes = type.GetCustomAttributes<ConfigHelpAttribute>()
-                let constructorAttributes =
-                    from constructor in type.GetConstructors()
-                    from attr in constructor.GetCustomAttributes<ConfigHelpAttribute>()
-                    select attr
-                let methodAttributes =
-                    from method in type.GetRuntimeMethods()
-                    from attr in method.GetCustomAttributes<ConfigHelpAttribute>()
-                    select attr
-                let fieldAttributes =
-                    from field in type.GetRuntimeFields()
-                    from attr in field.GetCustomAttributes<ConfigHelpAttribute>()
-                    select attr
-                let propertyAttributes =
-                    from property in type.GetRuntimeProperties()
-                    from attr in property.GetCustomAttributes<ConfigHelpAttribute>()
-                    select attr
-                let allAttributes = typeAttributes.Concat(constructorAttributes).Concat(methodAttributes).Concat(fieldAttributes).Concat(propertyAttributes)
-                from attr in allAttributes
-                let moduleType = GetModuleType(type)
-                select (attr, moduleType?.FullName);
+            keyList = keys;
+            return true;
+        }
 
-            _settingsLookup = helpAttributes.ToLookup(tuple => tuple.attr.Section, StringComparer.OrdinalIgnoreCase);
+        bool IConfigHelp.TryGetSettingHelp(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out IReadOnlyList<ConfigHelpRecord> helpList)
+        {
+            if (!_rwLock.IsReadLockHeld)
+                throw new InvalidOperationException($"{nameof(IConfigHelp)}.{nameof(IConfigHelp.Lock)} was not called.");
 
-            StringBuilder sectionGroupsBuilder = _objectPoolManager.StringBuilderPool.Get();
+            Span<char> sectionKey = stackalloc char[section.Length + 1 + key.Length];
+            if (!sectionKey.TryWrite($"{section}:{key}", out int charsWritten)
+                || charsWritten != sectionKey.Length)
+            {
+                helpList = null;
+                return false;
+            }
+
+            if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> records))
+            {
+                helpList = null;
+                return false;
+            }
+
+            helpList = records;
+            return true;
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        public void Dispose()
+        {
+            _rwLock.Dispose();
+        }
+
+        #endregion
+
+        #region Callbacks
+
+        private void Callback_PluginAssemblyLoaded(Assembly assembly)
+        {
+            _rwLock.EnterWriteLock();
 
             try
             {
-                foreach (var sectionGroup in _settingsLookup)
-                {
-                    if (sectionGroupsBuilder.Length > 0)
-                        sectionGroupsBuilder.Append(", ");
-
-                    sectionGroupsBuilder.Append(sectionGroup.Key);
-
-                    var keys = sectionGroup
-                        .Select(tuple => tuple.Attr.Key)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(key => key, StringComparer.OrdinalIgnoreCase);
-
-                    StringBuilder allKeysBuilder = _objectPoolManager.StringBuilderPool.Get();
-
-                    try
-                    {
-                        foreach (string key in keys)
-                        {
-                            if (allKeysBuilder.Length > 0)
-                                allKeysBuilder.Append(", ");
-
-                            allKeysBuilder.Append(key);
-                        }
-
-                        _sectionAllKeysDictionary[sectionGroup.Key] = allKeysBuilder.ToString();
-                    }
-                    finally
-                    {
-                        _objectPoolManager.StringBuilderPool.Return(allKeysBuilder);
-                    }
-                }
-
-                _sectionGroupsStr = sectionGroupsBuilder.ToString();
+                LoadConfigHelp(assembly);
+                RefreshKnownSectionsAndKeys();
             }
             finally
             {
-                _objectPoolManager.StringBuilderPool.Return(sectionGroupsBuilder);
+                _rwLock.ExitWriteLock();
             }
         }
+
+        private void Callback_PluginAssemblyUnloading(Assembly assembly)
+        {
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                RemoveConfigHelp(assembly);
+                RefreshKnownSectionsAndKeys();
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        #endregion
 
         [CommandHelp(
             Targets = CommandTarget.None,
@@ -205,89 +275,453 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    PrintConfigHelp(player, section.ToString(), key.ToString()); // TODO: remove LINQ and string allocation
+                    PrintConfigHelp(player, section, key);
                 }
             }
             else
             {
                 PrintCommandHelp(player, parameters);
             }
-        }
 
-        private void PrintConfigSections(Player player)
-        {
-            _chat.SendMessage(player, "Known config file sections:");
-            _chat.SendWrappedText(player, _sectionGroupsStr);
-        }
 
-        private void PrintConfigSectionKeys(Player player, ReadOnlySpan<char> section)
-        {
-            if (!_sectionAllKeysDictionary.TryGetValue(section, out string allKeysStr))
+            void PrintConfigSections(Player player)
             {
-                _chat.SendMessage(player, $"I don't know anything about section {section}.");
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                try
+                {
+                    _rwLock.EnterReadLock();
+
+                    try
+                    {
+                        foreach (string section in _sectionList)
+                        {
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(section);
+                        }
+                    }
+                    finally
+                    {
+                        _rwLock.ExitReadLock();
+                    }
+
+                    _chat.SendMessage(player, "Known config file sections:");
+                    _chat.SendWrappedText(player, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
+            }
+
+            void PrintConfigSectionKeys(Player player, ReadOnlySpan<char> section)
+            {
+                _rwLock.EnterReadLock();
+
+                if (!_sectionKeysTrie.TryGetValue(section, out List<string> keyList))
+                {
+                    _rwLock.ExitReadLock();
+                    _chat.SendMessage(player, $"Config file section '{section}' not found.");
+                    return;
+                }
+
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                try
+                {
+                    foreach (string key in keyList)
+                    {
+                        if (sb.Length > 0)
+                            sb.Append(", ");
+
+                        sb.Append(key);
+                    }
+
+                    _rwLock.ExitReadLock();
+
+                    _chat.SendMessage(player, $"Known keys in config file section '{section}':");
+                    _chat.SendWrappedText(player, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
+            }
+
+            void PrintConfigHelp(Player player, ReadOnlySpan<char> section, ReadOnlySpan<char> key)
+            {
+                if (section.IsEmpty || key.IsEmpty)
+                    return;
+
+                Span<char> sectionKey = stackalloc char[section.Length + 1 + key.Length];
+                if (!sectionKey.TryWrite($"{section}:{key}", out int charsWritten)
+                    || charsWritten != sectionKey.Length)
+                {
+                    return;
+                }
+
+                if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> records))
+                {
+                    _chat.SendMessage(player, $"Config file setting '{section}:{key}' not found.");
+                    return;
+                }
+
+                foreach ((ConfigHelpAttribute attribute, Type moduleType) in records)
+                {
+                    _chat.SendMessage(player, $"Help on setting '{attribute.Section}:{attribute.Key}':");
+
+                    if (moduleType is not null)
+                        _chat.SendMessage(player, $"  Requires module: {moduleType.FullName}");
+
+                    if (string.IsNullOrWhiteSpace(attribute.FileName))
+                        _chat.SendMessage(player, $"  Location: {attribute.Scope}");
+                    else
+                        _chat.SendMessage(player, $"  Location: {attribute.Scope}, File: {attribute.FileName}");
+
+                    _chat.SendMessage(player, $"  Type: {attribute.Type.Name}");
+
+                    if (!string.IsNullOrWhiteSpace(attribute.Range))
+                        _chat.SendMessage(player, $"  Range: {attribute.Range}");
+
+                    if (!string.IsNullOrWhiteSpace(attribute.DefaultValue))
+                        _chat.SendMessage(player, $"  Default: {attribute.DefaultValue}");
+
+                    if (attribute.Description.Contains('\n'))
+                    {
+                        ReadOnlySpan<char> remaining = attribute.Description;
+
+                        while (!remaining.IsEmpty)
+                        {
+                            ReadOnlySpan<char> line;
+
+                            int index = remaining.IndexOf('\n');
+                            if (index == -1)
+                            {
+                                line = remaining;
+                                remaining = ReadOnlySpan<char>.Empty;
+                            }
+                            else
+                            {
+                                line = remaining[..index];
+                                remaining = remaining[(index + 1)..];
+                            }
+
+                            line = line.TrimEnd("\r");
+
+                            _chat.SendMessage(player, $"  {line}");
+                        }
+                    }
+                    else
+                    {
+                        _chat.SendWrappedText(player, attribute.Description);
+                    }
+                }
+            }
+
+            void PrintCommandHelp(Player player, ReadOnlySpan<char> command)
+            {
+                if (player == null)
+                    return;
+
+                string helpText = _commandManager.GetHelpText(command, player.Arena);
+
+                if (string.IsNullOrWhiteSpace(helpText))
+                {
+                    _chat.SendMessage(player, $"Command '?{command}' not found.");
+                    return;
+                }
+
+                _chat.SendMessage(player, $"Help on command '?{command}':");
+
+                ReadOnlySpan<char> remaining = helpText;
+
+                while (!remaining.IsEmpty)
+                {
+                    ReadOnlySpan<char> line;
+
+                    int index = remaining.IndexOf('\n');
+                    if (index == -1)
+                    {
+                        line = remaining;
+                        remaining = ReadOnlySpan<char>.Empty;
+                    }
+                    else
+                    {
+                        line = remaining[..index];
+                        remaining = remaining[(index + 1)..];
+                    }
+
+                    line = line.TrimEnd("\r");
+                    if (line.IsEmpty)
+                        line = " "; // clients do not display empty lines, so include a space so that it looks like an empty line
+
+                    _chat.SendMessage(player, line);
+                }
+            }
+        }
+
+        private void LoadConfigHelp()
+        {
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    LoadConfigHelp(assembly);
+                }
+
+                RefreshKnownSectionsAndKeys();
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        private void LoadConfigHelp(Assembly assembly)
+        {
+            if (assembly is null)
+                return;
+
+            var assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>();
+            if (assemblyProductAttribute is null
+                || assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase))
+            {
                 return;
             }
 
-            _chat.SendMessage(player, $"Known keys in section {section}:");
-            _chat.SendWrappedText(player, allKeysStr);
+            if (_assemblyConfigHelpDictionary.ContainsKey(assembly))
+            {
+                RemoveConfigHelp(assembly);
+            }
+
+            foreach (Type type in assembly.GetTypes())
+            {
+                foreach (var constructorInfo in type.GetConstructors())
+                {
+                    foreach (var attribute in constructorInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    {
+                        Add(attribute, assembly, type);
+                    }
+                }
+
+                foreach (var methodInfo in type.GetRuntimeMethods())
+                {
+                    foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    {
+                        Add(attribute, assembly, type);
+                    }
+                }
+
+                foreach (var fieldInfo in type.GetRuntimeFields())
+                {
+                    foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    {
+                        Add(attribute, assembly, type);
+                    }
+                }
+
+                foreach (var propertyInfo in type.GetRuntimeProperties())
+                {
+                    foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    {
+                        Add(attribute, assembly, type);
+                    }
+                }
+
+                foreach (var eventInfo in type.GetRuntimeEvents())
+                {
+                    foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    {
+                        Add(attribute, assembly, type);
+                    }
+                }
+            }
+
+
+            void Add(ConfigHelpAttribute attribute, Assembly assembly, Type type)
+            {
+                if (attribute is null || assembly is null)
+                    return;
+
+                if (string.IsNullOrWhiteSpace(attribute.Section) || string.IsNullOrWhiteSpace(attribute.Key))
+                    return;
+
+                Span<char> sectionKey = stackalloc char[attribute.Section.Length + 1 + attribute.Key.Length];
+                if (!sectionKey.TryWrite($"{attribute.Section}:{attribute.Key}", out int charsWritten)
+                    || charsWritten != sectionKey.Length)
+                {
+                    return;
+                }
+
+                Type moduleType = GetModuleType(type);
+                ConfigHelpRecord record = new(attribute, moduleType);
+
+                AddAssemblyRecord(assembly, record);
+                AddSettingRecord(sectionKey, record);
+
+
+                static Type GetModuleType(Type type)
+                {
+                    if (type is null)
+                        return null;
+
+                    if (typeof(IModule).IsAssignableFrom(type))
+                        return type;
+                    else if (type.DeclaringType != null)
+                        return GetModuleType(type.DeclaringType);
+                    else
+                        return null;
+                }
+
+                void AddAssemblyRecord(Assembly assembly, ConfigHelpRecord record)
+                {
+                    if (!_assemblyConfigHelpDictionary.TryGetValue(assembly, out List<ConfigHelpRecord> configHelpList))
+                    {
+                        configHelpList = new List<ConfigHelpRecord>();
+                        _assemblyConfigHelpDictionary.Add(assembly, configHelpList);
+                    }
+
+                    configHelpList.Add(record);
+                }
+
+                void AddSettingRecord(Span<char> sectionKey, ConfigHelpRecord record)
+                {
+                    if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> configHelpList))
+                    {
+                        configHelpList = new List<ConfigHelpRecord>(1); // each setting is usually represented by a single attribute
+                        _configHelpTrie.Add(sectionKey, configHelpList);
+                    }
+
+                    configHelpList.Add(record);
+                }
+            }
         }
 
-        private void PrintConfigHelp(Player player, string section, string key)
+        private void RemoveConfigHelp(Assembly assembly)
         {
-            if (!_settingsLookup.Contains(section))
+            if (assembly is null
+                || !_assemblyConfigHelpDictionary.Remove(assembly, out List<ConfigHelpRecord> configHelpList))
             {
-                _chat.SendMessage(player, $"I don't know anything about section {section}.");
                 return;
             }
 
-            var keys = _settingsLookup[section].Where(tuple => string.Equals(tuple.Attr.Key, key, StringComparison.OrdinalIgnoreCase));
-            if (!keys.Any())
+            foreach (ConfigHelpRecord record in configHelpList)
             {
-                _chat.SendMessage(player, $"I don't know anything about key {key}.");
-                return;
+                RemoveSettingRecord(record);
             }
 
-            foreach ((ConfigHelpAttribute attr, string moduleTypeName) in keys)
+            configHelpList.Clear();
+
+
+            void RemoveSettingRecord(ConfigHelpRecord record)
             {
-                _chat.SendMessage(player, $"Help on setting {section}:{attr.Key}:");
+                Span<char> sectionKey = stackalloc char[record.Attribute.Section.Length + 1 + record.Attribute.Key.Length];
+                if (!sectionKey.TryWrite($"{record.Attribute.Section}:{record.Attribute.Key}", out int charsWritten)
+                    || charsWritten != sectionKey.Length)
+                {
+                    return;
+                }
+
+                if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> configHelpList))
+                    return;
+
+                configHelpList.Remove(record);
+
+                if (configHelpList.Count == 0)
+                {
+                    _configHelpTrie.Remove(sectionKey, out _);
+                }
+            }
+        }
+
+        private void RefreshKnownSectionsAndKeys()
+        {
+            // Known sections
+            RefreshSections();
+
+            // Known keys for each section
+            RefreshKeys();
+            
+
+            void RefreshSections()
+            {
+                _sortedSet.Clear();
+
+                foreach ((_, var helpList) in _configHelpTrie)
+                {
+                    foreach (ConfigHelpRecord record in helpList)
+                    {
+                        _sortedSet.Add(record.Attribute.Section);
+                    }
+                }
+
+                _sectionList.Clear();
+                _sectionList.AddRange(_sortedSet);
+            }
+
+            void RefreshKeys()
+            {
+                // Clear each section's keys.
+                foreach (List<string> keyList in _sectionKeysTrie.Values)
+                {
+                    keyList.Clear();
+                }
+
+                // Add keys for each section.
+                foreach (string section in _sectionList)
+                {
+                    RefreshKeysForSection(section);
+                }
+
+                // Remove sections that no longer exist.
+                while (TryRemoveOneEmpty()) { }
                 
-                if (!string.IsNullOrWhiteSpace(moduleTypeName))
-                    _chat.SendMessage(player, $"  Requires module: {moduleTypeName}");
 
-                if(string.IsNullOrWhiteSpace(attr.FileName))
-                    _chat.SendMessage(player, $"  Location: {attr.Scope}");
+                bool TryRemoveOneEmpty()
+                {
+                    foreach (var (section, keyList) in _sectionKeysTrie)
+                    {
+                        if (keyList.Count == 0)
+                        {
+                            _sectionKeysTrie.Remove(section.Span, out _);
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }
+            }
+
+            void RefreshKeysForSection(string section)
+            {
+                _sortedSet.Clear();
+
+                Span<char> search = stackalloc char[section.Length + 1];
+                if (!search.TryWrite($"{section}:", out int charsWritten) || charsWritten != search.Length)
+                    return;
+
+                foreach ((_, var helpList) in _configHelpTrie.StartsWith(search))
+                {
+                    foreach (ConfigHelpRecord record in helpList)
+                    {
+                        _sortedSet.Add(record.Attribute.Key);
+                    }
+                }
+
+                if (_sectionKeysTrie.TryGetValue(section, out List<string> keyList))
+                {
+                    keyList.Clear();
+                    keyList.AddRange(_sortedSet);
+                }
                 else
-                    _chat.SendMessage(player, $"  Location: {attr.Scope}, File: {attr.FileName}");
-
-                _chat.SendMessage(player, $"  Type: {attr.Type.Name}");
-
-                if (!string.IsNullOrWhiteSpace(attr.Range))
-                    _chat.SendMessage(player, $"  Range: {attr.Range}");
-
-                if (!string.IsNullOrWhiteSpace(attr.DefaultValue))
-                    _chat.SendMessage(player, $"  Default: {attr.DefaultValue}");
-
-                _chat.SendWrappedText(player, attr.Description);
-            }
-        }
-
-        private void PrintCommandHelp(Player player, ReadOnlySpan<char> command)
-        {
-            if (player == null)
-                return;
-
-            string helpText = _commandManager.GetHelpText(command, player.Arena);
-
-            if (string.IsNullOrWhiteSpace(helpText))
-            {
-                _chat.SendMessage(player, $"Sorry, I don't know anything about '?{command}'.");
-                return;
-            }
-
-            _chat.SendMessage(player, $"Help on '?{command}':");
-            foreach (string str in helpText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                _chat.SendMessage(player, str);
+                {
+                    keyList = new(_sortedSet);
+                    _sectionKeysTrie.Add(section, keyList);
+                }
             }
         }
     }

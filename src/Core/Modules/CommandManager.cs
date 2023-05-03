@@ -206,8 +206,8 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        sb.Append($"Targets: {helpAttr.Targets:F}\n");
-                        sb.Append($"Args: {helpAttr.Args ?? "None"}\n");
+                        sb.AppendLine($"Targets: {helpAttr.Targets:F}");
+                        sb.AppendLine($"Args: {helpAttr.Args ?? "None"}");
 
                         if (!string.IsNullOrWhiteSpace(helpAttr.Description))
                             sb.Append(helpAttr.Description);
