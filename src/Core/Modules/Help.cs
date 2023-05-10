@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -63,7 +64,28 @@ namespace SS.Core.Modules
         // For use by the writer (there can only be one at a given time).
         private readonly SortedSet<string> _sortedSet = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Lock for synchronizing access to <see cref="_assemblyConfigHelpDictionary"/>, <see cref="_configHelpTrie"/>, <see cref="_sectionList"/>, and <see cref="_sectionKeysTrie"/>.
+        /// </summary>
         private readonly ReaderWriterLockSlim _rwLock = new();
+
+        /// <summary>
+        /// Queue of config help work.
+        /// </summary>
+        /// <remarks>
+        /// Items are the assembly to load config help for. <see langword="null"/> means load config help for all loaded assemblies.
+        /// </remarks>
+        private readonly Queue<Assembly> _loadQueue = new(16);
+
+        /// <summary>
+        /// The task that loads the config help. <see langword="null"/> means there is no loading in progress.
+        /// </summary>
+        private Task _loadTask = null;
+
+        /// <summary>
+        /// Lock for synchronizing access to <see cref="_loadQueue"/> and <see cref="_loadTask"/>.
+        /// </summary>
+        private readonly object _loadLock = new();
 
         #region Module members
 
@@ -96,7 +118,15 @@ namespace SS.Core.Modules
 
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
-            LoadConfigHelp();
+            lock (_loadLock)
+            {
+                // Add a job to process all loaded assemblies.
+                _loadQueue.Enqueue(null);
+
+                // Start a task to do the loading if there isn't already one.
+                _loadTask ??= Task.Run(ProcessConfigHelpLoadJobs);
+            }
+
             return true;
         }
 
@@ -117,6 +147,38 @@ namespace SS.Core.Modules
 
             PluginAssemblyLoadedCallback.Unregister(broker, Callback_PluginAssemblyLoaded);
             PluginAssemblyUnloadingCallback.Unregister(broker, Callback_PluginAssemblyUnloading);
+
+
+            Task loadTask;
+
+            do
+            {
+                lock (_loadLock)
+                {
+                    loadTask = _loadTask;
+
+                    if (loadTask is null)
+                    {
+                        // Unload all config help data.
+                        _rwLock.EnterWriteLock();
+
+                        try
+                        {
+                            _assemblyConfigHelpDictionary.Clear();
+                            _configHelpTrie.Clear();
+                            _sectionList.Clear();
+                            _sectionKeysTrie.Clear();
+                        }
+                        finally
+                        {
+                            _rwLock.ExitWriteLock();
+                        }
+                    }
+                }
+
+                loadTask?.Wait();
+            }
+            while (loadTask is not null);
 
             return true;
         }
@@ -205,32 +267,52 @@ namespace SS.Core.Modules
 
         private void Callback_PluginAssemblyLoaded(Assembly assembly)
         {
-            _rwLock.EnterWriteLock();
+            if (assembly is null)
+                return;
 
-            try
+            lock (_loadLock)
             {
-                LoadConfigHelp(assembly);
-                RefreshKnownSectionsAndKeys();
-            }
-            finally
-            {
-                _rwLock.ExitWriteLock();
+                // Add a job to process the assembly.
+                _loadQueue.Enqueue(assembly);
+
+                // Start a task to do the loading if there isn't already one.
+                _loadTask ??= Task.Run(ProcessConfigHelpLoadJobs);
             }
         }
 
         private void Callback_PluginAssemblyUnloading(Assembly assembly)
         {
-            _rwLock.EnterWriteLock();
+            if (assembly is null)
+                return;
 
-            try
+            Task loadTask;
+
+            do
             {
-                RemoveConfigHelp(assembly);
-                RefreshKnownSectionsAndKeys();
+                lock (_loadLock)
+                {
+                    loadTask = _loadTask;
+
+                    if (loadTask is null)
+                    {
+                        // Unload config help data for the assembly.
+                        _rwLock.EnterWriteLock();
+
+                        try
+                        {
+                            RemoveConfigHelp(assembly);
+                            RefreshKnownSectionsAndKeys();
+                        }
+                        finally
+                        {
+                            _rwLock.ExitWriteLock();
+                        }
+                    }
+                }
+
+                loadTask?.Wait();
             }
-            finally
-            {
-                _rwLock.ExitWriteLock();
-            }
+            while (loadTask is not null);
         }
 
         #endregion
@@ -318,35 +400,44 @@ namespace SS.Core.Modules
 
             void PrintConfigSectionKeys(Player player, ReadOnlySpan<char> section)
             {
-                _rwLock.EnterReadLock();
-
-                if (!_sectionKeysTrie.TryGetValue(section, out List<string> keyList))
-                {
-                    _rwLock.ExitReadLock();
-                    _chat.SendMessage(player, $"Config file section '{section}' not found.");
-                    return;
-                }
-
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                StringBuilder sb = null;
 
                 try
                 {
-                    foreach (string key in keyList)
+                    _rwLock.EnterReadLock();
+
+                    try
                     {
-                        if (sb.Length > 0)
-                            sb.Append(", ");
+                        if (!_sectionKeysTrie.TryGetValue(section, out List<string> keyList))
+                        {
+                            _chat.SendMessage(player, $"Config file section '{section}' not found.");
+                            return;
+                        }
 
-                        sb.Append(key);
+                        sb = _objectPoolManager.StringBuilderPool.Get();
+
+                        foreach (string key in keyList)
+                        {
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(key);
+                        }
                     }
-
-                    _rwLock.ExitReadLock();
+                    finally
+                    {
+                        _rwLock.ExitReadLock();
+                    }
 
                     _chat.SendMessage(player, $"Known keys in config file section '{section}':");
                     _chat.SendWrappedText(player, sb);
                 }
                 finally
                 {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
+                    if (sb is not null)
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
                 }
             }
 
@@ -362,61 +453,70 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> records))
+                _rwLock.EnterReadLock();
+
+                try
                 {
-                    _chat.SendMessage(player, $"Config file setting '{section}:{key}' not found.");
-                    return;
-                }
-
-                foreach ((ConfigHelpAttribute attribute, Type moduleType) in records)
-                {
-                    _chat.SendMessage(player, $"Help on setting '{attribute.Section}:{attribute.Key}':");
-
-                    if (moduleType is not null)
-                        _chat.SendMessage(player, $"  Requires module: {moduleType.FullName}");
-
-                    if (string.IsNullOrWhiteSpace(attribute.FileName))
-                        _chat.SendMessage(player, $"  Location: {attribute.Scope}");
-                    else
-                        _chat.SendMessage(player, $"  Location: {attribute.Scope}, File: {attribute.FileName}");
-
-                    _chat.SendMessage(player, $"  Type: {attribute.Type.Name}");
-
-                    if (!string.IsNullOrWhiteSpace(attribute.Range))
-                        _chat.SendMessage(player, $"  Range: {attribute.Range}");
-
-                    if (!string.IsNullOrWhiteSpace(attribute.DefaultValue))
-                        _chat.SendMessage(player, $"  Default: {attribute.DefaultValue}");
-
-                    if (attribute.Description.Contains('\n'))
+                    if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> records))
                     {
-                        ReadOnlySpan<char> remaining = attribute.Description;
+                        _chat.SendMessage(player, $"Config file setting '{section}:{key}' not found.");
+                        return;
+                    }
 
-                        while (!remaining.IsEmpty)
+                    foreach ((ConfigHelpAttribute attribute, Type moduleType) in records)
+                    {
+                        _chat.SendMessage(player, $"Help on setting '{attribute.Section}:{attribute.Key}':");
+
+                        if (moduleType is not null)
+                            _chat.SendMessage(player, $"  Requires module: {moduleType.FullName}");
+
+                        if (string.IsNullOrWhiteSpace(attribute.FileName))
+                            _chat.SendMessage(player, $"  Location: {attribute.Scope}");
+                        else
+                            _chat.SendMessage(player, $"  Location: {attribute.Scope}, File: {attribute.FileName}");
+
+                        _chat.SendMessage(player, $"  Type: {attribute.Type.Name}");
+
+                        if (!string.IsNullOrWhiteSpace(attribute.Range))
+                            _chat.SendMessage(player, $"  Range: {attribute.Range}");
+
+                        if (!string.IsNullOrWhiteSpace(attribute.DefaultValue))
+                            _chat.SendMessage(player, $"  Default: {attribute.DefaultValue}");
+
+                        if (attribute.Description.Contains('\n'))
                         {
-                            ReadOnlySpan<char> line;
+                            ReadOnlySpan<char> remaining = attribute.Description;
 
-                            int index = remaining.IndexOf('\n');
-                            if (index == -1)
+                            while (!remaining.IsEmpty)
                             {
-                                line = remaining;
-                                remaining = ReadOnlySpan<char>.Empty;
-                            }
-                            else
-                            {
-                                line = remaining[..index];
-                                remaining = remaining[(index + 1)..];
-                            }
+                                ReadOnlySpan<char> line;
 
-                            line = line.TrimEnd("\r");
+                                int index = remaining.IndexOf('\n');
+                                if (index == -1)
+                                {
+                                    line = remaining;
+                                    remaining = ReadOnlySpan<char>.Empty;
+                                }
+                                else
+                                {
+                                    line = remaining[..index];
+                                    remaining = remaining[(index + 1)..];
+                                }
 
-                            _chat.SendMessage(player, $"  {line}");
+                                line = line.TrimEnd("\r");
+
+                                _chat.SendMessage(player, $"  {line}");
+                            }
+                        }
+                        else
+                        {
+                            _chat.SendWrappedText(player, attribute.Description);
                         }
                     }
-                    else
-                    {
-                        _chat.SendWrappedText(player, attribute.Description);
-                    }
+                }
+                finally
+                {
+                    _rwLock.ExitReadLock();
                 }
             }
 
@@ -462,141 +562,164 @@ namespace SS.Core.Modules
             }
         }
 
-        private void LoadConfigHelp()
+        private void ProcessConfigHelpLoadJobs()
         {
-            _rwLock.EnterWriteLock();
-
-            try
+            while (true)
             {
-                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                Assembly assembly = null;
+
+                lock (_loadLock)
                 {
-                    LoadConfigHelp(assembly);
-                }
-
-                RefreshKnownSectionsAndKeys();
-            }
-            finally
-            {
-                _rwLock.ExitWriteLock();
-            }
-        }
-
-        private void LoadConfigHelp(Assembly assembly)
-        {
-            if (assembly is null)
-                return;
-
-            var assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>();
-            if (assemblyProductAttribute is null
-                || assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            if (_assemblyConfigHelpDictionary.ContainsKey(assembly))
-            {
-                RemoveConfigHelp(assembly);
-            }
-
-            foreach (Type type in assembly.GetTypes())
-            {
-                foreach (var constructorInfo in type.GetConstructors())
-                {
-                    foreach (var attribute in constructorInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    if (!_loadQueue.TryDequeue(out assembly))
                     {
-                        Add(attribute, assembly, type);
+                        _loadTask = null;
+                        break;
                     }
                 }
 
-                foreach (var methodInfo in type.GetRuntimeMethods())
+                _rwLock.EnterWriteLock();
+
+                try
                 {
-                    foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    if (assembly is not null)
                     {
-                        Add(attribute, assembly, type);
+                        Load(assembly);
                     }
-                }
-
-                foreach (var fieldInfo in type.GetRuntimeFields())
-                {
-                    foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                    {
-                        Add(attribute, assembly, type);
-                    }
-                }
-
-                foreach (var propertyInfo in type.GetRuntimeProperties())
-                {
-                    foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                    {
-                        Add(attribute, assembly, type);
-                    }
-                }
-
-                foreach (var eventInfo in type.GetRuntimeEvents())
-                {
-                    foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                    {
-                        Add(attribute, assembly, type);
-                    }
-                }
-            }
-
-
-            void Add(ConfigHelpAttribute attribute, Assembly assembly, Type type)
-            {
-                if (attribute is null || assembly is null)
-                    return;
-
-                if (string.IsNullOrWhiteSpace(attribute.Section) || string.IsNullOrWhiteSpace(attribute.Key))
-                    return;
-
-                Span<char> sectionKey = stackalloc char[attribute.Section.Length + 1 + attribute.Key.Length];
-                if (!sectionKey.TryWrite($"{attribute.Section}:{attribute.Key}", out int charsWritten)
-                    || charsWritten != sectionKey.Length)
-                {
-                    return;
-                }
-
-                Type moduleType = GetModuleType(type);
-                ConfigHelpRecord record = new(attribute, moduleType);
-
-                AddAssemblyRecord(assembly, record);
-                AddSettingRecord(sectionKey, record);
-
-
-                static Type GetModuleType(Type type)
-                {
-                    if (type is null)
-                        return null;
-
-                    if (typeof(IModule).IsAssignableFrom(type))
-                        return type;
-                    else if (type.DeclaringType != null)
-                        return GetModuleType(type.DeclaringType);
                     else
-                        return null;
-                }
-
-                void AddAssemblyRecord(Assembly assembly, ConfigHelpRecord record)
-                {
-                    if (!_assemblyConfigHelpDictionary.TryGetValue(assembly, out List<ConfigHelpRecord> configHelpList))
                     {
-                        configHelpList = new List<ConfigHelpRecord>();
-                        _assemblyConfigHelpDictionary.Add(assembly, configHelpList);
+                        foreach (Assembly otherAssembly in AppDomain.CurrentDomain.GetAssemblies())
+                        {
+                            Load(otherAssembly);
+                        }
                     }
 
-                    configHelpList.Add(record);
+                    RefreshKnownSectionsAndKeys();
+                }
+                finally
+                {
+                    _rwLock.ExitWriteLock();
+                }
+            }
+
+
+            void Load(Assembly assembly)
+            {
+                if (assembly is null)
+                    return;
+
+                if (_assemblyConfigHelpDictionary.ContainsKey(assembly))
+                {
+                    // Already loaded.
+                    return;
                 }
 
-                void AddSettingRecord(Span<char> sectionKey, ConfigHelpRecord record)
+                var assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>();
+                if (assemblyProductAttribute is null
+                    || assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> configHelpList))
+                    return;
+                }
+
+                foreach (Type type in assembly.GetTypes())
+                {
+                    foreach (var constructorInfo in type.GetConstructors())
                     {
-                        configHelpList = new List<ConfigHelpRecord>(1); // each setting is usually represented by a single attribute
-                        _configHelpTrie.Add(sectionKey, configHelpList);
+                        foreach (var attribute in constructorInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                        {
+                            Add(attribute, assembly, type);
+                        }
                     }
 
-                    configHelpList.Add(record);
+                    foreach (var methodInfo in type.GetRuntimeMethods())
+                    {
+                        foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                        {
+                            Add(attribute, assembly, type);
+                        }
+                    }
+
+                    foreach (var fieldInfo in type.GetRuntimeFields())
+                    {
+                        foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                        {
+                            Add(attribute, assembly, type);
+                        }
+                    }
+
+                    foreach (var propertyInfo in type.GetRuntimeProperties())
+                    {
+                        foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                        {
+                            Add(attribute, assembly, type);
+                        }
+                    }
+
+                    foreach (var eventInfo in type.GetRuntimeEvents())
+                    {
+                        foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                        {
+                            Add(attribute, assembly, type);
+                        }
+                    }
+                }
+
+
+                void Add(ConfigHelpAttribute attribute, Assembly assembly, Type type)
+                {
+                    if (attribute is null || assembly is null)
+                        return;
+
+                    if (string.IsNullOrWhiteSpace(attribute.Section) || string.IsNullOrWhiteSpace(attribute.Key))
+                        return;
+
+                    Span<char> sectionKey = stackalloc char[attribute.Section.Length + 1 + attribute.Key.Length];
+                    if (!sectionKey.TryWrite($"{attribute.Section}:{attribute.Key}", out int charsWritten)
+                        || charsWritten != sectionKey.Length)
+                    {
+                        return;
+                    }
+
+                    Type moduleType = GetModuleType(type);
+                    ConfigHelpRecord record = new(attribute, moduleType);
+
+                    AddAssemblyRecord(assembly, record);
+                    AddSettingRecord(sectionKey, record);
+
+
+                    static Type GetModuleType(Type type)
+                    {
+                        if (type is null)
+                            return null;
+
+                        if (typeof(IModule).IsAssignableFrom(type))
+                            return type;
+                        else if (type.DeclaringType != null)
+                            return GetModuleType(type.DeclaringType);
+                        else
+                            return null;
+                    }
+
+                    void AddAssemblyRecord(Assembly assembly, ConfigHelpRecord record)
+                    {
+                        if (!_assemblyConfigHelpDictionary.TryGetValue(assembly, out List<ConfigHelpRecord> configHelpList))
+                        {
+                            configHelpList = new List<ConfigHelpRecord>();
+                            _assemblyConfigHelpDictionary.Add(assembly, configHelpList);
+                        }
+
+                        configHelpList.Add(record);
+                    }
+
+                    void AddSettingRecord(Span<char> sectionKey, ConfigHelpRecord record)
+                    {
+                        if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> configHelpList))
+                        {
+                            configHelpList = new List<ConfigHelpRecord>(1); // each setting is usually represented by a single attribute
+                            _configHelpTrie.Add(sectionKey, configHelpList);
+                        }
+
+                        configHelpList.Add(record);
+                    }
                 }
             }
         }
@@ -651,7 +774,7 @@ namespace SS.Core.Modules
             {
                 _sortedSet.Clear();
 
-                foreach ((_, var helpList) in _configHelpTrie)
+                foreach (var helpList in _configHelpTrie.Values)
                 {
                     foreach (ConfigHelpRecord record in helpList)
                     {
@@ -719,7 +842,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    keyList = new(_sortedSet);
+                    keyList = new List<string>(_sortedSet);
                     _sectionKeysTrie.Add(section, keyList);
                 }
             }

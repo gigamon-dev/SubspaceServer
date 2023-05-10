@@ -215,7 +215,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                _chat.SendMessage(player, "No settings matches your query.");
+                _chat.SendMessage(player, "No settings matched your query.");
                 DeleteTempFile(path);
             }
 

@@ -5,7 +5,6 @@ using SS.Core.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Threading;
 
 namespace SS.Core.Modules
@@ -401,41 +400,6 @@ namespace SS.Core.Modules
             if (int.TryParse(value, out int result))
                 return result;
 
-            // Check if there's a ConfigHelp attribute for it being an enum type.
-            IConfigHelp configHelp = _broker.GetInterface<IConfigHelp>();
-            if (configHelp is not null)
-            {
-                try
-                {
-                    configHelp.Lock();
-
-                    try
-                    {
-                        if (configHelp.TryGetSettingHelp(section, key, out var helpList))
-                        {
-                            foreach ((ConfigHelpAttribute attribute, _) in helpList)
-                            {
-                                if (attribute.Type.IsEnum
-                                    && attribute.Scope == documentHandle.Scope
-                                    && string.Equals(attribute.FileName, documentHandle.FileName, StringComparison.OrdinalIgnoreCase)
-                                    && Enum.TryParse(attribute.Type, value, out object enumResult))
-                                {
-                                    return (int)enumResult;
-                                }
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        configHelp.Unlock();
-                    }
-                }
-                finally
-                {
-                    _broker.ReleaseInterface(ref configHelp);
-                }
-            }
-
             ReadOnlySpan<char> valueSpan = value.AsSpan().Trim();
             if (valueSpan.Equals("Y", StringComparison.OrdinalIgnoreCase)
                 || valueSpan.Equals("Yes", StringComparison.OrdinalIgnoreCase)
@@ -449,6 +413,8 @@ namespace SS.Core.Modules
             {
                 return 0;
             }
+
+            _logManager.LogM(LogLevel.Drivel, nameof(ConfigManager), $"Failed to parse {section}:{key} as an integer, using the provided default value ({defaultValue}).");
 
             return defaultValue; // Note: This differs from ASSS which returns 0.
         }
