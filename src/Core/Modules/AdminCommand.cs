@@ -50,8 +50,8 @@ namespace SS.Core.Modules
 
             _commandManager.AddCommand("admlogfile", Command_admlogfile);
             _commandManager.AddCommand("getfile", Command_getfile);
-            _commandManager.AddCommand("putfile", Command_putfile);
-            _commandManager.AddCommand("putzip", Command_putzip);
+            _commandManager.AddCommand("putfile", Command_putFileOrZip);
+            _commandManager.AddCommand("putzip", Command_putFileOrZip);
             _commandManager.AddCommand("putmap", Command_putmap);
             _commandManager.AddCommand("makearena", Command_makearena);
             _commandManager.AddCommand("botfeature", Command_botfeature);
@@ -67,8 +67,8 @@ namespace SS.Core.Modules
         {
             _commandManager.RemoveCommand("admlogfile", Command_admlogfile);
             _commandManager.RemoveCommand("getfile", Command_getfile);
-            _commandManager.RemoveCommand("putfile", Command_putfile);
-            _commandManager.RemoveCommand("putzip", Command_putzip);
+            _commandManager.RemoveCommand("putfile", Command_putFileOrZip);
+            _commandManager.RemoveCommand("putzip", Command_putFileOrZip);
             _commandManager.RemoveCommand("putmap", Command_putmap);
             _commandManager.RemoveCommand("makearena", Command_makearena);
             _commandManager.RemoveCommand("botfeature", Command_botfeature);
@@ -139,7 +139,7 @@ namespace SS.Core.Modules
             string fullPath = Path.GetFullPath(path);
             string currentDir = Directory.GetCurrentDirectory();
 
-            if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
+            if (!IsWithinBasePath(fullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid path.");
             }
@@ -147,10 +147,11 @@ namespace SS.Core.Modules
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
 
+                // TODO: call this on a worker thread
                 if (!_fileTransfer.SendFile(
                     player,
                     relativePath,
-                    Path.GetFileName(fullPath),
+                    Path.GetFileName(fullPath.AsSpan()),
                     false))
                 {
                     _chat.SendMessage(player, $"Error sending '{relativePath}'.");
@@ -159,6 +160,7 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
+            Command = "putfile",
             Targets = CommandTarget.None,
             Args = "<client filename>[:<server filename>]",
             Description = """
@@ -167,51 +169,8 @@ namespace SS.Core.Modules
                 current working directory. If omitted, the uploaded file will be placed
                 in the current working directory and named the same as on the client.
                 """)]
-        private void Command_putfile(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
-        {
-            if (!player.IsStandard)
-            {
-                _chat.SendMessage(player, "Your client does not support file transfers.");
-                return;
-            }
-
-            ReadOnlySpan<char> clientFileName = parameters.GetToken(':', out ReadOnlySpan<char> serverFileName);
-            if (clientFileName.IsEmpty)
-            {
-                _chat.SendMessage(player, "Bad syntax.");
-                return;
-            }
-
-            serverFileName = serverFileName.TrimStart(':');
-
-            string workingDir = _fileTransfer.GetWorkingDirectory(player);
-            string serverPath = Path.Join(workingDir, !serverFileName.IsEmpty ? serverFileName : clientFileName);
-            string serverFullPath = Path.GetFullPath(serverPath);
-            string currentDir = Directory.GetCurrentDirectory();
-
-            if (!new Uri(currentDir).IsBaseOf(new Uri(serverFullPath)))
-            {
-                _chat.SendMessage(player, "Invalid server path.");
-            }
-            else
-            {
-                string serverRelativePath = Path.GetRelativePath(currentDir, serverFullPath);
-
-                if (!_fileTransfer.RequestFile(
-                    player,
-                    clientFileName.ToString(),
-                    FileUploaded,
-                    new UploadContext(
-                        player,
-                        serverRelativePath,
-                        command.Equals("putzip", StringComparison.OrdinalIgnoreCase))))
-                {
-                    _chat.SendMessage(player, "Error requesting file to be sent.");
-                }
-            }
-        }
-
         [CommandHelp(
+            Command = "putzip",
             Targets = CommandTarget.None,
             Args = "<client filename>[:<server directory>]",
             Description = """
@@ -221,7 +180,7 @@ namespace SS.Core.Modules
                 efficiently send a large number of files to the server at once, while
                 preserving directory structure.
                 """)]
-        private void Command_putzip(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_putFileOrZip(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.IsStandard)
             {
@@ -229,39 +188,52 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ReadOnlySpan<char> clientFileName = parameters.GetToken(':', out ReadOnlySpan<char> serverDir);
-            if (clientFileName.IsEmpty)
+            ReadOnlySpan<char> clientPath = parameters.GetToken(':', out ReadOnlySpan<char> serverPathSpan);
+            if (clientPath.IsEmpty)
             {
-                _chat.SendMessage(player, "Bad syntax.");
+                _chat.SendMessage(player, "Invalid input. Missing client file path.");
                 return;
             }
 
-            serverDir = serverDir.TrimStart(':');
+            ReadOnlySpan<char> clientFileName = Path.GetFileName(clientPath);
+            if (clientFileName.IsEmpty)
+            {
+                _chat.SendMessage(player, "Invalid input. Missing client file name.");
+                return;
+            }
+
+            bool isZip = command.Equals("putzip", StringComparison.OrdinalIgnoreCase);
+            if (isZip && !Path.GetExtension(clientFileName).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                _chat.SendMessage(player, "Invalid input. File name must end with '.zip'.");
+                return;
+            }
+
+            serverPathSpan = serverPathSpan.TrimStart(':');
 
             string workingDir = _fileTransfer.GetWorkingDirectory(player);
-            string serverPath = !serverDir.IsEmpty ? Path.Join(workingDir, serverDir) : workingDir;
+            string serverPath = Path.Join(workingDir, serverPathSpan, (!isZip && Path.GetFileName(serverPathSpan).IsEmpty) ? clientFileName : ReadOnlySpan<char>.Empty);
             string serverFullPath = Path.GetFullPath(serverPath);
             string currentDir = Directory.GetCurrentDirectory();
 
-            if (!new Uri(currentDir).IsBaseOf(new Uri(serverFullPath)))
+            if (!IsWithinBasePath(serverFullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid server path.");
+                return;
             }
-            else
-            {
-                string serverRelativePath = Path.GetRelativePath(currentDir, serverFullPath);
+            
+            string serverRelativePath = Path.GetRelativePath(currentDir, serverFullPath);
 
-                if (!_fileTransfer.RequestFile(
+            if (!_fileTransfer.RequestFile(
+                player,
+                clientPath,
+                FileUploaded,
+                new UploadContext(
                     player,
-                    clientFileName.ToString(),
-                    FileUploaded,
-                    new UploadContext(
-                        player,
-                        serverRelativePath,
-                        command.Equals("putzip", StringComparison.OrdinalIgnoreCase))))
-                {
-                    _chat.SendMessage(player, "Error requesting file to be sent.");
-                }
+                    serverRelativePath,
+                    isZip)))
+            {
+                _chat.SendMessage(player, "Error requesting file to be sent.");
             }
         }
 
@@ -276,22 +248,28 @@ namespace SS.Core.Modules
                 """)]
         private void Command_putmap(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (parameters.IsWhiteSpace())
-            {
-                _chat.SendMessage(player, "Bad syntax.");
-                return;
-            }
-
             if (!player.IsStandard)
             {
                 _chat.SendMessage(player, "Your client does not support file transfers.");
                 return;
             }
 
+            if (parameters.IsWhiteSpace())
+            {
+                _chat.SendMessage(player, "Invalid input. Missing map file name.");
+                return;
+            }
+
+            if (!Path.GetExtension(parameters).Equals(".lvl", StringComparison.OrdinalIgnoreCase))
+            {
+                _chat.SendMessage(player, "Invalid input. File name must end with '.lvl'.");
+                return;
+            }
+
             Arena arena = player.Arena;
             if (arena is null)
             {
-                _chat.SendMessage(player, "Your must be in an arena to use this command.");
+                _chat.SendMessage(player, "You must be in an arena to use this command.");
                 return;
             }
 
@@ -317,16 +295,19 @@ namespace SS.Core.Modules
 
             string serverPath = Path.Join(MapUploadDirectory, Path.ChangeExtension(arena.BaseName, ".lvl"));
 
-            _fileTransfer.RequestFile(
+            if (!_fileTransfer.RequestFile(
                 player,
-                parameters.ToString(),
+                parameters,
                 FileUploaded,
                 new UploadContext(
                     player,
                     serverPath,
                     false,
                     "General:Map",
-                    player.Arena));
+                    player.Arena)))
+            {
+                _chat.SendMessage(player, "Error requesting file to be sent.");
+            }
         }
 
         [CommandHelp(
@@ -454,7 +435,7 @@ namespace SS.Core.Modules
             string fullPath = Path.GetFullPath(parametersStr);
             string currentDir = Directory.GetCurrentDirectory();
 
-            if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
+            if (!IsWithinBasePath(fullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid path.");
             }
@@ -492,7 +473,7 @@ namespace SS.Core.Modules
             string fullPath = Path.GetFullPath(path);
             string currentDir = Directory.GetCurrentDirectory();
 
-            if (!new Uri(currentDir).IsBaseOf(new Uri(fullPath)))
+            if (!IsWithinBasePath(fullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid path.");
                 return;
@@ -539,13 +520,13 @@ namespace SS.Core.Modules
             string newFullPath = Path.GetFullPath(newPath);
             string currentDir = Directory.GetCurrentDirectory();
 
-            if (!new Uri(currentDir).IsBaseOf(new Uri(oldFullPath)))
+            if (!IsWithinBasePath(oldFullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid old path.");
                 return;
             }
 
-            if (!new Uri(currentDir).IsBaseOf(new Uri(newFullPath)))
+            if (!IsWithinBasePath(newFullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid new path.");
                 return;
@@ -616,7 +597,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    ReadOnlySpan<char> section = context.Setting.AsSpan().GetToken(':', out ReadOnlySpan<char> key);
+                    ReadOnlySpan<char> section = setting.GetToken(':', out ReadOnlySpan<char> key);
                     if (section.IsEmpty
                         || (key = key.TrimStart(':')).IsEmpty)
                     {
@@ -685,6 +666,40 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
             }
+        }
+
+        /// <summary>
+        /// Checks if a <paramref name="path"/> is within a <paramref name="basePath"/>.
+        /// </summary>
+        /// <remarks>
+        /// This method makes the following assumptions:
+        /// <list type="bullet">
+        /// <item>Both paths are absolute paths that have already been normalized.</item>
+        /// <item>Case sensitive match.</item>
+        /// </list>
+        /// </remarks>
+        /// <param name="path">The path to check.</param>
+        /// <param name="basePath">The base path.</param>
+        /// <returns><see langword="true"/> if <paramref name="path"/> is or is within <paramref name="basePath"/>. Otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentException"><paramref name="basePath"/> was empty.</exception>
+        private static bool IsWithinBasePath(ReadOnlySpan<char> path, scoped ReadOnlySpan<char> basePath)
+        {
+            if (basePath.IsEmpty)
+                throw new ArgumentException("Value was empty.", nameof(basePath));
+
+            // Remove any directory separator chars from the end of basePath.
+            ReadOnlySpan<char> directorySeparatorChars = stackalloc char[2] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+            basePath = basePath.TrimEnd(directorySeparatorChars);
+
+            while (!path.IsEmpty)
+            {
+                if (basePath.Equals(path, StringComparison.Ordinal))
+                    return true;
+
+                path = Path.GetDirectoryName(path);
+            }
+
+            return false;
         }
 
         #region Helper types

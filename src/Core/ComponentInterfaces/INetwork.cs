@@ -298,7 +298,7 @@ namespace SS.Core.ComponentInterfaces
         void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState clos) where TData : struct;
 
         /// <summary>
-        /// Sends 'sized' data to a player.
+        /// Queues up a job to send 'sized' data to a player.
         /// Used for sending files to players (including, but not limited to: map files (lvl and lvz), news.txt, and client updates).
         /// </summary>
         /// <typeparam name="T">The type of the argument used in the callback to retrieve data to send.</typeparam>
@@ -306,7 +306,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="len">The total number of bytes to send in the transfer.</param>
         /// <param name="requestData">The delegate to call back for retrieving pieces of data for the transfer.</param>
         /// <param name="clos">The argument to pass when calling <paramref name="requestData"/>.</param>
-        /// <returns></returns>
+        /// <returns><see langword="true"/> if the job was queued. Otherwise, <see langword="false"/>.</returns>
         bool SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestData, T clos);
 
         /// <summary>

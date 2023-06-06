@@ -3127,7 +3127,7 @@ namespace SS.Core.Modules
             }
 
             Arena arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             string mapPath = _mapData.GetMapFilename(arena, null);
@@ -3146,13 +3146,22 @@ namespace SS.Core.Modules
 
             ReadOnlySpan<char> extension = !parameters.IsWhiteSpace() ? parameters : DefaultMapImageFormat;
 
+            // Create image file name.
+            ReadOnlySpan<char> fileNameWithoutExtension = Path.GetFileNameWithoutExtension(mapPath.AsSpan());
+            Span<char> imageFileName = stackalloc char[fileNameWithoutExtension.Length + 1 + extension.Length];
+            if (!imageFileName.TryWrite($"{fileNameWithoutExtension}.{extension}", out int charsWritten) || imageFileName.Length != charsWritten)
+                return;
+
+            // Create file name for temp file.
             const string prefix = "mapimage-";
-            Span<char> fileName = stackalloc char[prefix.Length + 32 + 1 + extension.Length];
-            bool success = fileName.TryWrite($"{prefix}{Guid.NewGuid():N}.{extension}", out int charsWritten);
-            Debug.Assert(success && fileName.Length == charsWritten);
+            Span<char> tempFileName = stackalloc char[prefix.Length + 32 + 1 + extension.Length];
+            if (!tempFileName.TryWrite($"{prefix}{Guid.NewGuid():N}.{extension}", out charsWritten) || tempFileName.Length != charsWritten)
+                return;
 
-            string path = Path.Join("tmp", fileName);
+            string path = Path.Join("tmp", tempFileName);
 
+            // Create the image of the map.
+            // TODO: Use a worker thread to do file I/O, including the call to _fileTransfer.SendFile.
             try
             {
                 _mapData.SaveImage(arena, path);
@@ -3164,8 +3173,22 @@ namespace SS.Core.Modules
                 return;
             }
 
-            string imageFileName = $"{Path.GetFileNameWithoutExtension(mapPath.AsSpan())}.{extension}";
-            _fileTransfer.SendFile(player, path, imageFileName, true);
+            // Send the image.
+            if (!_fileTransfer.SendFile(player, path, imageFileName, true))
+            {
+                // Cleanup the temp file.
+                try
+                {
+                    File.Delete(path);
+                }
+                catch(Exception ex)
+                {
+                    _logManager.LogP(LogLevel.Warn, nameof(PlayerCommand), player, $"Failed to delete temporary image file '{path}'. {ex.Message}");
+                }
+
+                _chat.SendMessage(player, $"Error sending image.");
+                return;
+            }
         }
 
         [CommandHelp(

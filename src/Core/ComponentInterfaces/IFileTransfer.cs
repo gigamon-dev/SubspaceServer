@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -16,24 +13,30 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="arg">The state object.</param>
     public delegate void FileUploadedDelegate<T>(string filename, T arg);
 
+    /// <summary>
+    /// Interface for a service that provides functionality to transfer files between players and the server (to and from).
+    /// </summary>
     public interface IFileTransfer : IComponentInterface
     {
         /// <summary>
         /// Sends a file to a player.
         /// </summary>
+        /// <remarks>
+        /// This method performs file I/O. It is recommended that this be called on a worker thread, rather than on the mainloop thread.
+        /// </remarks>
         /// <param name="player">The player to send file to.</param>
-        /// <param name="path">The path and file name.</param>
+        /// <param name="path">The path of the file to send.</param>
         /// <param name="filename">The name of the uploaded file.</param>
-        /// <param name="deleteAfter">Whether the file should be deleted after it is sent.</param>
-        /// <returns></returns>
-        bool SendFile(Player player, string path, string filename, bool deleteAfter);
+        /// <param name="deleteAfter">Whether the file at <paramref name="path"/> should be deleted after it is sent.</param>
+        /// <returns><see langword="true"/> if the file was queued to be sent. Otherwise, <see langword="false"/>.</returns>
+        bool SendFile(Player player, string path, ReadOnlySpan<char> filename, bool deleteAfter);
 
         /// <summary>
         /// Requests a file from a player.
         /// </summary>
         /// <typeparam name="T">Type of state argument for the <paramref name="uploaded"/> delegate.</typeparam>
         /// <param name="player">The player to request a file from.</param>
-        /// <param name="path">The path and file name.</param>
+        /// <param name="clientPath">The path of the file on the client to request.</param>
         /// <param name="uploaded">
         /// Delegate to call when the transfer is complete.
         /// </param>
@@ -42,7 +45,7 @@ namespace SS.Core.ComponentInterfaces
         /// True if the file was requested.
         /// False on failure to request, meaning <paramref name="uploaded"/> will not be called, and any cleanup should be done immediately.
         /// </returns>
-        bool RequestFile<T>(Player player, string path, FileUploadedDelegate<T> uploaded, T arg);
+        bool RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg);
 
         /// <summary>
         /// Gets the server-side current working directory for a player.

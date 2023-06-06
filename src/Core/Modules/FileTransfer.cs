@@ -1,9 +1,11 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
+using SS.Utilities;
 using System;
+using System.Diagnostics;
 using System.IO;
-using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -20,12 +22,14 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private InterfaceRegistrationToken<IFileTransfer> _iFileTransferToken;
 
+        private static readonly ObjectPool<DownloadDataContext> s_downloadDataContextPool = ObjectPool.Create(new DownloadDataContextPooledObjectPolicy());
+
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
         /// </summary>
         private PlayerDataKey<UploadDataContext> _udKey;
 
-        #region IModule Members
+        #region Module Members
 
         public bool Load(
             ComponentBroker broker,
@@ -68,60 +72,93 @@ namespace SS.Core.Modules
 
         #region IFileTransfer Members
 
-        bool IFileTransfer.SendFile(Player player, string path, string filename, bool deleteAfter)
+        bool IFileTransfer.SendFile(Player player, string path, ReadOnlySpan<char> filename, bool deleteAfter)
         {
-            if (player == null)
+            if (player is null)
                 return false;
 
             if (string.IsNullOrWhiteSpace(path))
                 return false;
+
+            int fileLength;
+            FileStream fileStream;
 
             try
             {
                 FileInfo fileInfo = new(path);
                 if (!fileInfo.Exists)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"File '{path}' does not exist.");
+                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). File does not exist.");
                     return false;
                 }
 
-                FileStream fileStream = fileInfo.OpenRead();
-                DownloadDataContext dd = new(fileStream, filename, deleteAfter ? path : null);
-                _network.SendSized(player, (int)fileInfo.Length + 17, GetSizedSendData, dd);
-                return true;
+                if (fileInfo.Length > (int.MaxValue - 17))
+                {
+                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). File is too large.");
+                    return false;
+                }
+
+                fileLength = (int)fileInfo.Length;
+                fileStream = fileInfo.OpenRead();
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Error opening file '{path}'. {ex.Message}");
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error opening file. {ex.Message}");
                 return false;
             }
+
+            DownloadDataContext context = s_downloadDataContextPool.Get();
+
+            try
+            {
+                context.Set(player, fileStream, filename, deleteAfter ? path : null);
+            }
+            catch (Exception ex)
+            {
+                s_downloadDataContextPool.Return(context);
+                fileStream.Dispose();
+
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error initializing sized send. {ex.Message}");
+                return false;
+            }
+
+            if (!_network.SendSized(player, fileLength + 17, GetSizedSendData, context))
+            {
+                s_downloadDataContextPool.Return(context);
+                fileStream.Dispose();
+
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error queuing up a sized send.");
+                return false;
+            }
+
+            return true;
         }
 
-        bool IFileTransfer.RequestFile<T>(Player player, string path, FileUploadedDelegate<T> uploaded, T arg)
+        bool IFileTransfer.RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg)
         {
-            if (player == null)
+            if (player is null)
                 return false;
 
-            if (string.IsNullOrWhiteSpace(path))
+            if (Path.GetFileName(clientPath).IsEmpty)
+                return false;
+
+            if (StringUtils.DefaultEncoding.GetByteCount(clientPath) > S2C_RequestFile.PathBytesLength)
                 return false;
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return false;
 
-            if (path.Length > 256)
+            if (ud.Stream is not null || !string.IsNullOrWhiteSpace(ud.FileName) || !player.IsStandard)
                 return false;
 
-            if (ud.Stream != null || !string.IsNullOrWhiteSpace(ud.FileName) || !player.IsStandard)
-                return false;
+            ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg); // TODO: consider object pooling
 
-            ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg);
-
-            S2C_RequestFile packet = new(path, "unused-field");
+            S2C_RequestFile packet = new(clientPath, "unused-field");
             _network.SendToOne(player, ref packet, NetSendFlags.Reliable);
 
-            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, $"Requesting file '{path}'.");
+            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, $"Requesting file '{clientPath}'.");
 
-            if (path.Contains(".."))
+            if (clientPath.Contains("..", StringComparison.Ordinal))
                 _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, "Sent file request with '..' in the path.");
 
             return true;
@@ -129,7 +166,7 @@ namespace SS.Core.Modules
 
         void IFileTransfer.SetWorkingDirectory(Player player, string path)
         {
-            if (player == null)
+            if (player is null)
                 throw new ArgumentNullException(nameof(player));
 
             if (string.IsNullOrWhiteSpace(path))
@@ -143,7 +180,7 @@ namespace SS.Core.Modules
 
         string IFileTransfer.GetWorkingDirectory(Player player)
         {
-            if (player == null)
+            if (player is null)
                 throw new ArgumentNullException(nameof(player));
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
@@ -156,7 +193,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
@@ -166,7 +203,7 @@ namespace SS.Core.Modules
             {
                 ud.WorkingDirectory = ".";
             }
-            else if(action == PlayerAction.Disconnect)
+            else if (action == PlayerAction.Disconnect)
             {
                 ud.Cleanup(false);
             }
@@ -174,7 +211,7 @@ namespace SS.Core.Modules
 
         private void Packet_UploadFile(Player player, byte[] data, int length, NetReceiveFlags flags)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
@@ -205,7 +242,7 @@ namespace SS.Core.Modules
 
         private void SizedPacket_UploadFile(Player player, ReadOnlySpan<byte> data, int offset, int totalLength)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
@@ -218,7 +255,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (offset == 0 && data.Length > 17 && ud.Stream == null)
+            if (offset == 0 && data.Length > 17 && ud.Stream is null)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
                 {
@@ -241,7 +278,7 @@ namespace SS.Core.Modules
 
                 ud.Stream.Write(data[17..]);
             }
-            else if (offset > 0 && ud.Stream != null)
+            else if (offset > 0 && ud.Stream is not null)
             {
                 if (offset < totalLength)
                 {
@@ -259,41 +296,44 @@ namespace SS.Core.Modules
             }
         }
 
-        private void GetSizedSendData(DownloadDataContext dd, int offset, Span<byte> dataSpan)
+        private void GetSizedSendData(DownloadDataContext context, int offset, Span<byte> dataSpan)
         {
-            if (dd == null)
-                throw new ArgumentNullException(nameof(dd));
+            if (context is null)
+                throw new ArgumentNullException(nameof(context));
 
             if (offset < 0)
                 throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be less than zero.");
 
             if (dataSpan.IsEmpty)
             {
-                _logManager.LogM(LogLevel.Info, nameof(FileTransfer), $"Completed send of '{dd.Filename}'.");
-                dd.Stream.Dispose();
+                Span<char> filename = stackalloc char[16];
+                int numChars = context.GetFileName(filename);
+                filename = filename[..numChars];
 
-                if (!string.IsNullOrWhiteSpace(dd.DeletePath))
+                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), context.Player, $"Completed send of '{filename}'.");
+                context.Stream.Dispose();
+
+                if (!string.IsNullOrWhiteSpace(context.DeletePath))
                 {
                     try
                     {
-                        File.Delete(dd.DeletePath);
-                        _logManager.LogM(LogLevel.Info, nameof(FileTransfer), $"Deleted '{dd.DeletePath}' ({dd.Filename}) after completed send.");
+                        File.Delete(context.DeletePath);
+                        _logManager.LogP(LogLevel.Info, nameof(FileTransfer), context.Player, $"Deleted '{context.DeletePath}' ({filename}) after completed send.");
                     }
                     catch (Exception ex)
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(FileTransfer), $"Failed to delete '{dd.DeletePath}' ({dd.Filename}) after completed send. {ex.Message}");
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), context.Player, $"Failed to delete '{context.DeletePath}' ({filename}) after completed send. {ex.Message}");
                     }
                 }
 
+                s_downloadDataContextPool.Return(context);
                 return;
             }
 
             if (offset <= 16)
             {
-                // needs all or part of the header, create the header
-                Span<byte> headerSpan = stackalloc byte[17];
-                headerSpan[0] = (byte)S2CPacketType.IncomingFile;
-                Encoding.ASCII.GetBytes(dd.Filename, headerSpan[1..]);
+                // needs all or part of the header
+                ReadOnlySpan<byte> headerSpan = context.Header;
 
                 if (offset != 0)
                 {
@@ -303,7 +343,7 @@ namespace SS.Core.Modules
 
                 if (dataSpan.Length < headerSpan.Length)
                 {
-                    headerSpan.Slice(0, dataSpan.Length).CopyTo(dataSpan);
+                    headerSpan[..dataSpan.Length].CopyTo(dataSpan);
                     return;
                 }
                 else
@@ -321,7 +361,7 @@ namespace SS.Core.Modules
             // the stream's position should already be where we want to start reading from
             do
             {
-                int bytesRead = dd.Stream.Read(dataSpan);
+                int bytesRead = context.Stream.Read(dataSpan);
 
                 if (bytesRead == 0)
                 {
@@ -337,15 +377,71 @@ namespace SS.Core.Modules
 
         private class DownloadDataContext
         {
-            public readonly FileStream Stream;
-            public readonly string Filename;
-            public readonly string DeletePath;
+            // 0x10 followed by the filename (16 bytes, null terminator required)
+            private readonly byte[] _header = new byte[17] { (byte)S2CPacketType.IncomingFile, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-            public DownloadDataContext(FileStream stream, string filename, string deletePath)
+            public void Set(Player player, Stream stream, ReadOnlySpan<char> filename, string deletePath)
             {
+                Player = player;
+
+                // In the header, the filename field is 16 bytes, and the last byte must be a null-terminator.
+                // Therefore, the filename must be able to be encoded into 1 to 15 bytes.
+                int byteCount = StringUtils.DefaultEncoding.GetByteCount(filename);
+                if (byteCount < 1 || byteCount > 15)
+                    throw new ArgumentException("The value cannot be encoded into 1 to 15 bytes.", nameof(filename));
+
+                StringUtils.WriteNullPaddedString(_header.AsSpan(1), filename, true);
                 Stream = stream ?? throw new ArgumentNullException(nameof(stream));
-                Filename = filename ?? throw new ArgumentNullException(nameof(filename)); // can be empty
-                DeletePath = deletePath;
+                DeletePath = deletePath; // can be null
+            }
+
+            public Player Player { get; private set; }
+
+            public Stream Stream { get; private set; }
+
+            public ReadOnlySpan<byte> Header => _header;
+
+            public string DeletePath { get; private set; }
+
+            public int GetFileName(Span<char> filename)
+            {
+                Span<byte> filenameBytes = StringUtils.SliceNullTerminated(_header.AsSpan(1));
+                int charCount = StringUtils.DefaultEncoding.GetCharCount(filenameBytes);
+                int numBytes = StringUtils.DefaultEncoding.GetChars(filenameBytes, filename);
+                Debug.Assert(numBytes == filenameBytes.Length);
+                return charCount;
+            }
+
+            public void Reset()
+            {
+                Player = null;
+
+                if (Stream is not null)
+                {
+                    Stream.Dispose();
+                    Stream = null;
+                }
+
+                _header.AsSpan(1).Clear();
+
+                DeletePath = null;
+            }
+        }
+
+        private class DownloadDataContextPooledObjectPolicy : IPooledObjectPolicy<DownloadDataContext>
+        {
+            public DownloadDataContext Create()
+            {
+                return new DownloadDataContext();
+            }
+
+            public bool Return(DownloadDataContext obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Reset();
+                return true;
             }
         }
 
@@ -359,7 +455,7 @@ namespace SS.Core.Modules
                 set;
             }
 
-            public FileUploadedDelegateInvoker UploadedInvoker
+            public IFileUploadedInvoker UploadedInvoker
             {
                 get;
                 set;
@@ -373,7 +469,7 @@ namespace SS.Core.Modules
 
             public void Cleanup(bool success)
             {
-                if (Stream != null)
+                if (Stream is not null)
                 {
                     Stream.Dispose();
                     Stream = null;
@@ -381,8 +477,7 @@ namespace SS.Core.Modules
 
                 if (success)
                 {
-                    if (UploadedInvoker != null)
-
+                    if (UploadedInvoker is not null)
                     {
                         // Invoke the callback, it will handle cleaning up the file
                         UploadedInvoker.Invoke(FileName);
@@ -436,12 +531,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private abstract class FileUploadedDelegateInvoker
+        private interface IFileUploadedInvoker
         {
-            public abstract void Invoke(string filename);
+            void Invoke(string filename);
         }
 
-        private class FileUploadedDelegateInvoker<T> : FileUploadedDelegateInvoker
+        private class FileUploadedDelegateInvoker<T> : IFileUploadedInvoker
         {
             private readonly FileUploadedDelegate<T> callback;
             private readonly T state;
@@ -452,7 +547,7 @@ namespace SS.Core.Modules
                 this.state = state;
             }
 
-            public override void Invoke(string filename)
+            public void Invoke(string filename)
             {
                 callback(filename, state);
             }

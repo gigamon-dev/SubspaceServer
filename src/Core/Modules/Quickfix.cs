@@ -164,9 +164,12 @@ namespace SS.Core.Modules
             string path = Path.Combine("tmp", $"server-{Guid.NewGuid():N}.set");
             bool hasData = false;
 
+            // TODO: Use a worker thread to do the file I/O, including the call to _fileTransfer.SendFile.
+            bool isCreated = false;
             try
             {
                 using FileStream fs = File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                isCreated = true;
                 using StreamWriter writer = new(fs, StringUtils.DefaultEncoding);
 
                 _configHelp.Lock();
@@ -201,7 +204,7 @@ namespace SS.Core.Modules
             {
                 _logManager.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to create temporary server.set file '{path}'. {ex.Message}");
                 
-                if (File.Exists(path))
+                if (isCreated)
                 {
                     DeleteTempFile(path);
                 }
@@ -211,7 +214,12 @@ namespace SS.Core.Modules
             if (hasData)
             {
                 _chat.SendMessage(player, "Sending settings...");
-                _fileTransfer.SendFile(player, path, "server.set", true);
+
+                if (!_fileTransfer.SendFile(player, path, "server.set", true))
+                {
+                    _logManager.LogP(LogLevel.Warn, nameof(Quickfix), player, $"Failed to send server.set file '{path}'.");
+                    DeleteTempFile(path);
+                }
             }
             else
             {

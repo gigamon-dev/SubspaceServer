@@ -11,30 +11,32 @@ namespace SS.Packets.Game
     public unsafe struct S2C_RequestFile
     {
         public readonly byte Type;
-
-        private const int PathBytesLength = 256;
         private fixed byte pathBytes[PathBytesLength];
-        public Span<byte> PathBytes => MemoryMarshal.CreateSpan(ref pathBytes[0], PathBytesLength);
-
-        private const int FilenameBytesLength = 16;
         private fixed byte filenameBytes[FilenameBytesLength];
+
+        #region Helpers
+
+        public const int PathBytesLength = 256;
+        public Span<byte> PathBytes => MemoryMarshal.CreateSpan(ref pathBytes[0], PathBytesLength);
+        public void SetPath(ReadOnlySpan<char> value)
+        {
+            PathBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PathBytesLength - 1));
+        }
+
+        public const int FilenameBytesLength = 16;
         public Span<byte> FilenameBytes => MemoryMarshal.CreateSpan(ref filenameBytes[0], FilenameBytesLength);
-
-        public ReadOnlySpan<char> Path
+        public void SetFilename(ReadOnlySpan<char> value)
         {
-            set { PathBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PathBytesLength - 1)); }
+            FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameBytesLength - 1));
         }
 
-        public ReadOnlySpan<char> Filename
-        {
-            set { FilenameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FilenameBytesLength - 1)); }
-        }
+        #endregion
 
-        public S2C_RequestFile(string path, string filename)
+        public S2C_RequestFile(ReadOnlySpan<char> path, string filename)
         {
             Type = (byte)S2CPacketType.RequestForFile;
-            Path = path;
-            Filename = filename;
+            SetPath(path);
+            SetFilename(filename);
         }
     }
 }
