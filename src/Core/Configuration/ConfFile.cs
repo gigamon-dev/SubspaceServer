@@ -142,7 +142,7 @@ namespace SS.Core.Configuration
 
                     if (rawBuilder.Length > 0)
                     {
-                        rawBuilder.AppendLine(line);
+                        rawBuilder.Append(line);
                         raw = rawBuilder.ToString();
                         rawBuilder.Clear();
                     }
