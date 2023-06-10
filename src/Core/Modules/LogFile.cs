@@ -14,7 +14,7 @@ namespace SS.Core.Modules
     {
         private IConfigManager _configManager;
         private ILogManager _logManager;
-        IObjectPoolManager _objectPoolManager;
+        private IObjectPoolManager _objectPoolManager;
         private IServerTimer _serverTimer;
         private InterfaceRegistrationToken<ILogFile> _iLogFileToken;
 
@@ -24,6 +24,8 @@ namespace SS.Core.Modules
 
         #region Module methods
 
+        [ConfigHelp("Log", "FileFlushPeriod", ConfigScope.Global, typeof(int), DefaultValue = "10", 
+            Description = "How often to flush the log file to disk (in minutes).")]
         public bool Load(
             ComponentBroker broker,
             IConfigManager configManager,
@@ -86,7 +88,7 @@ namespace SS.Core.Modules
             
             lock (_lockObj)
             {
-                if (_streamWriter == null)
+                if (_streamWriter is null)
                     return;
 
                 DateTime now = DateTime.UtcNow;
@@ -95,7 +97,7 @@ namespace SS.Core.Modules
                 {
                     ReopenLog();
 
-                    if (_streamWriter == null)
+                    if (_streamWriter is null)
                         return;
                 }
 
@@ -143,7 +145,7 @@ namespace SS.Core.Modules
         {
             lock (_lockObj)
             {
-                if (_streamWriter != null)
+                if (_streamWriter is not null)
                 {
                     try
                     {
@@ -159,6 +161,8 @@ namespace SS.Core.Modules
             }
         }
 
+        [ConfigHelp("Log", "DatedLogsPath", ConfigScope.Global, typeof(string), DefaultValue = "log", 
+            Description = "Path of the folder to store logs.")]
         private void ReopenLog()
         {
             lock (_lockObj)

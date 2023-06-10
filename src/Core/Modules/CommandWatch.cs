@@ -9,6 +9,9 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that watches for a configured set of commands to be executed and notifies staff members when they are.
     /// </summary>
+    /// <remarks>
+    /// This is the equivalent of the log_staff module in ASSS.
+    /// </remarks>
     public class CommandWatch : IModule
     {
         private IChat _chat;
@@ -88,12 +91,15 @@ namespace SS.Core.Modules
             }
         }
 
+        [ConfigHelp("log_staff", "commands", ConfigScope.Global, typeof(string), DefaultValue = "warn kick setcm",
+            Description = "A list of commands that trigger messages to all logged-in staff.")]
         private void Initialize()
         {
             lock (_lockObj)
             {
                 _watchedCommands.Clear();
 
+                // Using the same setting name as ASSS for compatibility.
                 ReadOnlySpan<char> commands = _configManager.GetStr(_configManager.Global, "log_staff", "commands") ?? "warn kick setcm";
                 ReadOnlySpan<char> command;
                 while (!(command = commands.GetToken(" ,:;", out commands)).IsEmpty)

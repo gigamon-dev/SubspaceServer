@@ -52,7 +52,32 @@ namespace SS.Core.Modules
                 return false;
 
             _logQueue.CompleteAdding();
-            _loggingThread?.Join();
+
+            Thread workerThread;
+
+            _rwLock.EnterReadLock();
+
+            try
+            {
+                workerThread = _loggingThread;
+            }
+            finally
+            {
+                _rwLock.ExitReadLock();
+            }
+
+            workerThread?.Join();
+
+            _rwLock.EnterWriteLock();
+
+            try
+            {
+                _loggingThread = null;
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
 
             _objectPoolManager.TryRemoveTracked(_stringBuilderPool);
 
@@ -70,16 +95,17 @@ namespace SS.Core.Modules
             try
             {
                 _configManager = broker.GetInterface<IConfigManager>();
+
+                _loggingThread = new Thread(new ThreadStart(LoggingThread))
+                {
+                    Name = nameof(LogManager)
+                };
             }
             finally
             {
                 _rwLock.ExitWriteLock();
             }
 
-            _loggingThread = new Thread(new ThreadStart(LoggingThread))
-            {
-                Name = nameof(LogManager)
-            };
             _loggingThread.Start();
 
             return true;
@@ -91,7 +117,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_configManager != null)
+                if (_configManager is not null)
                     broker.ReleaseInterface(ref _configManager);
 
                 return true;
@@ -115,12 +141,13 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -142,12 +169,13 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -164,12 +192,13 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -186,12 +215,13 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -210,13 +240,14 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -240,13 +271,14 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -265,13 +297,14 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -290,13 +323,14 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -317,14 +351,15 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -350,14 +385,15 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -378,14 +414,15 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -406,14 +443,15 @@ namespace SS.Core.Modules
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -432,22 +470,23 @@ namespace SS.Core.Modules
             sb.Append("> {");
             sb.Append(arena?.Name ?? "(no arena)");
             sb.Append("} [");
-            sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
+            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
             sb.Append("] ");
             handler.CopyToAndClear(sb);
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        PlayerName = player?.Name,
-                        PlayerId = player?.Id,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    PlayerName = player?.Name,
+                    PlayerId = player?.Id,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -471,22 +510,23 @@ namespace SS.Core.Modules
             sb.Append("> {");
             sb.Append(arena?.Name ?? "(no arena)");
             sb.Append("} [");
-            sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
+            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
             sb.Append("] ");
             sb.Append(message);
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        PlayerName = player?.Name,
-                        PlayerId = player?.Id,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    PlayerName = player?.Name,
+                    PlayerId = player?.Id,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -505,22 +545,23 @@ namespace SS.Core.Modules
             sb.Append("> {");
             sb.Append(arena?.Name ?? "(no arena)");
             sb.Append("} [");
-            sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
+            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
             sb.Append("] ");
             sb.Append(message);
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        PlayerName = player?.Name,
-                        PlayerId = player?.Id,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    PlayerName = player?.Name,
+                    PlayerId = player?.Id,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -539,22 +580,23 @@ namespace SS.Core.Modules
             sb.Append("> {");
             sb.Append(arena?.Name ?? "(no arena)");
             sb.Append("} [");
-            sb.Append(player?.Name ?? ((player != null) ? "pid=" + player.Id : null) ?? "(null player)");
+            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
             sb.Append("] ");
             sb.Append(message);
 
             try
             {
-                _logQueue.Add(
-                    new LogEntry()
-                    {
-                        Level = level,
-                        Module = module,
-                        Arena = arena,
-                        PlayerName = player?.Name,
-                        PlayerId = player?.Id,
-                        LogText = sb,
-                    });
+                LogEntry logEntry = new()
+                {
+                    Level = level,
+                    Module = module,
+                    Arena = arena,
+                    PlayerName = player?.Name,
+                    PlayerId = player?.Id,
+                    LogText = sb,
+                };
+
+                QueueOrWriteLog(ref logEntry);
             }
             catch (InvalidOperationException)
             {
@@ -571,7 +613,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_configManager == null)
+                if (_configManager is null)
                     return true; // filtering disabled
 
                 string origin = logEntry.Module;
@@ -579,10 +621,10 @@ namespace SS.Core.Modules
                     origin = "unknown";
 
                 string settingValue = _configManager.GetStr(_configManager.Global, logModuleName, origin);
-                if (settingValue == null)
+                if (settingValue is null)
                 {
                     settingValue = _configManager.GetStr(_configManager.Global, logModuleName, "all");
-                    if (settingValue == null)
+                    if (settingValue is null)
                         return true; // filtering disabled
                 }
 
@@ -601,37 +643,84 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void LoggingThread()
+        private void QueueOrWriteLog(ref LogEntry logEntry)
         {
-            while (!_logQueue.IsCompleted)
+            bool doAsync;
+
+            _rwLock.EnterReadLock();
+
+            try
             {
-                if (!_logQueue.TryTake(out LogEntry logEntry, Timeout.Infinite))
-                    continue;
+                doAsync = _loggingThread is not null;
+            }
+            finally
+            {
+                _rwLock.ExitReadLock();
+            }
+
+            if (doAsync && !_logQueue.IsAddingCompleted)
+            {
+                _logQueue.Add(logEntry);
+            }
+            else
+            {
+                WriteLog(ref logEntry);
+            }
+        }
+
+        private void WriteLog(ref LogEntry logEntry)
+        {
+            try
+            {
+                LogCallback.Fire(_broker, logEntry);
+            }
+            catch (Exception ex)
+            {
+                StringBuilder sb = _stringBuilderPool.Get();
 
                 try
                 {
-                    LogCallback.Fire(_broker, logEntry);
-                }
-                catch (Exception ex)
-                {
-                    StringBuilder sb = _stringBuilderPool.Get();
+                    sb.Append($"E <{nameof(LogManager)}> An exception was thrown when firing the Log callback. " +
+                        $"This indicates a problem in one of the logging modules that needs to be investigated. {ex}");
 
-                    try
-                    {
-                        sb.Append($"E <{nameof(LogManager)}> An exception was thrown when firing the Log callback. " +
-                            $"This indicates a problem in one of the logging modules that needs to be investigated. {ex}");
-
-                        Console.Error.WriteLine(sb);
-                    }
-                    finally
-                    {
-                        _stringBuilderPool.Return(sb);
-                    }
+                    Console.Error.WriteLine(sb);
                 }
                 finally
                 {
-                    _stringBuilderPool.Return(logEntry.LogText);
+                    _stringBuilderPool.Return(sb);
                 }
+            }
+            finally
+            {
+                _stringBuilderPool.Return(logEntry.LogText);
+            }
+        }
+
+        private void LoggingThread()
+        {
+            try
+            {
+                while (!_logQueue.IsCompleted)
+                {
+                    if (!_logQueue.TryTake(out LogEntry logEntry, Timeout.Infinite))
+                        continue;
+
+                    WriteLog(ref logEntry);
+                }
+            }
+            catch (Exception ex)
+            {
+                StringBuilder sb = _stringBuilderPool.Get();
+                sb.Append($"{LogLevel.Error.ToChar()} <{nameof(LogManager)}> LoggingThread ending due to an unexpected exception. {ex}");
+
+                LogEntry logEntry = new()
+                {
+                    Level = LogLevel.Error,
+                    Module = nameof(LogManager),
+                    LogText = sb,
+                };
+
+                WriteLog(ref logEntry);
             }
         }
 
