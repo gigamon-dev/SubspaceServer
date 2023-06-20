@@ -532,7 +532,7 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                if (count > ad.Config.MaxPlaying)
+                if (ad.Config.MaxPlaying != 0 && count >= ad.Config.MaxPlaying)
                 {
                     errorMessage?.Append("There are already the maximum number of people playing allowed.");
                     return false;
@@ -1032,7 +1032,7 @@ namespace SS.Core.Modules
                 Description = "If players are allowed to spectate outside of the spectator frequency.")]
             [ConfigHelp("Team", "InitialSpec", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "If players entering the arena are always assigned to spectator mode.")]
-            [ConfigHelp("Team", "MaxPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+            [ConfigHelp("General", "MaxPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "100",
                 Description = "This is the most players that will be allowed to play in the arena at once. Zero means no limit.")]
             [ConfigHelp("Team", "MaxPerTeam", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
                 Description = "The maximum number of players on a public freq. Zero means these teams are not accessible.")]
@@ -1040,11 +1040,11 @@ namespace SS.Core.Modules
                 Description = "The maximum number of players on a private freq. Zero means these teams are not accessible.")]
             [ConfigHelp("Team", "IncludeSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "Whether to include spectators when enforcing maximum freq sizes.")]
-            [ConfigHelp("Team", "MaxXres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp("Misc", "MaxXres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "Maximum screen width allowed in the arena. Zero means no limit.")]
-            [ConfigHelp("Team", "MaxYres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp("Misc", "MaxYres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "Maximum screen height allowed in the arena. Zero means no limit.")]
-            [ConfigHelp("Team", "MaxResArea", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp("Misc", "MaxResArea", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "Maximum screen area (x*y) allowed in the arena, Zero means no limit.")]
             [ConfigHelp("Team", "ForceEvenTeams", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "Whether the default balancer will enforce even teams. Does not apply if a custom balancer module is used.")]
@@ -1073,13 +1073,13 @@ namespace SS.Core.Modules
                 LastBalancedFreq = configManager.GetInt(ch, "Team", "BalancedAgainstEnd", 0);
                 DisallowTeamSpectators = configManager.GetInt(ch, "Team", "DisallowTeamSpectators", 0) != 0;
                 AlwaysStartInSpec = configManager.GetInt(ch, "Team", "InitialSpec", 0) != 0;
-                MaxPlaying = configManager.GetInt(ch, "Team", "MaxPlaying", 100);
+                MaxPlaying = configManager.GetInt(ch, "General", "MaxPlaying", 100);
                 MaxPublicFreqSize = configManager.GetInt(ch, "Team", "MaxPerTeam", 1000);
                 MaxPrivateFreqSize = configManager.GetInt(ch, "Team", "MaxPerPrivateTeam", 1000);
                 SpectatorsCountForTeamSize = configManager.GetInt(ch, "Team", "IncludeSpectators", 0) != 0;
-                MaxXResolution = configManager.GetInt(ch, "Team", "MaxXres", 0);
-                MaxYResolution = configManager.GetInt(ch, "Team", "MaxYres", 0);
-                MaxResolutionPixels = configManager.GetInt(ch, "Team", "MaxResArea", 0);
+                MaxXResolution = configManager.GetInt(ch, "Misc", "MaxXres", 0);
+                MaxYResolution = configManager.GetInt(ch, "Misc", "MaxYres", 0);
+                MaxResolutionPixels = configManager.GetInt(ch, "Misc", "MaxResArea", 0);
                 DefaultBalancer_forceEvenTeams = configManager.GetInt(ch, "Team", "ForceEvenTeams", 0) != 0;
                 DefaultBalancer_maxDifference = configManager.GetInt(ch, "Team", "MaxTeamDifference", 1);
                 if (DefaultBalancer_maxDifference < 1)
