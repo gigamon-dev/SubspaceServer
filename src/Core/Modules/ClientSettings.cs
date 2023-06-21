@@ -610,7 +610,7 @@ namespace SS.Core.Modules
         [ConfigHelp("Spawn", "Team2-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
         [ConfigHelp("Spawn", "Team3-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
         [ConfigHelp("Prize", "UseDeathPrizeWeights", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to use the DPrizeWeight section for death prizes instead of the PrizeWeight section.")]
-        [ConfigHelp("Prize", "NullPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0", Description = "Likelihood of an empty prize appearing.")]
+        [ConfigHelp("DPrizeWeight", "NullPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0", Description = "Likelihood of an empty prize appearing.")]
         private void LoadSettings(ArenaData arenaData, ConfigHandle ch)
         {
             if (arenaData is null)
