@@ -8,7 +8,7 @@ using System.Text;
 namespace SS.Core.Modules.Enforcers
 {
     /// <summary>
-    /// Module that enforces level ships by arena and by freq.
+    /// Module that enforces legal ships by arena and by freq.
     /// The setting to specify which ships are allowed in the arena is Legalship:ArenaMask.
     /// The setting to specify which ships are allowed for a freq is Legalship:Freq#Mask, where # is the freq # (e.g. Freq0Mask for freq 0, Freq1Mask for freq 1, etc).
     /// Each ship is represented as a bit within the mask, <see cref="ShipMask"/>.

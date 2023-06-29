@@ -21,7 +21,10 @@ namespace SS.Core.Modules
         #region Module members
 
         [ConfigHelp("Notify", "AlertCommand", ConfigScope.Global, typeof(string), DefaultValue = "cheater",
-            Description = "A delimited list of commands that notify online staff. Allowed deliminters include: space, comma, colon, semicolon.")]
+            Description = """
+                A delimited list of commands that notify online staff.
+                Allowed delimiters include: space, comma, colon, semicolon.
+                """)]
         [ConfigHelp("Notify", "EmptyReply", ConfigScope.Global, typeof(string), DefaultValue = "",
             Description = "Reply to send when trying to send a Notify:AlertCommand without a message.")]
         public bool Load(

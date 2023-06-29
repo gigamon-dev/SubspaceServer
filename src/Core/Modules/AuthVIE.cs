@@ -20,7 +20,7 @@ namespace SS.Core.Modules
     /// </code>
     /// The key is the username.
     /// A value of "any" means any IP address can be used.
-    /// Otherwise, the key is part or all of an IP address.
+    /// Otherwise, value is part or all of an IP address.
     /// <para>
     /// This was based on the auth_vie module in ASSS.
     /// </para>
