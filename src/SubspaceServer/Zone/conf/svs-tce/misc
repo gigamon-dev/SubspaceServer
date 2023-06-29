@@ -186,4 +186,4 @@ CrownRecoverKills=3
 BulletDamageLevel=200
 BulletDamageUpgrade=100
 BulletAliveTime=450
-ExactDamage=1
+ExactDamage=0

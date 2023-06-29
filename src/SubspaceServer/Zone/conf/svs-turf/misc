@@ -22,7 +22,7 @@ ShrapnelDamagePercent=1000
 Random=0
 
 [Burst]
-BurstDamageLevel=400
+BurstDamageLevel=212
 
 [Toggle]
 AntiWarpPixels=1500
@@ -183,7 +183,7 @@ NonCrownMinimumBounty=100
 CrownRecoverKills=3
 
 [Bullet]
-BulletDamageLevel=200
-BulletDamageUpgrade=100
+BulletDamageLevel=124
+BulletDamageUpgrade=44
 BulletAliveTime=550
 ExactDamage=1

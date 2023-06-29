@@ -6,37 +6,37 @@ BombExplodeDelay=150
 BombExplodePixels=80
 ProximityDistance=3
 JitterTime=72
-BombSafety=1
+BombSafety=0
 EBombShutdownTime=400
 EBombDamagePercent=1000
 BBombDamagePercent=1000
 
 [Mine]
-MineAliveTime=12000
+MineAliveTime=6000
 TeamMaxMines=12
 
 [Shrapnel]
 ShrapnelSpeed=3000
-InactiveShrapDamage=3
-ShrapnelDamagePercent=1000
+InactiveShrapDamage=5
+ShrapnelDamagePercent=900
 Random=0
 
 [Burst]
-BurstDamageLevel=250
+BurstDamageLevel=212
 
 [Toggle]
 AntiWarpPixels=1500
 
 [Prize]
 MultiPrizeCount=10
-PrizeFactor=1300
-PrizeDelay=300
+PrizeFactor=0
+PrizeDelay=700
 PrizeHideCount=10
-MinimumVirtual=256
+MinimumVirtual=10
 UpgradeVirtual=6
 PrizeMaxExist=8000
 PrizeMinExist=4000
-PrizeNegativeFactor=300
+PrizeNegativeFactor=32000
 DeathPrizeTime=800
 EngineShutdownTime=700
 TakePrizeReliable=0
@@ -49,7 +49,7 @@ MapZoomFactor=10
 
 [Team]
 MaxFrequency=9999
-MaxPerTeam=6
+MaxPerTeam=10
 MaxPerPrivateTeam=0
 ForceEvenTeams=0
 DesiredTeams=2
@@ -59,8 +59,8 @@ SpectatorFrequency=8025
 MaxBonus=0
 MaxPenalty=0
 RewardBase=0
-BountyIncreaseForKill=6
-EnterDelay=200
+BountyIncreaseForKill=0
+EnterDelay=300
 KillPointsPerFlag=0
 KillPointsMinimumBounty=50
 DebtKills=0
@@ -70,13 +70,13 @@ FixedKillReward=-1
 JackpotBountyPercent=0
 
 [Repel]
-RepelSpeed=5000
+RepelSpeed=3600
 RepelTime=225
 RepelDistance=512
 
 [Message]
 MessageReliable=0
-AllowAudioMessages=1
+AllowAudioMessages=0
 BongAllowed=0
 QuickMessageLimit=8
 MessageTeamReliable=1
@@ -84,7 +84,7 @@ MessageDistance=17000
 
 [Wormhole]
 GravityBombs=1
-SwitchTime=1000
+SwitchTime=100000
 
 [Latency]
 SendRoutePercent=500
@@ -97,7 +97,7 @@ SlowPacketKickoutPercent=200
 ClientSlowPacketKickoutPercent=500
 ClientSlowPacketSampleSize=100
 SlowPacketTime=50
-SlowPacketSampleSize=300
+SlowPacketSampleSize=100
 MaxLatencyForWeapons=45
 MaxLatencyForPrizes=80
 MaxLatencyForKickOut=120
@@ -105,20 +105,20 @@ LatencyKickOutTime=2200
 CutbackWatermark=2400
 
 [Brick]
-BrickTime=12000
-BrickSpan=20
+BrickTime=2000
+BrickSpan=15
 
 [Rocket]
 RocketThrust=25
-RocketSpeed=5500
+RocketSpeed=4000
 
 [Door]
-DoorDelay=400
+DoorDelay=500
 DoorMode=-1
 
 [Misc]
 WarpPointDelay=6000
-DecoyAliveTime=3000
+DecoyAliveTime=1000
 BounceFactor=22
 SendPositionDelay=10
 SlowFrameCheck=0
@@ -127,7 +127,7 @@ SafetyLimit=90000
 FrequencyShift=900
 TickerDelay=1000
 ExtraPositionData=0
-WarpRadiusLimit=20
+WarpRadiusLimit=200
 ActivateAppShutdownTime=0
 NearDeathLevel=0
 VictoryMusic=0
@@ -136,7 +136,7 @@ BannerPoints=0
 MaxLossesToPlay=0
 SpectatorQuiet=0
 TimedGame=0
-SheepMessage=Baaah
+SheepMessage=Subspace FOREVER!
 ResetScoreOnFrequencyChange=0
 MaxPlaying=0
 
@@ -155,35 +155,35 @@ RewardPoints=50
 S2CKickOutPercentWeapons=700
 SecurityKickOff=0
 SuicideLimit=10
-MaxShipTypeSwitchCount=40
+MaxShipTypeSwitchCount=90
 PacketModificationMax=3
 MaxDeathWithoutFiring=5
 
 [PacketLoss]
-C2SKickOutPercent=750
-S2CKickOutPercent=750
-SpectatorPercentAdjust=150
+C2SKickOutPercent=850
+S2CKickOutPercent=850
+SpectatorPercentAdjust=350
 PacketLossDisableWeapons=1
 C2SNegativeKickOutPercent=50
 
 [Routing]
-RadarFavor=3
+RadarFavor=7
 CloseEnoughBulletAdjust=512
 CloseEnoughBombAdjust=2048
-DeathDistance=16384
-DoubleSendPercent=800
+DeathDistance=16000
+DoubleSendPercent=500
 WallResendCount=1
 
 [King]
-DeathCount=0
-ExpireTime=30000
+DeathCount=1
+ExpireTime=3000
 RewardFactor=1000
 NonCrownAdjustTime=3000
-NonCrownMinimumBounty=100
+NonCrownMinimumBounty=300
 CrownRecoverKills=3
 
 [Bullet]
-BulletDamageLevel=100
-BulletDamageUpgrade=50
+BulletDamageLevel=124
+BulletDamageUpgrade=44
 BulletAliveTime=550
 ExactDamage=1
