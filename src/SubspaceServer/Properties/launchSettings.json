@@ -3,6 +3,11 @@
     "SubspaceServer": {
       "commandName": "Project",
       "workingDirectory": "$(ProjectDir)\\Zone"
+    },
+    "SubspaceServer -i": {
+      "commandName": "Project",
+      "commandLineArgs": "-i",
+      "workingDirectory": "$(ProjectDir)\\Zone"
     }
   }
 }
