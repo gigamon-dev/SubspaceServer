@@ -78,7 +78,7 @@ namespace SS.Core.Modules
             // Start the worker thread. It will be the only thread to use the listening socket, until it ends.
             _cancellationTokenSource = new();
             _chatThread = new(ChatThread);
-            _chatThread.Name = "chat-network";
+            _chatThread.Name = nameof(ChatNetwork);
             _chatThread.Start(_cancellationTokenSource.Token);
 
             _iChatNetworkToken = broker.RegisterInterface<IChatNetwork>(this);

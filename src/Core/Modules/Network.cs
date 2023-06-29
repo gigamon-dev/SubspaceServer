@@ -266,14 +266,14 @@ namespace SS.Core.Modules
 
             // receive thread
             Thread thread = new(ReceiveThread);
-            thread.Name = "network-recv";
+            thread.Name = $"{nameof(Network)}-recv";
             thread.Start();
             _threadList.Add(thread);
 
             // send thread
             thread = new Thread(SendThread)
             {
-                Name = "network-send"
+                Name = $"{nameof(Network)}-send"
             };
             thread.Start();
             _threadList.Add(thread);
@@ -284,7 +284,7 @@ namespace SS.Core.Modules
             {
                 thread = new Thread(RelThread)
                 {
-                    Name = "network-rel-" + i
+                    Name = $"{nameof(Network)}-rel-" + i
                 };
                 thread.Start();
                 _reliableThreads.Add(thread);

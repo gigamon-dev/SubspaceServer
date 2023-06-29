@@ -76,6 +76,7 @@ namespace SS.Core.Modules
             _cancellationTokenSource = new CancellationTokenSource();
             _cancellationToken = _cancellationTokenSource.Token;
             _checkThread = new Thread(CheckThread);
+            _checkThread.Name = nameof(LagAction);
             _checkThread.Start();
 
             return true;

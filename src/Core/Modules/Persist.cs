@@ -86,6 +86,7 @@ namespace SS.Core.Modules
             _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", 4096);
 
             _workerThread = new Thread(PeristWorkerThread);
+            _workerThread.Name = nameof(Persist);
             _workerThread.Start();
 
             _iPersistToken = broker.RegisterInterface<IPersist>(this);
