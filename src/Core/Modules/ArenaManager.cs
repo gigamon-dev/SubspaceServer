@@ -124,7 +124,11 @@ namespace SS.Core.Modules
         }
 
         [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, typeof(string),
-            "A list of the names of arenas to permanently set up when the server is started.")]
+            Description = """
+                Names of arenas to permanently keep running.
+                These arenas will be created when the server is started
+                and show up on the arena list, even if no players are in them.
+                """)]
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
             _persistExecutor = broker.GetInterface<IPersistExecutor>();
@@ -785,7 +789,7 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        if (arenaPlace.Place(nameBuffer, ref spx, ref spy, player, out int charsWritten))
+                        if (arenaPlace.TryPlace(nameBuffer, ref spx, ref spy, player, out int charsWritten))
                         {
                             name = nameBuffer[..charsWritten];
                         }
@@ -917,7 +921,7 @@ namespace SS.Core.Modules
                     {
                         int spawnX = 0;
                         int spawnY = 0;
-                        if (arenaPlace.Place(nameBuffer, ref spawnX, ref spawnY, player, out int charsWritten))
+                        if (arenaPlace.TryPlace(nameBuffer, ref spawnX, ref spawnY, player, out int charsWritten))
                         {
                             nameBuffer = nameBuffer[..charsWritten];
                         }
@@ -1419,7 +1423,7 @@ namespace SS.Core.Modules
                         try
                         {
                             int spx = 0, spy = 0;
-                            if (arenaPlace.Place(name, ref spx, ref spy, player, out charsWritten))
+                            if (arenaPlace.TryPlace(name, ref spx, ref spy, player, out charsWritten))
                             {
                                 name = name[..charsWritten];
                             }

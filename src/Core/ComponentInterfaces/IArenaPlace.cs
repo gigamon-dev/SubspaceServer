@@ -32,6 +32,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">the player being placed</param>
         /// <param name="charsWritten">When this method returns, contains the number of characters written to <paramref name="arenaName"/>.</param>
         /// <returns><see langword="true"/> if an arena to place the player in was determined. Otherwise, <see langword="false"/>.</returns>
-        bool Place(Span<char> arenaName, ref int spawnX, ref int spawnY, Player player, out int charsWritten);
+        bool TryPlace(Span<char> arenaName, ref int spawnX, ref int spawnY, Player player, out int charsWritten);
     }
 }

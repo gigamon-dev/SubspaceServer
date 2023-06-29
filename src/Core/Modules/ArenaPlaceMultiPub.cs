@@ -61,9 +61,12 @@ namespace SS.Core.Modules
 
         #region IArenaPlace Members
 
-        [ConfigHelp("General", "DesiredPlaying", ConfigScope.Global, typeof(int), DefaultValue = "15", 
-            Description = "This controls when the server will create new public arenas.")]
-        bool IArenaPlace.Place(Span<char> arenaName, ref int spawnX, ref int spawnY, Player player, out int charsWritten)
+        [ConfigHelp("General", "DesiredPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "15", 
+            Description = """
+                The limit at which the server will try to create a new public arena for incoming players.
+                This setting works in conjunction with the General:PublicArenas global.conf setting.
+                """)]
+        bool IArenaPlace.TryPlace(Span<char> arenaName, ref int spawnX, ref int spawnY, Player player, out int charsWritten)
         {
             arenaName.Clear();
             charsWritten = 0;
@@ -79,7 +82,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    // No ConnectAs, try the pubic arenas.
+                    // No ConnectAs, try the public arenas.
                     lock (_lock)
                     {
                         tryList.AddRange(_pubNames);
@@ -92,12 +95,7 @@ namespace SS.Core.Modules
                 {
                     foreach (string name in tryList)
                     {
-                        int bufferWritten;
-                        bool success = pass == 0
-                            ? buffer.TryWrite($"{name}", out bufferWritten)
-                            : buffer.TryWrite($"{name}{pass}", out bufferWritten);
-
-                        if (!success)
+                        if (!Arena.TryCreateArenaName(buffer, name, pass, out int bufferWritten))
                             continue;
 
                         ReadOnlySpan<char> tryName = buffer[..bufferWritten];
@@ -141,8 +139,13 @@ namespace SS.Core.Modules
         }
 
         [ConfigHelp("General", "PublicArenas", ConfigScope.Global, typeof(string), 
-            "A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested. " +
-            "Allowed delimiters include: ' ' (space), ',', ':', and ';'.")]
+            Description = """
+            A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested.
+            Allowed delimiters include: ' ' (space), ',', ':', and ';'.
+            When omitted, the server will use the default public arena names: "0", "1", ...
+            which on the client-side respectively are displayed as "(Public 0)", "(Public 1)", ...
+            This setting works in conjunction with each arena's the General:DesiredPlaying arena.conf setting.
+            """)]
         private void LoadPubNames()
         {
             string delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
@@ -178,6 +181,14 @@ namespace SS.Core.Modules
                 finally
                 {
                     _stringListPool.Return(arenaNames);
+                }
+
+                if (_pubNames.Count == 0)
+                {
+                    // No configured arena names.
+                    // Just search for the default public arena names: "0", "1", ...
+                    // which on the client-side respectively relate to "(Public 0)", "(Public 1)", ...
+                    _pubNames.Add("");
                 }
             }
         }
