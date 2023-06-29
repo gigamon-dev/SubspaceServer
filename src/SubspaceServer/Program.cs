@@ -83,6 +83,8 @@ namespace SubspaceServer
             }
         }
 
+        // This handles Ctrl + C (SIGINT) and Ctrl + Break (SIGBREAK).
+        // SIGBREAK is Windows only (not a POSIX signal).
         private static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
         {
             server?.Quit();

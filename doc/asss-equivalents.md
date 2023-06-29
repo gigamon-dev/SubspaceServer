@@ -91,7 +91,7 @@ This document provides an overview of the various server parts and their relatio
 | funky:sgcompat | SS.Core.Modules.SubgameCompatibility | |
 | - | SS.Core.Modules.Scoring.SpeedGame | |
 | stats | SS.Core.Modules.Scoring.Stats | |
-| unixsignal | | No plans to add it. |
+| unixsignal | SS.Core.Modules.PosixSignal |  |
 | contrib:voices | - | No plans to add it. |
 | watchdamage | SS.Core.Modules.WatchDamage | |
 | &lt;py&gt; exceptlogging | - | No plans to add it. |
