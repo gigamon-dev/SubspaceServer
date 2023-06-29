@@ -364,6 +364,22 @@ namespace SS.Core.Modules
                 return;
             }
 
+            string hash = _configManager.GetStr(_pwdFile, "users", parameters);
+
+            if (!string.IsNullOrWhiteSpace(hash))
+            {
+                if (string.Equals(hash, "any", StringComparison.OrdinalIgnoreCase))
+                {
+                    _chat.SendMessage(player, $"{parameters} is already allowed.");
+                    return;
+                }
+                else if (!string.Equals(hash, "lock", StringComparison.OrdinalIgnoreCase))
+                {
+                    _chat.SendMessage(player, $"{parameters} already has a local password set.");
+                    return;
+                }
+            } 
+
             _configManager.SetStr(_pwdFile, "users", parameters.ToString(), "any", $"added by {player.Name} on {DateTime.UtcNow}", true);
             _chat.SendMessage(player, $"Added {parameters} to the allowed player list.");
         }
@@ -385,7 +401,7 @@ namespace SS.Core.Modules
 
             string hash = _configManager.GetStr(_pwdFile, "users", targetPlayer.Name);
 
-            if (!string.IsNullOrWhiteSpace(hash))
+            if (!string.IsNullOrWhiteSpace(hash) && !string.Equals(hash, "any", StringComparison.OrdinalIgnoreCase))
             {
                 _chat.SendMessage(player, $"{targetPlayer.Name} has already set a local password.");
                 return;
