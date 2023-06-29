@@ -38,7 +38,7 @@ namespace SS.Core.Modules
         private readonly BlockingCollection<PersistWorkItem> _workQueue = new();
         private Thread _workerThread;
         private TimeSpan _syncTimeSpan;
-        private DateTime? _lastSync;
+        private DateTime? _nextSync;
         private readonly object _lock = new();
 
         private ArenaDataKey<ArenaData> _adKey;
@@ -82,6 +82,9 @@ namespace SS.Core.Modules
 
             _syncTimeSpan = TimeSpan.FromSeconds(
                 _configManager.GetInt(_configManager.Global, "Persist", "SyncSeconds", 180)).Duration();
+
+            if (_syncTimeSpan < TimeSpan.FromSeconds(10))
+                _syncTimeSpan = TimeSpan.FromSeconds(10);
 
             _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", 4096);
 
@@ -243,11 +246,6 @@ namespace SS.Core.Modules
 
         void IPersistExecutor.SaveAll(Action completed)
         {
-            lock (_lock)
-            {
-                _lastSync = DateTime.UtcNow;
-            }
-
             PutAllWorkItem workItem = _putAllWorkItemPool.Get();
             workItem.Command = PersistCommand.PutAll;
             workItem.Callback = completed;
@@ -287,16 +285,11 @@ namespace SS.Core.Modules
 
                 lock (_lock)
                 {
-                    if (_lastSync == null)
-                    {
-                        waitTimeSpan = _syncTimeSpan;
-                    }
-                    else
-                    {
-                        waitTimeSpan = DateTime.UtcNow - (_lastSync.Value + _syncTimeSpan);
-                        if (waitTimeSpan < TimeSpan.Zero)
-                            waitTimeSpan = TimeSpan.Zero;
-                    }
+                    _nextSync ??= DateTime.UtcNow + _syncTimeSpan;
+
+                    waitTimeSpan = _nextSync.Value - DateTime.UtcNow;
+                    if (waitTimeSpan < TimeSpan.Zero)
+                        waitTimeSpan = TimeSpan.Zero;
                 }
 
                 if (!_workQueue.TryTake(out PersistWorkItem workItem, waitTimeSpan))
@@ -314,7 +307,10 @@ namespace SS.Core.Modules
                         // Not signaled to shut down, which means we should do a full sync.
                         // The sync is done periodically so that if there were a server crash or power outage,
                         // we'd at least have the data that was saved since the last sync was committed.
-                        DoPutAll();
+                        lock (_lock)
+                        {
+                            DoPutAll();
+                        }
                     }
 
                     continue;
@@ -676,6 +672,8 @@ namespace SS.Core.Modules
 
                 // global arena data
                 DoPutArena(null);
+
+                _nextSync = DateTime.UtcNow + _syncTimeSpan;
             }
         }
 
