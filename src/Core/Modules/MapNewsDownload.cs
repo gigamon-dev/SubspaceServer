@@ -3,12 +3,12 @@ using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
+using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 
 namespace SS.Core.Modules
@@ -293,7 +293,7 @@ namespace SS.Core.Modules
 
                 // set up the packet header
                 mdd.cmpmap[0] = (byte)S2CPacketType.MapData;
-                Encoding.ASCII.GetBytes(mapname, 0, (mapname.Length <= 16) ? mapname.Length : 16, mdd.cmpmap, 1);
+                StringUtils.DefaultEncoding.GetBytes(mapname, 0, (mapname.Length <= 16) ? mapname.Length : 16, mdd.cmpmap, 1);
 
                 // and the data
                 Array.Copy(mapData, 0, mdd.cmpmap, 17, mapData.Length);
