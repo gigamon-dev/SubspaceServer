@@ -1,0 +1,4 @@
+# This folder is where all plugin modules should be placed.
+# Each plugin module should create its own sub-folder.
+# This file just helps to make sure the folder is created.
+*.*
