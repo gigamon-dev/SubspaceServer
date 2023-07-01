@@ -4,28 +4,41 @@ A zone server for the multiplayer game Subspace based on *A Small Subspace Serve
 ## About
 This is a cross-platform server written in C#.  It was developed based on the *A Small Subspace Server* (*ASSS*) open-source project and can be considered a derivative.  As such, the modular design closely resembles that of *ASSS* and is meant to be extended in very much the same ways. 
 
-This project aims to match the core functionality of *ASSS*. Contrary to its name, *ASSS* is not "small". Porting over everything in *ASSS* is not a realistic goal, therefore a choice had to be made on what is considered essential. Nearly everything needed to run a zone is available. See [asss-equivalents](./doc/asss-equivalents.md) for a more detailed listing. Also, see [additional-features](./doc/additional-features.md) for information about features that this server adds, which are not in *ASSS*.
+This project provides everything needed to host a zone. It has all of the essential functionality from *ASSS* and also many of the extras. 
 
-For guidance on how to extend the server, see the [Developer Guide](./doc/developer-guide.md).
+- See [asss-equivalents](./doc/asss-equivalents.md) for a detailed listing and comparison of included parts.
+- Also, see [additional-features](./doc/additional-features.md) for information about features that this server adds, which are not in *ASSS*.
 
-## Setup / Use
-1. Open and build the solution: `"src/SubspaceServer.sln"`.
-2. Setup the Zone
-   1. Copy **Continuum.exe** (currently 0.40) into the zone's **'clients'** folder: `"src/SubspaceServer/Zone/clients"`.
-   2. Configure it much like you would for *ASSS*.
-      - arenas
-      - conf
-      - maps
-      - news.txt
-3. Run it.  
-*Note: The working directory needs to be the **'Zone'** folder.*
+## Get Started
+
+[Download](./releases) the latest release.
+
+- Follow the [Quickstart](./doc/quickstart.md) for instructions on how to get up and running from scratch.
+   - If you already have a zone running using *ASSS*, see [Quickstart from ASSS](./doc/quickstart-from-asss.md) instead. It has instructions on how to use your existing files.
+- Read the [User Manual](./doc/user-manual.md) for more information.
+
+## Build and Extend
+
+The built-in functionality of the server is more than enough to host a zone. It's highly configurable and supports all the regular gameplay modes. However, the true power of this project is in how it can be extended by writing plugins.
+
+For guidance on how to develop your own plugins to extend the server, see the [Developer Guide](./doc/developer-guide.md).
+
+To build the server,
+- Get the code:
+
+   ```
+   git clone https://github.com/gigamon-dev/SubspaceServer.git
+   ````
+
+- Open the solution: `"src/SubspaceServer.sln"` to build and run it.
+- Remember to place a copy of **Continuum.exe** (currently 0.40) into the zone's **'clients'** folder: `"src/SubspaceServer/Zone/clients"` before running.
 
 ## Dependencies
-- [Google.Protobuf](https://www.nuget.org/packages/Google.Protobuf)
-- [Iconic.Zlib.Netstandard](https://www.nuget.org/packages/Iconic.Zlib.Netstandard)
-- [Microsoft.Extensions.ObjectPool](https://www.nuget.org/packages/Microsoft.Extensions.ObjectPool)
-- [SixLabors.ImageSharp](https://www.nuget.org/packages/SixLabors.ImageSharp)
-- [System.Data.SQLite.Core](https://www.nuget.org/packages/System.Data.SQLite.Core)
+- [Google.Protobuf](https://www.nuget.org/packages/Google.Protobuf) - for serializing data
+- [Iconic.Zlib.Netstandard](https://www.nuget.org/packages/Iconic.Zlib.Netstandard) - for zlib and crc32
+- [Microsoft.Extensions.ObjectPool](https://www.nuget.org/packages/Microsoft.Extensions.ObjectPool) - object pooling to reduce the need to garbage collect
+- [SixLabors.ImageSharp](https://www.nuget.org/packages/SixLabors.ImageSharp) - for creating images of maps
+- [System.Data.SQLite.Core](https://www.nuget.org/packages/System.Data.SQLite.Core) - embedded database for persisting player and arena data
 
 ## License
 GNU GPLv2, since that's what *A Small Subspace Server* uses and much of this can be considered as being a derivative of it.
