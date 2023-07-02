@@ -24,7 +24,7 @@ The server can technically be run on any system supported by .NET. However, pre-
 
 ## Installation
 
-1. Download the latest [release](../releases) and extract it to the location of your choice.
+1. Download the latest [release](https://github.com/gigamon-dev/SubspaceServer/releases) and extract it to the location of your choice.
 
 2. In the folder you extracted to, find the folder named `clients`. Copy `Continuum.exe` from your Continuum client's folder into the `clients` folder.
 

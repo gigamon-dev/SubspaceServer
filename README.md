@@ -11,7 +11,7 @@ This project provides everything needed to host a zone. It has all of the essent
 
 ## Get Started
 
-[Download](./releases) the latest release.
+[Download](https://github.com/gigamon-dev/SubspaceServer/releases) the latest release.
 
 - Follow the [Quickstart](./doc/quickstart.md) for instructions on how to get up and running from scratch.
    - If you already have a zone running using *ASSS*, see [Quickstart from ASSS](./doc/quickstart-from-asss.md) instead. It has instructions on how to use your existing files.
