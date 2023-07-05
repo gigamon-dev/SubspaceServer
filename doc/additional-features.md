@@ -173,3 +173,7 @@ The ASSS `koth` module uses a timer, which runs every 5 seconds, to check for a 
 ---
 ## SpeedGame module
 ASSS does not have Speed Zone functionality. In Subspace Server .NET, speed functionality is provided by the `SS.Core.Modules.Scoring.SpeedGame` module. This includes use of the S2C 0x24 (Speed packet). Also, it persists a player's personal best score (?best command).
+
+---
+## ?laghist command
+ASSS tracks many statistics for lag data. This includes the distribution of ping times for C2S and reliable data. ASSS planned to include a `?laghist` command to output this data. However, it was never implemented. In Subspace Server .NET the `?laghist` command is implemented in a way that it's presumed to have been intended. By default, it prints C2S ping stats. With the `-r` argument it prints reliable ping stats.
