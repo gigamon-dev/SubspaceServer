@@ -669,13 +669,18 @@ namespace SS.Replay
                 FlagGainCallback.Register(arena, Callback_CarryFlagPickup);
                 FlagLostCallback.Register(arena, Callback_CarryFlagDrop);
 
-                ad.RecorderTask = Task.Factory.StartNew(() =>
-                {
-                    DoRecording(arena, path, started, comments);
-                }, TaskCreationOptions.LongRunning).ContinueWith((_) =>
-                {
-                    _mainloop.QueueMainWorkItem(MainloopWorkItem_EndRecording, arena);
-                });
+                ad.RecorderTask = Task.Factory.StartNew(
+                    () =>
+                    {
+                        DoRecording(arena, path, started, comments);
+                    },
+                    TaskCreationOptions.LongRunning);
+
+                ad.RecorderTask.ContinueWith(
+                    (_) =>
+                    {
+                        _mainloop.QueueMainWorkItem(MainloopWorkItem_EndRecording, arena);
+                    });
 
                 return true;
             }
@@ -1146,12 +1151,18 @@ namespace SS.Replay
                     }
                 }
 
-                ad.PlaybackTask = Task.Factory.StartNew(() =>
-                {
-                    DoPlayback(arena, path);
-                }, TaskCreationOptions.LongRunning).ContinueWith((_) =>
-                    _mainloop.QueueMainWorkItem(MainloopWorkitem_EndPlayback, arena)
-                );
+                ad.PlaybackTask = Task.Factory.StartNew(
+                    () =>
+                    {
+                        DoPlayback(arena, path);
+                    }, 
+                    TaskCreationOptions.LongRunning);
+                
+                ad.PlaybackTask.ContinueWith(
+                    (_) =>
+                    {
+                        _mainloop.QueueMainWorkItem(MainloopWorkitem_EndPlayback, arena);
+                    });
 
                 return true;
             }
@@ -1193,7 +1204,7 @@ namespace SS.Replay
 
             try
             {
-                fileStream = new(path, FileMode.Open, FileAccess.Read, FileShare.None);
+                fileStream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             }
             catch (Exception ex)
             {
