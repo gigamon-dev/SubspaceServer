@@ -62,6 +62,7 @@ namespace SS.Replay
         private const uint ReplayFileVersion = 2;
         private const uint MapChecksumKey = 0x46692018;
         private const int MaxRecordBuffer = 4096;
+        private const string ReplayCommandName = "replay";
 
         private IArenaManager _arenaManager;
         private IBalls _balls;
@@ -127,7 +128,7 @@ namespace SS.Replay
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
-            _commandManager.AddCommand("replay", Command_replay);
+            _commandManager.AddCommand(ReplayCommandName, Command_replay);
             _commandManager.AddCommand("gamerecord", Command_replay);
             _commandManager.AddCommand("rec", Command_replay);
 
@@ -481,7 +482,7 @@ namespace SS.Replay
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "status | record <file> | play <file> | pause | stop",
+            Args = "status | record <file> | play <file> | pause | stop | settings",
             Description = "Controls a replay recording or playback.")]
         private void Command_replay(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -502,13 +503,13 @@ namespace SS.Replay
                 token = remaining.GetToken(' ', out remaining);
                 if (token.IsWhiteSpace())
                 {
-                    _chat.SendMessage(player, $"Replay: A filename is required to record to.");
+                    _chat.SendMessage(player, $"{ReplayCommandName}: A filename is required to record to.");
                     return;
                 }
 
                 if (!StartRecording(arena, token.ToString(), player, null))
                 {
-                    _chat.SendMessage(player, $"Replay: A recording cannot be started at this time.");
+                    _chat.SendMessage(player, $"{ReplayCommandName}: A recording cannot be started at this time.");
                 }
             }
             else if (MemoryExtensions.Equals(token, "play", StringComparison.OrdinalIgnoreCase))
@@ -516,13 +517,13 @@ namespace SS.Replay
                 token = remaining.GetToken(' ', out remaining);
                 if (token.IsWhiteSpace())
                 {
-                    _chat.SendMessage(player, $"Replay: A filename is required to play from.");
+                    _chat.SendMessage(player, $"{ReplayCommandName}: A filename is required to play from.");
                     return;
                 }
 
                 if (!StartPlayback(arena, token.ToString(), player))
                 {
-                    _chat.SendMessage(player, $"Replay: A playback cannot be started at this time.");
+                    _chat.SendMessage(player, $"{ReplayCommandName}: A playback cannot be started at this time.");
                 }
             }
             else if (MemoryExtensions.Equals(token, "stop", StringComparison.OrdinalIgnoreCase))
@@ -554,8 +555,28 @@ namespace SS.Replay
 
                 if (!success)
                 {
-                    _chat.SendMessage(player, "Replay: Nothing is being played.");
+                    _chat.SendMessage(player, $"{ReplayCommandName}: Nothing is being played.");
                 }
+            }
+            else if (MemoryExtensions.Equals(token, "settings", StringComparison.OrdinalIgnoreCase))
+            {
+                _chat.SendMessage(player, $"{ReplayCommandName}: NotifyPlayback = {ad.Settings.NotifyPlayback}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: NotifyPlaybackError = {ad.Settings.NotifyPlaybackError}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: NotifyRecording = {ad.Settings.NotifyRecording}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: NotifyRecordingError = {ad.Settings.NotifyRecordingError}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackMapCheckEnabled = {ad.Settings.PlaybackMapCheckEnabled}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackSpecFreqCheckEnabled = {ad.Settings.PlaybackSpecFreqCheckEnabled}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackLockTeams = {ad.Settings.PlaybackLockTeams}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackPublicChat = {ad.Settings.PlaybackPublicChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackPublicMacroChat = {ad.Settings.PlaybackPublicMacroChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackSpecChat = {ad.Settings.PlaybackSpecChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackTeamChat = {ad.Settings.PlaybackTeamChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackArenaChat = {ad.Settings.PlaybackArenaChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: RecordPublicChat = {ad.Settings.RecordPublicChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: RecordPublicMacroChat = {ad.Settings.RecordPublicMacroChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: RecordSpecChat = {ad.Settings.RecordSpecChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: RecordTeamChat = {ad.Settings.RecordTeamChat}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: RecordArenaChat = {ad.Settings.RecordArenaChat}");
             }
             else
             {
@@ -582,17 +603,17 @@ namespace SS.Replay
                 switch (state)
                 {
                     case ReplayState.None:
-                        _chat.SendMessage(player, "Replay: Nothing is being played or recorded.");
+                        _chat.SendMessage(player, $"{ReplayCommandName}: Nothing is being played or recorded.");
                         break;
 
                     case ReplayState.Recording:
                         if (fileName is null)
                         {
-                            _chat.SendMessage(player, $"Replay: A recording is starting up. Please stand by.");
+                            _chat.SendMessage(player, $"{ReplayCommandName}: A recording is starting up. Please stand by.");
                         }
                         else
                         {
-                            _chat.SendMessage(player, $"Replay: A replay is being recorded to '{fileName}'.");
+                            _chat.SendMessage(player, $"{ReplayCommandName}: A replay is being recorded to '{fileName}'.");
                         }
 
                         break;
@@ -600,16 +621,16 @@ namespace SS.Replay
                     case ReplayState.Playing:
                         if (fileName is null)
                         {
-                            _chat.SendMessage(player, $"Replay: A playback is starting up. Please stand by.");
+                            _chat.SendMessage(player, $"{ReplayCommandName}: A playback is starting up. Please stand by.");
                         }
                         else
                         {
-                            _chat.SendMessage(player, $"Replay: A replay is being played from '{fileName}', current position {playbackPosition:P}{(isPlaybackPaused ? " (paused)" : "")}.");
+                            _chat.SendMessage(player, $"{ReplayCommandName}: A replay is being played from '{fileName}', current position {playbackPosition:P}{(isPlaybackPaused ? " (paused)" : "")}.");
                         }
                         break;
 
                     default:
-                        _chat.SendMessage(player, $"Replay: The {nameof(ReplayModule)} module is in an invalid state.");
+                        _chat.SendMessage(player, $"{ReplayCommandName}: The {nameof(ReplayModule)} module is in an invalid state.");
                         break;
                 }
             }
@@ -876,10 +897,14 @@ namespace SS.Replay
         private void DoRecording(Arena arena, string path, ServerTick started, string comments)
         {
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            {
+                LogAndNotify(arena, NotifyOption.None, "Missing arena or ArenaData.");
                 return;
+            }
 
             if (string.IsNullOrWhiteSpace(path))
             {
+                LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Missing path of replay to play.");
                 path = Path.Combine("recordings", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{arena.Name}");
             }
             else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
@@ -2124,11 +2149,11 @@ namespace SS.Replay
                     return;
                 }
 
-                _chat.SendMessage(player, $"Replay: {message}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: {message}");
             }
             else if (notifyOption == NotifyOption.Arena)
             {
-                _chat.SendArenaMessage(arena, $"Replay: {message}");
+                _chat.SendArenaMessage(arena, $"{ReplayCommandName}: {message}");
             }
         }
 
@@ -2150,11 +2175,11 @@ namespace SS.Replay
                     return;
                 }
 
-                _chat.SendMessage(player, $"Replay: {message}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: {message}");
             }
             else if (notifyOption == NotifyOption.Arena)
             {
-                _chat.SendArenaMessage(arena, $"Replay: {message}");
+                _chat.SendArenaMessage(arena, $"{ReplayCommandName}: {message}");
             }
         }
 
