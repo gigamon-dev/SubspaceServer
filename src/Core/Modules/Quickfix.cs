@@ -192,13 +192,14 @@ namespace SS.Core.Modules
                             TryWriteSection(parameters, section, arenaConfigHandle, writer, section);
                         }
                     }
-
-                    hasData = fs.Position > 0;
                 }
                 finally
                 {
                     _configHelp.Unlock();
                 }
+
+                writer.Flush();
+                hasData = fs.Position > 0;
             }
             catch (Exception ex)
             {
@@ -252,8 +253,9 @@ namespace SS.Core.Modules
             if (!_configHelp.TryGetSectionKeys(helpSection, out IReadOnlyList<string> keyList))
                 return;
 
-            foreach (string key in keyList)
+            for (int keyIndex = 0; keyIndex < keyList.Count; keyIndex++)
             {
+                string key = keyList[keyIndex];
                 bool keyMatch = filter.IsWhiteSpace() || key.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
                 if (!sectionMatch && !keyMatch)
@@ -262,8 +264,10 @@ namespace SS.Core.Modules
                 if (!_configHelp.TryGetSettingHelp(helpSection, key, out IReadOnlyList<ConfigHelpRecord> helpList))
                     continue;
 
-                foreach ((ConfigHelpAttribute attribute, _) in helpList)
+                for (int helpIndex = 0; helpIndex < helpList.Count; helpIndex++)
                 {
+                    (ConfigHelpAttribute attribute, _) = helpList[helpIndex];
+
                     if (attribute.Scope == ConfigScope.Arena
                         && string.IsNullOrWhiteSpace(attribute.FileName))
                     {
