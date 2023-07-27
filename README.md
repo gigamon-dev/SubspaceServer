@@ -36,9 +36,9 @@ To build the server,
 ## Dependencies
 - [Google.Protobuf](https://www.nuget.org/packages/Google.Protobuf) - for serializing data
 - [Iconic.Zlib.Netstandard](https://www.nuget.org/packages/Iconic.Zlib.Netstandard) - for zlib and crc32
+- [Microsoft.Data.Sqlite](https://www.nuget.org/packages/Microsoft.Data.Sqlite) - embedded database for persisting player and arena data
 - [Microsoft.Extensions.ObjectPool](https://www.nuget.org/packages/Microsoft.Extensions.ObjectPool) - object pooling to reduce the need to garbage collect
 - [SixLabors.ImageSharp](https://www.nuget.org/packages/SixLabors.ImageSharp) - for creating images of maps
-- [System.Data.SQLite.Core](https://www.nuget.org/packages/System.Data.SQLite.Core) - embedded database for persisting player and arena data
 
 ## License
 GNU GPLv2, since that's what *A Small Subspace Server* uses and much of this can be considered as being a derivative of it.

@@ -1,6 +1,6 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Data.Sqlite;
+using SS.Core.ComponentInterfaces;
 using System;
-using System.Data.SQLite;
 using System.IO;
 using System.Text;
 
@@ -19,7 +19,7 @@ namespace SS.Core.Modules
 
         private const string DatabasePath = "./data";
         private const string DatabaseFileName = "SS.Core.Modules.PersistSQLite.db";
-        private const string ConnectionString = $"data source={DatabasePath}/{DatabaseFileName};foreign keys=True;pooling=True;version=3";
+        private const string ConnectionString = $"DataSource={DatabasePath}/{DatabaseFileName};Foreign Keys=True;Pooling=True";
 
         #region Module methods
 
@@ -69,13 +69,13 @@ namespace SS.Core.Modules
                 // create tables, etc...
                 try
                 {
-                    using SQLiteConnection conn = new(ConnectionString);
+                    using SqliteConnection conn = new(ConnectionString);
                     conn.Open();
 
-                    using SQLiteTransaction transaction = conn.BeginTransaction();
+                    using SqliteTransaction transaction = conn.BeginTransaction();
 
                     // create tables
-                    using (SQLiteCommand command = conn.CreateCommand())
+                    using (SqliteCommand command = conn.CreateCommand())
                     {
                         command.CommandText = @"
 CREATE TABLE [ArenaGroup](
@@ -179,10 +179,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 DbCreateArenaGroupIntervalAndSetCurrent(conn, arenaGroup, interval);
                 transaction.Commit();
 
@@ -211,10 +211,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 bool ret = DbGetPlayerData(conn, player.Name, arenaGroup, interval, key, outStream);
                 transaction.Commit();
 
@@ -244,10 +244,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 DbSetPlayerData(conn, player.Name, arenaGroup, interval, key, inStream);
                 transaction.Commit();
 
@@ -274,10 +274,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 DbDeletePlayerData(conn, player.Name, arenaGroup, interval, key);
                 transaction.Commit();
 
@@ -304,10 +304,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 bool ret = DbGetArenaData(conn, arenaGroup, interval, key, outStream);
                 transaction.Commit();
 
@@ -333,10 +333,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 DbSetArenaData(conn, arenaGroup, interval, key, inStream);
                 transaction.Commit();
 
@@ -359,10 +359,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 DbDeleteArenaData(conn, arenaGroup, interval, key);
                 transaction.Commit();
 
@@ -385,10 +385,10 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
             try
             {
-                using SQLiteConnection conn = new(ConnectionString);
+                using SqliteConnection conn = new(ConnectionString);
                 conn.Open();
 
-                using SQLiteTransaction transaction = conn.BeginTransaction();
+                using SqliteTransaction transaction = conn.BeginTransaction();
                 DbResetGameInterval(conn, arenaGroup);
                 transaction.Commit();
 
@@ -406,11 +406,11 @@ CREATE INDEX [IX_PlayerData_PersistPlayerId] ON [PlayerData] (
 
         #endregion
 
-        private static int DbGetOrCreateArenaGroupId(SQLiteConnection conn, string arenaGroup)
+        private static int DbGetOrCreateArenaGroupId(SqliteConnection conn, string arenaGroup)
         {
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 SELECT ArenaGroupId
 FROM ArenaGroup
@@ -430,7 +430,7 @@ WHERE ArenaGroup = @ArenaGroup";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 INSERT INTO ArenaGroup(ArenaGroup)
 VALUES(@ArenaGroup)
@@ -453,7 +453,7 @@ RETURNING ArenaGroupId";
             }
         }
 
-        private static int DbCreateArenaGroupIntervalAndSetCurrent(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        private static int DbCreateArenaGroupIntervalAndSetCurrent(SqliteConnection conn, string arenaGroup, PersistInterval interval)
         {
             int arenaGroupId = DbGetOrCreateArenaGroupId(conn, arenaGroup);
 
@@ -461,7 +461,7 @@ RETURNING ArenaGroupId";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 UPDATE ArenaGroupInterval AS agi
 SET EndTimestamp = @Now
@@ -487,7 +487,7 @@ WHERE agi.ArenaGroupIntervalId = c.ArenaGroupIntervalId";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 INSERT INTO ArenaGroupInterval(
      ArenaGroupId
@@ -521,7 +521,7 @@ RETURNING ArenaGroupIntervalId";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 UPDATE CurrentArenaGroupInterval
 SET ArenaGroupIntervalId = @ArenaGroupIntervalId
@@ -543,7 +543,7 @@ WHERE ArenaGroupId = @ArenaGroupId
             // no record in CurrentArenaGroupInterval yet, insert it
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 INSERT INTO CurrentArenaGroupInterval(
      ArenaGroupId
@@ -569,11 +569,11 @@ VALUES(
             return arenaGroupIntervalId;
         }
 
-        private static int? DbGetCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        private static int? DbGetCurrentArenaGroupIntervalId(SqliteConnection conn, string arenaGroup, PersistInterval interval)
         {
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 SELECT cagi.ArenaGroupIntervalId
 FROM ArenaGroup AS ag
@@ -598,7 +598,7 @@ WHERE ag.ArenaGroup = @ArenaGroup
             }
         }
 
-        private static int DbGetOrCreateCurrentArenaGroupIntervalId(SQLiteConnection conn, string arenaGroup, PersistInterval interval)
+        private static int DbGetOrCreateCurrentArenaGroupIntervalId(SqliteConnection conn, string arenaGroup, PersistInterval interval)
         {
             int? arenaGroupIntervalId = DbGetCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
             if (arenaGroupIntervalId != null)
@@ -607,11 +607,11 @@ WHERE ag.ArenaGroup = @ArenaGroup
             return DbCreateArenaGroupIntervalAndSetCurrent(conn, arenaGroup, interval);
         }
 
-        private static int DbGetOrCreatePersistPlayerId(SQLiteConnection conn, string playerName)
+        private static int DbGetOrCreatePersistPlayerId(SqliteConnection conn, string playerName)
         {
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 SELECT PersistPlayerId 
 FROM Player 
@@ -631,7 +631,7 @@ WHERE PlayerName = @PlayerName";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 INSERT INTO Player(PlayerName)
 VALUES(@PlayerName)
@@ -654,7 +654,7 @@ RETURNING PersistPlayerId";
             }
         }
 
-        private static bool DbGetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private static bool DbGetPlayerData(SqliteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -662,9 +662,11 @@ RETURNING PersistPlayerId";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
-SELECT Data
+SELECT
+     rowid
+    ,Data
 FROM PlayerData
 WHERE PersistPlayerId = @PersistPlayerId
     AND ArenaGroupIntervalId = @ArenaGroupIntervalId
@@ -673,11 +675,11 @@ WHERE PersistPlayerId = @PersistPlayerId
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
 
-                using SQLiteDataReader reader = command.ExecuteReader();
+                using SqliteDataReader reader = command.ExecuteReader();
 
                 if (reader.Read())
                 {
-                    using Stream blobStream = reader.GetStream(0);
+                    using Stream blobStream = reader.GetStream(1);
                     blobStream.CopyTo(outStream);
                     return true;
                 }
@@ -690,7 +692,7 @@ WHERE PersistPlayerId = @PersistPlayerId
             }
         }
 
-        private static void DbSetPlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
+        private static void DbSetPlayerData(SqliteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -698,7 +700,7 @@ WHERE PersistPlayerId = @PersistPlayerId
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 INSERT OR REPLACE INTO PlayerData(
      PersistPlayerId
@@ -711,22 +713,19 @@ VALUES(
     ,@ArenaGroupIntervalId
     ,@PersistKeyId
     ,zeroblob(@DataLength)
-)";
+);
+
+SELECT last_insert_rowid();";
                 command.Parameters.AddWithValue("PersistPlayerId", persistPlayerId);
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
                 command.Parameters.AddWithValue("DataLength", dataStream.Length);
-                command.ExecuteNonQuery();
 
-                command.Reset();
-
-                // Get the rowid.
-                command.CommandText = "SELECT last_insert_rowid()";
                 long rowId = (long)command.ExecuteScalar();
 
                 // Write the blob.
-                using SQLiteBlob blob = SQLiteBlob.Create(conn, conn.Database, "PlayerData", "Data", rowId, false);
-                blob.Write(dataStream.GetBuffer(), (int)dataStream.Length, 0);
+                using SqliteBlob blob = new(conn, "PlayerData", "Data", rowId);
+                dataStream.CopyTo(blob);
             }
             catch (Exception ex)
             {
@@ -734,7 +733,7 @@ VALUES(
             }
         }
 
-        private static void DbDeletePlayerData(SQLiteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
+        private static void DbDeletePlayerData(SqliteConnection conn, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
@@ -742,7 +741,7 @@ VALUES(
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 DELETE FROM PlayerData
 WHERE PersistPlayerId = @PersistPlayerId
@@ -760,26 +759,28 @@ WHERE PersistPlayerId = @PersistPlayerId
             }
         }
 
-        private static bool DbGetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private static bool DbGetArenaData(SqliteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
-SELECT Data
+SELECT
+     rowid
+    ,Data
 FROM ArenaData
 WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
     AND PersistKeyId = @PersistKeyId";
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
 
-                using SQLiteDataReader reader = command.ExecuteReader();
+                using SqliteDataReader reader = command.ExecuteReader();
 
                 if (reader.Read())
                 {
-                    using var blobStream = reader.GetStream(0);
+                    using var blobStream = reader.GetStream(1);
                     blobStream.CopyTo(outStream);
                     return true;
                 }
@@ -792,13 +793,13 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
             }
         }
 
-        private static void DbSetArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
+        private static void DbSetArenaData(SqliteConnection conn, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 INSERT OR REPLACE INTO ArenaData(
      ArenaGroupIntervalId
@@ -809,21 +810,18 @@ VALUES(
      @ArenaGroupIntervalId
     ,@PersistKeyId
     ,zeroblob(@DataLength)
-)";
+);
+
+SELECT last_insert_rowid();";
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
                 command.Parameters.AddWithValue("DataLength", dataStream.Length);
-                command.ExecuteNonQuery();
 
-                command.Reset();
-
-                // Get the rowid.
-                command.CommandText = "SELECT last_insert_rowid()";
                 long rowId = (long)command.ExecuteScalar();
 
                 // Write the blob.
-                using SQLiteBlob blob = SQLiteBlob.Create(conn, conn.Database, "ArenaData", "Data", rowId, false);
-                blob.Write(dataStream.GetBuffer(), (int)dataStream.Length, 0);
+                using SqliteBlob blob = new(conn, "ArenaData", "Data", rowId);
+                dataStream.CopyTo(blob);
             }
             catch (Exception ex)
             {
@@ -831,13 +829,13 @@ VALUES(
             }
         }
 
-        private static void DbDeleteArenaData(SQLiteConnection conn, string arenaGroup, PersistInterval interval, int persistKey)
+        private static void DbDeleteArenaData(SqliteConnection conn, string arenaGroup, PersistInterval interval, int persistKey)
         {
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(conn, arenaGroup, interval);
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 DELETE FROM ArenaData
 WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
@@ -853,7 +851,7 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
             }
         }
 
-        private static void DbResetGameInterval(SQLiteConnection conn, string arenaGroup)
+        private static void DbResetGameInterval(SqliteConnection conn, string arenaGroup)
         {
             int? arenaGroupIntervalId = DbGetCurrentArenaGroupIntervalId(conn, arenaGroup, PersistInterval.Game);
             if (arenaGroupIntervalId == null)
@@ -861,7 +859,7 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 DELETE FROM ArenaData
 WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId";
@@ -876,7 +874,7 @@ WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId";
 
             try
             {
-                using SQLiteCommand command = conn.CreateCommand();
+                using SqliteCommand command = conn.CreateCommand();
                 command.CommandText = @"
 DELETE FROM PlayerData
 WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId";
