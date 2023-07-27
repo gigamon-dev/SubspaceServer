@@ -1,3 +1,4 @@
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
@@ -13,7 +14,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality to persist information to a database.
     /// </summary>
     [CoreModuleInfo]
-    public class Persist : IModule, IPersist, IPersistExecutor
+    public sealed class Persist : IModule, IPersist, IPersistExecutor, IDisposable
     {
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
@@ -34,6 +35,7 @@ namespace SS.Core.Modules
         private Pool<IntervalWorkItem> _intervalWorkItemPool;
         private Pool<ResetGameIntervalWorkItem> _resetGameIntervalWorkItemPool;
         private Pool<PutAllWorkItem> _putAllWorkItemPool;
+        private ObjectPool<MemoryStream> _memoryStreamPool = ObjectPool.Create(new MemoryStreamPooledObjectPolicy()); // Note: This creates a DisposableObjectPool.
 
         private readonly BlockingCollection<PersistWorkItem> _workQueue = new();
         private Thread _workerThread;
@@ -43,7 +45,7 @@ namespace SS.Core.Modules
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private int _maxRecordLength;
+        private static int _maxRecordLength;
 
         #region Module memebers
 
@@ -251,6 +253,19 @@ namespace SS.Core.Modules
             workItem.Callback = completed;
 
             _workQueue.Add(workItem);
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        public void Dispose()
+        {
+            if (_memoryStreamPool is IDisposable disposable)
+            {
+                disposable.Dispose();
+                _memoryStreamPool = null;
+            }
         }
 
         #endregion
@@ -691,18 +706,25 @@ namespace SS.Core.Modules
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            MemoryStream dataStream = _memoryStreamPool.Get();
 
-            registration.GetData(arena, dataStream);
-
-            if (dataStream.Length > 0)
+            try
             {
-                dataStream.Position = 0;
-                _persistDatastore.SetArenaData(arenaGroup, registration.Interval, registration.Key, dataStream);
+                registration.GetData(arena, dataStream);
+
+                if (dataStream.Length > 0)
+                {
+                    dataStream.Position = 0;
+                    _persistDatastore.SetArenaData(arenaGroup, registration.Interval, registration.Key, dataStream);
+                }
+                else
+                {
+                    _persistDatastore.DeleteArenaData(arenaGroup, registration.Interval, registration.Key);
+                }
             }
-            else
+            finally
             {
-                _persistDatastore.DeleteArenaData(arenaGroup, registration.Interval, registration.Key);
+                _memoryStreamPool.Return(dataStream);
             }
         }
 
@@ -722,12 +744,19 @@ namespace SS.Core.Modules
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            MemoryStream dataStream = _memoryStreamPool.Get();
 
-            if (_persistDatastore.GetArenaData(arenaGroup, registration.Interval, registration.Key, dataStream))
+            try
             {
-                dataStream.Position = 0;
-                registration.SetData(arena, dataStream);
+                if (_persistDatastore.GetArenaData(arenaGroup, registration.Interval, registration.Key, dataStream))
+                {
+                    dataStream.Position = 0;
+                    registration.SetData(arena, dataStream);
+                }
+            }
+            finally
+            {
+                _memoryStreamPool.Return(dataStream);
             }
         }
 
@@ -770,18 +799,25 @@ namespace SS.Core.Modules
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            MemoryStream dataStream = _memoryStreamPool.Get();
 
-            registration.GetData(player, dataStream);
-
-            if (dataStream.Length > 0)
+            try
             {
-                dataStream.Position = 0;
-                _persistDatastore.SetPlayerData(player, arenaGroup, registration.Interval, registration.Key, dataStream);
+                registration.GetData(player, dataStream);
+
+                if (dataStream.Length > 0)
+                {
+                    dataStream.Position = 0;
+                    _persistDatastore.SetPlayerData(player, arenaGroup, registration.Interval, registration.Key, dataStream);
+                }
+                else
+                {
+                    _persistDatastore.DeletePlayerData(player, arenaGroup, registration.Interval, registration.Key);
+                }
             }
-            else
+            finally
             {
-                _persistDatastore.DeletePlayerData(player, arenaGroup, registration.Interval, registration.Key);
+                _memoryStreamPool.Return(dataStream);
             }
         }
 
@@ -804,12 +840,19 @@ namespace SS.Core.Modules
 
             string arenaGroup = GetArenaGroup(arena, registration.Interval);
 
-            using MemoryStream dataStream = new(_maxRecordLength); // TODO: reconsider this, maybe use ArrayPool and pass it as a Span instead?
+            MemoryStream dataStream = _memoryStreamPool.Get();
 
-            if (_persistDatastore.GetPlayerData(player, arenaGroup, registration.Interval, registration.Key, dataStream))
+            try
             {
-                dataStream.Position = 0;
-                registration.SetData(player, dataStream);
+                if (_persistDatastore.GetPlayerData(player, arenaGroup, registration.Interval, registration.Key, dataStream))
+                {
+                    dataStream.Position = 0;
+                    registration.SetData(player, dataStream);
+                }
+            }
+            finally
+            {
+                _memoryStreamPool.Return(dataStream);
             }
         }
 
@@ -1048,5 +1091,23 @@ namespace SS.Core.Modules
         }
 
         #endregion
+
+        private class MemoryStreamPooledObjectPolicy : IPooledObjectPolicy<MemoryStream>
+        {
+            public MemoryStream Create()
+            {
+                return new MemoryStream(_maxRecordLength);
+            }
+
+            public bool Return(MemoryStream obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Position = 0;
+                obj.SetLength(0);
+                return true;
+            }
+        }
     }
 }

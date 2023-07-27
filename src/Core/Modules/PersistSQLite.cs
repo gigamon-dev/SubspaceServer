@@ -710,14 +710,23 @@ VALUES(
      @PersistPlayerId
     ,@ArenaGroupIntervalId
     ,@PersistKeyId
-    ,@Data
+    ,zeroblob(@DataLength)
 )";
                 command.Parameters.AddWithValue("PersistPlayerId", persistPlayerId);
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
-                command.Parameters.AddWithValue("Data", dataStream.ToArray()); // TODO: seems only byte[] is allowed, maybe switch to Microsoft.Data.Sqlite?
-
+                command.Parameters.AddWithValue("DataLength", dataStream.Length);
                 command.ExecuteNonQuery();
+
+                command.Reset();
+
+                // Get the rowid.
+                command.CommandText = "SELECT last_insert_rowid()";
+                long rowId = (long)command.ExecuteScalar();
+
+                // Write the blob.
+                using SQLiteBlob blob = SQLiteBlob.Create(conn, conn.Database, "PlayerData", "Data", rowId, false);
+                blob.Write(dataStream.GetBuffer(), (int)dataStream.Length, 0);
             }
             catch (Exception ex)
             {
@@ -799,13 +808,22 @@ INSERT OR REPLACE INTO ArenaData(
 VALUES(
      @ArenaGroupIntervalId
     ,@PersistKeyId
-    ,@Data
+    ,zeroblob(@DataLength)
 )";
                 command.Parameters.AddWithValue("ArenaGroupIntervalId", arenaGroupIntervalId);
                 command.Parameters.AddWithValue("PersistKeyId", persistKey);
-                command.Parameters.AddWithValue("Data", dataStream.ToArray()); // TODO: seems only byte[] is allowed, maybe switch to Microsoft.Data.Sqlite?
-
+                command.Parameters.AddWithValue("DataLength", dataStream.Length);
                 command.ExecuteNonQuery();
+
+                command.Reset();
+
+                // Get the rowid.
+                command.CommandText = "SELECT last_insert_rowid()";
+                long rowId = (long)command.ExecuteScalar();
+
+                // Write the blob.
+                using SQLiteBlob blob = SQLiteBlob.Create(conn, conn.Database, "ArenaData", "Data", rowId, false);
+                blob.Write(dataStream.GetBuffer(), (int)dataStream.Length, 0);
             }
             catch (Exception ex)
             {
