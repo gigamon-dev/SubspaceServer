@@ -200,7 +200,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
         
-        bool IStaticFlagGame.TryGetFlagOwner(Arena arena, int flagId, out short owner)
+        bool IStaticFlagGame.TryGetFlagOwner(Arena arena, short flagId, out short owner)
         {
             if (arena == null 
                 || !arena.TryGetExtraData(_adKey, out ArenaData ad)
@@ -298,7 +298,7 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            byte flagId = (byte)packet.FlagId;
+            short flagId = packet.FlagId;
             if (flagId < 0 || flagId >= ad.Flags.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet - bad flag id.");

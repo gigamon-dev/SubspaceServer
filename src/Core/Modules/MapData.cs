@@ -258,6 +258,26 @@ namespace SS.Core.Modules
             }
         }
 
+        bool IMapData.TryGetFlagCoordinate(Arena arena, short flagId, out MapCoordinate coordinate)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            {
+                coordinate = default;
+                return false;
+            }
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.Lvl.TryGetFlagCoordinate(flagId, out coordinate);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
         private enum Direction { Up, Right, Down, Left };
 
         private struct FindEmptyTileContext

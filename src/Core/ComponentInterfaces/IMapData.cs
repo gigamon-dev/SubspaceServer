@@ -86,6 +86,15 @@ namespace SS.Core.ComponentInterfaces
         MapTile? GetTile(Arena arena, MapCoordinate coord);
 
         /// <summary>
+        /// Gets the coordinate of a static, turf-style flag.
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="flagId">Id of the flag to get the coordinate of.</param>
+        /// <param name="coordinate">The coordinate of the flag.</param>
+        /// <returns><see langword="true"/> if the coordinate could be retrieved. Otherwise, <see langword="false"/>.</returns>
+        bool TryGetFlagCoordinate(Arena arena, short flagId, out MapCoordinate coordinate);
+
+        /// <summary>
         /// Tries to find an empty tile nearest to the given coords.
         /// </summary>
         /// <param name="arena">The arena.</param>

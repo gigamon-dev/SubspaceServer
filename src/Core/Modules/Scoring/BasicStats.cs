@@ -231,7 +231,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_StaticFlagClaimed(Arena arena, Player player, byte flagId, short oldFreq, short newFreq)
+        private void Callback_StaticFlagClaimed(Arena arena, Player player, short flagId, short oldFreq, short newFreq)
         {
             _allPlayerStats.IncrementStat(player, StatCodes.TurfTags, null, 1);
         }

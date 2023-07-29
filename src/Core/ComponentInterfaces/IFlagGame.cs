@@ -73,7 +73,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flagId">The flag to get data for.</param>
         /// <param name="owner">The freq that owns the flag.</param>
         /// <returns>True if the flag owner was retrieved. Otherwise, false.</returns>
-        bool TryGetFlagOwner(Arena arena, int flagId, out short owner);
+        bool TryGetFlagOwner(Arena arena, short flagId, out short owner);
 
         /// <summary>
         /// Fakes a player touching (claiming) a flag.

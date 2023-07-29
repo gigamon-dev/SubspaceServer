@@ -51,16 +51,16 @@ namespace SS.Core.Map
         }
 
         /// <summary>
-        /// To get the coordinate of a flag by the FlagId.
+        /// Gets the coordinate of a flag by the <paramref name="flagId"/>.
         /// </summary>
-        /// <param name="index">Id of the flag.</param>
+        /// <param name="flagId">Id of the flag.</param>
         /// <param name="coordinate">When this method returns, contains the coordinate of the specified flag, if found; otherwise, the default value.</param>
-        /// <returns><see langword="true"/> if the flag was found; otherwise, <see langword="false"/>.</returns>
-        public bool TryGetFlagCoordinate(int index, out MapCoordinate coordinate)
+        /// <returns><see langword="true"/> if the flag was found. Otherwise, <see langword="false"/>.</returns>
+        public bool TryGetFlagCoordinate(short flagId, out MapCoordinate coordinate)
         {
-            if (index < _flagCoordinateList.Count)
+            if (flagId < _flagCoordinateList.Count)
             {
-                coordinate = _flagCoordinateList[index];
+                coordinate = _flagCoordinateList[flagId];
                 return true;
             }
 
@@ -169,8 +169,7 @@ namespace SS.Core.Map
                 length -= mapTileDataLength;
             }
 
-            // order the flags, allowing them to be accessed by index
-            // TODO: verify the comparison, can't test yet since the flagcore module is not done
+            // order the flags, allowing them to be accessed by index (flag id)
             _flagCoordinateList.Sort();
 
             if (_flagCoordinateList.Count > MaxFlags)

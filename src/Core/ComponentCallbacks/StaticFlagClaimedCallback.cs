@@ -13,7 +13,7 @@
         /// <param name="flagId">Id of the flag that was claimed.</param>
         /// <param name="oldFreq">The team that previously owned the flag.</param>
         /// <param name="newFreq">The team that took ownership of the flag.</param>
-        public delegate void StaticFlagClaimedDelegate(Arena arena, Player player, byte flagId, short oldFreq, short newFreq);
+        public delegate void StaticFlagClaimedDelegate(Arena arena, Player player, short flagId, short oldFreq, short newFreq);
 
         public static void Register(ComponentBroker broker, StaticFlagClaimedDelegate handler)
         {
@@ -25,7 +25,7 @@
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player player, byte flagId, short oldFreq, short newFreq)
+        public static void Fire(ComponentBroker broker, Arena arena, Player player, short flagId, short oldFreq, short newFreq)
         {
             broker?.GetCallback<StaticFlagClaimedDelegate>()?.Invoke(arena, player, flagId, oldFreq, newFreq);
 

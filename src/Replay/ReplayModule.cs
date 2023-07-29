@@ -401,7 +401,7 @@ namespace SS.Replay
             _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, "Flag game reset in the arena, but was unable record the event.");
         }
 
-        private void Callback_StaticFlagClaimed(Arena arena, Player player, byte flagId, short oldFreq, short newFreq)
+        private void Callback_StaticFlagClaimed(Arena arena, Player player, short flagId, short oldFreq, short newFreq)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
