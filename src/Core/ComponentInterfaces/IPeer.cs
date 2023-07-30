@@ -149,7 +149,7 @@ namespace SS.Core.ComponentInterfaces
         bool FindPlayer(ReadOnlySpan<char> findName, ref int score, StringBuilder name, StringBuilder arena);
 
         /// <summary>
-        /// Attempts to palce the given player in the arena of one of the peer zones.
+        /// Attempts to place the given player in the arena of one of the peer zones.
         /// Only arenas that the peer module has been configured for will be handled (PeerX:Arenas).
         /// </summary>
         /// <param name="player">The player to place.</param>

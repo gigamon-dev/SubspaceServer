@@ -25,7 +25,7 @@ namespace SS.Utilities
     /// In other words, it only supports code points in the Basic Multilingual Plane.
     /// If the Subspace game protocol were ever to be extended to support Unicode, then it might make sense to change this collection to use System.Text.Rune.
     /// </remarks>
-    public class Trie : IEnumerable<ReadOnlyMemory<char>>
+    public class Trie : IEnumerable<ReadOnlyMemory<char>>, IReadOnlyTrie
     {
         private readonly Trie<byte> _trie;
 
@@ -70,21 +70,11 @@ namespace SS.Utilities
             return _trie.Remove(key, out _);
         }
 
-        /// <summary>
-        /// Determines whether the trie contains the specified <paramref name="key"/>.
-        /// </summary>
-        /// <param name="key">The key to search for.</param>
-        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool Contains(ReadOnlySpan<char> key)
         {
             return _trie.ContainsKey(key);
         }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through keys in the collection that start with a specified <paramref name="prefix"/>.
-        /// </summary>
-        /// <param name="prefix">The prefix of the keys to match.</param>
-        /// <returns>An enumerator that can be used to iterate over the keys in the collection that start with a specified <paramref name="prefix"/>.</returns>
         public Trie<byte>.KeyEnumerator StartsWith(ReadOnlySpan<char> prefix)
         {
             return new Trie<byte>.KeyEnumerator(_trie, prefix);
@@ -116,6 +106,15 @@ namespace SS.Utilities
         {
             _trie.Clear();
         }
+
+        /// <summary>
+        /// Returns a read-only <see cref="ReadOnlyTrie"/> wrapper for the current collection.
+        /// </summary>
+        /// <returns>An object that acts as a read-only wrapper around the current <see cref="Trie"/>.</returns>
+        public ReadOnlyTrie AsReadOnly()
+        {
+            return new ReadOnlyTrie(this);
+        }
     }
 
     /// <summary>
@@ -133,7 +132,7 @@ namespace SS.Utilities
     /// In other words, it only supports code points in the Basic Multilingual Plane.
     /// If the Subspace game protocol were ever to be extended to support Unicode, then it might make sense to change this collection to use System.Text.Rune.
     /// </remarks>
-    public class Trie<TValue> : IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>
+    public class Trie<TValue> : IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>, IReadOnlyTrie<TValue>
     {
         private static readonly ObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
         private static readonly ObjectPool<TrieNode> s_caseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(false));
@@ -297,11 +296,6 @@ namespace SS.Utilities
             }
         }
 
-        /// <summary>
-        /// Determines whether the trie contains the specified <paramref name="key"/>.
-        /// </summary>
-        /// <param name="key">The key to search for.</param>
-        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool ContainsKey(ReadOnlySpan<char> key)
         {
             ThrowIfContainsSurrogateChar(key);
@@ -310,12 +304,6 @@ namespace SS.Utilities
             return node is not null && node.IsLeaf;
         }
 
-        /// <summary>
-        /// Gets the value associated with the specified <paramref name="key"/>.
-        /// </summary>
-        /// <param name="key">The key to search for.</param>
-        /// <param name="value">The value if found. Otherwise, the <see langword="default"/> value.</param>
-        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
         public bool TryGetValue(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
         {
             ThrowIfContainsSurrogateChar(key);
@@ -333,11 +321,6 @@ namespace SS.Utilities
             }
         }
 
-        /// <summary>
-        /// Returns an enumerator that iterates through items in the collection that have keys that start with a specified <paramref name="prefix"/>.
-        /// </summary>
-        /// <param name="prefix">The prefix of the keys to match.</param>
-        /// <returns>An enumerator that can be used to iterate over the items in the collection that have keys that start with a specified <paramref name="prefix"/>.</returns>
         public Enumerator StartsWith(ReadOnlySpan<char> prefix)
         {
             return new Enumerator(this, prefix);
@@ -391,6 +374,15 @@ namespace SS.Utilities
             }
 
             Count = 0;
+        }
+
+        /// <summary>
+        /// Returns a read-only <see cref="ReadOnlyTrie{TValue}"/> wrapper for the current collection.
+        /// </summary>
+        /// <returns>An object that acts as a read-only wrapper around the current <see cref="Trie{TValue}"/>.</returns>
+        public ReadOnlyTrie<TValue> AsReadOnly()
+        {
+            return new ReadOnlyTrie<TValue>(this);
         }
 
         private TrieNode? FindNode(ReadOnlySpan<char> key)
@@ -740,5 +732,155 @@ namespace SS.Utilities
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Provides a read-only abstraction of a trie.
+    /// </summary>
+    public interface IReadOnlyTrie : IReadOnlyCollection<ReadOnlyMemory<char>>
+    {
+        /// <summary>
+        /// Determines whether the trie contains the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key to search for.</param>
+        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
+        bool Contains(ReadOnlySpan<char> key);
+
+        /// <summary>
+        /// Returns an enumerator that iterates through keys in the collection that start with a specified <paramref name="prefix"/>.
+        /// </summary>
+        /// <param name="prefix">The prefix of the keys to match.</param>
+        /// <returns>An enumerator that can be used to iterate over the keys in the collection that start with a specified <paramref name="prefix"/>.</returns>
+        Trie<byte>.KeyEnumerator StartsWith(ReadOnlySpan<char> prefix);
+    }
+
+    /// <summary>
+    /// A read-only wrapper around a <see cref="Trie"/>.
+    /// </summary>
+    public class ReadOnlyTrie : IReadOnlyTrie
+    {
+        private readonly Trie _trie;
+
+        public ReadOnlyTrie(Trie trie)
+        {
+            _trie = trie ?? throw new ArgumentNullException(nameof(trie));
+        }
+
+        public int Count => _trie.Count;
+
+        public bool Contains(ReadOnlySpan<char> key)
+        {
+            return _trie.Contains(key);
+        }
+
+        public Trie<byte>.KeyEnumerator StartsWith(ReadOnlySpan<char> prefix)
+        {
+            return _trie.StartsWith(prefix);
+        }
+
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
+        public Trie<byte>.KeyEnumerator GetEnumerator()
+        {
+            return _trie.GetEnumerator();
+        }
+
+        IEnumerator<ReadOnlyMemory<char>> IEnumerable<ReadOnlyMemory<char>>.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
+
+    /// <summary>
+    /// Provides a read-only abstraction of a trie.
+    /// </summary>
+    public interface IReadOnlyTrie<TValue> : IReadOnlyCollection<(ReadOnlyMemory<char> Key, TValue? Value)>
+    {
+        /// <summary>
+        /// Gets the value associated with the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key.</param>
+        /// <returns>The value associated with the <paramref name="key"/>.</returns>
+        TValue this[ReadOnlySpan<char> key] { get; }
+
+        /// <summary>
+        /// Determines whether the trie contains the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key to search for.</param>
+        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
+        bool ContainsKey(ReadOnlySpan<char> key);
+
+        /// <summary>
+        /// Gets the value associated with the specified <paramref name="key"/>.
+        /// </summary>
+        /// <param name="key">The key to search for.</param>
+        /// <param name="value">The value if found. Otherwise, the <see langword="default"/> value.</param>
+        /// <returns><see langword="true"/> if the trie contains an element with the specified <paramref name="key"/>; otherwise <see langword="false"/>.</returns>
+        bool TryGetValue(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value);
+
+        /// <summary>
+        /// Returns an enumerator that iterates through items in the collection that have keys that start with a specified <paramref name="prefix"/>.
+        /// </summary>
+        /// <param name="prefix">The prefix of the keys to match.</param>
+        /// <returns>An enumerator that can be used to iterate over the items in the collection that have keys that start with a specified <paramref name="prefix"/>.</returns>
+        Trie<TValue>.Enumerator StartsWith(ReadOnlySpan<char> prefix);
+    }
+
+    /// <summary>
+    /// A read-only wrapper around a <see cref="Trie{TValue}"/>.
+    /// </summary>
+    public class ReadOnlyTrie<TValue> : IReadOnlyTrie<TValue>
+    {
+        private readonly Trie<TValue> _trie;
+
+        public ReadOnlyTrie(Trie<TValue> trie)
+        {
+            _trie = trie ?? throw new ArgumentNullException(nameof(trie));
+        }
+
+        public TValue this[ReadOnlySpan<char> key] => _trie[key];
+
+        public int Count => _trie.Count;
+
+        public bool ContainsKey(ReadOnlySpan<char> key)
+        {
+            return _trie.ContainsKey(key);
+        }
+
+        public bool TryGetValue(ReadOnlySpan<char> key, [MaybeNullWhen(false)] out TValue value)
+        {
+            return _trie.TryGetValue(key, out value);
+        }
+
+        public Trie<TValue>.Enumerator StartsWith(ReadOnlySpan<char> prefix)
+        {
+            return _trie.StartsWith(prefix);
+        }
+
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
+        public Trie<TValue>.Enumerator GetEnumerator()
+        {
+            return _trie.GetEnumerator();
+        }
+
+        IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)> IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 }

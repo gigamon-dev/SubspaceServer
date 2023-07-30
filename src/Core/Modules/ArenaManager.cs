@@ -8,6 +8,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -19,8 +20,10 @@ namespace SS.Core.Modules
     /// the states they are in, transitions between states, movement of players between arenas, etc.
     /// </summary>
     [CoreModuleInfo]
-    public class ArenaManager : IModule, IArenaManager, IArenaManagerInternal, IModuleLoaderAware
+    public sealed class ArenaManager : IModule, IArenaManager, IArenaManagerInternal, IModuleLoaderAware, IDisposable
     {
+        private const string ArenasDirectoryName = "arenas";
+
         /// <summary>
         /// the read-write lock for the global arena list
         /// </summary>
@@ -76,6 +79,15 @@ namespace SS.Core.Modules
         /// </summary>
         private ArenaDataKey<ArenaData> _adkey;
 
+        private FileSystemWatcher _knownArenaWatcher;
+        private readonly Trie _knownArenaNames = new(false);
+        private readonly ReadOnlyTrie _readOnlyKnownArenaNames;
+
+        public ArenaManager()
+        {
+            _readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
+        }
+
         #region Module members
 
         public bool Load(
@@ -115,7 +127,15 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
             _mainloopTimer.SetTimer(MainloopTimer_ReapArenas, 1700, 1700, null);
             _mainloopTimer.SetTimer(MainloopTimer_DoArenaMaintenance, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, null);
-            _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, 1000, null);
+            _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
+
+            _knownArenaWatcher = new FileSystemWatcher(ArenasDirectoryName);
+            _knownArenaWatcher.IncludeSubdirectories = true;
+            _knownArenaWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+            _knownArenaWatcher.Created += KnownArenaWatcher_Created;
+            _knownArenaWatcher.Deleted += KnownArenaWatcher_Deleted;
+            _knownArenaWatcher.Renamed += KnownArenaWatcher_Renamed;
+            _knownArenaWatcher.EnableRaisingEvents = true;
 
             _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
             _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
@@ -168,6 +188,16 @@ namespace SS.Core.Modules
 
             if (broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
                 return false;
+
+            if (_knownArenaWatcher is not null)
+            {
+                _knownArenaWatcher.EnableRaisingEvents = false;
+                _knownArenaWatcher.Created -= KnownArenaWatcher_Created;
+                _knownArenaWatcher.Deleted -= KnownArenaWatcher_Deleted;
+                _knownArenaWatcher.Renamed -= KnownArenaWatcher_Renamed;
+                _knownArenaWatcher.Dispose();
+                _knownArenaWatcher = null;
+            }
 
             _network?.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
             _network?.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
@@ -567,6 +597,8 @@ namespace SS.Core.Modules
             }
         }
 
+        ReadOnlyTrie IArenaManager.KnownArenaNames => _readOnlyKnownArenaNames;
+
         #endregion
 
         #region IArenaManagerInternal
@@ -733,6 +765,16 @@ namespace SS.Core.Modules
         void IArenaManagerInternal.LeaveArena(Player player)
         {
             LeaveArena(player);
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        public void Dispose()
+        {
+            _knownArenaWatcher?.Dispose();
+            _knownArenaWatcher = null;
         }
 
         #endregion
@@ -1349,16 +1391,37 @@ namespace SS.Core.Modules
         {
             WriteLock();
 
+            _logManager.LogM(LogLevel.Info, nameof(ArenaManager), "Refreshing known arenas.");
+
             try
             {
-                // TODO: is this really needed? 
+                _knownArenaNames.Clear();
+
+                foreach (string dirPath in Directory.GetDirectories(ArenasDirectoryName))
+                {
+                    ReadOnlySpan<char> arenaName = dirPath.AsSpan()[(ArenasDirectoryName.Length + 1)..];
+                    if (arenaName.Equals("(default)", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (arenaName.StartsWith(".", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (!File.Exists(Path.Join(dirPath, "arena.conf")))
+                        continue;
+
+                    _knownArenaNames.Add(arenaName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(ArenaManager), $"Error refreshing known arenas. {ex.Message}");
             }
             finally
             {
                 WriteUnlock();
             }
 
-            return true; // keep running
+            return false; // do not run again
         }
 
         #endregion
@@ -1697,6 +1760,44 @@ namespace SS.Core.Modules
             finally
             {
                 WriteUnlock();
+            }
+        }
+
+        private void KnownArenaWatcher_Created(object sender, FileSystemEventArgs e)
+        {
+            // Directory or arena.conf created.
+            if (MemoryExtensions.Equals(Path.GetDirectoryName(e.FullPath.AsSpan()), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)
+                || (MemoryExtensions.Equals(Path.GetFileName(e.FullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
+                    && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.FullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)))
+            {
+                _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
+                _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
+            }
+        }
+
+        private void KnownArenaWatcher_Deleted(object sender, FileSystemEventArgs e)
+        {
+            // Directory or arena.conf deleted.
+            if (MemoryExtensions.Equals(Path.GetDirectoryName(e.FullPath.AsSpan()), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)
+                || (MemoryExtensions.Equals(Path.GetFileName(e.FullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
+                    && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.FullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)))
+            {
+                _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
+                _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
+            }
+        }
+
+        private void KnownArenaWatcher_Renamed(object sender, RenamedEventArgs e)
+        {
+            // Directory or arena.conf renamed.
+            if (MemoryExtensions.Equals(Path.GetDirectoryName(e.FullPath.AsSpan()), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)
+                || (MemoryExtensions.Equals(Path.GetFileName(e.FullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
+                    && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.FullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase))
+                || (MemoryExtensions.Equals(Path.GetFileName(e.OldFullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
+                    && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.OldFullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)))
+            {
+                _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
+                _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
             }
         }
 

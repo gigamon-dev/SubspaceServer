@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Utilities;
 using System;
 using System.Collections.Generic;
 
@@ -134,6 +135,17 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena"></param>
         void UnholdArena(Arena arena);
+
+        /// <summary>
+        /// Collection of arena names that are present in the arenas directory.
+        /// </summary>
+        /// <remarks>
+        /// Only directories that contain a file named "arena.conf" will be included. For example if the
+        /// file "arenas/foo/arena.conf" is found, this list will contain a "foo" entry.
+        /// "(default)" and any directory beginning with a dot are not included. "(public)" IS included.
+        /// <para>Rember to use <see cref="Lock"/> and <see cref="Unlock"/>.</para>
+        /// </remarks>
+        ReadOnlyTrie KnownArenaNames { get; }
     }
 
     /// <summary>

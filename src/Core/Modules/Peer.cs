@@ -61,9 +61,15 @@ namespace SS.Core.Modules
         // - there will not be many peer zones (and peer zones are not removed anyway, the list is based on what's configured)
         // - each zone won't have too many arenas (though they do get removed)
         private readonly List<PeerZone> _peers = new();
+        private readonly ReadOnlyCollection<PeerZone> _readOnlyPeers;
 
         private readonly ObjectPool<PeerArena> _peerArenaPool = new NonTransientObjectPool<PeerArena>(new PeerArenaPooledObjectPolicy());
         private readonly ObjectPool<PeerArenaName> _peerArenaNamePool = new NonTransientObjectPool<PeerArenaName>(new PeerArenaNamePooledObjectPolicy());
+
+        public Peer()
+        {
+            _readOnlyPeers = _peers.AsReadOnly();
+        }
 
         #region Module members
 
@@ -358,7 +364,7 @@ namespace SS.Core.Modules
                 if (!_rwLock.IsReadLockHeld)
                     throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
 
-                return _peers;
+                return _readOnlyPeers;
             }
         }
 
@@ -1124,7 +1130,25 @@ namespace SS.Core.Modules
 
             if (peerZone.Config.ProvideDefaultArenas)
             {
-                // TODO: known arenas logic
+                // Get the base arena name.
+                while (localName.Length > 0 && char.IsAsciiDigit(localName[^1]))
+                    localName = localName[..^1];
+
+                if (localName.IsEmpty)
+                {
+                    localName = "(public)";
+                }
+
+                _arenaManager.Lock();
+
+                try
+                {
+                    return !_arenaManager.KnownArenaNames.Contains(localName);
+                }
+                finally
+                {
+                    _arenaManager.Unlock();
+                }
             }
 
             return false;
