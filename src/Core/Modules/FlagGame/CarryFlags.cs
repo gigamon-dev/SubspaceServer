@@ -758,9 +758,11 @@ namespace SS.Core.Modules.FlagGame
                 started = ((ICarryFlagGame)this).StartGame(arena);
             }
 
-            // TODO: ASSS has some logic that fires the SpawnCallback. Unsure why, but maybe S2C_FlagReset automatically resets the ships of the winner freq? Investigate when a scoring module is made.
+            // ASSS fires the SpawnCallback here.
+            // Instead of being done here, it's in the Game module's callback handler for FlagGameResetCallback.
 
-            // ASSS ends the game interval here, but it probably is better to put that in a flag game scoring module.
+            // ASSS ends the persist module's "game" interval here.
+            // Instead of being done here, it's in the SS.Core.Modules.FlagGamePoints scoring module.
 
             return started;
         }

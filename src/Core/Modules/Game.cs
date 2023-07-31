@@ -118,6 +118,7 @@ namespace SS.Core.Modules
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
+            FlagGameResetCallback.Register(_broker, Callback_FlagGameReset);
 
             _net.AddPacket(C2SPacketType.Position, Packet_Position);
             _net.AddPacket(C2SPacketType.SpecRequest, Packet_SpecRequest);
@@ -166,6 +167,7 @@ namespace SS.Core.Modules
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
             NewPlayerCallback.Unregister(_broker, Callback_NewPlayer);
+            FlagGameResetCallback.Unregister(_broker, Callback_FlagGameReset);
 
             _mainloop.WaitForMainWorkItemDrain();
 
@@ -849,6 +851,51 @@ namespace SS.Core.Modules
                         _playerData.Unlock();
                     }
                 }
+            }
+        }
+
+        private void Callback_FlagGameReset(Arena arena, short winnerFreq, int points)
+        {
+            if (arena is null)
+                return;
+
+            if (winnerFreq == -1)
+                return;
+
+            // This assumes that the module that fired the callback sent the S2C_FlagReset packet to the arena.
+            // Determine which players have been effectively shipreset by this flag reset.
+            // Update their IsDead flags and invoke SpawnCallback.
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    if (player.Arena == arena
+                        && player.Freq == winnerFreq
+                        && player.Ship != ShipType.Spec)
+                    {
+                        // Note: We could check if the player is in a safe zone too. (ASSS doesn't check it either)
+                        // However, it's possible for the player to enter or leave a safe zone right before getting the S2C_FlagReset packet.
+                        // So, no matter what, we can't guarantee being 100% accurate.
+                        // We'll just assume that their ship was reset, regardless of being in a safe zone or not.
+
+                        SpawnCallback.SpawnReason reason = SpawnCallback.SpawnReason.FlagVictory | SpawnCallback.SpawnReason.ShipReset;
+
+                        if (player.Flags.IsDead)
+                        {
+                            player.Flags.IsDead = false;
+                            reason |= SpawnCallback.SpawnReason.AfterDeath;
+                        }
+
+                        DoSpawnCallback(player, reason);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
             }
         }
 

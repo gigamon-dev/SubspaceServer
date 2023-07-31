@@ -118,6 +118,22 @@ namespace SS.Packets.Game
         }
     }
 
+    /// <summary>
+    /// Notifies the client that the flag game is over.
+    /// - The client will print an arena message:
+    ///   + No winner (freq = -1):
+    ///     Flag game reset.
+    ///   + On the winning freq (even if in spec or in a safe zone):
+    ///     Team Victory
+    ///     Reward: [points] points
+    ///   + Not on the winning freq:
+    ///     Opposing team won ([points] points given)
+    /// - The client will increment points for each player on the winning team that is in a ship and not in a safe zone.
+    /// - The client will reset the player's ship if the player is on the winning team, in a ship, and not in a safe zone.
+    /// - The client will reset (remove) all of the flags. This includes carryable flags and static flags.
+    ///   Carryable flags will reappear when they are respawned (S2C 0x12 Flag Location packets are received).
+    ///   Static flags will reappear when the it gets a full flag update (S2C 0x22 Turf Flags packet is received).
+    /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_FlagReset
     {
