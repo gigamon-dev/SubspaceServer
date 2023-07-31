@@ -36,6 +36,7 @@ cmd_putmap
 
 cmd_userdbadm
 
+cmd_send
 privcmd_send
 cmd_redirect
 privcmd_redirect

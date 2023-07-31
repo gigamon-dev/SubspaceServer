@@ -306,6 +306,11 @@ namespace SS.Core.Modules
 
         void IPlayerData.TargetToSet(ITarget target, HashSet<Player> set)
         {
+            ((IPlayerData)this).TargetToSet(target, set, null);
+        }
+
+        void IPlayerData.TargetToSet(ITarget target, HashSet<Player> set, Predicate<Player> predicate)
+        {
             if (target is null)
                 throw new ArgumentNullException(nameof(target));
 
@@ -315,7 +320,10 @@ namespace SS.Core.Modules
             switch (target.Type)
             {
                 case TargetType.Player:
-                    set.Add(((IPlayerTarget)target).Player);
+                    if (target.TryGetPlayerTarget(out Player targetPlayer) && (predicate is null || predicate(targetPlayer)))
+                    {
+                        set.Add(targetPlayer);
+                    }
                     return;
 
                 case TargetType.Arena:
@@ -324,10 +332,10 @@ namespace SS.Core.Modules
                     Lock();
                     try
                     {
-                        foreach (Player p in _playerDictionary.Values)
+                        foreach (Player player in _playerDictionary.Values)
                         {
-                            if ((p.Status == PlayerState.Playing) && Matches(target, p))
-                                set.Add(p);
+                            if ((player.Status == PlayerState.Playing) && Matches(target, player, predicate))
+                                set.Add(player);
                         }
                     }
                     finally
@@ -337,7 +345,21 @@ namespace SS.Core.Modules
                     return;
 
                 case TargetType.Set:
-                    set.UnionWith(((ISetTarget)target).Players);
+                    if (target is ISetTarget setTarget && setTarget.Players is not null)
+                    {
+                        if (predicate is null)
+                        {
+                            set.UnionWith(((ISetTarget)target).Players);
+                        }
+                        else
+                        {
+                            foreach (Player player in setTarget.Players)
+                            {
+                                if (predicate(player))
+                                    set.Add(player);
+                            }
+                        }
+                    }
                     return;
 
                 case TargetType.None:
@@ -345,16 +367,16 @@ namespace SS.Core.Modules
                     return;
             }
 
-            static bool Matches(ITarget target, Player player)
+            static bool Matches(ITarget target, Player player, Predicate<Player> predicate)
             {
                 if (target is null || player is null)
                     return false;
 
                 return target.Type switch
                 {
-                    TargetType.Arena => player.Arena == ((IArenaTarget)target).Arena,
-                    TargetType.Freq => (target is ITeamTarget teamTarget) && (player.Arena == teamTarget.Arena) && (player.Freq == teamTarget.Freq),
-                    TargetType.Zone => true,
+                    TargetType.Arena => player.Arena == ((IArenaTarget)target).Arena && (predicate is null || predicate(player)),
+                    TargetType.Freq => (target is ITeamTarget teamTarget) && (player.Arena == teamTarget.Arena) && (player.Freq == teamTarget.Freq) && (predicate is null || predicate(player)),
+                    TargetType.Zone => predicate is null || predicate(player),
                     _ => false,
                 };
             }

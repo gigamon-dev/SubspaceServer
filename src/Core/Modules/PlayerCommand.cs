@@ -2271,29 +2271,70 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.Player,
-            Args = "<arena name>",
-            Description = "Sends target player to the named arena. (Works on Continuum users only.)")]
+            Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
+            Args = "[-zone] <arena name>",
+            Description = """
+                Sends the target player(s) to a specified arena.
+                When not targeting a player or team, the arena is the target.
+                Alternatively, use -zone to send the entire zone instead of the arena.
+                """)]
         private void Command_send(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (parameters.IsWhiteSpace())
-                return;
+            ReadOnlySpan<char> token;
+            ReadOnlySpan<char> arenaName = "";
+            ReadOnlySpan<char> remaining = parameters;
 
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
-                return;
-
-            switch (targetPlayer.Type)
+            while (!(token = remaining.GetToken(' ', out remaining)).IsEmpty)
             {
-                case ClientType.Continuum:
-                case ClientType.Chat:
-                case ClientType.VIE:
-                    _arenaManager.SendToArena(player, parameters, 0, 0);
-                    break;
-
-                default:
-                    _chat.SendMessage(player, "You can only use ?send on players using Continuum, Subspace or chat clients.");
-                    break;
+                if (token.Equals("-zone", StringComparison.OrdinalIgnoreCase) && target.Type == TargetType.Arena)
+                {
+                    target = Target.ZoneTarget;
+                }
+                else
+                {
+                    arenaName = token;
+                }
             }
+
+            if (arenaName.IsWhiteSpace())
+                return;
+
+            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            {
+                if (HasAllowedClient(targetPlayer))
+                {
+                    _arenaManager.SendToArena(targetPlayer, arenaName, 0, 0);
+                return;
+                }
+            }
+            else if (target.Type == TargetType.Freq || target.Type == TargetType.Arena || target.Type == TargetType.Zone)
+            {
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+
+                try
+                {
+                    _playerData.TargetToSet(target, players, HasAllowedClient);
+
+                    if (players.Count > 0)
+            {
+                        foreach (Player otherPlayer in players)
+                        {
+                            _arenaManager.SendToArena(otherPlayer, arenaName, 0, 0);
+                        }
+
+                        return;
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+
+                    _chat.SendMessage(player, "You can only use ?send on players using Continuum, Subspace or chat clients.");
+
+
+            static bool HasAllowedClient(Player player) => player.Type == ClientType.Continuum || player.Type == ClientType.VIE || player.Type == ClientType.Chat;
         }
 
         [CommandHelp(

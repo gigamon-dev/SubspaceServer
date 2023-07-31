@@ -565,7 +565,7 @@ namespace SS.Core.Modules
 
                 if (target.TryGetArenaTarget(out _))
                     sb.Append("(arena)");
-                else if (target.TryGetTeamTarget(out _, out int freq))
+                else if (target.TryGetTeamTarget(out _, out short freq))
                     sb.Append($"(freq {freq})");
                 else if (target.TryGetPlayerTarget(out Player targetPlayer))
                     sb.Append($"to [{targetPlayer.Name}]");

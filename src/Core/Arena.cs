@@ -316,9 +316,9 @@ namespace SS.Core
         /// Dictionary of immutable TeamTarget objects that can be reused.
         /// This is to reduce allocations (e.g. rather than allocate a new one each time a team target is needed).
         /// </summary>
-        private readonly ConcurrentDictionary<int, TeamTarget> _teamTargets = new();
+        private readonly ConcurrentDictionary<short, TeamTarget> _teamTargets = new();
 
-        public TeamTarget GetTeamTarget(int freq) => _teamTargets.GetOrAdd(freq, (f) => new TeamTarget(this, f));
+        public TeamTarget GetTeamTarget(short freq) => _teamTargets.GetOrAdd(freq, (f) => new TeamTarget(this, f));
 
         public void CleanupTeamTargets()
         {
@@ -342,7 +342,7 @@ namespace SS.Core
                         // Or maybe stackalloc an array + keep track of a count, as there shouldn't be that many teams in the first place.
                         foreach (var team in _teamTargets)
                         {
-                            int freq = team.Key;
+                            short freq = team.Key;
 
                             if (!HasPlayerOnFreq(playerData, this, freq))
                                 _teamTargets.TryRemove(freq, out _);

@@ -41,7 +41,7 @@ namespace SS.Core
 
     public interface ITeamTarget : IArenaTarget
     {
-        int Freq { get; }
+        short Freq { get; }
     }
 
     public interface ISetTarget : ITarget
@@ -52,9 +52,9 @@ namespace SS.Core
     public class TeamTarget : ITeamTarget
     {
         private readonly Arena _arena;
-        private readonly int _freq;
+        private readonly short _freq;
 
-        public TeamTarget(Arena arena, int freq)
+        public TeamTarget(Arena arena, short freq)
         {
             _arena = arena ?? throw new ArgumentNullException(nameof(arena));
             _freq = freq;
@@ -62,7 +62,7 @@ namespace SS.Core
 
         #region ITeamTarget Members
 
-        public int Freq => _freq;
+        public short Freq => _freq;
 
         #endregion
 
@@ -134,7 +134,7 @@ namespace SS.Core
         /// </summary>
         /// <param name="arena"></param>
         /// <param name="freq"></param>
-        public static ITeamTarget TeamTarget(Arena arena, int freq)
+        public static ITeamTarget TeamTarget(Arena arena, short freq)
         {
             return arena.GetTeamTarget(freq);
         }
@@ -204,7 +204,7 @@ namespace SS.Core
         /// <param name="arena">When the method returns, contains the targeted team's arena, if the target was a team; otherwise <see langword="null"/>.</param>
         /// <param name="freq">When the method returns, contains the targeted team's freq, if the target was a team; otherwise 0.</param>
         /// <returns><see langword="true"/> if the target was an arena; otherwise <see langword="false"/>.</returns>
-        public static bool TryGetTeamTarget(this ITarget target, out Arena arena, out int freq)
+        public static bool TryGetTeamTarget(this ITarget target, out Arena arena, out short freq)
         {
             if (target != null
                 && target.Type == TargetType.Freq

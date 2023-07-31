@@ -59,12 +59,21 @@ namespace SS.Core.ComponentInterfaces
         Player FindPlayer(ReadOnlySpan<char> name);
 
         /// <summary>
-        /// Converts an <see cref="ITarget"/> to a specific list of players.
-        /// The players represented by the target will be added to the given set.
+        /// Converts an <see cref="ITarget"/> to a specific <paramref name="set"/> of players.
+        /// The players represented by the <paramref name="target"/> will be added to the <paramref name="set"/>.
         /// </summary>
-        /// <param name="target">The target to convert.</param>
+        /// <param name="target">A target that represents which players to add.</param>
         /// <param name="set">The set to add players to.</param>
         void TargetToSet(ITarget target, HashSet<Player> set);
+
+        /// <summary>
+        /// Converts an <see cref="ITarget"/> to a specific <paramref name="set"/> of players.
+        /// The players represented by the <paramref name="target"/>, and match an optional <paramref name="predicate"/>, will be added to the <paramref name="set"/>.
+        /// </summary>
+        /// <param name="target">A target that represents which players to add.</param>
+        /// <param name="set">The set to add players to.</param>
+        /// <param name="predicate">Additional criteria that a player must match to be added.</param>
+        void TargetToSet(ITarget target, HashSet<Player> set, Predicate<Player> predicate);
 
         /// <summary>
         /// Allocates a slot for per-player data.
