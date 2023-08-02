@@ -213,8 +213,8 @@ namespace SS.Core
             }
             else
             {
-                string numberStr = Name[BaseName.Length..];
-                if (string.IsNullOrWhiteSpace(numberStr)
+                ReadOnlySpan<char> numberStr = Name.AsSpan(BaseName.Length);
+                if (numberStr.IsWhiteSpace()
                     || !int.TryParse(numberStr, out int number))
                 {
                     Number = 0;

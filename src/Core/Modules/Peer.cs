@@ -909,21 +909,24 @@ namespace SS.Core.Modules
         [ConfigHelp("Peer0", "ProvidesDefaultArenas", ConfigScope.Global, typeof(bool),
             Description = "If set, any arena that would normally end up as (default) will be redirected to this peer zone.")]
         [ConfigHelp("Peer0", "Arenas", ConfigScope.Global, typeof(string),
-            Description = 
-            "A list of arena's that belong to the peer. This server will redirect players that try to ?go to" +
-            "this arena. These arena's will also be used for ?find and will be shown in ?arena. If you are also" +
-            "using Peer0:RenameArenas, you should put the local arena name here; this is the one you would see" +
-            "in the ?arena list if you are in this zone.")]
+            Description = """
+                A list of arena's that belong to the peer. This server will redirect players that try to ?go to
+                this arena. These arena's will also be used for ?find and will be shown in ?arena. If you are also
+                using Peer0:RenameArenas, you should put the local arena name here; this is the one you would see
+                in the ?arena list if you are in this zone.
+                """)]
         [ConfigHelp("Peer0", "SendDummyArenas", ConfigScope.Global, typeof(string),
-            Description =
-            "A list of arena's that we send to the peer with a single dummy player. Instead of the full" +
-            "player list.This will keep the arena in the arena list of the peer with a fixed count of 1.")]
+            Description = """
+                A list of arena's that we send to the peer with a single dummy player. Instead of the full
+                player list.This will keep the arena in the arena list of the peer with a fixed count of 1.
+                """)]
         [ConfigHelp("Peer0", "RelayArenas", ConfigScope.Global, typeof(string),
             Description = "A list of arena's of this peer that will be relayed to other peers.")]
         [ConfigHelp("Peer0", "RenameArenas", ConfigScope.Global, typeof(string),
-            Description =
-            "A list of arena's that belong to the peer which should be renamed to a different name locally." +
-            "For example `foo = bar, 0 = twpublic` will display the remote `foo` arena as `bar` instead.")]
+            Description = """
+                A list of arena's that belong to the peer which should be renamed to a different name locally.
+                For example `foo = bar, 0 = twpublic` will display the remote `foo` arena as `bar` instead.
+                """)]
         private void ReadConfig()
         {
             _mainloopTimer.ClearTimer(MainloopTimer_PeriodicUpdate, null);

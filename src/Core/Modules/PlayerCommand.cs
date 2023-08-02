@@ -2,10 +2,10 @@
 using SS.Core.ComponentInterfaces;
 using SS.Core.Configuration;
 using SS.Core.Map;
-using SS.Packets;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -808,141 +808,244 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[-a] [-t]",
+            Args = "[-a] [-t] [-p]",
             Description = """
                 Lists the available arenas. Specifying -a will also include
                 empty arenas that the server knows about. The -t switch forces
                 the output to be in text even for regular clients (useful when using
-                the Continuum chat window).
+                the Continuum chat window). The -p switch includes additional arenas 
+                from peer zones that exist but weren't specifically configured for.
                 """)]
         private void Command_arena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            bool showAll = parameters.Contains("-a", StringComparison.OrdinalIgnoreCase);
             bool isChatOutput = player.Type == ClientType.Chat || parameters.Contains("-t", StringComparison.OrdinalIgnoreCase);
             bool includePrivateArenas = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
-            bool showAllPeer = parameters.Contains("-p", StringComparison.OrdinalIgnoreCase);
 
-            List<ArenaListItem> arenaList = isChatOutput ? _arenaListItemListPool.Get() : null;
-            Span<byte> bufferSpan = isChatOutput ? Span<byte>.Empty : stackalloc byte[1024];
-
-            if (!isChatOutput)
-            {
-                // Write header
-                bufferSpan[0] = (byte)S2CPacketType.Arena;
-            }
-
-            int length = 1;
-
-            _arenaManager.Lock();
+            List<ArenaListItem> arenaList = _arenaListItemListPool.Get();
 
             try
             {
-                // refresh arena counts
-                _arenaManager.GetPopulationSummary(out _, out _);
 
-                foreach (Arena arena in _arenaManager.Arenas)
-                {
-                    if (arena.Status == ArenaState.Running
-                        && (!arena.IsPrivate || includePrivateArenas || player.Arena == arena))
-                    {
-                        if (isChatOutput)
-                        {
-                            ArenaListItem item = _arenaListItemPool.Get();
-                            item.Set(arena.Name, arena.Total, arena == player.Arena);
-                            arenaList.Add(item);
-                        }
-                        else
-                        {
-                            if (!AppendToPacket(bufferSpan, ref length, arena.Name, arena.Total, arena == player.Arena))
-                                break;
-                        }
+                _arenaManager.Lock();
 
-                    }
-                }
-            }
-            finally
-            {
-                _arenaManager.Unlock();
-            }
-
-            IPeer peer = _broker.GetInterface<IPeer>();
-            if (peer is not null)
-            {
-                peer.Lock();
                 try
                 {
-                    // Note: Purposely using indexing to access the lists. Enumerating would incur allocations.
+                    //
+                    // Known arenas (have a directory and arena.conf file)
+                    //
 
-                    for (int zoneIndex = 0; zoneIndex < peer.Peers.Count; zoneIndex++)
+                    if (showAll)
                     {
-                        IPeerZone peerZone = peer.Peers[zoneIndex];
-                        for (int arenaIndex = 0; arenaIndex < peerZone.Arenas.Count; arenaIndex++)
+                        foreach (ReadOnlyMemory<char> arenaNameMemory in _arenaManager.KnownArenaNames)
                         {
-                            IPeerArena peerArena = peerZone.Arenas[arenaIndex];
-                            if (!peerArena.IsConfigured && !showAllPeer)
-                                continue;
+                            ReadOnlySpan<char> arenaName = arenaNameMemory.Span;
+                            bool isPrivate = arenaName.Length > 0 && arenaName[0] == '#';
+                            if (!isPrivate || includePrivateArenas)
+                            {
+                                AddOrUpdateArenaListItem(arenaList, arenaName, false, 0, false);
+                            }
+                        }
+                    }
 
-                            if (isChatOutput)
-                            {
-                                ArenaListItem item = _arenaListItemPool.Get();
-                                item.Set(peerArena.Name.LocalName, peerArena.PlayerCount, false);
-                                arenaList.Add(item);
-                            }
-                            else
-                            {
-                                if (!AppendToPacket(bufferSpan, ref length, peerArena.Name.LocalName, peerArena.PlayerCount, false))
-                                    break;
-                            }
+                    //
+                    // Active arenas
+                    //
+
+                    // Refresh arena player counts.
+                    _arenaManager.GetPopulationSummary(out _, out _);
+
+                    foreach (Arena arena in _arenaManager.Arenas)
+                    {
+                        if (arena.Status == ArenaState.Running
+                            && (!arena.IsPrivate || includePrivateArenas || player.Arena == arena))
+                        {
+                            AddOrUpdateArenaListItem(arenaList, arena.Name, false, arena.Total, arena == player.Arena);
                         }
                     }
                 }
                 finally
                 {
-                    peer.Unlock();
-                    _broker.ReleaseInterface(ref peer);
+                    _arenaManager.Unlock();
+                }
+
+                IPeer peer = _broker.GetInterface<IPeer>();
+                if (peer is not null)
+                {
+                    bool showAllPeer = parameters.Contains("-p", StringComparison.OrdinalIgnoreCase);
+
+                    peer.Lock();
+
+                    try
+                    {
+                        //
+                        // Known peer arenas (configured)
+                        //
+
+                        if (showAll)
+                        {
+                            // Note: Purposely using indexing to access the lists. Enumerating would incur allocations.
+                            for (int zoneIndex = 0; zoneIndex < peer.Peers.Count; zoneIndex++)
+                            {
+                                IPeerZone peerZone = peer.Peers[zoneIndex];
+
+                                for (int arenaIndex = 0; arenaIndex < peerZone.ConfiguredArenas.Count; arenaIndex++)
+                                {
+                                    ReadOnlySpan<char> arenaName = peerZone.ConfiguredArenas[arenaIndex];
+                                    bool isPrivate = arenaName.Length > 0 && arenaName[0] == '#';
+                                    if (!isPrivate || includePrivateArenas)
+                                    {
+                                        AddOrUpdateArenaListItem(arenaList, arenaName, true, 0, false);
+                                    }
+                                }
+                            }
+                        }
+
+                        //
+                        // Active peer arenas
+                        //
+
+                        // Note: Purposely using indexing to access the lists. Enumerating would incur allocations.
+                        for (int zoneIndex = 0; zoneIndex < peer.Peers.Count; zoneIndex++)
+                        {
+                            IPeerZone peerZone = peer.Peers[zoneIndex];
+                            for (int arenaIndex = 0; arenaIndex < peerZone.Arenas.Count; arenaIndex++)
+                            {
+                                IPeerArena peerArena = peerZone.Arenas[arenaIndex];
+                                if (!peerArena.IsConfigured && !showAllPeer)
+                                    continue;
+
+                                ReadOnlySpan<char> arenaName = peerArena.Name.LocalName;
+                                bool isPrivate = arenaName.Length > 0 && arenaName[0] == '#';
+                                if (!isPrivate || includePrivateArenas)
+                                {
+                                    AddOrUpdateArenaListItem(arenaList, peerArena.Name.LocalName, true, 0, false);
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        peer.Unlock();
+                        _broker.ReleaseInterface(ref peer);
+                    }
+                }
+
+
+                //
+                // Output
+                //
+
+                if (isChatOutput)
+                {
+                    arenaList.Sort(ArenaListItemComparer.Instance);
+
+                    foreach (ArenaListItem item in arenaList)
+                    {
+                        _chat.SendMessage(player, $"{item.ArenaName,-15} {item.PlayerCount,3}{(item.IsCurrent ? " (current)" : "")}");
+                    }
+                }
+                else
+                {
+                    const int MinLength = 5;
+                    const int MaxLength = 8192; // max allowed by Continuum
+                    int length = 1; // 1 byte for the packet type
+                    int count = 0;
+
+                    foreach (ArenaListItem item in arenaList)
+                    {
+                        // item length = name + null-terminator + Int16 for player count
+                        int newLength = length + StringUtils.DefaultEncoding.GetByteCount(item.ArenaName) + 1 + 2;
+                        if (newLength > MaxLength)
+                            break;
+
+                        length = newLength;
+                        count++;
+                    }
+
+                    byte[] bufferArray = null;
+
+                    try
+                    {
+                        Span<byte> buffer = length > 1024 ? (bufferArray = ArrayPool<byte>.Shared.Rent(length)).AsSpan(0, length) : stackalloc byte[length];
+                        buffer[0] = (byte)S2CPacketType.Arena;
+
+                        Span<byte> remaining = buffer[1..];
+
+                        for (int i = 0; i < count; i++)
+                        {
+                            if (!TryAppendToPacket(remaining, arenaList[i], out int bytesWritten))
+                                break;
+
+                            remaining = remaining[bytesWritten..];
+                        }
+
+                        buffer = buffer[..^remaining.Length];
+
+                        if (buffer.Length >= MinLength)
+                        {
+                            _network.SendToOne(player, buffer, NetSendFlags.Reliable);
+                        }
+                    }
+                    finally
+                    {
+                        if (bufferArray is not null)
+                        {
+                            ArrayPool<byte>.Shared.Return(bufferArray);
+                        }
+                    }
                 }
             }
-
-            if (parameters.Contains("-a", StringComparison.OrdinalIgnoreCase))
+            finally
             {
-                // TODO: additional arena list logic (-a argument)
-            }
-
-            if (isChatOutput)
-            {
-                arenaList.Sort(ArenaListItemComparer.Instance);
-
                 foreach (ArenaListItem item in arenaList)
                 {
-                    _chat.SendMessage(player, $"{item.ArenaName,-15} {item.PlayerCount,3}{(item.IsCurrent ? " (current)" : "")}");
                     _arenaListItemPool.Return(item);
                 }
 
                 _arenaListItemListPool.Return(arenaList);
             }
-            else
+
+            void AddOrUpdateArenaListItem(List<ArenaListItem> arenaList, ReadOnlySpan<char> arenaName, bool isRemote, int playerCount, bool isCurrent)
             {
-                _network.SendToOne(player, bufferSpan[..length], NetSendFlags.Reliable);
+                if (arenaList is null)
+                    throw new ArgumentNullException(nameof(arenaList));
+
+                ArenaListItem item = null;
+                for (int i = 0; i < arenaList.Count; i++)
+                {
+                    if (arenaList[i].ArenaName.Equals(arenaName, StringComparison.OrdinalIgnoreCase))
+                        item = arenaList[i];
+                }
+
+                if (item is null)
+                {
+                    item = _arenaListItemPool.Get();
+                    item.ArenaName = arenaName;
+                    arenaList.Add(item);
+                }
+
+                item.IsRemote = isRemote;
+                item.PlayerCount = playerCount > short.MaxValue ? short.MaxValue : (short)playerCount;
+                item.IsCurrent = isCurrent;
             }
 
-            static bool AppendToPacket(Span<byte> bufferSpan, ref int length, ReadOnlySpan<char> arenaName, int playerCount, bool isCurrent)
+            static bool TryAppendToPacket(Span<byte> buffer, ArenaListItem item, out int bytesWritten)
             {
-                int nameLength = StringUtils.DefaultEncoding.GetByteCount(arenaName) + 1; // +1 because the name in the packet is null terminated
-                int additionalLength = nameLength + 2;
+                int nameLength = StringUtils.DefaultEncoding.GetByteCount(item.ArenaName) + 1; // +1 because the name in the packet is null terminated
+                int itemLength = nameLength + 2; // +2 for the Int16 player count
 
-                if (length + additionalLength > (Constants.MaxPacket - ReliableHeader.Length))
+                if (itemLength > buffer.Length)
                 {
+                    bytesWritten = 0;
                     return false;
                 }
 
-                // arena name
-                Span<byte> remainingSpan = bufferSpan[length..];
-                remainingSpan = remainingSpan[remainingSpan.WriteNullTerminatedString(arenaName)..];
-
-                // player count (a negative value denotes the player's current arena)
-                Span<byte> playerCountSpan = remainingSpan[..2];
-                BinaryPrimitives.WriteInt16LittleEndian(playerCountSpan, isCurrent ? (short)-playerCount : (short)playerCount);
-
-                length += additionalLength;
+                bytesWritten = buffer.WriteNullTerminatedString(item.ArenaName);
+                Debug.Assert(bytesWritten == nameLength);
+                buffer = buffer[bytesWritten..];
+                BinaryPrimitives.WriteInt16LittleEndian(buffer, item.IsCurrent ? (short)-item.PlayerCount : item.PlayerCount); // a negative value indicates the player's current arena
+                bytesWritten += 2;
                 return true;
             }
         }
@@ -2304,7 +2407,7 @@ namespace SS.Core.Modules
                 if (HasAllowedClient(targetPlayer))
                 {
                     _arenaManager.SendToArena(targetPlayer, arenaName, 0, 0);
-                return;
+                    return;
                 }
             }
             else if (target.Type == TargetType.Freq || target.Type == TargetType.Arena || target.Type == TargetType.Zone)
@@ -2316,7 +2419,7 @@ namespace SS.Core.Modules
                     _playerData.TargetToSet(target, players, HasAllowedClient);
 
                     if (players.Count > 0)
-            {
+                    {
                         foreach (Player otherPlayer in players)
                         {
                             _arenaManager.SendToArena(otherPlayer, arenaName, 0, 0);
@@ -2331,7 +2434,7 @@ namespace SS.Core.Modules
                 }
             }
 
-                    _chat.SendMessage(player, "You can only use ?send on players using Continuum, Subspace or chat clients.");
+            _chat.SendMessage(player, "You can only use ?send on players using Continuum, Subspace or chat clients.");
 
 
             static bool HasAllowedClient(Player player) => player.Type == ClientType.Continuum || player.Type == ClientType.VIE || player.Type == ClientType.Chat;
@@ -3867,25 +3970,49 @@ namespace SS.Core.Modules
         {
             private readonly char[] _arenaNameChars = new char[Constants.MaxArenaNameLength];
             private int _length = 0;
-            public ReadOnlySpan<char> ArenaName => new(_arenaNameChars, 0, _length);
 
-            public int PlayerCount { get; private set; } = 0;
-            public bool IsCurrent { get; private set; } = false;
-
-            public void Set(ReadOnlySpan<char> arenaName, int playerCount, bool isCurrent)
+            /// <summary>
+            /// The name of the arena.
+            /// </summary>
+            public ReadOnlySpan<char> ArenaName
             {
-                if (arenaName.Length > Constants.MaxArenaNameLength)
-                    throw new ArgumentException($"Length exceeds the maximum allowed for an arena name ({Constants.MaxArenaNameLength}).", nameof(arenaName));
+                get => new(_arenaNameChars, 0, _length);
+                set
+                {
+                    if (value.Length > Constants.MaxArenaNameLength)
+                        throw new ArgumentException($"Length exceeds the maximum allowed for an arena name ({Constants.MaxArenaNameLength}).", nameof(value));
 
-                arenaName.CopyTo(_arenaNameChars);
-                _length = arenaName.Length;
-                PlayerCount = playerCount;
-                IsCurrent = isCurrent;
+                    value.CopyTo(_arenaNameChars);
+                    _length = value.Length;
+                }
             }
+
+            /// <summary>
+            /// Whether the arena is a private.
+            /// </summary>
+            public bool IsPrivate => ArenaName.Length > 0 && ArenaName[0] == '#';
+
+            /// <summary>
+            /// Whether the arena is a redirect to a peer zone's arena.
+            /// </summary>
+            public bool IsRemote { get; set; }
+
+            /// <summary>
+            /// The # of players in the arena.
+            /// </summary>
+            public short PlayerCount { get; set; }
+
+            /// <summary>
+            /// Whether the player is currently in the arena.
+            /// </summary>
+            public bool IsCurrent { get; set; }
 
             public void Clear()
             {
-                Set("", 0, false);
+                ArenaName = "";
+                IsRemote = false;
+                PlayerCount = 0;
+                IsCurrent = false;
             }
         }
 
@@ -3895,36 +4022,17 @@ namespace SS.Core.Modules
 
             public int Compare(ArenaListItem x, ArenaListItem y)
             {
-                // first, partitioned with empty arenas at the end
-                if (x.PlayerCount == 0)
-                {
-                    if (y.PlayerCount != 0)
-                        return 1;
-                }
-                else
-                {
-                    if (y.PlayerCount == 0)
-                        return -1;
-                }
-
-                // within those partitions, partition with private arenas at the end
-                if (x.ArenaName[0] == '#')
-                {
-                    if (y.ArenaName[0] != '#')
-                        return 1;
-                }
-                else
-                {
-                    if (y.ArenaName[0] == '#')
-                        return -1;
-                }
-
-                // order by player count desc
-                int value = x.PlayerCount - y.PlayerCount;
+                // Local arenas before remote arenas
+                int value = x.IsRemote.CompareTo(y.IsRemote);
                 if (value != 0)
                     return value;
 
-                // order by arena name asc
+                // Private arenas at the end
+                value = x.IsPrivate.CompareTo(y.IsPrivate);
+                if (value != 0)
+                    return value;
+
+                // Arena name asc
                 return MemoryExtensions.CompareTo(x.ArenaName, y.ArenaName, StringComparison.OrdinalIgnoreCase);
             }
         }
