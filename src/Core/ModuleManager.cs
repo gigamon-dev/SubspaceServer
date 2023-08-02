@@ -1008,7 +1008,6 @@ namespace SS.Core
             if (!success)
             {
                 // module loading failed
-                // TODO: maybe we should do something more drastic than ignore and retry later?
                 ReleaseInterfaces(moduleData);
                 return false;
             }

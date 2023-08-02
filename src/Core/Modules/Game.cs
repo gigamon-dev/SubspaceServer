@@ -658,7 +658,7 @@ namespace SS.Core.Modules
                 ad.NoSafeAntiwarp = _configManager.GetInt(arena.Cfg, "Misc", "NoSafeAntiwarp", 0) != 0;
 
                 ad.WarpThresholdDelta = _configManager.GetInt(arena.Cfg, "Misc", "WarpTresholdDelta", 320);
-                ad.WarpThresholdDelta *= ad.WarpThresholdDelta; // TODO: figure out why it's the value squared
+                ad.WarpThresholdDelta *= ad.WarpThresholdDelta;
 
                 ad.CheckFastBombing = _configManager.GetEnum(arena.Cfg, "Misc", "CheckFastBombing", CheckFastBombing.None);
                 ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(arena.Cfg, "Misc", "FastBombingThreshold", 30));
