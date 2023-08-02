@@ -91,7 +91,7 @@ run-server.cmd
 
 #### PowerShell
 
-Alternatively, a PowerShell script, `run-server-ps1` is also included, in case that is your preference.
+Alternatively, a PowerShell script, `run-server.ps1` is also included, in case that is your preference.
 
 ```
 ./run-server.ps1
