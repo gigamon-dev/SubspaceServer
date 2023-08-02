@@ -1715,6 +1715,7 @@ namespace SS.Matchmaking.Modules
                             arenaBaseData.NextFreq += (short)matchConfiguration.NumTeams;
 
                             matchData = new MatchData(matchIdentifier, matchConfiguration, startingFreq);
+                            matchData.Arena = _arenaManager.FindArena(matchData.ArenaName);
                             _matchDataDictionary.Add(matchIdentifier, matchData);
                             return true;
                         }
