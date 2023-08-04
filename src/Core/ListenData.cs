@@ -45,8 +45,8 @@ namespace SS.Core
 
         public ListenData(Socket gameSocket, Socket pingSocket)
         {
-            GameSocket = gameSocket ?? throw new ArgumentNullException("gameSocket");
-            PingSocket = pingSocket ?? throw new ArgumentNullException("pingSocket");
+            GameSocket = gameSocket ?? throw new ArgumentNullException(nameof(gameSocket));
+            PingSocket = pingSocket ?? throw new ArgumentNullException(nameof(pingSocket));
         }
     }
 }
