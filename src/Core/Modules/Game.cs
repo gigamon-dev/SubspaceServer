@@ -1310,7 +1310,7 @@ namespace SS.Core.Modules
                                         || (idata.pl_epd.seeNrgSpec == SeeEnergy.Team
                                             && player.Freq == i.Freq)
                                         || (idata.pl_epd.seeNrgSpec == SeeEnergy.Spec
-                                            && idata.speccing == player)) // TODO: I think ASSS has a bug which is fixed here
+                                            && idata.speccing == player))
                                     {
                                         extralen = nrglen;
                                     }
