@@ -186,7 +186,7 @@ namespace SS.Matchmaking.Modules
 
                             // Calculations
                             uint damageDealt = memberStats.DamageDealtBombs + memberStats.DamageDealtBullets;
-                            uint damageTaken = memberStats.DamageTakenBombs + memberStats.DamageTakenBullets + memberStats.DamageSelf;
+                            uint damageTaken = memberStats.DamageTakenBombs + memberStats.DamageTakenBullets + memberStats.DamageTakenTeam + memberStats.DamageSelf;
                             uint totalDamage = damageDealt + damageTaken;
                             float? damageEfficiency = totalDamage > 0 ? (float)damageDealt / totalDamage : null;
                             uint bombMineFireCount = memberStats.BombFireCount + memberStats.MineFireCount;
@@ -373,14 +373,21 @@ namespace SS.Matchmaking.Modules
                         || damageData.WeaponData.Type == WeaponCodes.Thor)
                     {
                         // bomb damage
-                        playerStats.DamageTakenBombs += damage;
+                        if (attackerPlayer?.Freq == player.Freq)
+                        {
+                            playerStats.DamageTakenTeam += damage;
+                        }
+                        else
+                        {
+                            playerStats.DamageTakenBombs += damage;
+                        }
 
                         if (attackerStats is not null)
                         {
                             if (player.Freq == attackerPlayer.Freq)
                             {
                                 // Damage to teammate
-                                attackerStats.DamageTeam += damage;
+                                attackerStats.DamageDealtTeam += damage;
                             }
                             else
                             {
@@ -407,7 +414,7 @@ namespace SS.Matchmaking.Modules
                     else if (damageData.WeaponData.Type == WeaponCodes.Burst)
                     {
                         // consider it bullet damage
-                        playerStats.DamageTakenBombs += damage;
+                        playerStats.DamageTakenBullets += damage;
 
                         if (attackerStats is not null)
                         {
@@ -783,29 +790,40 @@ namespace SS.Matchmaking.Modules
             #region Damage
 
             /// <summary>
-            /// Amount of damage taken from enemy bullets.
+            /// Amount of damage taken from enemy bullets, including bursts.
             /// </summary>
             public uint DamageTakenBullets;
 
             /// <summary>
-            /// Amount of damage taken from enemy bombs, mines, or thors.
+            /// Amount of damage taken from enemy bombs, mines, shrapnel, or thors.
             /// </summary>
+            /// <remarks>
+            /// This does not include damage from teammates (see <see cref="DamageTakenTeam"/>) or self damage (see <see cref="DamageSelf"/>).
+            /// </remarks>
             public uint DamageTakenBombs;
 
             /// <summary>
-            /// Amount of damage dealt to enemies with bullets.
+            /// Amount of damage taken from teammates.
+            /// </summary>
+            public uint DamageTakenTeam;
+
+            /// <summary>
+            /// Amount of damage dealt to enemies with bullets, including bursts.
             /// </summary>
             public uint DamageDealtBullets;
 
             /// <summary>
-            /// Amount of damage dealt to enemies with bombs, mines, or thors.
+            /// Amount of damage dealt to enemies with bombs, mines, shrapnel, or thors.
             /// </summary>
+            /// <remarks>
+            /// This does not include damage to teammates (see <see cref="DamageDealtTeam"/>) or self damage (see <see cref="DamageSelf"/>).
+            /// </remarks>
             public uint DamageDealtBombs;
 
             /// <summary>
             /// Amount of damage dealt to teammates.
             /// </summary>
-            public uint DamageTeam;
+            public uint DamageDealtTeam;
 
             /// <summary>
             /// Amount of self damage.
@@ -913,7 +931,7 @@ namespace SS.Matchmaking.Modules
                 DamageTakenBombs = 0;
                 DamageDealtBullets = 0;
                 DamageDealtBombs = 0;
-                DamageTeam = 0;
+                DamageDealtTeam = 0;
                 DamageSelf = 0;
                 KillDamage = 0;
                 TeamKillDamage = 0;
