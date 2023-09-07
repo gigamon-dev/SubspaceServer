@@ -86,12 +86,23 @@ namespace SS.Packets.Billing
         private ushort minute;
         private ushort second;
 
-        public DateTime ToDateTime() => new(
-            LittleEndianConverter.Convert(year), 
-            LittleEndianConverter.Convert(month), 
-            LittleEndianConverter.Convert(day), 
-            LittleEndianConverter.Convert(hour), 
-            LittleEndianConverter.Convert(minute),
-            LittleEndianConverter.Convert(second));
+        public DateTime? ToDateTime()
+        {
+            if (year == 0 && month == 0 && day == 0)
+            {
+                // The biller might send all zeros. Consider that to be null.
+                return null;
+            }
+            else
+            {
+                return new(
+                    LittleEndianConverter.Convert(year),
+                    LittleEndianConverter.Convert(month),
+                    LittleEndianConverter.Convert(day),
+                    LittleEndianConverter.Convert(hour),
+                    LittleEndianConverter.Convert(minute),
+                    LittleEndianConverter.Convert(second));
+            }
+        }
     }
 }

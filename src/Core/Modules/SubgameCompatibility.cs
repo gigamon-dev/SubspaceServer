@@ -331,7 +331,7 @@ namespace SS.Core.Modules
 
             TimeSpan sessionDuration = DateTime.UtcNow - player.ConnectTime;
             TimeSpan usage;
-            DateTime firstLoginTimestamp;
+            DateTime? firstLoginTimestamp;
             if (_billing is null || !_billing.TryGetUsage(targetPlayer, out usage, out firstLoginTimestamp))
             {
                 usage = sessionDuration;
@@ -341,6 +341,8 @@ namespace SS.Core.Modules
             {
                 usage += sessionDuration;
             }
+
+            firstLoginTimestamp ??= DateTime.MinValue;
 
             _chat.SendMessage(player, $"TIME: Session:{(int)sessionDuration.TotalHours,5:D}:{sessionDuration:mm\\:ss}  Total:{(int)usage.TotalHours,5:D}:{usage:mm\\:ss}  Created: {firstLoginTimestamp:yyyy-MM-dd HH:mm:ss}");
             _chat.SendMessage(player, $"Bytes/Sec:{stats.BytesSent / sessionDuration.TotalSeconds:F0}  LowBandwidth:0  MessageLogging:0  ConnectType:Unknown");

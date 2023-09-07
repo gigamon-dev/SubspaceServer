@@ -55,7 +55,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="usage">The amount of time the player has played. This does not include the current session.</param>
         /// <param name="firstLoginTimestamp">The timestamp of the player's first login.</param>
         /// <returns><see langword="true"/> if usage data could be retrieved. Otherwise, <see langword="false"/>.</returns>
-        bool TryGetUsage(Player player, out TimeSpan usage, out DateTime firstLoginTimestamp);
+        bool TryGetUsage(Player player, out TimeSpan usage, out DateTime? firstLoginTimestamp);
     }
 
     /// <summary>
