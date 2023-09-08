@@ -1,3 +1,4 @@
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
@@ -39,6 +40,8 @@ namespace SS.Core.Modules
         // for IServerTimer
         private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new();
         private readonly object _serverTimerLock = new();
+
+        private static readonly ObjectPool<Job> s_jobPool = new DefaultObjectPoolProvider().Create(new JobPooledObjectPolicy()); // TODO: how many objects should it retain?
 
         public Mainloop()
         {
@@ -122,6 +125,9 @@ namespace SS.Core.Modules
                 // ignore any errors
             }
 
+            SynchronizationContext oldSynchronizationContext = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(new MainloopSynchronizationContext(this));
+
             WaitHandle[] waitHandles = new WaitHandle[]
             {
                 _cancellationToken.WaitHandle,
@@ -197,6 +203,8 @@ namespace SS.Core.Modules
                         break;
                 }
             }
+
+            SynchronizationContext.SetSynchronizationContext(oldSynchronizationContext);
 
             // We've been told to stop.
             // At this point, nothing else can be added to the workitem queue.
@@ -1027,5 +1035,112 @@ namespace SS.Core.Modules
         }
 
         #endregion
+
+        private sealed class MainloopSynchronizationContext : SynchronizationContext
+        {
+            private readonly IMainloop _mainloop;
+
+            public MainloopSynchronizationContext(IMainloop mainloop)
+            {
+                _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            }
+
+            // For async/await, only post is needed
+            public override void Post(SendOrPostCallback d, object state)
+            {
+                _mainloop.QueueMainWorkItem((state) => d(state), state);
+            }
+
+            // but, here's an implementation for send too just in case
+            public override void Send(SendOrPostCallback d, object state)
+            {
+                if (_mainloop.IsMainloop)
+                {
+                    d(state);
+                }
+                else
+                {
+                    Job job = s_jobPool.Get();
+
+                    try
+                    {
+                        job.Set(d, state);
+
+                        // Queue the job up for the mainloop to process.
+                        if (!_mainloop.QueueMainWorkItem(Mainloop_ExecuteJob, job))
+                            throw new Exception("Unable to queue main loop work item.");
+
+                        // Wait for it to complete.
+                        job.Wait();
+                    }
+                    finally
+                    {
+                        s_jobPool.Return(job);
+                    }
+                }
+
+                // local static helper function to execute a job
+                static void Mainloop_ExecuteJob(Job job)
+                {
+                    job.Execute();
+                }
+            }
+        }
+
+        private sealed class Job : IDisposable
+        {
+            private SendOrPostCallback _callback;
+            private object _state;
+            private readonly AutoResetEvent _autoResetEvent = new(false);
+
+            public void Set(SendOrPostCallback callback, object state)
+            {
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                _state = state;
+                _autoResetEvent.Reset();
+            }
+
+            public void Reset()
+            {
+                Set(null, null);
+            }
+
+            public void Execute()
+            {
+                _callback(_state);
+                _autoResetEvent.Set();
+            }
+
+            public void Wait()
+            {
+                _autoResetEvent.WaitOne();
+            }
+
+            #region IDisposable
+
+            public void Dispose()
+            {
+                _autoResetEvent.Dispose();
+            }
+
+            #endregion
+        }
+
+        private class JobPooledObjectPolicy : IPooledObjectPolicy<Job>
+        {
+            public Job Create()
+            {
+                return new Job();
+            }
+
+            public bool Return(Job obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Reset();
+                return true;
+            }
+        }
     }
 }
