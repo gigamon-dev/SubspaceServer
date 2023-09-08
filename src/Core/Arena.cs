@@ -415,5 +415,45 @@ namespace SS.Core
                 ? destination.TryWrite($"{baseName}", out charsWritten)
                 : destination.TryWrite($"{baseName}{number}", out charsWritten);
         }
+
+        /// <summary>
+        /// Parses an arena name into a base name and number.
+        /// </summary>
+        /// <param name="arenaName">The arena name to parse.</param>
+        /// <param name="baseName">When this method returns, the base arena name, if parsing succeeded. <see cref="ReadOnlySpan{char}.Empty"/> if parsing failed.</param>
+        /// <param name="number">When this method returns, the arena number, if parsing succeeded. Zero if parsing failed.</param>
+        /// <returns><see langword="true"/> if <paramref name="arenaName"/> parsed sucessfully; otherwise <see langword="false"/>.</returns>
+        public static bool TryParseArenaName(ReadOnlySpan<char> arenaName, out ReadOnlySpan<char> baseName, out int number)
+        {
+            arenaName = arenaName.Trim();
+            baseName = arenaName.TrimEnd("1234567890");
+            ReadOnlySpan<char> numberChars = arenaName[baseName.Length..];
+
+            if (baseName.IsEmpty && numberChars.IsEmpty)
+            {
+                baseName = ReadOnlySpan<char>.Empty;
+                number = 0;
+                return false;
+            }
+
+            if (baseName.IsEmpty)
+                baseName = Constants.ArenaGroup_Public;
+
+            if (numberChars.IsEmpty)
+            {
+                number = 0;
+                return true;
+            }
+            else
+            {
+                bool success = int.TryParse(numberChars, out number);
+                if (!success)
+                {
+                    baseName = ReadOnlySpan<char>.Empty;
+                }
+
+                return success;
+            }
+        }
     }
 }

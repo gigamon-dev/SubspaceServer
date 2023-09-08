@@ -102,3 +102,4 @@ cmd_randomize
 cmd_end
 cmd_draw
 cmd_sc
+cmd_chart

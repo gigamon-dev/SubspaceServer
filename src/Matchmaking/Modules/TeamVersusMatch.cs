@@ -65,6 +65,9 @@ namespace SS.Matchmaking.Modules
         private IPlayerData _playerData;
         private IPrng _prng;
 
+        // optional
+        private ITeamVersusStatsBehavior _teamVersusStatsBehavior;
+
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor> _iMatchmakingQueueAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
@@ -158,6 +161,8 @@ namespace SS.Matchmaking.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
+            _teamVersusStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
+
             if (!LoadConfiguration())
             {
                 return false;
@@ -189,6 +194,9 @@ namespace SS.Matchmaking.Modules
 
             _playerData.FreePlayerData(ref _pdKey);
 
+            if (_teamVersusStatsBehavior is not null)
+                broker.ReleaseInterface(ref _teamVersusStatsBehavior);
+
             return true;
         }
 
@@ -209,7 +217,7 @@ namespace SS.Matchmaking.Modules
             if (playerSlot is not null // player is in a match
                 && player.Arena is not null // player is in an arena
                 && string.Equals(player.Arena.Name, playerSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase) // player is in the match's arena
-                && playerSlot.AllowShipChangeCutoff is not null && playerSlot.AllowShipChangeCutoff < DateTime.UtcNow)  // within the period that ship changes are allowed (e.g. after death)
+                && playerSlot.AllowShipChangeCutoff is not null && playerSlot.AllowShipChangeCutoff > DateTime.UtcNow)  // within the period that ship changes are allowed (e.g. after death)
             {
                 return ShipMask.All;
             }
@@ -507,59 +515,166 @@ namespace SS.Matchmaking.Modules
             while (MakeMatch(found)) { }
         }
 
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        private async void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
         {
             if (!killed.TryGetExtraData(_pdKey, out PlayerData killedPlayerData))
+                return;
+
+            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerPlayerData))
                 return;
 
             PlayerSlot killedPlayerSlot = killedPlayerData.AssignedSlot;
             if (killedPlayerSlot is null)
                 return;
 
+            PlayerSlot killerPlayerSlot = killerPlayerData.AssignedSlot;
+            if (killerPlayerSlot is null)
+                return;
+
+            if (killedPlayerSlot.MatchData != killerPlayerSlot.MatchData)
+                return;
+
             if (killedPlayerSlot.MatchData.Status != MatchStatus.InProgress)
                 return;
 
+            ServerTick nowTicks = ServerTick.Now;
+            DateTime now = DateTime.UtcNow;
+
             killedPlayerSlot.Lives--;
+            killerPlayerSlot.Team.Score++;
+
+            bool isKnockout = killedPlayerSlot.Lives <= 0;
 
             MatchData matchData = killedPlayerSlot.MatchData;
 
-            TimeSpan gameTime = matchData.Started is not null ? DateTime.UtcNow - matchData.Started.Value : TimeSpan.Zero;
-            gameTime = new(gameTime.Days, gameTime.Hours, gameTime.Minutes, gameTime.Seconds); // remove fractional seconds
-            // TODO: add logic to format without hours if 0 --> custom format string?
-
-            HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
-            try
+            if (isKnockout)
             {
-                GetPlayersToNotify(matchData, notifySet);
+                // This was the last life of the slot.
+                killedPlayerSlot.Status = PlayerSlotStatus.KnockedOut;
 
-                _chat.SendSetMessage(notifySet, $"{killed.Name} kb {killer.Name}"); // TODO: add assist logic, but that belongs in the TeamVersusStats module, so need a callback to fire and this probably need to add interface method to this for sending the notification?
-
-                if (killedPlayerSlot.Lives > 0)
-                {
-                    // The slot still has lives, allow the player to ship change (after death) for a limited amount of time.
-                    killedPlayerSlot.AllowShipChangeCutoff = DateTime.UtcNow + TimeSpan.FromSeconds(5); // TODO: make this configurable. Also, maybe limit how many change a player can make?
-
-                    _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining [{gameTime:g}]");
-                }
-                else
-                {
-                    // This was the last life of the slot.
-                    killedPlayerSlot.Status = PlayerSlotStatus.KnockedOut;
-
-                    _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} is OUT! [{gameTime:g}]");
-
-                    // The player needs to be moved to spec, but if done immediately any of lingering weapons fire from the player will be removed.
-                    // We want to wait a short time to allow for a double-kill (though shorter than respawn time), before moving the player to spec and checking for match completion.
-                    _mainloopTimer.SetTimer(MainloopTimer_ProcessKnockOut, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
-                }
-
-                //_chat.SendSetMessage(notifySet, $"Score: {}-{}")
+                // The player needs to be moved to spec, but if done immediately, any of lingering weapons fire from the player will be removed.
+                // We want to wait a short time to allow for a double-kill (though shorter than respawn time), before moving the player to spec and checking for match completion.
+                _mainloopTimer.SetTimer(MainloopTimer_ProcessKnockOut, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
             }
-            finally
+            else
             {
-                _objectPoolManager.PlayerSetPool.Return(notifySet);
+                // The slot still has lives, allow the player to ship change (after death) for a limited amount of time.
+                killedPlayerSlot.AllowShipChangeCutoff = now + TimeSpan.FromSeconds(5); // TODO: make this configurable. Also, maybe limit how many changes a player can make?
             }
-            
+
+            // Allow the stats module to send chat message notifications about the kill.
+            // The stats module can calculate assists and solo kills based on damage stats, and write a more detailed chat message than we can in here.
+            bool isNotificationHandled = false;
+
+            if (_teamVersusStatsBehavior is not null)
+            {
+                isNotificationHandled = await _teamVersusStatsBehavior.PlayerKilledAsync(
+                    nowTicks,
+                    now,
+                    matchData,
+                    killed,
+                    killedPlayerSlot,
+                    killer,
+                    killerPlayerSlot,
+                    isKnockout);
+            }
+
+            if (!isNotificationHandled)
+            {
+                // Notifications were not sent by the stats module.
+                // Either the stats is not loaded (it's optional), or it ran into an issue.
+                // This means we have to send basic notifications ourself.
+
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                StringBuilder gameTimeBuilder = _objectPoolManager.StringBuilderPool.Get();
+                HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+
+                try
+                {
+                    TimeSpan gameTime = matchData.Started is not null ? now - matchData.Started.Value : TimeSpan.Zero;
+                    gameTimeBuilder.AppendFriendlyTimeSpan(gameTime);
+
+                    GetPlayersToNotify(matchData, notifySet);
+
+                    // Kill notification
+                    _chat.SendSetMessage(notifySet, $"{killed.Name} kb {killer.Name}");
+
+                    // Remaining lives notification
+                    if (isKnockout)
+                    {
+                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} is OUT! [{gameTimeBuilder}]");
+                    }
+                    else
+                    {
+                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining [{gameTimeBuilder}]");
+                    }
+
+                    // Score notification
+                    StringBuilder remainingBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        short highScore = -1;
+                        short highScoreFreq = -1;
+                        int highScoreCount = 0;
+
+                        foreach (var team in matchData.Teams)
+                        {
+                            if (sb.Length > 0)
+                            {
+                                sb.Append('-');
+                                remainingBuilder.Append('v');
+                            }
+
+                            int remainingSlots = 0;
+                            foreach (var slot in team.Slots)
+                            {
+                                if (slot.Lives > 0)
+                                {
+                                    remainingSlots++;
+                                }
+                            }
+
+                            sb.Append(team.Score);
+                            remainingBuilder.Append(remainingSlots);
+
+                            if (team.Score > highScore)
+                            {
+                                highScore = team.Score;
+                                highScoreFreq = team.Freq;
+                                highScoreCount = 1;
+                            }
+                            else if (team.Score == highScore)
+                            {
+                                highScoreCount++;
+                                highScoreFreq = -1;
+                            }
+                        }
+
+                        if (highScoreCount == 1)
+                        {
+                            sb.Append($" Freq {highScoreFreq}");
+                        }
+                        else
+                        {
+                            sb.Append(" TIE");
+                        }
+
+                        _chat.SendSetMessage(notifySet, $"Score: {sb} -- {remainingBuilder} -- [{gameTimeBuilder}]");
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(remainingBuilder);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(notifySet);
+                    _objectPoolManager.StringBuilderPool.Return(gameTimeBuilder);
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
+            }
+
 
             bool MainloopTimer_ProcessKnockOut(PlayerSlot slot)
             {
@@ -1259,7 +1374,7 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (playerSlot.AllowShipChangeCutoff is not null && playerSlot.AllowShipChangeCutoff < DateTime.UtcNow)
+            if (playerSlot.AllowShipChangeCutoff is not null && playerSlot.AllowShipChangeCutoff > DateTime.UtcNow)
             {
                 if (!TryParseShipNumber(player, parameters, out int shipNumber))
                     return;
@@ -2083,7 +2198,14 @@ namespace SS.Matchmaking.Modules
                     }
 
                     // Start the match.
-                    foreach(Team team in matchData.Teams)
+                    matchData.Status = MatchStatus.InProgress;
+                    matchData.Started = DateTime.UtcNow;
+
+                    // Fire a callback to notify the stats module that the match has started.
+                    TeamVersusMatchStartedCallback.Fire(arena, matchData);
+
+                    // Reset ships and move players to their starting locations.
+                    foreach (Team team in matchData.Teams)
                     {
                         MapCoordinate[] startLocations = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx];
                         int startLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
@@ -2097,16 +2219,11 @@ namespace SS.Matchmaking.Modules
 
                             playerSlot.Lives = matchData.Configuration.LivesPerPlayer;
                             playerSlot.LagOuts = 0;
+                            playerSlot.AllowShipChangeCutoff = matchData.Started + TimeSpan.FromSeconds(5); // TODO: make this configurable. Also, maybe limit how many changes a player can make?
 
                             SetShipAndFreq(playerSlot, false, startLocation);
                         }
                     }
-
-                    matchData.Status = MatchStatus.InProgress;
-                    matchData.Started = DateTime.UtcNow;
-
-                    // Fire a callback to notify the stats module that the match has started.
-                    TeamVersusMatchStartedCallback.Fire(arena, matchData);
                 }
             }
         }
@@ -2196,6 +2313,9 @@ namespace SS.Matchmaking.Modules
             if (matchData is null)
                 return false;
 
+            if (matchData.Status != MatchStatus.InProgress)
+                return false;
+
             bool isPlayAreaCheckEnabled = !string.IsNullOrWhiteSpace(matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].PlayAreaMapRegion);
             int remainingTeams = 0;
             Team lastRemainingTeam = null;
@@ -2235,44 +2355,62 @@ namespace SS.Matchmaking.Modules
             return false;
         }
 
-        private void EndMatch(MatchData matchData, MatchEndReason reason, Team winnerTeam)
+        // TODO: is there a better way to do this without using async void?
+        private async void EndMatch(MatchData matchData, MatchEndReason reason, Team winnerTeam)
         {
-            HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
-            StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
+            if (matchData.Status != MatchStatus.InProgress)
+                return;
 
-            try
+            matchData.Status = MatchStatus.Complete;
+
+            bool isNotificationHandled = false;
+
+            if (_teamVersusStatsBehavior is not null)
             {
-                GetPlayersToNotify(matchData, notifySet);
-
-                foreach (Team team in matchData.Teams)
-                {
-                    if (scoreBuilder.Length > 0)
-                        scoreBuilder.Append('-');
-
-                    scoreBuilder.Append(team.Score);
-                }
-
-                if (winnerTeam != null)
-                {
-                    scoreBuilder.Append($" Freq {winnerTeam.Freq}");
-                }
-                else
-                {
-                    scoreBuilder.Append(" DRAW");
-                }
-
-                _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
+                // Give a chance for the stats module to process the end of a match.
+                // It may, or may not, attempt to save data to a database.
+                // If it tries to save to the database, that work is done asynchronously.
+                // We can't tear down the object model of the match until it's done, so we await it.
+                // This is being processed on the 
+                isNotificationHandled = await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
             }
-            finally
+
+            if (!isNotificationHandled)
             {
-                _objectPoolManager.PlayerSetPool.Return(notifySet);
-                _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+                HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+                StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                try
+                {
+                    GetPlayersToNotify(matchData, notifySet);
+
+                    foreach (Team team in matchData.Teams)
+                    {
+                        if (scoreBuilder.Length > 0)
+                            scoreBuilder.Append('-');
+
+                        scoreBuilder.Append(team.Score);
+                    }
+
+                    if (winnerTeam != null)
+                    {
+                        scoreBuilder.Append($" Freq {winnerTeam.Freq}");
+                    }
+                    else
+                    {
+                        scoreBuilder.Append(" DRAW");
+                    }
+
+                    _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(notifySet);
+                    _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+                }
             }
 
             Arena arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
-
-            // Fire a callback to notify the stats module that the match has ended.
-            TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
 
             foreach (Team team in matchData.Teams)
             {

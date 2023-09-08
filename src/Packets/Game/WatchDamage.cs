@@ -23,8 +23,25 @@ namespace SS.Packets.Game
         private short damage;
         private byte unknown;
 
+        /// <summary>
+        /// Id of the player that inflicted the damage.
+        /// </summary>
+        /// <remarks>
+        /// For damage taken from a wormhole, this will be the player's own PlayerId.
+        /// </remarks>
         public short AttackerPlayerId => LittleEndianConverter.Convert(attackerPlayerId);
+        
+        /// <summary>
+        /// The amount of energy the player had when the damage occurred.
+        /// </summary>
         public short Energy => LittleEndianConverter.Convert(energy);
+
+        /// <summary>
+        /// The amount of damage inflicted.
+        /// </summary>
+        /// <remarks>
+        /// This can be greater than <see cref="Energy"/> if it's the killing blow or if the player self-inflicted damage.
+        /// </remarks>
         public short Damage => LittleEndianConverter.Convert(damage);
     }
 

@@ -64,6 +64,34 @@ namespace SS.Utilities
 
         public override string ToString() => tickcount.ToString();
 
+        /// <summary>
+        /// Compares two values to compute which is lesser.
+        /// </summary>
+        /// <param name="x">The value to compare with.</param>
+        /// <param name="y">The value to compare with.</param>
+        /// <returns><paramref name="x"/> if it is less than <paramref name="y"/>, otherwise <paramref name="y"/>.</returns>
+        public static ServerTick Min(ServerTick x, ServerTick y)
+        {
+            if (x < y)
+                return x;
+
+            return y;
+        }
+
+        /// <summary>
+        /// Compares two values to compute which is greater.
+        /// </summary>
+        /// <param name="x">The value to compare with.</param>
+        /// <param name="y">The value to compare with.</param>
+        /// <returns><paramref name="x"/> if it is greater than <paramref name="y"/>, otherwise <paramref name="y"/>.</returns>
+        public static ServerTick Max(ServerTick x, ServerTick y)
+        {
+            if (x > y)
+                return x;
+
+            return y;
+        }
+
         #region IEquatable<ServerTick> Members
 
         public bool Equals(ServerTick other) => tickcount == other.tickcount;

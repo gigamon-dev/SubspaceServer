@@ -688,6 +688,34 @@ namespace SS.Utilities
         }
 
         #endregion
+
+        #region StringBuilder extensions
+
+        /// <summary>
+        /// Appends a <see cref="TimeSpan"/> to a <see cref="StringBuilder"/> in a culture insensitive, user friendly format that adjusts based on how large the <paramref name="value"/> is.
+        /// </summary>
+        /// <param name="builder">The <see cref="StringBuilder"/> to append to.</param>
+        /// <param name="value">The value to append.</param>
+        /// <returns>The <paramref name="builder"/> that was passed in.</returns>
+        public static StringBuilder AppendFriendlyTimeSpan(this StringBuilder builder, TimeSpan value)
+        {
+            if (value.Days > 0)
+            {
+                builder.Append($"{value:d'.'hh':'mm':'ss}");
+            }
+            else if (value.Hours > 0)
+            {
+                builder.Append($"{value:h':'mm':'ss}");
+            }
+            else
+            {
+                builder.Append($"{value:m':'ss}");
+            }
+
+            return builder;
+        }
+
+        #endregion
     }
 
     /// <summary>
