@@ -1557,6 +1557,13 @@ namespace SS.Matchmaking.Modules
 
             MatchConfiguration LoadMatchConfiguration(ConfigHandle ch, string matchType)
             {
+                int gameTypeId = _configManager.GetInt(ch, matchType, "GameTypeId", -1);
+                if (gameTypeId == -1)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing or invalid MatchTypeId for Match '{matchType}'.");
+                    return null;
+                }
+
                 string queueName = _configManager.GetStr(ch, matchType, "Queue");
                 if (string.IsNullOrWhiteSpace(queueName))
                 {
@@ -1649,6 +1656,7 @@ namespace SS.Matchmaking.Modules
 
                 MatchConfiguration matchConfiguration = new()
                 {
+                    GameTypeId = gameTypeId,
                     MatchType = matchType,
                     QueueName = queueName,
                     ArenaBaseName = arenaBaseName,
@@ -2512,15 +2520,16 @@ namespace SS.Matchmaking.Modules
 
         #region Helper types
 
-        private class MatchConfiguration
+        private class MatchConfiguration : IMatchConfiguration
         {
+            public required long GameTypeId { get; init; }
             public string MatchType;
             public string QueueName;
             public string ArenaBaseName;
             public int MaxArenas;
 
-            public int NumTeams;
-            public int PlayersPerTeam;
+            public int NumTeams { get; init; }
+            public int PlayersPerTeam { get; init; }
             public int LivesPerPlayer;
             public TimeSpan? TimeLimit;
             public TimeSpan? OverTimeLimit;
@@ -2590,7 +2599,7 @@ namespace SS.Matchmaking.Modules
 
             /// <inheritdoc cref="IMatchData.Configuration"/>
             public readonly MatchConfiguration Configuration;
-            IMatchConfiguration IMatchData.Configuration { get; }
+            IMatchConfiguration IMatchData.Configuration => Configuration;
 
             public string ArenaName { get; }
 

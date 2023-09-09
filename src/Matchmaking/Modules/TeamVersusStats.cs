@@ -30,6 +30,7 @@ namespace SS.Matchmaking.Modules
 
         private static readonly RecyclableMemoryStreamManager s_recyclableMemoryStreamManager = new();
         private static readonly ObjectPool<LinkedListNode<DamageInfo>> s_damageInfoLinkedListNodePool;
+        private static readonly ObjectPool<LinkedListNode<WeaponUse>> s_weaponUseLinkedListNodePool;
         private static readonly ObjectPool<TickRangeCalculator> s_tickRangeCalculatorPool;
         private static readonly ObjectPool<Dictionary<PlayerTeamSlot, int>> s_damageDictionaryPool;
         private static readonly ObjectPool<List<(string PlayerName, int Damage)>> s_damageListPool;
@@ -38,7 +39,8 @@ namespace SS.Matchmaking.Modules
         static TeamVersusStats()
         {
             var provider = new DefaultObjectPoolProvider();
-            s_damageInfoLinkedListNodePool = provider.Create(new DamageInfoLinkedListNodePooledObjectPolicy());
+            s_damageInfoLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<DamageInfo>>(new DamageInfoLinkedListNodePooledObjectPolicy());
+            s_weaponUseLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<WeaponUse>>(new WeaponUseLinkedListNodePooledObjectPolicy());
             s_tickRangeCalculatorPool = provider.Create(new TickRangeCalcualtorPooledObjectPolicy());
             s_damageDictionaryPool = provider.Create(new DamageDictionaryPooledObjectPolicy());
             s_damageListPool = provider.Create(new DamageListPooledObjectPolicy());
@@ -607,7 +609,7 @@ namespace SS.Matchmaking.Modules
                 using Utf8JsonWriter writer = new(gameJsonStream, default);
 
                 writer.WriteStartObject(); // game object
-                writer.WriteNumber("game_type_id"u8, 4); // TODO: translate matchData.MatchIdentifier.MatchType to the proper ID
+                writer.WriteNumber("game_type_id"u8, matchData.Configuration.GameTypeId);
                 writer.WriteString("zone_server_name"u8, _zoneServerName);
                 writer.WriteString("arena"u8, matchData.ArenaName);
                 writer.WriteNumber("box_number"u8, matchData.MatchIdentifier.BoxIdx);
@@ -615,6 +617,24 @@ namespace SS.Matchmaking.Modules
                 writer.WriteString("start_timestamp"u8, matchStats.StartTimestamp);
                 writer.WriteString("end_timestamp"u8, matchStats.EndTimestamp.Value);
                 writer.WriteString("replay_path"u8, (string)null); // TODO: add the ability automatically record games
+
+                writer.WriteStartArray("players");
+                foreach ((string playerName, PlayerInfo playerInfo) in matchStats.PlayerInfoDictionary)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("player"u8, playerName);
+                    writer.WriteString("squad"u8, playerInfo.Squad); // write it even if there is no squad (so that the database knows to clear the player's current squad)
+
+                    if (playerInfo.XRes is not null && playerInfo.YRes is not null)
+                    {
+                        writer.WriteNumber("x_res"u8, playerInfo.XRes.Value);
+                        writer.WriteNumber("y_res"u8, playerInfo.YRes.Value);
+                    }
+
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+
                 writer.WriteStartArray("team_stats"u8); // team_stats array
 
                 foreach (TeamStats teamStats in matchStats.Teams.Values)
@@ -1175,6 +1195,14 @@ namespace SS.Matchmaking.Modules
             if (player.Arena != matchStats.MatchData.Arena)
                 return;
 
+            if (positionPacket.Weapon.Type != WeaponCodes.Null)
+            {
+                playerData.TrimWeaponUseLog();
+
+                if (!playerData.AddWeaponUse(positionPacket.Weapon.Type, positionPacket.Time))
+                    return; // This is a duplicate packet. Ignore it.
+            }
+
             switch (positionPacket.Weapon.Type)
             {
                 case WeaponCodes.Bullet:
@@ -1401,6 +1429,17 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        private void AddOrUpdatePlayerInfo(MatchStats matchStats, string playerName, Player player)
+        {
+            if (matchStats is null || string.IsNullOrEmpty(playerName))
+                return;
+
+            PlayerInfo playerInfo = new(player?.Squad, player?.Xres, player?.Yres);
+
+            matchStats.PlayerInfoDictionary.Remove(playerName); // using remove in case the player name changed [upper|lower]case
+            matchStats.PlayerInfoDictionary.Add(playerName, playerInfo);
+        }
+
         private void SetStartedPlaying(Player player, MemberStats memberStats)
         {
             if (player is null
@@ -1410,6 +1449,7 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            AddOrUpdatePlayerInfo(memberStats.MatchStats, player.Name, player);
             playerData.MemberStats = memberStats;
             AddDamageWatch(player, playerData);
         }
@@ -1845,6 +1885,8 @@ namespace SS.Matchmaking.Modules
 
         #region Helper types
 
+        private readonly record struct PlayerInfo(string Squad, short? XRes, short? YRes);
+
         private class MatchStats
         {
             public IMatchData MatchData { get; private set; }
@@ -1853,6 +1895,8 @@ namespace SS.Matchmaking.Modules
             /// Key = freq
             /// </summary>
             public readonly SortedList<short, TeamStats> Teams = new();
+
+            public readonly Dictionary<string, PlayerInfo> PlayerInfoDictionary = new(StringComparer.OrdinalIgnoreCase);
 
             public DateTime StartTimestamp;
             public DateTime? EndTimestamp;
@@ -1876,6 +1920,7 @@ namespace SS.Matchmaking.Modules
             {
                 MatchData = null;
                 Teams.Clear();
+                PlayerInfoDictionary.Clear();
                 StartTimestamp = DateTime.MinValue;
                 EndTimestamp = null;
                 GameId = null;
@@ -1977,9 +2022,25 @@ namespace SS.Matchmaking.Modules
                 _eventsJsonWriter.WriteNumber("killer_ship"u8, (int)killerShip);
 
                 _eventsJsonWriter.WriteStartArray("score");
-                foreach (var team in Teams.Values)
+                foreach (var teamStats in Teams.Values)
                 {
-                    _eventsJsonWriter.WriteNumberValue(team.Team.Score);
+                    _eventsJsonWriter.WriteNumberValue(teamStats.Team.Score);
+                }
+                _eventsJsonWriter.WriteEndArray();
+
+                _eventsJsonWriter.WriteStartArray("remaining_slots");
+                foreach (var teamStats in Teams.Values)
+                {
+                    int remainingSlots = 0;
+                    foreach (var slotStats in teamStats.Slots)
+                    {
+                        if (slotStats.Slot.Lives > 0)
+                        {
+                            remainingSlots++;
+                        }
+                    }
+
+                    _eventsJsonWriter.WriteNumberValue(remainingSlots);
                 }
                 _eventsJsonWriter.WriteEndArray();
 
@@ -2349,12 +2410,81 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public bool IsWatchingDamage = false;
 
+            public readonly LinkedList<WeaponUse> WeaponUseList = new();
+
+            /// <summary>
+            /// Removes outdated weapon use log entries.
+            /// </summary>
+            public void TrimWeaponUseLog()
+            {
+                ServerTick cutoff = ServerTick.Now - 500u;
+
+                LinkedListNode<WeaponUse> node = WeaponUseList.First;
+                while (node is not null)
+                {
+                    if (node.ValueRef.Timestamp >= cutoff)
+                        return;
+
+                    WeaponUseList.Remove(node);
+                    s_weaponUseLinkedListNodePool.Return(node);
+                    node = WeaponUseList.First;
+                }
+            }
+
+            /// <summary>
+            /// Adds a weapon use log entry.
+            /// </summary>
+            /// <param name="weapon">The weapon to log use of.</param>
+            /// <param name="timestamp">The timestamp that the weapon was used.</param>
+            /// <returns><see langword="true"/> if a log was added. Otherwise, <see langword="false"/> if there was already a matching log (this is a duplicate).</returns>
+            public bool AddWeaponUse(WeaponCodes weapon, ServerTick timestamp)
+            {
+                LinkedListNode<WeaponUse> node = WeaponUseList.Last;
+                while (node is not null)
+                {
+                    ref WeaponUse weaponUse = ref node.ValueRef;
+                    if (weaponUse.Timestamp == timestamp && weaponUse.Weapon == weapon)
+                        return false; // dup
+
+                    if (weaponUse.Timestamp < timestamp)
+                        break;
+
+                    node = node.Previous;
+                }
+
+                LinkedListNode<WeaponUse> addNode = s_weaponUseLinkedListNodePool.Get();
+                addNode.ValueRef = new WeaponUse(weapon, timestamp);
+
+                if (node is null)
+                    WeaponUseList.AddFirst(addNode);
+                else
+                    WeaponUseList.AddAfter(node, addNode);
+
+                return true;
+            }
+
+            /// <summary>
+            /// Clears all weapon use log entries.
+            /// </summary>
+            public void ClearWeaponUseLog()
+            {
+                LinkedListNode<WeaponUse> node;
+                while ((node = WeaponUseList.First) is not null)
+                {
+                    WeaponUseList.Remove(node);
+                    s_weaponUseLinkedListNodePool.Return(node);
+                }
+            }
+
             public void Reset()
             {
                 MemberStats = null;
                 IsWatchingDamage = false;
+                ClearWeaponUseLog();
             }
         }
+
+        private readonly record struct WeaponUse(WeaponCodes Weapon, ServerTick Timestamp);
 
         private readonly struct PlayerTeamSlot : IEquatable<PlayerTeamSlot>
         {
@@ -2497,7 +2627,24 @@ namespace SS.Matchmaking.Modules
                 if (obj.List is not null)
                     return false;
 
-                obj.Value = default;
+                obj.ValueRef = default;
+                return true;
+            }
+        }
+
+        private class WeaponUseLinkedListNodePooledObjectPolicy : IPooledObjectPolicy<LinkedListNode<WeaponUse>>
+        {
+            public LinkedListNode<WeaponUse> Create()
+            {
+                return new LinkedListNode<WeaponUse>(default);
+            }
+
+            public bool Return(LinkedListNode<WeaponUse> obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.ValueRef = default;
                 return true;
             }
         }
