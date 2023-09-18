@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.ObjectPool;
-using SS.Core;
+﻿using SS.Core;
 
 namespace SS.Matchmaking.Interfaces
 {
@@ -8,6 +7,8 @@ namespace SS.Matchmaking.Interfaces
     /// </summary>
     public interface IMatchmakingQueues : IComponentInterface
     {
+        #region Queue Registration
+
         /// <summary>
         /// Register's a queue, making it available to the ?next command.
         /// </summary>
@@ -22,50 +23,152 @@ namespace SS.Matchmaking.Interfaces
         /// <returns></returns>
         bool UnregisterQueue(IMatchmakingQueue queue);
 
-        /// <summary>
-        /// Marks the players state as 'Playing'.
-        /// For those marked as 'Playing', searches will disabled, and any ongoing ones are stopped.
-        /// </summary>
-        /// <param name="players">Players that are to be marked as 'Playing'.</param>
-        void SetPlaying(HashSet<Player> players);
+        #endregion
+
+        #region SetPlaying methods
 
         /// <summary>
-        /// Marks the player's state as 'Playing', as a substitute player in an ongoing match.
-        /// This tells the service to keep track of the original timestamp that the player queued up
-        /// so that the player can be requeued in the original position.
+        /// Marks a player as 'Playing'.
         /// </summary>
-        /// <param name="player"></param>
+        /// <param name="player">The player to mark as 'Playing'.</param>
+        void SetPlaying(Player player);
+
+        /// <summary>
+        /// Marks a set of players as 'Playing'.
+        /// </summary>
+        /// <param name="players">The players to mark as 'Playing'.</param>
+        void SetPlaying<T>(T players) where T : IReadOnlyCollection<Player>;
+
+        /// <summary>
+        /// Marks a player as 'Playing' as a substitute player in an ongoing match.
+        /// </summary>
+        /// <remarks>
+        /// Players that sub into existing matches do not lose their position in queues that they were searching on prior to subbing in.
+        /// This method tells the service to remember that the player is playing as a substitute, so that when unset from playing, it will be able
+        /// to restore the player's previous position(s) in those queue(s).
+        /// </remarks>
+        /// <param name="player">The player to mark as 'Playing'.</param>
         void SetPlayingAsSub(Player player);
 
-        /// <summary>
-        /// Removes the 'Playing' state of players that were previously marked with <see cref="SetPlaying(HashSet{Player})"/> or <see cref="SetPlayingAsSub(Player)"/>, in the order provided.
-        /// </summary>
-        /// <param name="players">The players to unset from the 'Playing' state. The players are processed in the order provided.</param>
-        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
-        void UnsetPlaying<T>(T players, bool allowRequeue) where T : IReadOnlyCollection<Player>;
+        #endregion
+
+        #region UnsetPlaying* methods
 
         /// <summary>
-        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player})"/> or <see cref="SetPlayingAsSub(Player)"/>.
+        /// Removes the 'Playing' state of a player such that the player will automatically be requeued into any queue(s) 
+        /// they were previously searching on prior to getting set to 'Playing', and keep their previous position in each queue(s).
+        /// </summary>
+        /// <remarks>
+        /// This is useful for when the player was set to 'Playing', but the game was cancelled before it could start.
+        /// For example, if unable to start because another player they were matched up to play with/against disconnected before the game could start.
+        /// </remarks>
+        /// <param name="player">The player to change the state of.</param>
+        void UnsetPlayingDueToCancel(Player player);
+
+        /// <summary>
+        /// Removes the 'Playing' state of a set of players such that the players will automatically be requeued into any queue(s) 
+        /// they were previously searching on prior to getting set to 'Playing', and keep their previous position in each queue(s).
+        /// </summary>
+        /// <remarks>
+        /// This is useful for when players were set to 'Playing', but the game was cancelled before it could start.
+        /// For example, if unable to start because another player they were matched up to play with/against disconnected before the game could start.
+        /// </remarks>
+        /// <param name="players">The players to change the state of.</param>
+        void UnsetPlayingDueToCancel<T>(T players) where T : IReadOnlyCollection<Player>;
+
+        /// <summary>
+        /// Removes the 'Playing' state of a player.
         /// </summary>
         /// <param name="player">The player to unset from the 'Playing' state.</param>
         /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
         void UnsetPlaying(Player player, bool allowRequeue);
 
         /// <summary>
-        /// Removes the 'Playing' state of a player that was previously marked with <see cref="SetPlaying(HashSet{Player})"/> or <see cref="SetPlayingAsSub(Player)"/>.
+        /// Removes the 'Playing' state of players.
         /// </summary>
         /// <remarks>
-        /// This overload is for modules that hold players in the 'Playing' state, even after if a player disconnects.
-        /// E.g. To hold players until the match ends. Or, to hold a player even longer (penalize) for leaving a match mid-game.
+        /// The players are processed in the order provided. So, those earlier in the collection will be queued before those that come later.
+        /// It is the job of the modules calling this to maintain the order of players, preferably keeping players that queued earlier to stay in front.
+        /// </remarks>
+        /// <param name="players">The players to unset from the 'Playing' state. The players are processed in the order provided.</param>
+        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
+        void UnsetPlaying<T>(T players, bool allowRequeue) where T : IReadOnlyCollection<Player>;
+
+        /// <summary>
+        /// Removes the 'Playing' state of a player, by player name.
+        /// </summary>
+        /// <remarks>
+        /// This overload is for when holding onto <see cref="Player"/> objects is not possible.
+        /// For example, a module that holds players in the 'Playing' state until the match ends, even if a player disconnects.
         /// </remarks>
         /// <param name="playerName">The name of the player to unset from the 'Playing' state.</param>
         /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
-        void UnsetPlaying(string playerName, bool allowRequeue);
+        void UnsetPlayingByName(string playerName, bool allowRequeue);
 
         /// <summary>
-        /// Object pool for <see cref="List{T}"/>s of <see cref="PlayerOrGroup"/>. For use with <see cref="UnsetPlaying(List{PlayerOrGroup})"/>.
+        /// Removes the 'Playing' state of a set of players, by player name.
         /// </summary>
-        //ObjectPool<List<PlayerOrGroup>> PlayerOrGroupListPool { get; }
+        /// <remarks>
+        /// This overload is for when holding onto <see cref="Player"/> objects is not possible.
+        /// For example, a module that holds players in the 'Playing' state until the match ends, even if a player disconnects.
+        /// </remarks>
+        /// <typeparam name="T">A collection of player names.</typeparam>
+        /// <param name="playerNames">The names of players to unset from the 'Playing' state.</param>
+        /// <param name="allowAutoRequeue">Whether to allow automatic re-queuing (search for another match).</param>
+        void UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue) where T : IReadOnlyCollection<string>;
+
+        /// <summary>
+        /// Removes the 'Playing' state of a player after a <paramref name="delay"/>.
+        /// </summary>
+        /// <remarks>
+        /// This can be useful for penalizing a player for leaving a match without being subbed, 
+        /// preferably called when the match ends so that the <paramref name="delay"/> is relative to the match ending time.
+        /// Also, this should probably also only be used if the player was not on a pre-made group.
+        /// <para>
+        /// The delay will persist even if the player disconnects/reconnects.
+        /// For example, if a player has 1 minute remaining and disconnects, 
+        /// the remaining duration will be restored when the player reconnects.
+        /// This should help dissuade players from switching names to avoid penalties.
+        /// </para>
+        /// </remarks>
+        /// <param name="playerName">The name of the player to unset from the 'Playing' state.</param>
+        /// <param name="delay">How long to hold the player in 'Playing'.</param>
+        void UnsetPlayingAfterDelay(string playerName, TimeSpan delay);
+
+        /// <summary>
+        /// Removes the 'Playing' state of a set of players after a <paramref name="delay"/>.
+        /// </summary>
+        /// <remarks>
+        /// This can be useful for penalizing a player for leaving a match without being subbed, 
+        /// preferably called when the match ends so that the <paramref name="delay"/> is relative to the match ending time.
+        /// Also, this should probably also only be used if the player was not on a pre-made group.
+        /// <para>
+        /// The delay will persist even if the player disconnects/reconnects.
+        /// For example, if a player has 1 minute remaining and disconnects, 
+        /// the remaining duration will be restored when the player reconnects.
+        /// This should help dissuade players from switching names to avoid penalties.
+        /// </para>
+        /// </remarks>
+        /// <typeparam name="T">A collection of player names.</typeparam>
+        /// <param name="playerNames">The names of players to unset from the 'Playing' state.</param>
+        /// <param name="delay">How long to hold the player in 'Playing'.</param>
+        void UnsetPlayingAfterDelay<T>(T playerNames, TimeSpan delay) where T : IReadOnlyCollection<string>;
+
+        #endregion
+
+        #region Command Names
+
+        /// <summary>
+        /// The name of the command to start searching on matchmaking queue(s).
+        /// </summary>
+        string NextCommandName { get; }
+
+        /// <summary>
+        /// The name of the command to stop searching on matchmaking queues.
+        /// </summary>
+        string CancelCommandName { get; }
+
+        #endregion
     }
 
     /// <summary>

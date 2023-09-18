@@ -16,8 +16,18 @@
         Draw,
 
         /// <summary>
-        /// The match was aborted (?recyclearena or ?shutdown).
+        /// The match was cancelled.
         /// </summary>
-        Aborted,
+        Cancelled,
+
+        /// <summary>
+        /// The match is being restarted.
+        /// </summary>
+        //Restarting, // TODO: add a command for players to request a ?restart, or ?randomize to restart with teams randomized.
+
+        /// <summary>
+        /// The module is being unloaded. Usually due to the server shutting down or recycling.
+        /// </summary>
+        //Shutdown, // TODO: add logic to end ongoing matches upon module unload
     }
 }

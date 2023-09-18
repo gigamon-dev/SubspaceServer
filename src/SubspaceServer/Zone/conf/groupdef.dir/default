@@ -90,7 +90,9 @@ privcmd_best
 cmd_group
 privcmd_group
 cmd_next
-cmd_cancel
+cmd_cancelnext
+cmd_cnext
+cmd_nexthold
 
 ; Matchmaking (TeamVersusMatch)
 cmd_requestsub

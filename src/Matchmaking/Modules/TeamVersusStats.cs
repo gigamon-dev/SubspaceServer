@@ -48,6 +48,8 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        private const int DefaultRating = 500;
+
         private IArenaManager _arenaManager;
         private IChat _chat;
         private IClientSettings _clientSettings;
@@ -218,10 +220,8 @@ namespace SS.Matchmaking.Modules
 
         public bool AttachModule(Arena arena)
         {
-            TeamVersusMatchStartedCallback.Register(arena, Callback_TeamVersusMatchStarted);
             TeamVersusMatchPlayerSubbedCallback.Register(arena, Callback_TeamVersusMatchPlayerSubbed);
             BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
-            KillCallback.Register(arena, Callback_Kill);
             PlayerDamageCallback.Register(arena, Callback_PlayerDamage);
             PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
@@ -236,10 +236,8 @@ namespace SS.Matchmaking.Modules
         {
             _commandManager.RemoveCommand("chart", Command_chart, arena);
 
-            TeamVersusMatchStartedCallback.Unregister(arena, Callback_TeamVersusMatchStarted);
             TeamVersusMatchPlayerSubbedCallback.Unregister(arena, Callback_TeamVersusMatchPlayerSubbed);
             BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
-            KillCallback.Unregister(arena, Callback_Kill);
             PlayerDamageCallback.Unregister(arena, Callback_PlayerDamage);
             PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
@@ -252,6 +250,122 @@ namespace SS.Matchmaking.Modules
 
         #region ITeamVersusStatsBehavior
 
+        Task<bool> ITeamVersusStatsBehavior.BalanceTeamsAsync(IMatchConfiguration matchConfiguration, IReadOnlyList<TeamLineup> teamList)
+        {
+            // TODO: 
+
+            // Get ratings of each player.
+            //List<(string PlayerName, int Rating)> playerRatingList = new();
+            //foreach (TeamLineup teamLineup in teamList)
+            //{
+            //    foreach (string playerName in teamLineup.Players)
+            //    {
+            //        playerRatingList.Add((playerName, DefaultRating));
+            //    }
+            //}
+
+            //await GetPlayerRatings(playerRatingList);
+
+            // Sort the list by rating
+            //playerRatingList.Sort()
+
+            //foreach (TeamLineup teamLineup in teamList)
+            //{
+            //    teamLineup.Players.Clear();
+            //}
+
+            // Assign players to teams using snake mode.
+
+            return Task.FromResult(false);
+        }
+
+        async Task ITeamVersusStatsBehavior.InitializeAsync(IMatchData matchData)
+        {
+            if (_matchStatsDictionary.TryGetValue(matchData.MatchIdentifier, out MatchStats matchStats))
+            {
+                ResetMatchStats(matchStats);
+            }
+            else
+            {
+                matchStats = new(); // TODO: get from a pool
+                matchStats.Initialize(matchData);
+                _matchStatsDictionary.Add(matchData.MatchIdentifier, matchStats);
+            }
+
+            Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase); // TOOD: pool
+
+            for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
+            {
+                ITeam team = matchData.Teams[teamIdx];
+                TeamStats teamStats = new(); // TODO: get from a pool
+                teamStats.Initialize(matchStats, team);
+                matchStats.Teams.Add(team.Freq, teamStats);
+
+                for (int slotIdx = 0; slotIdx < team.Slots.Count; slotIdx++)
+                {
+                    IPlayerSlot slot = team.Slots[slotIdx];
+                    SlotStats slotStats = new(); // TODO: get from a pool
+                    slotStats.Initialize(teamStats, slot);
+                    teamStats.Slots.Add(slotStats);
+
+                    MemberStats memberStats = new(); // TODO: get from a pool
+                    memberStats.Initialize(slotStats, slot.PlayerName);
+                    slotStats.Members.Add(memberStats);
+                    slotStats.Current = memberStats;
+                    _playerMemberDictionary[memberStats.PlayerName] = memberStats;
+
+                    playerRatingDictionary.Add(memberStats.PlayerName, DefaultRating);
+                }
+            }
+
+            if (_gameStatsRepository is not null)
+            {
+                await _gameStatsRepository.GetPlayerRatingsAsync(playerRatingDictionary);
+            }
+
+            foreach (TeamStats teamStats in matchStats.Teams.Values)
+            {
+                foreach (SlotStats slotStats in teamStats.Slots)
+                {
+                    MemberStats memberStats = slotStats.Members[0];
+                    if (!playerRatingDictionary.TryGetValue(memberStats.PlayerName, out int rating))
+                    {
+                        rating = DefaultRating;
+                    }
+
+                    memberStats.InitialRating = rating;
+                }
+            }
+        }
+
+        ValueTask ITeamVersusStatsBehavior.MatchStartedAsync(IMatchData matchData)
+        {
+            if (!_matchStatsDictionary.TryGetValue(matchData.MatchIdentifier, out MatchStats matchStats))
+                return ValueTask.CompletedTask;
+
+            matchStats.StartTimestamp = matchData.Started.Value;
+
+            foreach (TeamStats teamStats in matchStats.Teams.Values)
+            {
+                foreach (SlotStats slotStats in teamStats.Slots)
+                {
+                    MemberStats memberStats = slotStats.Members[0];
+                    memberStats.StartTime = matchStats.StartTimestamp;
+
+                    IPlayerSlot slot = slotStats.Slot;
+                    Player player = slot.Player ?? _playerData.FindPlayer(memberStats.PlayerName);
+                    if (player is not null)
+                    {
+                        SetStartedPlaying(player, memberStats);
+                    }
+
+                    matchStats.AddAssignSlotEvent(matchStats.StartTimestamp, slot.Team.Freq, slot.SlotIdx, slot.PlayerName);
+                }
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
         async ValueTask<bool> ITeamVersusStatsBehavior.PlayerKilledAsync(
             ServerTick ticks,
             DateTime timestamp,
@@ -262,32 +376,61 @@ namespace SS.Matchmaking.Modules
             IPlayerSlot killerSlot,
             bool isKnockout)
         {
-            //
-            // Gather some info in local variables prior to the delay.
-            //
-
-            if (!_matchStatsDictionary.TryGetValue(matchData.MatchIdentifier, out MatchStats matchStats))
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats),
-                    $"ITeamVersusStatsBehavior.PlayerKilledAsync called for an unknown match (MatchType:{matchData.MatchIdentifier.MatchType}, ArenaNumber:{matchData.MatchIdentifier.ArenaNumber}, BoxId:{matchData.MatchIdentifier.BoxIdx})");
-                return false;
-            }
-
             if (!killed.TryGetExtraData(_pdKey, out PlayerData killedPlayerData))
+                return false;
+
+            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerPlayerData))
                 return false;
 
             MemberStats killedMemberStats = killedPlayerData.MemberStats;
             if (killedMemberStats is null)
-            {
-                if (matchStats.Teams.TryGetValue(killedSlot.Team.Freq, out TeamStats killedTeamStats))
-                {
-                    killedMemberStats = killedTeamStats.Slots[killedSlot.SlotIdx].Members.Find(
-                        mStat => string.Equals(mStat.PlayerName, killed.Name, StringComparison.OrdinalIgnoreCase));
-                }
+                return false;
 
-                if (killedMemberStats is null)
-                    return false;
+            MemberStats killerMemberStats = killerPlayerData.MemberStats;
+            if (killerMemberStats is null)
+                return false;
+
+            MatchStats matchStats = killedMemberStats.MatchStats;
+            if (matchStats is null)
+                return false;
+
+            // Check that the players are in the same match.
+            if (matchStats != killerMemberStats.MatchStats)
+                return false;
+
+            // Check that the kill was made in the correct arena.
+            if (killed.Arena != matchStats.MatchData.Arena || killer.Arena != matchStats.MatchData.Arena)
+                return false;
+
+            bool isTeamKill = killedSlot.Team == killerSlot.Team;
+
+            //
+            // Update stats that are not damage related.
+            //
+
+            // Update killer stats.
+            if (isTeamKill)
+            {
+                killerMemberStats.TeamKills++;
             }
+            else
+            {
+                killerMemberStats.Kills++;
+            }
+
+            // Update killed stats.
+            killedMemberStats.Deaths++;
+            killedMemberStats.WastedRepels += killedSlot.Repels;
+            killedMemberStats.WastedRockets += killedSlot.Rockets;
+            killedMemberStats.WastedThors += killedSlot.Thors;
+            killedMemberStats.WastedBursts += killedSlot.Bursts;
+            killedMemberStats.WastedDecoys += killedSlot.Decoys;
+            killedMemberStats.WastedPortals += killedSlot.Portals;
+            killedMemberStats.WastedBricks += killedSlot.Bricks;
+
+            //
+            // Gather some info in local variables prior to the delay.
+            //
 
             // player names
             string killedPlayerName = killed.Name;
@@ -302,28 +445,24 @@ namespace SS.Matchmaking.Modules
             short yCoord = killed.Position.Y;
 
             //
-            // Delay processing the kill to allow time for final the C2S damage packet to make it to the server.
+            // Delay processing the kill to allow time for the final C2S damage packet to make it to the server.
             // This gives a chance for C2S Damage packets to make it to the server and therefore more accurate damage stats.
             //
 
             await Task.Delay(200);
 
-            // The Player objects might be invalid after the delay (e.g. if a player disconnected during the delay).
-            // Compare by player name and consider the Player object invalid if it doesn't match.
-
-            if (!string.Equals(killed.Name, killedPlayerName, StringComparison.OrdinalIgnoreCase))
-            {
-                killed = null;
-                killedPlayerData = null;
-            }
-
-            if (!string.Equals(killer.Name, killerPlayerName, StringComparison.OrdinalIgnoreCase))
-            {
-                killer = null;
-            }
+            // The Player objects (and therefore the PlayerData objects too) might be invalid after the await
+            // (e.g. if a player disconnected during the delay).
+            // We could verify a Player object by comparing Player.Name and checking that Player.Status = PlayerState.Playing.
+            // However, we aren't going to use the Player or PlayerData objects after this point.
+            // So, let's just clear our references to them.
+            killed = null;
+            killedPlayerData = null;
+            killer = null;
+            killerPlayerData = null;
 
             //
-            // Calculate kill damage (how much damage to attribute to the kill) for each attacker based on recent damage.
+            // Damage related logic (stats, notifications, event logging).
             //
 
             Dictionary<PlayerTeamSlot, int> damageDictionary = s_damageDictionaryPool.Get();
@@ -331,6 +470,7 @@ namespace SS.Matchmaking.Modules
 
             try
             {
+                // Calculate damage stats.
                 CalculateDamageDealt(ticks, killedMemberStats, killedShip, damageDictionary);
                 killedMemberStats.ClearRecentDamage();
 
@@ -508,6 +648,7 @@ namespace SS.Matchmaking.Modules
                     killerPlayerName,
                     killerShip,
                     isKnockout,
+                    isTeamKill,
                     xCoord,
                     yCoord,
                     damageList);
@@ -521,6 +662,7 @@ namespace SS.Matchmaking.Modules
             return true;
 
 
+            // local function for sorting
             static int PlayerDamageTupleComparison((string PlayerName, int Damage) x, (string PlayerName, int Damage) y)
             {
                 int ret = x.Damage.CompareTo(y.Damage);
@@ -572,7 +714,10 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            await SaveGameToDatabase(matchData, winnerTeam, matchStats);
+            if (reason != MatchEndReason.Cancelled)
+            {
+                await SaveGameToDatabase(matchData, winnerTeam, matchStats);
+            }
 
             // Send game stat as chat notifications.
             HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
@@ -593,6 +738,7 @@ namespace SS.Matchmaking.Modules
             return true;
 
 
+            // local function that saves match stats to the database
             async Task SaveGameToDatabase(IMatchData matchData, ITeam winnerTeam, MatchStats matchStats)
             {
                 if (matchData is null || matchStats is null)
@@ -660,6 +806,8 @@ namespace SS.Matchmaking.Modules
                             writer.WriteNumber("kills"u8, memberStats.Kills);
                             writer.WriteNumber("deaths"u8, memberStats.Deaths);
                             writer.WriteNumber("team_kills"u8, memberStats.TeamKills);
+                            writer.WriteNumber("solo_kills"u8, memberStats.SoloKills);
+                            writer.WriteNumber("assists"u8, memberStats.Assists);
                             writer.WriteNumber("forced_reps"u8, memberStats.ForcedReps);
                             writer.WriteNumber("gun_damage_dealt"u8, memberStats.DamageDealtBullets);
                             writer.WriteNumber("bomb_damage_dealt"u8, memberStats.DamageDealtBombs);
@@ -670,6 +818,7 @@ namespace SS.Matchmaking.Modules
                             writer.WriteNumber("self_damage"u8, memberStats.DamageSelf);
                             writer.WriteNumber("kill_damage"u8, memberStats.KillDamage);
                             writer.WriteNumber("team_kill_damage"u8, memberStats.TeamKillDamage);
+                            writer.WriteNumber("forced_rep_damage"u8, memberStats.ForcedRepDamage);
                             writer.WriteNumber("bullet_fire_count"u8, memberStats.GunFireCount);
                             writer.WriteNumber("bomb_fire_count"u8, memberStats.BombFireCount);
                             writer.WriteNumber("mine_fire_count"u8, memberStats.MineFireCount);
@@ -744,13 +893,18 @@ namespace SS.Matchmaking.Modules
                 gameJsonStream.Position = 0;
 
                 // DEBUG - REMOVE ME ***************************************************
-                StreamReader reader = new(gameJsonStream, Encoding.UTF8);
-                string data = reader.ReadToEnd();
-                Console.WriteLine(data);
-                gameJsonStream.Position = 0;
+                //StreamReader reader = new(gameJsonStream, Encoding.UTF8);
+                //string data = reader.ReadToEnd();
+                //Console.WriteLine(data);
+                //gameJsonStream.Position = 0;
                 // DEBUG - REMOVE ME ***************************************************
 
-                matchStats.GameId = await _gameStatsRepository.SaveGame(gameJsonStream);
+                matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+
+                if (matchStats.GameId is not null)
+                {
+                    _logManager.LogM(LogLevel.Info, nameof(TeamVersusStats), $"Saved GameId {matchStats.GameId.Value} to the database.");
+                }
 
 
                 void WriteLvlInfo(Utf8JsonWriter writer, IMatchData matchData)
@@ -845,58 +999,8 @@ namespace SS.Matchmaking.Modules
                 }
             }
         }
-        
-        private void Callback_TeamVersusMatchStarted(IMatchData matchData)
-        {
-            if (_matchStatsDictionary.TryGetValue(matchData.MatchIdentifier, out MatchStats matchStats))
-            {
-                ResetMatchStats(matchStats);
-            }
-            else
-            {
-                matchStats = new(); // TODO: get from a pool
-                matchStats.Initialize(matchData);
-                _matchStatsDictionary.Add(matchData.MatchIdentifier, matchStats);
-            }
 
-            matchStats.StartTimestamp = matchData.Started.Value;
-
-            for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
-            {
-                ITeam team = matchData.Teams[teamIdx];
-                TeamStats teamStats = new(); // TODO: get from a pool
-                teamStats.Initialize(matchStats, team);
-
-                for (int slotIdx = 0; slotIdx < team.Slots.Count; slotIdx++)
-                {
-                    IPlayerSlot slot = team.Slots[slotIdx];
-                    SlotStats slotStats = new(); // TODO: get from a pool
-                    slotStats.Initialize(teamStats, slot);
-
-                    MemberStats memberStats = new(); // TODO: get from a pool
-                    memberStats.Initialize(slotStats, slot.PlayerName);
-                    memberStats.StartTime = DateTime.UtcNow;
-
-                    slotStats.Members.Add(memberStats);
-                    slotStats.Current = memberStats;
-
-                    _playerMemberDictionary[memberStats.PlayerName] = memberStats;
-                    Player player = slot.Player ?? _playerData.FindPlayer(memberStats.PlayerName);
-                    if (player is not null)
-                    {
-                        SetStartedPlaying(player, memberStats);
-                    }
-
-                    teamStats.Slots.Add(slotStats);
-
-                    matchStats.AddAssignSlotEvent(matchStats.StartTimestamp, slot.Team.Freq, slot.SlotIdx, slot.PlayerName);
-                }
-
-                matchStats.Teams.Add(team.Freq, teamStats);
-            }
-        }
-
-        private void Callback_TeamVersusMatchPlayerSubbed(IPlayerSlot playerSlot, string subOutPlayerName)
+        private async void Callback_TeamVersusMatchPlayerSubbed(IPlayerSlot playerSlot, string subOutPlayerName)
         {
             if (!_matchStatsDictionary.TryGetValue(playerSlot.MatchData.MatchIdentifier, out MatchStats matchStats)
                 || !matchStats.Teams.TryGetValue(playerSlot.Team.Freq, out TeamStats teamStats))
@@ -935,6 +1039,19 @@ namespace SS.Matchmaking.Modules
             }
 
             matchStats.AddAssignSlotEvent(DateTime.UtcNow, playerSlot.Team.Freq, playerSlot.SlotIdx, playerSlot.PlayerName);
+
+            if (_gameStatsRepository is not null)
+            {
+                Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase) // TODO: pool
+                {
+                    [memberStats.PlayerName] = DefaultRating
+                };
+
+                await _gameStatsRepository.GetPlayerRatingsAsync(playerRatingDictionary);
+
+                if (playerRatingDictionary.TryGetValue(memberStats.PlayerName, out int rating))
+                    memberStats.InitialRating = rating;
+            }
         }
 
         private void Callback_BricksPlaced(Arena arena, Player player, IReadOnlyList<BrickData> bricks)
@@ -1050,16 +1167,16 @@ namespace SS.Matchmaking.Modules
 
                         // recharge rate = amount of energy in 10 seconds = amount of energy in 1000 ticks
                         short maximumRecharge = 
-                            _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[shipIndex].MaximumRechargeId, out int maximumRechargeInt)
+                            _clientSettings.TryGetSettingOverride(player, _shipClientSettingIds[shipIndex].MaximumRechargeId, out int maximumRechargeInt)
                                 ? (short)maximumRechargeInt
-                                : _clientSettings.TryGetSettingOverride(player, _shipClientSettingIds[shipIndex].MaximumRechargeId, out maximumRechargeInt) 
+                                : _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[shipIndex].MaximumRechargeId, out maximumRechargeInt) 
                                     ? (short)maximumRechargeInt 
                                     : shipSettings.MaximumRecharge;
 
                         short maximumEnergy =
-                            _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[shipIndex].MaximumEnergyId, out int maximumEnergyInt)
+                            _clientSettings.TryGetSettingOverride(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, out int maximumEnergyInt)
                                 ? (short)maximumEnergyInt
-                                : _clientSettings.TryGetSettingOverride(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, out maximumEnergyInt)
+                                : _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[shipIndex].MaximumEnergyId, out maximumEnergyInt)
                                     ? (short)maximumEnergyInt
                                     : shipSettings.MaximumEnergy;
 
@@ -1283,66 +1400,6 @@ namespace SS.Matchmaking.Modules
                     break;
             }
         }
-
-        private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
-        {
-            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerData))
-                return;
-
-            if (!killed.TryGetExtraData(_pdKey, out PlayerData killedData))
-                return;
-
-            MemberStats killerStats = killerData.MemberStats;
-            if (killerStats is null)
-                return;
-
-            MemberStats killedStats = killedData.MemberStats;
-            if (killedStats is null)
-                return;
-
-            MatchStats matchStats = killedStats.MatchStats;
-            if (matchStats is null)
-                return;
-
-            // Check that the players are in the same match.
-            if (matchStats != killerStats.MatchStats)
-                return;
-
-            // Check that the kill was made in the correct arena.
-            if (arena != matchStats.MatchData.Arena)
-                return;
-
-            // Update killer stats.
-            if (killer.Freq == killed.Freq)
-            {
-                killerStats.TeamKills++;
-            }
-            else
-            {
-                killerStats.Kills++;
-            }
-
-            // Update killed stats.
-            killedStats.Deaths++;
-
-            IPlayerSlot slot = killedStats.SlotStats?.Slot;
-            if (slot is not null)
-            {
-                killedStats.WastedRepels += slot.Repels;
-                killedStats.WastedRockets += slot.Rockets;
-                killedStats.WastedThors += slot.Thors;
-                killedStats.WastedBursts += slot.Bursts;
-                killedStats.WastedDecoys += slot.Decoys;
-                killedStats.WastedPortals += slot.Portals;
-                killedStats.WastedBricks += slot.Bricks;
-            }
-
-            // Unfortunately, we can't record damage stats here as the data is incomplete.
-            // Continuum sends the last damage packet (for damage that that caused the kill) after the kill packet.
-            // Continuum doesn't even group the packets. They're sent separately.
-            // Therefore, instead we track damage stats in the TeamVersusMatchPlayerKilledCallback which is fired on a delay.
-        }
-
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             if (player is null)
@@ -1696,7 +1753,7 @@ namespace SS.Matchmaking.Modules
                             sb.Append(" DRAW");
                             break;
 
-                        case MatchEndReason.Aborted:
+                        case MatchEndReason.Cancelled:
                             sb.Append(" CANCELLED");
                             break;
                     }
@@ -2003,6 +2060,7 @@ namespace SS.Matchmaking.Modules
                 string killerName, 
                 ShipType killerShip,
                 bool isKnockout,
+                bool isTeamKill,
                 short xCoord,
                 short yCoord,
                 List<(string PlayerName, int Damage)> damageList)
@@ -2016,6 +2074,7 @@ namespace SS.Matchmaking.Modules
                 _eventsJsonWriter.WriteString("killed_player"u8, killedName);
                 _eventsJsonWriter.WriteString("killer_player"u8, killerName);
                 _eventsJsonWriter.WriteBoolean("is_knockout"u8, isKnockout);
+                _eventsJsonWriter.WriteBoolean("is_team_kill"u8, isTeamKill);
                 _eventsJsonWriter.WriteNumber("x_coord"u8, xCoord);
                 _eventsJsonWriter.WriteNumber("y_coord"u8, yCoord);
                 _eventsJsonWriter.WriteNumber("killed_ship"u8, (int)killedShip);
@@ -2224,8 +2283,11 @@ namespace SS.Matchmaking.Modules
 
             /// <summary>
             /// Recent damage taken in order from oldest to newest.
-            /// Used upon death to calculate how much <see cref="KillDamage"/> or <see cref="TeamKillDamage"/> to give to the attacker(s).
             /// </summary>
+            /// <remarks>
+            /// Used upon death to calculate <see cref="KillDamage"/>, <see cref="TeamKillDamage"/>, <see cref="SoloKills"/>, and <see cref="Assists"/>.
+            /// Used upon repel usage to calculate <see cref="ForcedRepDamage"/> and <see cref="ForcedReps"/>.
+            /// </remarks>
             public readonly LinkedList<DamageInfo> RecentDamageTaken = new();
 
             #endregion
@@ -2297,6 +2359,34 @@ namespace SS.Matchmaking.Modules
             /// </remarks>
             public DateTime? StartTime;
 
+            #region Rating
+
+            /// <summary>
+            /// The player's rating at the start of the match.
+            /// </summary>
+            public int InitialRating;
+
+            /// <summary>
+            /// The change in the player's rating due to the current match.
+            /// This is an indicator of the player's individual performance in a match.
+            /// </summary>
+            public int RatingChange;
+
+            #endregion
+
+            #region Ranking
+
+            // Matchmaking rating for the ranking system.
+            //public int RankingMMR;
+
+            // Standard deviation in the player's current MMR rank.
+            //public int RankingReliablityDeviation;
+
+            // Volatility in the player's current MMR rank.
+            //public int RankingVolatility;
+
+            #endregion
+
             public void Initialize(SlotStats slotStats, string playerName)
             {
                 ArgumentException.ThrowIfNullOrEmpty(playerName);
@@ -2308,6 +2398,9 @@ namespace SS.Matchmaking.Modules
                 {
                     ShipUsage[shipIndex] = TimeSpan.Zero;
                 }
+
+                InitialRating = DefaultRating;
+                RatingChange = 0;
             }
 
             public void RemoveOldRecentDamage(short maximumEnergy, short rechargeRate)
@@ -2394,6 +2487,10 @@ namespace SS.Matchmaking.Modules
                 PlayTime = TimeSpan.Zero;
                 LagOuts = 0;
                 StartTime = null;
+
+                // rating
+                InitialRating = DefaultRating;
+                RatingChange = 0;
             }
         }
 
@@ -2624,6 +2721,7 @@ namespace SS.Matchmaking.Modules
                 if (obj is null)
                     return false;
 
+                Debug.Assert(obj.List is null);
                 if (obj.List is not null)
                     return false;
 
@@ -2642,6 +2740,10 @@ namespace SS.Matchmaking.Modules
             public bool Return(LinkedListNode<WeaponUse> obj)
             {
                 if (obj is null)
+                    return false;
+
+                Debug.Assert(obj.List is null);
+                if (obj.List is not null)
                     return false;
 
                 obj.ValueRef = default;

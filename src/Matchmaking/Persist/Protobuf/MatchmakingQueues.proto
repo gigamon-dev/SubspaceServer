@@ -1,0 +1,12 @@
+﻿// protoc.exe -I=<include folder> -I=. --csharp_out=. MatchmakingQueues.proto
+
+syntax = "proto3";
+
+package ss.matchmaking.persist.protobuf;
+option csharp_namespace = "SS.Matchmaking.Persist.Protobuf";
+
+import "google/protobuf/duration.proto";
+
+message MatchmakingQueuesPlayerData {
+	google.protobuf.Duration PlayHoldDuration = 1;
+}

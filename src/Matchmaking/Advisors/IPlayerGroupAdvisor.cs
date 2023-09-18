@@ -6,7 +6,7 @@ namespace SS.Matchmaking.Advisors
     public interface IPlayerGroupAdvisor : IComponentAdvisor
     {
         /// <summary>
-        /// Gets whether to allow an group to send an invite.
+        /// Gets whether to allow a group to send an invite.
         /// </summary>
         /// <remarks>
         /// If any advisor returns false, sending an invite will not allowed.

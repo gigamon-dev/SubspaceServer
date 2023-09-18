@@ -1,5 +1,6 @@
 ﻿using SS.Core.ComponentInterfaces;
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 
 namespace SS.Core.Modules
@@ -62,6 +63,39 @@ namespace SS.Core.Modules
         double IPrng.Uniform()
         {
             return _random.NextDouble();
+        }
+
+        void IPrng.Shuffle<T>(Span<T> values)
+        {
+            // TODO: with .NET 8 replace with _random.Shuffle(values);
+
+            // Fisher–Yates shuffle
+            for (int i = values.Length - 1; i > 0; i--)
+            {
+                int randomIndex = ((IPrng)this).Number(0, i);
+                if (randomIndex != i)
+                {
+                    // swap
+                    (values[randomIndex], values[i]) = (values[i], values[randomIndex]);
+                }
+            }
+        }
+
+        void IPrng.Shuffle<T>(IList<T> values)
+        {
+            if (values is null)
+                return;
+
+            // Fisher–Yates shuffle
+            for (int i = values.Count - 1; i > 0; i--)
+            {
+                int randomIndex = ((IPrng)this).Number(0, i);
+                if (randomIndex != i)
+                {
+                    // swap
+                    (values[randomIndex], values[i]) = (values[i], values[randomIndex]);
+                }
+            }
         }
     }
 }

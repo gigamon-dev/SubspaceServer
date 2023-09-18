@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -6,6 +8,7 @@ using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Utilities;
+using System.Buffers;
 using System.Text;
 
 namespace SS.Matchmaking.Modules
@@ -28,27 +31,47 @@ namespace SS.Matchmaking.Modules
         private ICapabilityManager _capabilityManager;
         private ICommandManager _commandManager;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPlayerGroups _playerGroups;
 
         // optional dependencies
         private IHelp _help;
+        private IPersist _persist;
 
         private InterfaceRegistrationToken<IMatchmakingQueues> _iMatchmakingQueuesToken;
 
-        private PlayerDataKey<UsageData> _pdKey;
+        private PlayerDataKey<PlayerData> _pdKey;
+        private PlayerDataKey<UsageData> _puKey;
+
+        private DelegatePersistentData<Player> _persistRegistration;
 
         private readonly Dictionary<string, IMatchmakingQueue> _queues = new(16, StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<IPlayerGroup, UsageData> _groupUsageDictionary = new(128);
-        private readonly HashSet<string> _playersPlaying = new(256, StringComparer.OrdinalIgnoreCase); // player names (can't use Player objects since it needs to exist even if the player disconnects)
+
+        /// <summary>
+        /// Names of players that are currently playing.
+        /// </summary>
+        /// <remarks>
+        /// Can't use Player objects since it needs to exist even if the player disconnects.
+        /// </remarks>
+        private readonly HashSet<string> _playersPlaying = new(256, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Pending play holds on players.
+        /// These players disconnected before the hold was placed.
+        /// </summary>
+        private readonly Dictionary<string, TimeSpan> _pendingPlayerHoldDurations = new(StringComparer.OrdinalIgnoreCase); // TODO: better if this was in the database, it could potentially grow large
 
         private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new UsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
         private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new IMatchmakingQueueListPooledObjectPolicy());
         private readonly ObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new DefaultObjectPool<List<PlayerOrGroup>>(new PlayerOrGroupListPooledObjectPolicy());
 
         private const string NextCommandName = "next";
-        private const string CancelCommandName = "cancel";
+        private const string CancelCommandName = "cancelnext";
+        private const string CancelCommandNameAlt = "cnext";
+        private const string NextHoldCommandName = "nexthold";
 
         #region Module members
 
@@ -58,6 +81,7 @@ namespace SS.Matchmaking.Modules
             IChat chat,
             ICommandManager commandManager,
             ILogManager logManager,
+            IMainloop mainloop,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IPlayerGroups playerGroups)
@@ -67,20 +91,32 @@ namespace SS.Matchmaking.Modules
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _playerGroups = playerGroups ?? throw new ArgumentNullException(nameof(playerGroups));
 
             _help = broker.GetInterface<IHelp>();
+            _persist = broker.GetInterface<IPersist>();
 
-            _pdKey = _playerData.AllocatePlayerData(new UsageDataPooledObjectPolicy());
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
+            _puKey = _playerData.AllocatePlayerData(new UsageDataPooledObjectPolicy());
+
+            if (_persist is not null)
+            {
+                _persistRegistration = new DelegatePersistentData<Player>(
+                    (int)Persist.PersistKey.MatchmakingQueuesPlayerData, PersistInterval.Forever, PersistScope.Global, Persist_GetData, Persist_SetData, Persist_ClearData);
+                _persist.RegisterPersistentData(_persistRegistration);
+            }
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Register(broker, Callback_PlayerGroupDisbanded);
 
             _commandManager.AddCommand(NextCommandName, Command_next);
-            _commandManager.AddCommand(CancelCommandName, Command_cancel);
+            _commandManager.AddCommand(CancelCommandName, Command_cancelnext);
+            _commandManager.AddCommand(CancelCommandNameAlt, Command_cancelnext);
+            _commandManager.AddCommand(NextHoldCommandName, Command_nextHold);
 
             _iMatchmakingQueuesToken = broker.RegisterInterface<IMatchmakingQueues>(this);
             return true;
@@ -91,17 +127,28 @@ namespace SS.Matchmaking.Modules
             broker.UnregisterInterface(ref _iMatchmakingQueuesToken);
 
             _commandManager.RemoveCommand(NextCommandName, Command_next);
-            _commandManager.RemoveCommand(CancelCommandName, Command_cancel);
+            _commandManager.RemoveCommand(CancelCommandName, Command_cancelnext);
+            _commandManager.RemoveCommand(CancelCommandNameAlt, Command_cancelnext);
+            _commandManager.RemoveCommand(NextHoldCommandName, Command_nextHold);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
 
+            if (_persist is not null && _persistRegistration is not null)
+                _persist.UnregisterPersistentData(_persistRegistration);
+
             _playerData.FreePlayerData(ref _pdKey);
+            _playerData.FreePlayerData(ref _puKey);
 
             if (_help is not null)
             {
                 broker.ReleaseInterface(ref _help);
+            }
+
+            if (_persist is not null)
+            {
+                broker.ReleaseInterface(ref _persist);
             }
 
             return true;
@@ -156,7 +203,7 @@ namespace SS.Matchmaking.Modules
                 {
                     removedQueue.Remove(player);
 
-                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+                    if (!player.TryGetExtraData(_puKey, out UsageData usageData))
                         continue;
 
                     usageData.RemoveQueue(removedQueue);
@@ -180,7 +227,15 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        void IMatchmakingQueues.SetPlaying(HashSet<Player> players)
+        void IMatchmakingQueues.SetPlaying(Player player)
+        {
+            if (player is null)
+                return;
+
+            SetPlaying(player, false);
+        }
+
+        void IMatchmakingQueues.SetPlaying<T>(T players)
         {
             if (players is null)
                 return;
@@ -202,7 +257,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // Individual
-            if (player.TryGetExtraData(_pdKey, out UsageData usageData))
+            if (player.TryGetExtraData(_puKey, out UsageData usageData))
             {
                 foreach (QueuedInfo queuedInfo in usageData.Queued)
                 {
@@ -227,25 +282,34 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlaying<T>(T players, bool allowRequeue)
+        void IMatchmakingQueues.UnsetPlayingDueToCancel(Player player)
         {
-            foreach (Player player in players)
-            {
-                UnsetPlaying(player, allowRequeue);
-            }
+            UnsetPlaying(player, true, true);
+        }
+
+        void IMatchmakingQueues.UnsetPlayingDueToCancel<T>(T players)
+        {
+            // First, unset all players (and their groups) to restore their previous queue positions.
+            // Then, fire the change events for the affected queues.
+            UnsetPlaying(players, true, true);
         }
 
         void IMatchmakingQueues.UnsetPlaying(Player player, bool allowRequeue)
         {
-            UnsetPlaying(player, allowRequeue);
+            UnsetPlaying(player, allowRequeue, false);
         }
 
-        void IMatchmakingQueues.UnsetPlaying(string playerName, bool allowAutoRequeue)
+        void IMatchmakingQueues.UnsetPlaying<T>(T players, bool allowRequeue)
+        {
+            UnsetPlaying(players, allowRequeue, false);
+        }
+
+        void IMatchmakingQueues.UnsetPlayingByName(string playerName, bool allowAutoRequeue)
         {
             Player player = _playerData.FindPlayer(playerName);
             if (player is not null)
             {
-               UnsetPlaying(player, allowAutoRequeue);
+               UnsetPlaying(player, allowAutoRequeue, false);
             }
             else
             {
@@ -253,12 +317,114 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void UnsetPlaying(Player player, bool allowRequeue)
+        void IMatchmakingQueues.UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue)
+        {
+            Player[] players = ArrayPool<Player>.Shared.Rent(playerNames.Count);
+
+            try
+            {
+                int index = 0;
+
+                foreach (string playerName in playerNames)
+                {
+                    Player player = _playerData.FindPlayer(playerName);
+                    if (player is not null)
+                    {
+                        players[index++] = player;
+                    }
+                    else
+                    {
+                        _playersPlaying.Remove(playerName);
+                    }
+                }
+
+                UnsetPlaying(new ArraySegment<Player>(players, 0, index), allowAutoRequeue, false);
+            }
+            finally
+            {
+                ArrayPool<Player>.Shared.Return(players, true);
+            }
+        }
+
+        void IMatchmakingQueues.UnsetPlayingAfterDelay(string playerName, TimeSpan delay)
+        {
+            if (!_playersPlaying.Remove(playerName))
+                return;
+
+            Player player = _playerData.FindPlayer(playerName);
+            if (player is not null)
+            {
+                SetPlayHold(player, delay);
+            }
+            else
+            {
+                // The player is not logged on.
+                // However, we still want to remember that the player should have a play hold if they reconnect.
+                if (!_pendingPlayerHoldDurations.TryGetValue(playerName, out TimeSpan duration) 
+                    || duration < delay)
+                {
+                    _pendingPlayerHoldDurations[playerName] = delay;
+                }
+            }
+        }
+
+        void IMatchmakingQueues.UnsetPlayingAfterDelay<T>(T playerNames, TimeSpan delay)
+        {
+            if (playerNames is null)
+                return;
+
+            foreach (string playerName in playerNames)
+            {
+                ((IMatchmakingQueues)this).UnsetPlayingAfterDelay(playerName, delay);
+            }
+        }
+
+        private void UnsetPlaying<T>(T players, bool allowRequeue, bool isDueToCancel) where T : IReadOnlyCollection<Player>
+        {
+            if (players is null)
+                return;
+
+            List<IMatchmakingQueue> allAddedQueues = _iMatchmakingQueueListPool.Get();
+
+            try
+            {
+                foreach (Player player in players)
+                {
+                    UnsetPlaying(player, allowRequeue, isDueToCancel, allAddedQueues);
+                }
+
+                InvokeQueueChangedCallbacks(allAddedQueues, QueueAction.Add);
+            }
+            finally
+            {
+                _iMatchmakingQueueListPool.Return(allAddedQueues);
+            }
+        }
+
+        private void UnsetPlaying(Player player, bool allowRequeue, bool isDueToCancel)
         {
             if (player is null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+            List<IMatchmakingQueue> allAddedQueues = _iMatchmakingQueueListPool.Get();
+
+            try
+            {
+                UnsetPlaying(player, allowRequeue, isDueToCancel, allAddedQueues);
+                InvokeQueueChangedCallbacks(allAddedQueues, QueueAction.Add);
+            }
+            finally
+            {
+                _iMatchmakingQueueListPool.Return(allAddedQueues);
+            }
+        }
+
+        private void UnsetPlaying(Player player, bool allowRequeue, bool isDueToCancel, List<IMatchmakingQueue> allAddedQueues)
+        {
+            if (player is null)
+                return;
+
+            if (!player.TryGetExtraData(_puKey, out UsageData usageData))
                 return;
 
             if (usageData.UnsetPlaying(out bool wasSub))
@@ -267,24 +433,31 @@ namespace SS.Matchmaking.Modules
 
                 if (usageData.PreviousQueued.Count > 0)
                 {
-                    if (allowRequeue && (wasSub || usageData.AutoRequeue))
+                    if (allowRequeue && (isDueToCancel || wasSub || usageData.AutoRequeue))
                     {
-                        // TODO: Maybe instead of doing this immediately, set a timer to do it. That way there will be a delay after match completion?
                         List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                         try
                         {
                             foreach ((IMatchmakingQueue queue, DateTime timestamp) in usageData.PreviousQueued)
                             {
-                                if (!wasSub && !queue.Options.AllowAutoRequeue)
+                                if (!isDueToCancel && !wasSub && !queue.Options.AllowAutoRequeue)
                                     continue;
 
-                                if (Enqueue(player, null, usageData, queue, wasSub ? timestamp : DateTime.UtcNow))
+                                if (Enqueue(player, null, usageData, queue, isDueToCancel || wasSub ? timestamp : DateTime.UtcNow))
                                     addedQueues.Add(queue);
                             }
 
                             usageData.ClearPreviousQueued();
 
-                            NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues);
+                            NotifyQueuedAndInvokeChangeCallbacks(player, null, addedQueues, false);
+
+                            foreach (var queue in addedQueues)
+                            {
+                                if (allAddedQueues.Contains(queue))
+                                    continue;
+
+                                allAddedQueues.Add(queue);
+                            }
                         }
                         finally
                         {
@@ -301,18 +474,18 @@ namespace SS.Matchmaking.Modules
             IPlayerGroup group = _playerGroups.GetGroup(player);
             if (group is not null)
             {
-                UnsetPlaying(group, allowRequeue);
+                UnsetPlaying(group, allowRequeue, isDueToCancel, allAddedQueues);
             }
         }
 
-        private void UnsetPlaying(IPlayerGroup group, bool allowRequeue)
+        private void UnsetPlaying(IPlayerGroup group, bool allowRequeue, bool isDueToCancel, List<IMatchmakingQueue> allAddedQueues)
         {
             if (group is null)
                 return;
 
             foreach (Player member in group.Members)
             {
-                if (!member.TryGetExtraData(_pdKey, out UsageData memberUsageData))
+                if (!member.TryGetExtraData(_puKey, out UsageData memberUsageData))
                     continue;
 
                 if (memberUsageData.State == QueueState.Playing)
@@ -324,24 +497,31 @@ namespace SS.Matchmaking.Modules
 
             if (usageData.UnsetPlaying(out bool wasSub) && usageData.PreviousQueued.Count > 0)
             {
-                if (allowRequeue && usageData.AutoRequeue)
+                if (allowRequeue && (isDueToCancel || wasSub || usageData.AutoRequeue))
                 {
-                    // TODO: Maybe instead of doing this immediately, set a timer to do it. That way there will be a delay after match completion?
                     List<IMatchmakingQueue> addedQueues = _iMatchmakingQueueListPool.Get();
                     try
                     {
                         foreach ((IMatchmakingQueue queue, DateTime timestamp) in usageData.PreviousQueued)
                         {
-                            if (!wasSub && !queue.Options.AllowAutoRequeue)
+                            if (!isDueToCancel && !wasSub && !queue.Options.AllowAutoRequeue)
                                 continue;
 
-                            if (Enqueue(group.Leader, group, usageData, queue, wasSub ? timestamp : DateTime.UtcNow))
+                            if (Enqueue(group.Leader, group, usageData, queue, isDueToCancel || wasSub ? timestamp : DateTime.UtcNow))
                                 addedQueues.Add(queue);
                         }
 
                         usageData.ClearPreviousQueued();
 
-                        NotifyQueuedAndInvokeChangeCallbacks(null, group, addedQueues);
+                        NotifyQueuedAndInvokeChangeCallbacks(null, group, addedQueues, false);
+
+                        foreach (var queue in addedQueues)
+                        {
+                            if (allAddedQueues.Contains(queue))
+                                continue;
+
+                            allAddedQueues.Add(queue);
+                        }
                     }
                     finally
                     {
@@ -354,6 +534,9 @@ namespace SS.Matchmaking.Modules
                 }
             }
         }
+
+        string IMatchmakingQueues.NextCommandName => NextCommandName;
+        string IMatchmakingQueues.CancelCommandName => CancelCommandName;
 
         #endregion
 
@@ -382,7 +565,7 @@ namespace SS.Matchmaking.Modules
 
         bool IPlayerGroupAdvisor.AllowAcceptInvite(Player player, StringBuilder message)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out UsageData usageData))
+            if (player is null || !player.TryGetExtraData(_puKey, out UsageData usageData))
                 return true;
 
             if (usageData.State == QueueState.Queued)
@@ -403,36 +586,107 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region Persist
+
+        private void Persist_GetData(Player player, Stream outStream)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            // Note: Purposely not refreshing the timestamp here since we're on the persist thread and don't want to affect the UsageData.
+            DateTime? playHoldExpire = playerData.PlayHoldExpireTimestamp;
+            if (playHoldExpire is null)
+                return;
+
+            TimeSpan remainingDuration = DateTime.UtcNow - playHoldExpire.Value;
+            if (remainingDuration <= TimeSpan.Zero)
+                return;
+
+            try
+            {
+                Persist.Protobuf.MatchmakingQueuesPlayerData protoPlayerData = new()
+                {
+                    PlayHoldDuration = Duration.FromTimeSpan(remainingDuration)
+                };
+
+                protoPlayerData.WriteTo(outStream);
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(MatchmakingQueues), $"Error serializing MatchmakingQueuesPlayerData. {ex}");
+                return;
+            }
+        }
+
+        private void Persist_SetData(Player player, Stream inStream)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            Persist.Protobuf.MatchmakingQueuesPlayerData protoPlayerData;
+
+            try
+            {
+                protoPlayerData = Persist.Protobuf.MatchmakingQueuesPlayerData.Parser.ParseFrom(inStream);
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(MatchmakingQueues), $"Error deserializing MatchmakingQueuesPlayerData. {ex}");
+                return;
+            }
+
+            // Set the hold.
+            playerData.SetPlayHold(protoPlayerData.PlayHoldDuration.ToTimeSpan());
+
+            // Note: This does not update the player's UsageData since this happening on the persist thread.
+            // Usage will be updated later in PlayerActionCallback, when it is on the mainloop thread.
+        }
+
+        private void Persist_ClearData(Player player)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return;
+
+            playerData.Reset();
+        }
+
+        #endregion
+
         #region Callbacks
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.Connect)
             {
+                if (!player.TryGetExtraData(_puKey, out UsageData usageData))
+                    return;
+
                 if (_playersPlaying.Contains(player.Name))
                 {
-                    if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
-                        return;
-
-                    // The player disconnected while playing in match, but has now reconnected.
-                    // For players that disconnected, we do not keep track of the previous queues. So, it doesn't matter if they were a sub.
+                    // The player disconnected while playing in a match that is still ongoing, but has now reconnected.
                     usageData.SetPlaying(false);
+                }
+                else
+                {
+                    if (GetRefreshedPlayHold(player) > DateTime.UtcNow)
+                    {
+                        // The player has a play hold that persists (data came from the persist module).
+                        usageData.SetPlaying(false);
+                    }
 
-                    // TODO: send a message to the player that they're still in the match
-
-                    // TODO: automatically move the player to the proper arena
-                    // Can't use IArenaManager.SendToArena() here because this event happens before the player is in the proper state to allow that.
-                    // But, a hacky way to do it is to overwrite:
-                    // player.ConnectAs = 
-                    // which will tell the ArenaPlaceMultiPub module to send them to the proper arena when the client sends the Go packet.
-                    // However, this module doesn't know the arena name. The match module needs to do it.
+                    if (_pendingPlayerHoldDurations.Remove(player.Name, out TimeSpan duration))
+                    {
+                        // The player has returned and has a pending play hold.
+                        // This is not from the persist module since the player disconnected before the hold was placed.
+                        SetPlayHold(player, duration);
+                    }
                 }
             }
             else if (action == PlayerAction.Disconnect)
             {
                 // Remove the player from all queues.
                 // Note: If the player was in a group that was queued, the group will remove the player and fire the PlayerGroupMemberRemovedCallback.
-                if (!player.TryGetExtraData(_pdKey, out UsageData usageData))
+                if (!player.TryGetExtraData(_puKey, out UsageData usageData))
                     return;
 
                 if (usageData.Queued.Count > 0)
@@ -491,10 +745,16 @@ namespace SS.Matchmaking.Modules
         // ?next pb3h,pbmini
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<none> | <queue name>[, <queue name>[, ...]]] | -list | -listall | -auto",
+            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] | [-auto | -a ]",
             Description = """
-                Starts a matchmaking search.
-                An arena may be configured with a default search queue, in which case, specifying a <queue name> is not necessary.
+                Control matchmaking for you, or your group.
+
+                To begin searching for a match, specify 1 or more queue names.
+                Or, use without any parameters to begin searching on your arena's default queue.
+                
+                Use -status (or -s) to print your current matchmaking status.
+                Use -list (or -l) to list all available matchmaking queues.
+                Use -auto (or -a) to toggle automatic re-queuing (automatically begin searching for another game after one ends).
                 """)]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -516,11 +776,11 @@ namespace SS.Matchmaking.Modules
             }
             else
             {
-                if (!player.TryGetExtraData(_pdKey, out usageData))
+                if (!player.TryGetExtraData(_puKey, out usageData))
                     return;
             }
 
-            if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase))
+            if (parameters.Equals("-status", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-s", StringComparison.OrdinalIgnoreCase))
             {
                 // Print usage details.
                 StringBuilder sb;
@@ -554,6 +814,21 @@ namespace SS.Matchmaking.Modules
                         sb = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
+                            if (group is null)
+                            {
+                                DateTime now = DateTime.UtcNow;
+                                DateTime? playHoldExpire = GetRefreshedPlayHold(player);
+                                TimeSpan duration = playHoldExpire is null ? TimeSpan.Zero : playHoldExpire.Value - now;
+
+                                if (duration > TimeSpan.Zero)
+                                {
+                                    sb.Append($"{NextCommandName}: You can't search for a game due to dropping out of one recently. Remaining time: ");
+                                    sb.AppendFriendlyTimeSpan(duration);
+                                    _chat.SendMessage(player, sb);
+                                    return;
+                                }
+                            }
+
                             foreach (var advisor in player.Arena.GetAdvisors<IMatchmakingQueueAdvisor>())
                             {
                                 if (advisor.TryGetCurrentMatchInfo(player.Name, sb))
@@ -611,7 +886,7 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-listall", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase))
             {
                 // TOOD: include stats of how many players and groups are in each queeue
                 foreach (var queue in _queues.Values)
@@ -624,16 +899,85 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-auto", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.Equals("-auto", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-a", StringComparison.OrdinalIgnoreCase))
             {
-                _chat.SendMessage(player, $"{NextCommandName}: Automatic requeuing {(usageData.AutoRequeue ? "disabled" : "enabled")}.");
-                usageData.AutoRequeue = !usageData.AutoRequeue;
+                if (group is not null)
+                {
+                    if (usageData.AutoRequeue)
+                    {
+                        usageData.AutoRequeue = false;
+
+                        // Notify the group.
+                        HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
+                        try
+                        {
+                            members.UnionWith(group.Members);
+                            _chat.SendSetMessage(members, $"{NextCommandName}: Automatic requeuing disabled by {player.Name}.");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.PlayerSetPool.Return(members);
+                        }
+                    }
+                    else
+                    {
+                        if (group.Leader != player)
+                        {
+                            _chat.SendMessage(player, $"{NextCommandName}: Only the group leader can enable automatic requeuing.");
+                        }
+                        else
+                        {
+                            usageData.AutoRequeue = true;
+
+                            // Notify the group.
+                            HashSet<Player> members = _objectPoolManager.PlayerSetPool.Get();
+                            try
+                            {
+                                members.UnionWith(group.Members);
+                                _chat.SendSetMessage(members, $"{NextCommandName}: Automatic requeuing enabled by {player.Name}.");
+                            }
+                            finally
+                            {
+                                _objectPoolManager.PlayerSetPool.Return(members);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    usageData.AutoRequeue = !usageData.AutoRequeue;
+                    _chat.SendMessage(player, $"{NextCommandName}: Automatic requeuing {(usageData.AutoRequeue ? "enabled" : "disabled")}.");
+                }
+
                 return;
             }
 
             // The command is to start a search.
 
-            if (group is not null)
+            if (group is null)
+            {
+                DateTime now = DateTime.UtcNow;
+                DateTime? playHoldExpire = GetRefreshedPlayHold(player);
+                TimeSpan duration = playHoldExpire is null ? TimeSpan.Zero : playHoldExpire.Value - now;
+
+                if (duration > TimeSpan.Zero)
+                {
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        sb.Append($"{NextCommandName}: You can't search for a game due to dropping out of one recently. Remaining time: ");
+                        sb.AppendFriendlyTimeSpan(duration);
+                        _chat.SendMessage(player, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
+                    
+                    return;
+                }
+            }
+            else
             {
                 if (player != group.Leader)
                 {
@@ -652,9 +996,34 @@ namespace SS.Matchmaking.Modules
                 try
                 {
                     int playingCount = 0;
+
+                    // Notify if a member has a hold.
                     foreach (Player member in group.Members)
                     {
-                        if (member.TryGetExtraData(_pdKey, out UsageData memberUsage)
+                        if (GetRefreshedPlayHold(member) is not null)
+                        {
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(member.Name);
+                        }
+                    }
+
+                    if (playingCount == 1)
+                    {
+                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because {sb} is currently has a hold due to dropping out of a match.");
+                        return;
+                    }
+                    else if (playingCount > 1)
+                    {
+                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because the following members have a hold due to dropping out of a match: {sb}");
+                        return;
+                    }
+
+                    // Notify if a member is playing.
+                    foreach (Player member in group.Members)
+                    {
+                        if (member.TryGetExtraData(_puKey, out UsageData memberUsage)
                             && memberUsage.State == QueueState.Playing)
                         {
                             if (sb.Length > 0)
@@ -726,7 +1095,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                NotifyQueuedAndInvokeChangeCallbacks(player, group, addedQueues);
+                NotifyQueuedAndInvokeChangeCallbacks(player, group, addedQueues, true);
             }
             finally
             {
@@ -826,7 +1195,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void NotifyQueuedAndInvokeChangeCallbacks(Player player, IPlayerGroup group, List<IMatchmakingQueue> addedQueues)
+        private void NotifyQueuedAndInvokeChangeCallbacks(Player player, IPlayerGroup group, List<IMatchmakingQueue> addedQueues, bool invokeQueueChangedCallbacks)
         {
             if (addedQueues is null || addedQueues.Count <= 0)
                 return;
@@ -868,22 +1237,44 @@ namespace SS.Matchmaking.Modules
                 _objectPoolManager.StringBuilderPool.Return(sb);
             }
 
-            // Fire the callbacks in the order that the queues were added. This will cause matchmaking module to attempt matches on the queues in that order.
-            // Note: Firing the callbacks is purposely done after adding to all requested queues so that in case there is a match, we can keep track of any queues that allow automatic requeuing.
-            // Also, we want the above notifications to be sent before any other matching notifications.
-            if (group is not null)
+            if (invokeQueueChangedCallbacks)
             {
-                foreach (IMatchmakingQueue queue in addedQueues)
-                {
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add, QueueItemType.Group);
-                }
+                // Fire the callbacks in the order that the queues were added.
+                // This will cause matchmaking modules to attempt matches in that order.
+                InvokeQueueChangedCallbacks(addedQueues, QueueAction.Add);
             }
-            else
+        }
+
+        private void InvokeQueueChangedCallbacks(List<IMatchmakingQueue> queueList, QueueAction action)
+        {
+            if (queueList is null)
+                return;
+
+            foreach (IMatchmakingQueue queue in queueList)
             {
-                foreach (IMatchmakingQueue queue in addedQueues)
-                {
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add, QueueItemType.Player);
-                }
+                InvokeQueueChangedCallbacks(queue, action);
+            }
+        }
+
+        private void InvokeQueueChangedCallbacks(IMatchmakingQueue queue, QueueAction action)
+        {
+            if (queue is null)
+                return;
+
+            if (action == QueueAction.Add)
+                _mainloop.QueueMainWorkItem(InvokeAdd, queue);
+            else if (action == QueueAction.Remove)
+                _mainloop.QueueMainWorkItem(InvokeRemove, queue);
+
+
+            void InvokeAdd(IMatchmakingQueue queue)
+            {
+                MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add);
+            }
+
+            void InvokeRemove(IMatchmakingQueue queue)
+            {
+                MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove);
             }
         }
 
@@ -894,7 +1285,7 @@ namespace SS.Matchmaking.Modules
                 Cancels a matchmaking search.
                 Use the command without specifying a <queue name> to remove from all matchmaking queues.
                 """)]
-        private void Command_cancel(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_cancelnext(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // Check if the player is in a group.
             IPlayerGroup group = _playerGroups.GetGroup(player);
@@ -917,7 +1308,7 @@ namespace SS.Matchmaking.Modules
             }
             else
             {
-                if (!player.TryGetExtraData(_pdKey, out usageData))
+                if (!player.TryGetExtraData(_puKey, out usageData))
                     return;
             }
 
@@ -1006,7 +1397,52 @@ namespace SS.Matchmaking.Modules
                         _chat.SendMessage(player, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
                     }
 
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group is not null ? QueueItemType.Group : QueueItemType.Player);
+                    InvokeQueueChangedCallbacks(queue, QueueAction.Remove);
+                }
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "<none> | -r",
+            Description = """
+                Gets the amount of time a player currently has to wait before being allowed to re-queue with the ?next command.
+                Staff members can use -r to remove the target player's hold.
+                """)]
+        private void Command_nextHold(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                targetPlayer = player;
+
+            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+                return;
+
+            if (parameters.Contains("-r", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff)) // TODO: maybe add a capability specifically for this?
+                {
+                    bool removed = targetPlayerData.RemovePlayHold();
+
+                    if (removed)
+                    {
+                        _chat.SendMessage(player, $"{NextHoldCommandName}: Removed hold from {targetPlayer.Name}.");
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                DateTime now = DateTime.UtcNow;
+                DateTime? playHoldExpire = GetRefreshedPlayHold(targetPlayer);
+                TimeSpan duration = playHoldExpire is null ? TimeSpan.Zero : playHoldExpire.Value - now;
+
+                if (duration > TimeSpan.Zero)
+                {
+                    _chat.SendMessage(player, $"{NextHoldCommandName}: {(targetPlayer == player ? "You" : player.Name)} will be able to use ?{NextCommandName} after: {duration}");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"{NextHoldCommandName}: There is no hold on {(targetPlayer == player ? "you" : player.Name)}.");
                 }
             }
         }
@@ -1070,16 +1506,44 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // Fire the callback.
-                foreach (var queue in removedFrom)
-                {
-                    MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove, group is not null ? QueueItemType.Group : QueueItemType.Player);
-                }
+                InvokeQueueChangedCallbacks(removedFrom, QueueAction.Remove);
             }
             finally
             {
                 _iMatchmakingQueueListPool.Return(removedFrom);
             }
         }
+
+        private void SetPlayHold(Player player, TimeSpan duration)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData)
+                || !player.TryGetExtraData(_puKey, out UsageData usageData))
+            {
+                return;
+            }
+
+            if (playerData.SetPlayHold(duration))
+            {
+                usageData.SetPlaying(false);
+            }
+        }
+
+        private DateTime? GetRefreshedPlayHold(Player player)
+        {
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                return null;
+
+            DateTime? duration = playerData.GetRefreshedPlayHold(out bool removed);
+
+            if (removed && player.TryGetExtraData(_puKey, out UsageData usageData))
+            {
+                usageData.UnsetPlaying(out _);
+            }
+
+            return duration;
+        }
+
+        #region Helper types
 
         private enum QueueState
         {
@@ -1094,6 +1558,104 @@ namespace SS.Matchmaking.Modules
             /// Playing in a match. No searching allowed on queues.
             /// </summary>
             Playing,
+        }
+
+        private class PlayerData : IPooledExtraData
+        {
+            /// <summary>
+            /// The timestamp that the player will be held in 'Playing' state due to being penalized (e.g. for leaving a game wihout a sub).
+            /// </summary>
+            private DateTime? _playHoldExpireTimestamp;
+
+            /// <summary>
+            /// For synchronization since this object is accessed by multiple threads, the mainloop thread and the persist thread.
+            /// </summary>
+            private readonly object _lock = new();
+
+            /// <summary>
+            /// Gets the play hold expiration time without refreshing it.
+            /// </summary>
+            public DateTime? PlayHoldExpireTimestamp
+            {
+                get
+                {
+                    lock (_lock)
+                    {
+                        return _playHoldExpireTimestamp;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Refreshes the play hold expiration time and gets it.
+            /// </summary>
+            /// <param name="removed">Whether the expiration time was removed due to it expiring.</param>
+            /// <returns>The expiration time.</returns>
+            public DateTime? GetRefreshedPlayHold(out bool removed)
+            {
+                removed = false;
+
+                lock (_lock)
+                {
+                    DateTime? duration = _playHoldExpireTimestamp;
+
+                    if (duration is not null && duration.Value <= DateTime.UtcNow)
+                    {
+                        duration = _playHoldExpireTimestamp = null;
+                        removed = true;
+                    }
+
+                    return duration;
+                }
+            }
+
+            /// <summary>
+            /// Sets the play hold expiration time.
+            /// </summary>
+            /// <param name="duration">How long from the current time the hold should last.</param>
+            /// <returns><see langword="true"/> if the hold was set. <see langword="false"/> if there already is a hold that includes the <paramref name="duration"/>.</returns>
+            public bool SetPlayHold(TimeSpan duration)
+            {
+                DateTime expireTimestamp = DateTime.UtcNow + duration;
+
+                lock (_lock)
+                {
+                    if (_playHoldExpireTimestamp is null
+                        || _playHoldExpireTimestamp.Value < expireTimestamp)
+                    {
+                        _playHoldExpireTimestamp = expireTimestamp;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            /// <summary>
+            /// Removes the play hold.
+            /// </summary>
+            /// <returns><see langword="true"/> if there was a hold and it was removed. <see langword="false"/> if there was no hold to remove.</returns>
+            public bool RemovePlayHold()
+            {
+                lock (_lock)
+                {
+                    if (_playHoldExpireTimestamp is not null)
+                    {
+                        _playHoldExpireTimestamp = null;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            public void Reset()
+            {
+                lock (_lock)
+                {
+                    _playHoldExpireTimestamp = null;
+                }
+            }
         }
 
         private readonly record struct QueuedInfo(IMatchmakingQueue Queue, DateTime Timestamp);
@@ -1231,7 +1793,6 @@ namespace SS.Matchmaking.Modules
                     return false;
 
                 obj.Reset();
-
                 return true;
             }
         }
@@ -1269,5 +1830,7 @@ namespace SS.Matchmaking.Modules
                 return true;
             }
         }
+
+        #endregion
     }
 }

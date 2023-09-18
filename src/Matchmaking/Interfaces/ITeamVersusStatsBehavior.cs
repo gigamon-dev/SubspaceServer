@@ -20,7 +20,29 @@ namespace SS.Matchmaking.Interfaces
     /// </remarks>
     public interface ITeamVersusStatsBehavior : IComponentInterface
     {
-        //ValueTask MatchStartedAsync(IMatchData matchData);
+        /// <summary>
+        /// Balances teams based on player rating.
+        /// </summary>
+        /// <param name="matchConfiguration">The configuration of the match to balance teams for.</param>
+        /// <param name="teamList">The teams to balance.</param>
+        /// <returns>Whether teams were balanced.</returns>
+        Task<bool> BalanceTeamsAsync(IMatchConfiguration matchConfiguration, IReadOnlyList<TeamLineup> teamList) => Task.FromResult(false);
+
+        /// <summary>
+        /// Initializes a match that is about to begin.
+        /// This allows the stats module to initialize its object model for and do database work.
+        /// </summary>
+        /// <param name="matchData">The match being initialized.</param>
+        /// <returns>A task that completes when the stats module is done initializing.</returns>
+        Task InitializeAsync(IMatchData matchData);
+
+        /// <summary>
+        /// Called after a match has just started.
+        /// This allows the stats module to do additional initializtion and database work.
+        /// </summary>
+        /// <param name="matchData">The match that started.</param>
+        /// <returns></returns>
+        ValueTask MatchStartedAsync(IMatchData matchData);
 
         //ValueTask PlayerSubbedAsync(IPlayerSlot playerSlot, string subOutPlayerName);
 

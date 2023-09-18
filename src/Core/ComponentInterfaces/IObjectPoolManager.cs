@@ -16,7 +16,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <typeparam name="T">The type of pooled object.</typeparam>
         /// <returns>The pool.</returns>
-        Pool<T> GetPool<T>() where T: PooledObject, new();
+        Pool<T> GetPool<T>() where T : PooledObject, new();
 
         /// <summary>
         /// Gets the known pools.
@@ -61,6 +61,16 @@ namespace SS.Core.ComponentInterfaces
         /// The set is automatically cleared when it is returned to the pool.
         /// </remarks>
         ObjectPool<HashSet<Arena>> ArenaSetPool { get; }
+
+        /// <summary>
+        /// A pool of <see cref="HashSet{T}"/>s for holding case insensitive names.
+        /// </summary>
+        /// <remarks>
+        /// Intended to hold player names or arena names.
+        /// For example, certain functionality may operate on player names instead of <see cref="Player"/> objects
+        /// when it needs to represent not only players that are currently connected, but also those that might have disconnected.
+        /// </remarks>
+        ObjectPool<HashSet<string>> NameHashSetPool { get; }
 
         /// <summary>
         /// Pool of <see cref="StringBuilder"/> objects.

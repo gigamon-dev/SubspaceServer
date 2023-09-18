@@ -10,6 +10,7 @@ using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
+using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -52,6 +53,7 @@ namespace SS.Matchmaking.Modules
         private ComponentBroker _broker;
         private IArenaManager _arenaManager;
         private IChat _chat;
+        private IClientSettings _clientSettings;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private IGame _game;
@@ -71,6 +73,8 @@ namespace SS.Matchmaking.Modules
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor> _iMatchmakingQueueAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
+
+        private ClientSettingIdentifier _killEnterDelayClientSettingId;
 
         /// <summary>
         /// Dictionary of queues.
@@ -125,6 +129,7 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new();
 
         private readonly ObjectPool<ArenaData> _arenaDataObjectPool = new NonTransientObjectPool<ArenaData>(new ArenaDataPooledObjectPolicy());
+        private readonly ObjectPool<TeamLineup> _teamLineupObjectPool = new DefaultObjectPool<TeamLineup>(new TeamLineupPooledObjectPolicy());
 
         #region Module members
 
@@ -132,6 +137,7 @@ namespace SS.Matchmaking.Modules
             ComponentBroker broker,
             IArenaManager arenaManager,
             IChat chat,
+            IClientSettings clientSettings,
             ICommandManager commandManager,
             IConfigManager configManager,
             IGame game,
@@ -148,6 +154,7 @@ namespace SS.Matchmaking.Modules
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
@@ -162,6 +169,11 @@ namespace SS.Matchmaking.Modules
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             _teamVersusStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
+
+            if (!_clientSettings.TryGetSettingsIdentifier("Kill", "EnterDelay", out _killEnterDelayClientSettingId))
+            {
+                return false;
+            }
 
             if (!LoadConfiguration())
             {
@@ -500,7 +512,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_MatchmakingQueueChanged(IMatchmakingQueue queue, QueueAction action, QueueItemType itemType)
+        private void Callback_MatchmakingQueueChanged(IMatchmakingQueue queue, QueueAction action)
         {
             if (action != QueueAction.Add
                 || !_queueDictionary.TryGetValue(queue.Name, out TeamVersusMatchmakingQueue found)
@@ -531,10 +543,11 @@ namespace SS.Matchmaking.Modules
             if (killerPlayerSlot is null)
                 return;
 
-            if (killedPlayerSlot.MatchData != killerPlayerSlot.MatchData)
+            MatchData matchData = killedPlayerSlot.MatchData;
+            if (matchData != killerPlayerSlot.MatchData)
                 return;
 
-            if (killedPlayerSlot.MatchData.Status != MatchStatus.InProgress)
+            if (matchData.Status != MatchStatus.InProgress)
                 return;
 
             ServerTick nowTicks = ServerTick.Now;
@@ -545,8 +558,6 @@ namespace SS.Matchmaking.Modules
 
             bool isKnockout = killedPlayerSlot.Lives <= 0;
 
-            MatchData matchData = killedPlayerSlot.MatchData;
-
             if (isKnockout)
             {
                 // This was the last life of the slot.
@@ -554,7 +565,20 @@ namespace SS.Matchmaking.Modules
 
                 // The player needs to be moved to spec, but if done immediately, any of lingering weapons fire from the player will be removed.
                 // We want to wait a short time to allow for a double-kill (though shorter than respawn time), before moving the player to spec and checking for match completion.
-                _mainloopTimer.SetTimer(MainloopTimer_ProcessKnockOut, (int)matchData.Configuration.WinConditionDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
+
+                short enterDelayTicks = 
+                    _clientSettings.TryGetSettingOverride(killed, _killEnterDelayClientSettingId, out int enterDelayInt)
+                    ? (short)enterDelayInt
+                    : _clientSettings.TryGetSettingOverride(arena, _killEnterDelayClientSettingId, out enterDelayInt)
+                        ? (short)enterDelayInt
+                        : (short)_clientSettings.GetSetting(arena, _killEnterDelayClientSettingId);
+
+                TimeSpan enterDelay = TimeSpan.FromMilliseconds(enterDelayTicks * 10);
+                TimeSpan koDelay = matchData.Configuration.WinConditionDelay < enterDelay
+                    ? matchData.Configuration.WinConditionDelay
+                    : enterDelay / 2;
+                
+                _mainloopTimer.SetTimer(MainloopTimer_ProcessKnockOut, (int)koDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
             }
             else
             {
@@ -1053,7 +1077,7 @@ namespace SS.Matchmaking.Modules
 
             MatchData matchData = slot.MatchData;
             Arena arena = player.Arena;
-            if (arena is null 
+            if (arena is null
                 || !string.Equals(arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase)
                 || !playerData.HasEnteredArena)
             {
@@ -1760,8 +1784,25 @@ namespace SS.Matchmaking.Modules
                 // Found an available location for a game to be played in. Next, try to find players.
                 //
 
-                if (!queue.GetParticipants(matchData))
+                List<TeamLineup> teamList = new(); // TODO: pool
+                for (int teamIdx = 0; teamIdx < matchConfiguration.NumTeams; teamIdx++)
+                {
+                    teamList.Add(_teamLineupObjectPool.Get());
+                }
+
+                List<Player> participantList = new(); // TODO: pool
+
+                if (!queue.GetParticipants(matchData.Configuration, teamList, participantList))
+                {
+                    // TODO: return teamList and participantList to pools
                     continue;
+                }
+
+                //
+                // Reserve the match.
+                //
+
+                matchData.Status = MatchStatus.Initializing;
 
                 //
                 // Mark the players as playing.
@@ -1770,39 +1811,122 @@ namespace SS.Matchmaking.Modules
                 HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
                 try
                 {
-                    foreach (Team team in matchData.Teams)
+                    foreach (Player player in participantList)
                     {
-                        foreach (PlayerSlot slot in team.Slots)
-                        {
-                            players.Add(slot.Player);
-                        }
+                        players.Add(player);
+
+                        // Add the participants in the order provided (which is the order they were queued up in).
+                        matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name, false, false));
                     }
 
                     _matchmakingQueues.SetPlaying(players);
+                    _chat.SendSetMessage(players, $"{_matchmakingQueues.NextCommandName}: Found a {matchData.MatchIdentifier.MatchType} match. Please stand by...");
                 }
                 finally
                 {
                     _objectPoolManager.PlayerSetPool.Return(players);
                 }
 
+                // TODO: return participantList to its pool
+
                 //
                 // Start the game.
                 //
 
-                // Reserve the match.
-                matchData.Status = MatchStatus.Initializing;
+                _ = StartMatch(matchData, teamList);
+
+                return true;
+            }
+
+            return false;
+
+
+            // local function that performs the steps required to start a match
+            async Task StartMatch(MatchData matchData, List<TeamLineup> teamList)
+            {
+                // Balance or randomize teams.
+                List<TeamLineup> mutableTeams = new(); // TODO: pool
+                try
+                {
+                    foreach (TeamLineup team in teamList)
+                    {
+                        if (!team.IsPremade)
+                            mutableTeams.Add(team);
+                    }
+
+                    if (mutableTeams.Count >= 2)
+                    {
+                        bool balanced = false;
+
+                        if (_teamVersusStatsBehavior is not null)
+                        {
+                            balanced = await _teamVersusStatsBehavior.BalanceTeamsAsync(matchData.Configuration, mutableTeams);
+                        }
+
+                        if (!balanced)
+                        {
+                            RandomizeTeams(matchData.Configuration, mutableTeams);
+                        }
+                    }
+                }
+                finally
+                {
+                    // TODO: return mutableTeams to pool
+                }
+
+                // Get the Player objects of all the players in the match.
+                Dictionary<string, Player> playersByName = new(); // TODO: pool
+                HashSet<string> missingPlayers = _objectPoolManager.NameHashSetPool.Get();
+
+                try
+                {
+                    foreach (TeamLineup team in teamList)
+                    {
+                        foreach (string playerName in team.Players)
+                        {
+                            Player player = _playerData.FindPlayer(playerName);
+
+                            if (player is not null)
+                                playersByName.Add(playerName, player);
+                            else
+                                missingPlayers.Add(playerName);
+                        }
+                    }
+
+                    if (missingPlayers.Count > 0)
+                    {
+                        // We're missing at least one player (disconnected), so we can't start. Cancel out.
+
+                        // Unset players that were found such that they get added back to the queues in their original positions.
+                        _matchmakingQueues.UnsetPlayingDueToCancel(playersByName.Values);
+
+                        // For the players that disconnected, penalize with a delay.
+                        _matchmakingQueues.UnsetPlayingAfterDelay(missingPlayers, TimeSpan.FromMinutes(5)); // TODO: setting for delay
+
+                        // End the match and perform cleanup to allow another match to start.
+                        EndMatch(matchData, MatchEndReason.Cancelled, null);
+                        return;
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.NameHashSetPool.Return(missingPlayers);
+                }
 
                 // Try to find the arena.
                 Arena arena = _arenaManager.FindArena(matchData.ArenaName); // This will only find the arena if it already exists and is running.
 
-                foreach (Team team in matchData.Teams)
+                for (int teamIdx = 0; teamIdx < teamList.Count; teamIdx++)
                 {
-                    foreach (PlayerSlot slot in team.Slots)
+                    TeamLineup teamLineup = teamList[teamIdx];
+                    Team team = matchData.Teams[teamIdx];
+
+                    int slotIdx = 0;
+                    foreach (string playerName in teamLineup.Players)
                     {
-                        Player player = slot.Player;
-
+                        Player player = playersByName[playerName];
+                        PlayerSlot slot = team.Slots[slotIdx++];
                         AssignSlot(slot, player);
-
                         slot.Status = PlayerSlotStatus.Waiting;
 
                         if (arena is null || player.Arena != arena)
@@ -1812,11 +1936,72 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                QueueMatchInitialzation(matchData);
-                return true;
+                if (_teamVersusStatsBehavior is not null)
+                {
+                    // Note, We need the task to know when initialization is complete.
+                    matchData.InitializeStatsTask = InitializeStatsAsync(matchData);
+                }
+                else
+                {
+                    QueueMatchInitialzation(matchData);
+                }
             }
 
-            return false;
+
+            // local function that randomizes team members
+            void RandomizeTeams(
+                IMatchConfiguration matchConfiguration, 
+                IReadOnlyList<TeamLineup> teamList)
+            {
+                if (matchConfiguration is null || teamList is null)
+                    return;
+
+                int playersPerTeam = matchConfiguration.PlayersPerTeam;
+
+                string[] playerNames = ArrayPool<string>.Shared.Rent(teamList.Count * playersPerTeam);
+                try
+                {
+                    // Put the names into an array and clear each team's players.
+                    int playerCount = 0;
+                    foreach (TeamLineup teamLineup in teamList)
+                    {
+                        foreach (string playerName in teamLineup.Players)
+                        {
+                            playerNames[playerCount++] = playerName;
+                        }
+
+                        teamLineup.Players.Clear();
+                    }
+
+                    // Shuffle the array.
+                    Span<string> playerNameSpan = playerNames.AsSpan(0, playerCount);
+                    _prng.Shuffle(playerNameSpan);
+
+                    // Assign players to each team from the randomized array.
+                    int teamIdx = 0;
+                    foreach (string playerName in playerNameSpan)
+                    {
+                        TeamLineup teamLineup = teamList[teamIdx];
+                        while (teamLineup.Players.Count >= playersPerTeam)
+                            teamLineup = teamList[++teamIdx];
+
+                        teamLineup.Players.Add(playerName);
+                    }
+                }
+                finally
+                {
+                    ArrayPool<string>.Shared.Return(playerNames);
+                }
+            }
+
+            // local function that asynchronously initializes the stats
+            async Task InitializeStatsAsync(MatchData matchData)
+            {
+                await _teamVersusStatsBehavior.InitializeAsync(matchData);
+
+                // Now that the stats module is ready, check whether the match can be started.
+                QueueMatchInitialzation(matchData);
+            }
 
             bool TryGetAvailableMatch(MatchConfiguration matchConfiguration, out MatchData matchData)
             {
@@ -1885,7 +2070,20 @@ namespace SS.Matchmaking.Modules
 
                     if (players.Count > 0)
                     {
-                        _chat.SendSetMessage(players, $"{player.Name} in for {slot.PlayerName} [Lives: {slot.Lives}]");
+                        StringBuilder gameTimeBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                        try
+                        {
+                            MatchData matchData = slot.MatchData;
+                            TimeSpan gameTime = matchData.Started is not null ? DateTime.UtcNow - matchData.Started.Value : TimeSpan.Zero;
+                            gameTimeBuilder.AppendFriendlyTimeSpan(gameTime);
+
+                            _chat.SendSetMessage(players, $"{player.Name} in for {slot.PlayerName} -- {slot.Lives} {(slot.Lives == 1 ? "life" : "lives")} [{gameTime}]");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(gameTimeBuilder);
+                        }
                     }
                 }
                 finally
@@ -2180,10 +2378,23 @@ namespace SS.Matchmaking.Modules
 
             _mainloop.QueueMainWorkItem(MainloopWork_DoMatchInitialization, matchData);
 
-            void MainloopWork_DoMatchInitialization(MatchData matchData)
+            async void MainloopWork_DoMatchInitialization(MatchData matchData)
             {
                 if (matchData.Status == MatchStatus.Initializing)
                 {
+                    if (matchData.InitializeStatsTask is not null)
+                    {
+                        if (matchData.InitializeStatsTask.IsCompleted)
+                        {
+                            matchData.InitializeStatsTask = null;
+                        }
+                        else
+                        {
+                            // Can't start, stats initialization is still in progress.
+                            return;
+                        }
+                    }
+
                     Arena arena = _arenaManager.FindArena(matchData.ArenaName);
                     if (arena is null)
                         return;
@@ -2209,7 +2420,12 @@ namespace SS.Matchmaking.Modules
                     matchData.Status = MatchStatus.InProgress;
                     matchData.Started = DateTime.UtcNow;
 
-                    // Fire a callback to notify the stats module that the match has started.
+                    // Tell the stats module that the match has started.
+                    if (_teamVersusStatsBehavior is not null)
+                    {
+                        await _teamVersusStatsBehavior.MatchStartedAsync(matchData);
+                    }
+
                     TeamVersusMatchStartedCallback.Fire(arena, matchData);
 
                     // Reset ships and move players to their starting locations.
@@ -2328,11 +2544,11 @@ namespace SS.Matchmaking.Modules
             int remainingTeams = 0;
             Team lastRemainingTeam = null;
 
-            foreach(Team team in matchData.Teams)
+            foreach (Team team in matchData.Teams)
             {
                 bool isTeamKnockedOut = true;
 
-                foreach(PlayerSlot slot in team.Slots)
+                foreach (PlayerSlot slot in team.Slots)
                 {
                     if (slot.Status == PlayerSlotStatus.Playing
                         && slot.Player is not null
@@ -2366,102 +2582,144 @@ namespace SS.Matchmaking.Modules
         // TODO: is there a better way to do this without using async void?
         private async void EndMatch(MatchData matchData, MatchEndReason reason, Team winnerTeam)
         {
-            if (matchData.Status != MatchStatus.InProgress)
+            if (matchData is null)
                 return;
 
-            matchData.Status = MatchStatus.Complete;
+            if (matchData.Status == MatchStatus.None)
+                return;
 
-            bool isNotificationHandled = false;
-
-            if (_teamVersusStatsBehavior is not null)
+            if (matchData.Status == MatchStatus.InProgress)
             {
-                // Give a chance for the stats module to process the end of a match.
-                // It may, or may not, attempt to save data to a database.
-                // If it tries to save to the database, that work is done asynchronously.
-                // We can't tear down the object model of the match until it's done, so we await it.
-                // This is being processed on the 
-                isNotificationHandled = await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
-            }
+                // Change the status to stop any additional attempts to end the match while we're ending it.
+                matchData.Status = MatchStatus.Complete;
 
-            if (!isNotificationHandled)
-            {
-                HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
-                StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
+                bool isNotificationHandled = false;
 
+                if (_teamVersusStatsBehavior is not null)
+                {
+                    // Tell the stats module to process the end of a match.
+                    // It may, or may not, attempt to save data to a database.
+                    // If it tries to save to the database, that work is done asynchronously.
+                    // Otherwise, it's done synchronously.
+                    // We can't tear down the object model of the match until it's done, so we await it.
+                    isNotificationHandled = await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
+                }
+
+                if (!isNotificationHandled)
+                {
+                    // Send a basic notification that the match ended.
+                    HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+                    StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        GetPlayersToNotify(matchData, notifySet);
+
+                        foreach (Team team in matchData.Teams)
+                        {
+                            if (scoreBuilder.Length > 0)
+                                scoreBuilder.Append('-');
+
+                            scoreBuilder.Append(team.Score);
+                        }
+
+                        switch (reason)
+                        {
+                            case MatchEndReason.Decided:
+                                if (winnerTeam is not null)
+                                {
+                                    scoreBuilder.Append($" Freq {winnerTeam.Freq}");
+                                }
+                                break;
+
+                            case MatchEndReason.Draw:
+                                scoreBuilder.Append(" DRAW");
+                                break;
+
+                            case MatchEndReason.Cancelled:
+                                scoreBuilder.Append(" CANCELLED");
+                                break;
+                        }
+
+                        _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(notifySet);
+                        _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+                    }
+                }
+
+                TeamVersusMatchEndedCallback.Fire(_broker, matchData, reason, winnerTeam);
+
+                Arena arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
+
+                foreach (Team team in matchData.Teams)
+                {
+                    foreach (PlayerSlot slot in team.Slots)
+                    {
+                        if (slot.SubPlayer is not null)
+                        {
+                            CancelSubInProgress(slot, true);
+                        }
+
+                        if (slot.Player is not null
+                            && arena is not null
+                            && slot.Player.Arena == arena
+                            && (slot.Player.Ship != ShipType.Spec || slot.Player.Freq != arena.SpecFreq))
+                        {
+                            // Spec any remaining players
+                            _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
+                        }
+                    }
+                }
+
+                //
+                // Clear the 'Playing' state of all players that were associated with the now completed match.
+                //
+
+                string[] playerNames = ArrayPool<string>.Shared.Rent(matchData.ParticipationList.Count);
                 try
                 {
-                    GetPlayersToNotify(matchData, notifySet);
+                    int playerNameIndex = 0;
 
-                    foreach (Team team in matchData.Teams)
+                    // Unset the players that are allowed to automatically requeue.
+                    foreach (PlayerParticipationRecord record in matchData.ParticipationList)
                     {
-                        if (scoreBuilder.Length > 0)
-                            scoreBuilder.Append('-');
-
-                        scoreBuilder.Append(team.Score);
+                        if (!record.LeftWithoutSub)
+                        {
+                            _playerSlotDictionary.Remove(record.PlayerName);
+                            playerNames[playerNameIndex++] = record.PlayerName;
+                        }
                     }
 
-                    if (winnerTeam != null)
+                    if (playerNameIndex > 0)
                     {
-                        scoreBuilder.Append($" Freq {winnerTeam.Freq}");
-                    }
-                    else
-                    {
-                        scoreBuilder.Append(" DRAW");
+                        _matchmakingQueues.UnsetPlayingByName(new ArraySegment<string>(playerNames, 0, playerNameIndex), true);
+                        playerNameIndex = 0;
                     }
 
-                    _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
+                    // Unset the players that are not allowed to automatically requeue.
+                    foreach (PlayerParticipationRecord record in matchData.ParticipationList)
+                    {
+                        if (record.LeftWithoutSub)
+                        {
+                            _playerSlotDictionary.Remove(record.PlayerName);
+                            playerNames[playerNameIndex++] = record.PlayerName;
+                        }
+                    }
+
+                    if (playerNameIndex > 0)
+                    {
+                        _matchmakingQueues.UnsetPlayingByName(new ArraySegment<string>(playerNames, 0, playerNameIndex), true);
+                    }
                 }
                 finally
                 {
-                    _objectPoolManager.PlayerSetPool.Return(notifySet);
-                    _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+                    ArrayPool<string>.Shared.Return(playerNames, true);
                 }
             }
-
-            Arena arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
-
-            foreach (Team team in matchData.Teams)
-            {
-                foreach (PlayerSlot slot in team.Slots)
-                {
-                    if (slot.SubPlayer is not null)
-                    {
-                        CancelSubInProgress(slot, true);
-                    }
-
-                    if (slot.Player is not null
-                        && arena is not null
-                        && slot.Player.Arena == arena
-                        && (slot.Player.Ship != ShipType.Spec || slot.Player.Freq != arena.SpecFreq))
-                    {
-                        // Spec any remaining players
-                        _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
-                    }
-                }
-            }
-
-            //
-            // Clear the 'playing' state of all players that were associated with the now completed match.
-            //
-
-            foreach (PlayerParticipationRecord record in matchData.ParticipationList)
-            {
-                if (record.LeftWithoutSub)
-                    continue;
-
-                _playerSlotDictionary.Remove(record.PlayerName);
-                _mainloop.QueueMainWorkItem(MainloopWork_UnsetPlayingWithRequeue, record.PlayerName);
-            }
-
-            foreach (PlayerParticipationRecord record in matchData.ParticipationList)
-            {
-                if (!record.LeftWithoutSub)
-                    continue;
-
-                _playerSlotDictionary.Remove(record.PlayerName);
-                _mainloop.QueueMainWorkItem(MainloopWork_UnsetPlayingWithoutRequeue, record.PlayerName);
-            }
-
+            
             //
             // Clear match data.
             //
@@ -2469,7 +2727,7 @@ namespace SS.Matchmaking.Modules
             matchData.ParticipationList.Clear();
 
             // Clear the team data.
-            foreach(Team team in matchData.Teams)
+            foreach (Team team in matchData.Teams)
             {
                 // Slots
                 foreach (PlayerSlot slot in team.Slots)
@@ -2504,17 +2762,27 @@ namespace SS.Matchmaking.Modules
             matchData.Started = null;
 
             // Set the status. This makes it available to host a new game.
-            //matchData.Status = MatchStatus.Complete; // TODO: add a timer to have a delay between games?
             matchData.Status = MatchStatus.None;
 
-            void MainloopWork_UnsetPlayingWithRequeue(string playerName)
+            if (!_matchConfigurationDictionary.TryGetValue(matchData.MatchIdentifier.MatchType, out MatchConfiguration configuration)
+                || configuration != matchData.Configuration)
             {
-                _matchmakingQueues.UnsetPlaying(playerName, true);
+                // The configuration has changed.
+                // Discard the MatchData. This will allow a new one to be created with the new configuration.
+                _matchDataDictionary.Remove(matchData.MatchIdentifier);
             }
 
-            void MainloopWork_UnsetPlayingWithoutRequeue(string playerName)
+            // Now that the match has ended, check if there are enough players available to refill it.
+            _mainloop.QueueMainWorkItem(MainloopWork_MakeMatch, matchData.Configuration.QueueName);
+            
+
+            // local helper for a mainloop work item that attempts to make a match
+            void MainloopWork_MakeMatch(string queueName)
             {
-                _matchmakingQueues.UnsetPlaying(playerName, false);
+                if (_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue queue))
+                {
+                    MakeMatch(queue);
+                }
             }
         }
 
@@ -2611,6 +2879,11 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public MatchStatus Status;
 
+            /// <summary>
+            /// Task that initializes the stats module prior to a match starting.
+            /// </summary>
+            public Task InitializeStatsTask;
+
             /// <inheritdoc cref="IMatchData.Teams"/>
             public readonly Team[] Teams;
             private readonly ReadOnlyCollection<ITeam> _readOnlyTeams;
@@ -2650,7 +2923,7 @@ namespace SS.Matchmaking.Modules
 
             /// <inheritdoc cref="ITeam.MatchData"/>
             public readonly MatchData MatchData;
-            IMatchData ITeam.MatchData  => MatchData;
+            IMatchData ITeam.MatchData => MatchData;
 
             public int TeamIdx { get; }
 
@@ -2939,11 +3212,14 @@ namespace SS.Matchmaking.Modules
 
         private class TeamVersusMatchmakingQueue : IMatchmakingQueue
         {
-            private readonly LinkedList<QueuedPlayerOrGroup> _queue = new(); // TODO: object pooling of LinkedListNode<QueuedPlayerOrGroup>
+            private static readonly NonTransientObjectPool<LinkedListNode<QueuedPlayerOrGroup>> s_nodePool = new(new QueuedPlayerOrGroupLinkedListNodePooledObjectPolicy());
+            private static readonly DefaultObjectPool<List<LinkedListNode<QueuedPlayerOrGroup>>> s_listPool = new(new QueuedPlayerOrGroupLinkedListNodeListPooledObjectPolicy());
+
+            private readonly LinkedList<QueuedPlayerOrGroup> _queue = new();
 
             public TeamVersusMatchmakingQueue(
-                string queueName, 
-                QueueOptions options, 
+                string queueName,
+                QueueOptions options,
                 string description)
             {
                 if (string.IsNullOrWhiteSpace(queueName))
@@ -2977,13 +3253,23 @@ namespace SS.Matchmaking.Modules
 
             public bool Add(Player player, DateTime timestamp)
             {
-                Add(new LinkedListNode<QueuedPlayerOrGroup>(new(player, timestamp)));
+                if (player is null)
+                    throw new ArgumentNullException(nameof(player));
+
+                LinkedListNode<QueuedPlayerOrGroup> node = s_nodePool.Get();
+                node.ValueRef = new(player, timestamp);
+                Add(node);
                 return true;
             }
 
             public bool Add(IPlayerGroup group, DateTime timestamp)
             {
-                Add(new LinkedListNode<QueuedPlayerOrGroup>(new(group, timestamp)));
+                if (group is null)
+                    throw new ArgumentNullException(nameof(group));
+
+                LinkedListNode<QueuedPlayerOrGroup> node = s_nodePool.Get();
+                node.ValueRef = new(group, timestamp);
+                Add(node);
                 return true;
             }
 
@@ -3024,6 +3310,7 @@ namespace SS.Matchmaking.Modules
                     if (node.ValueRef.Player == player)
                     {
                         _queue.Remove(node);
+                        s_nodePool.Return(node);
                         return true;
                     }
 
@@ -3041,6 +3328,7 @@ namespace SS.Matchmaking.Modules
                     if (node.ValueRef.Group == group)
                     {
                         _queue.Remove(node);
+                        s_nodePool.Return(node);
                         return true;
                     }
 
@@ -3052,8 +3340,17 @@ namespace SS.Matchmaking.Modules
 
             #endregion
 
+            /// <summary>
+            /// Gets whether a player is in the queue.
+            /// </summary>
+            /// <param name="player">The player to search for.</param>
+            /// <returns><see langword="true"/> if the player is in the queue; otherwise, <see langword="false"/>.</returns>
+            /// <exception cref="ArgumentNullException"><paramref name="player"/> was null.</exception>
             public bool ContainsSoloPlayer(Player player)
             {
+                if (player is null)
+                    throw new ArgumentNullException(nameof(player));
+
                 foreach (QueuedPlayerOrGroup pog in _queue)
                 {
                     if (pog.Player == player)
@@ -3074,12 +3371,29 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public bool GetParticipants(MatchData matchData)
+            /// <summary>
+            /// Gets participants for a team versus match.
+            /// </summary>
+            /// <param name="matchConfiguration">The match configuration.</param>
+            /// <param name="teamList">A list of teams to fill with players.</param>
+            /// <param name="participantList">A list to fill with all of the participants that were matched, in the order that they were queued.</param>
+            /// <returns><see langword="true"/> if there were enough players to fill the teams for a match; otherwise, <see langword="false"/>.</returns>
+            public bool GetParticipants(
+                IMatchConfiguration matchConfiguration,
+                IReadOnlyList<TeamLineup> teamList,
+                List<Player> participantList)
             {
-                if (matchData is null)
-                    return false;
+                if (matchConfiguration is null)
+                    throw new ArgumentNullException(nameof(matchConfiguration));
 
-                int playersPerTeam = matchData.Configuration.PlayersPerTeam;
+                if (teamList is null)
+                    throw new ArgumentNullException(nameof(teamList));
+
+                if (participantList is null)
+                    throw new ArgumentNullException(nameof(participantList));
+
+                int numTeams = matchConfiguration.NumTeams;
+                int playersPerTeam = matchConfiguration.PlayersPerTeam;
 
                 // TODO: logic is simplified when only allowing groups of the exact size, add support for other group sizes later
                 if (playersPerTeam != Options.MinGroupSize || playersPerTeam != Options.MaxGroupSize)
@@ -3087,12 +3401,29 @@ namespace SS.Matchmaking.Modules
                     return false;
                 }
 
-                List<LinkedListNode<QueuedPlayerOrGroup>> pending = new(); // TODO: object pooling
-                List<LinkedListNode<QueuedPlayerOrGroup>> pendingSolo = new(); // TODO: object pooling
+                Debug.Assert(numTeams == teamList.Count);
+
+                foreach (TeamLineup team in teamList)
+                {
+                    Debug.Assert(team.Players.Count == 0);
+                }
+
+                Debug.Assert(participantList.Count == 0);
+
+                // Nodes of players that we formed a team with.
+                // These nodes have been removed from the _queue linked list.
+                // If in the end, we can't form enough teams, these will be added back into the _queue linked list.
+                List<LinkedListNode<QueuedPlayerOrGroup>> pending = s_listPool.Get();
+
+                // Nodes of solo players that we're trying to form a team with.
+                // These nodes are still attached to the _queue linked list.
+                // If we find enough players to fill a team, they will be removed from the _queue linked list 
+                // and added to the pending list.
+                List<LinkedListNode<QueuedPlayerOrGroup>> pendingSolo = s_listPool.Get();
 
                 try
                 {
-                    foreach (Team team in matchData.Teams)
+                    foreach (TeamLineup team in teamList)
                     {
                         LinkedListNode<QueuedPlayerOrGroup> node = _queue.First;
                         if (node is null)
@@ -3105,10 +3436,10 @@ namespace SS.Matchmaking.Modules
                             // Got a group, which fills the team.
                             Debug.Assert(pog.Group.Members.Count == playersPerTeam);
 
-                            for (int slotIdx = 0; slotIdx < playersPerTeam; slotIdx++)
-                                team.Slots[slotIdx].Player = pog.Group.Members[slotIdx];
-
                             team.IsPremade = true;
+                            foreach (Player player in pog.Group.Members)
+                                team.Players.Add(player.Name);
+
                             _queue.Remove(node);
                             pending.Add(node);
                             continue; // Filled the team with a group.
@@ -3131,11 +3462,11 @@ namespace SS.Matchmaking.Modules
                             if (pendingSolo.Count == playersPerTeam)
                             {
                                 // Found enough solo players to fill the team.
-                                int slotIdx = 0;
+                                team.IsPremade = false;
                                 foreach (LinkedListNode<QueuedPlayerOrGroup> soloNode in pendingSolo)
                                 {
                                     pog = ref soloNode.ValueRef;
-                                    team.Slots[slotIdx++].Player = pog.Player;
+                                    team.Players.Add(pog.Player.Name);
                                     _queue.Remove(soloNode);
                                     pending.Add(soloNode);
                                 }
@@ -3145,6 +3476,7 @@ namespace SS.Matchmaking.Modules
                             }
                             else
                             {
+                                // Did not find enough solo players to fill the team.
                                 pendingSolo.Clear();
 
                                 // Try to find a group to fill the team instead.
@@ -3163,10 +3495,10 @@ namespace SS.Matchmaking.Modules
                                     // Got a group, which fills the team.
                                     Debug.Assert(pog.Group.Members.Count == playersPerTeam);
 
-                                    for (int slotIdx = 0; slotIdx < playersPerTeam; slotIdx++)
-                                        team.Slots[slotIdx].Player = pog.Group.Members[slotIdx];
-
                                     team.IsPremade = true;
+                                    foreach (Player player in pog.Group.Members)
+                                        team.Players.Add(player.Name);
+
                                     _queue.Remove(node);
                                     pending.Add(node);
                                     continue; // Filled the team with a group.
@@ -3181,52 +3513,38 @@ namespace SS.Matchmaking.Modules
                     // TODO: configuration setting to allow a partially filled team if it has a configured minimum # of players? (e.g. a battle royale style game that couldn't completely fill a team but has enough teams total)
 
                     bool success = true;
-                    foreach (Team team in matchData.Teams)
+                    foreach (TeamLineup team in teamList)
                     {
-                        foreach (PlayerSlot slot in team.Slots)
+                        if (team.Players.Count != playersPerTeam)
                         {
-                            if (slot.Player is null)
-                            {
-                                success = false;
-                                break;
-                            }
+                            success = false;
+                            break;
                         }
                     }
 
                     if (success)
                     {
-                        bool hasPremadeTeam = false;
-                        foreach (Team team in matchData.Teams)
-                        {
-                            if (team.IsPremade)
-                            {
-                                hasPremadeTeam = true;
-                                break;
-                            }
-                        }
-
-                        if (!hasPremadeTeam)
-                        {
-                            // All the participants were solo players (no groups).
-                            // TODO: randomize the teams
-                        }
-
-                        // Add participation records.
+                        // Add participation records in the order that the players were queued.
+                        pending.Sort((x, y) => DateTime.Compare(x.ValueRef.Timestamp, y.ValueRef.Timestamp));
                         foreach (LinkedListNode<QueuedPlayerOrGroup> node in pending)
                         {
                             ref QueuedPlayerOrGroup pog = ref node.ValueRef;
                             if (pog.Player is not null)
                             {
-                                matchData.ParticipationList.Add(new PlayerParticipationRecord(pog.Player.Name, false, false));
+                                participantList.Add(pog.Player);
                             }
                             else if (pog.Group is not null)
                             {
                                 foreach (Player player in pog.Group.Members)
                                 {
-                                    matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name, false, false));
+                                    participantList.Add(player);
                                 }
                             }
+
+                            s_nodePool.Return(node);
                         }
+
+                        pending.Clear();
 
                         return true;
                     }
@@ -3234,19 +3552,16 @@ namespace SS.Matchmaking.Modules
                     {
                         // Unable to fill the teams.
                         // Add all the pending nodes back into the queue in their original order.
-                        for (int i = pending.Count - 1; i >= 0; i--)
+                        foreach (LinkedListNode<QueuedPlayerOrGroup> node in pending)
                         {
-                            LinkedListNode<QueuedPlayerOrGroup> node = pending[i];
-                            pending.RemoveAt(i);
-                            _queue.AddFirst(node);
+                            Add(node);
                         }
+                        pending.Clear();
 
-                        foreach (Team team in matchData.Teams)
+                        foreach (TeamLineup team in teamList)
                         {
-                            foreach (PlayerSlot slot in team.Slots)
-                            {
-                                slot.Player = null;
-                            }
+                            team.IsPremade = false;
+                            team.Players.Clear();
                         }
 
                         return false;
@@ -3254,11 +3569,54 @@ namespace SS.Matchmaking.Modules
                 }
                 finally
                 {
-                    // TODO: return pooled objects
-                    //Return(pending);
-                    //Return(pendingSolo);
+                    Debug.Assert(pending.Count == 0);
+                    Debug.Assert(pendingSolo.Count == 0);
+
+                    s_listPool.Return(pending);
+                    s_listPool.Return(pendingSolo);
                 }
             }
+
+            #region Object pooling types
+
+            private class QueuedPlayerOrGroupLinkedListNodePooledObjectPolicy : PooledObjectPolicy<LinkedListNode<QueuedPlayerOrGroup>>
+            {
+                public override LinkedListNode<QueuedPlayerOrGroup> Create()
+                {
+                    return new LinkedListNode<QueuedPlayerOrGroup>(default);
+                }
+
+                public override bool Return(LinkedListNode<QueuedPlayerOrGroup> obj)
+                {
+                    if (obj is null)
+                        return false;
+
+                    if (obj.List is not null)
+                        return false;
+
+                    obj.ValueRef = default;
+                    return true;
+                }
+            }
+
+            private class QueuedPlayerOrGroupLinkedListNodeListPooledObjectPolicy : PooledObjectPolicy<List<LinkedListNode<QueuedPlayerOrGroup>>>
+            {
+                public override List<LinkedListNode<QueuedPlayerOrGroup>> Create()
+                {
+                    return new List<LinkedListNode<QueuedPlayerOrGroup>>();
+                }
+
+                public override bool Return(List<LinkedListNode<QueuedPlayerOrGroup>> obj)
+                {
+                    if (obj is null)
+                        return false;
+
+                    obj.Clear();
+                    return true;
+                }
+            }
+
+            #endregion
         }
 
         private static class CommandNames
@@ -3285,6 +3643,24 @@ namespace SS.Matchmaking.Modules
             /// The player has left the arena.
             /// </summary>
             LeftArena,
+        }
+
+        private class TeamLineupPooledObjectPolicy : PooledObjectPolicy<TeamLineup>
+        {
+            public override TeamLineup Create()
+            {
+                return new TeamLineup();
+            }
+
+            public override bool Return(TeamLineup obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.IsPremade = false;
+                obj.Players.Clear();
+                return true;
+            }
         }
 
         #endregion

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
@@ -21,6 +22,7 @@ namespace SS.Core.Modules
         private DefaultObjectPoolProvider _provider;
         private ObjectPool<HashSet<Player>> _playerHashSetPool;
         private ObjectPool<HashSet<Arena>> _arenaHashSetPool;
+        private ObjectPool<HashSet<string>> _nameHashSetPool;
         private ObjectPool<StringBuilder> _stringBuilderPool;
         private ObjectPool<IPEndPoint> _ipEndPointPool;
         
@@ -32,6 +34,7 @@ namespace SS.Core.Modules
             _provider = new DefaultObjectPoolProvider();
             _playerHashSetPool = _provider.Create(new PlayerHashSetPooledObjectPolicy());
             _arenaHashSetPool = _provider.Create(new ArenaHashSetPooledObjectPolicy());
+            _nameHashSetPool = _provider.Create(new NameHashSetPooledObjectPolicy());
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
             _ipEndPointPool = _provider.Create(new IPEndPointPooledObjectPolicy());
 
@@ -66,6 +69,8 @@ namespace SS.Core.Modules
         ObjectPool <HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
 
         ObjectPool<HashSet<Arena>> IObjectPoolManager.ArenaSetPool => _arenaHashSetPool;
+
+        ObjectPool<HashSet<string>> IObjectPoolManager.NameHashSetPool => _nameHashSetPool;
 
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
 
@@ -104,6 +109,25 @@ namespace SS.Core.Modules
             }
 
             public override bool Return(HashSet<Arena> obj)
+            {
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+            }
+        }
+
+        private class NameHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<string>>
+        {
+            public int InitialCapacity { get; set; } = 256;
+
+            public override HashSet<string> Create()
+            {
+                return new HashSet<string>(InitialCapacity, StringComparer.OrdinalIgnoreCase);
+            }
+
+            public override bool Return(HashSet<string> obj)
             {
                 if (obj is null)
                     return false;

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -44,5 +45,19 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <returns>A floating point value in [0.0, 1.0).</returns>
         double Uniform();
+
+        /// <summary>
+        /// Shuffles a <see cref="Span{T}"/> of values.
+        /// </summary>
+        /// <typeparam name="T">The value type.</typeparam>
+        /// <param name="values">The Span to shuffle</param>
+        void Shuffle<T>(Span<T> values);
+
+        /// <summary>
+        /// Shuffles a <see cref="IList{T}"/> of values.
+        /// </summary>
+        /// <typeparam name="T">The value type.</typeparam>
+        /// <param name="values">The IList to shuffle.</param>
+        void Shuffle<T>(IList<T> values);
     }
 }

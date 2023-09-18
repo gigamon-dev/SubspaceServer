@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Utilities;
+using System.Diagnostics;
 
 namespace SS.Matchmaking
 {
@@ -147,6 +148,10 @@ namespace SS.Matchmaking
             public bool Return(LinkedListNode<TickRange> obj)
             {
                 if (obj is null)
+                    return false;
+
+                Debug.Assert(obj.List is null);
+                if (obj.List is not null)
                     return false;
 
                 obj.ValueRef = default;
