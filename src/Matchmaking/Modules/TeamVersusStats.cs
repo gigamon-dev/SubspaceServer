@@ -764,11 +764,10 @@ namespace SS.Matchmaking.Modules
                 writer.WriteString("end_timestamp"u8, matchStats.EndTimestamp.Value);
                 writer.WriteString("replay_path"u8, (string)null); // TODO: add the ability automatically record games
 
-                writer.WriteStartArray("players");
+                writer.WriteStartObject("players");
                 foreach ((string playerName, PlayerInfo playerInfo) in matchStats.PlayerInfoDictionary)
                 {
-                    writer.WriteStartObject();
-                    writer.WriteString("player"u8, playerName);
+                    writer.WriteStartObject(playerName); // player object
                     writer.WriteString("squad"u8, playerInfo.Squad); // write it even if there is no squad (so that the database knows to clear the player's current squad)
 
                     if (playerInfo.XRes is not null && playerInfo.YRes is not null)
@@ -777,9 +776,9 @@ namespace SS.Matchmaking.Modules
                         writer.WriteNumber("y_res"u8, playerInfo.YRes.Value);
                     }
 
-                    writer.WriteEndObject();
+                    writer.WriteEndObject(); // player object
                 }
-                writer.WriteEndArray();
+                writer.WriteEndObject(); // players object
 
                 writer.WriteStartArray("team_stats"u8); // team_stats array
 
@@ -2036,19 +2035,7 @@ namespace SS.Matchmaking.Modules
                 _eventsJsonWriter.WriteString("timestamp"u8, timestamp);
                 _eventsJsonWriter.WriteString("player"u8, playerName);
                 _eventsJsonWriter.WriteNumber("ship_item_id"u8, (int)item);
-
-                if (damageList is not null)
-                {
-                    _eventsJsonWriter.WriteStartArray("damage_stats");
-                    foreach ((string attacker, int damage) in damageList)
-                    {
-                        _eventsJsonWriter.WriteStartObject();
-                        _eventsJsonWriter.WriteString("player"u8, attacker);
-                        _eventsJsonWriter.WriteNumber("damage"u8, damage);
-                        _eventsJsonWriter.WriteEndObject();
-                    }
-                    _eventsJsonWriter.WriteEndArray();
-                }
+                WriteDamageStats(damageList);
 
                 _eventsJsonWriter.WriteEndObject();
             }
@@ -2103,24 +2090,37 @@ namespace SS.Matchmaking.Modules
                 }
                 _eventsJsonWriter.WriteEndArray();
 
-                if (damageList is not null)
-                {
-                    _eventsJsonWriter.WriteStartArray("damage_stats");
-                    foreach ((string playerName, int damage) in damageList)
-                    {
-                        _eventsJsonWriter.WriteStartObject();
-                        _eventsJsonWriter.WriteString("player"u8, playerName);
-                        _eventsJsonWriter.WriteNumber("damage"u8, damage);
-                        _eventsJsonWriter.WriteEndObject();
-                    }
-                    _eventsJsonWriter.WriteEndArray();
-                }
+                WriteDamageStats(damageList);
 
-                // TODO:
-                //_eventsJsonWriter.WriteStartArray("rating_changes");
-                //_eventsJsonWriter.WriteEndArray();
+                // TODO: WriteRatingChanges(ratingList);
 
                 _eventsJsonWriter.WriteEndObject();
+            }
+
+            private void WriteDamageStats(List<(string PlayerName, int Damage)> damageList)
+            {
+                if (damageList is not null)
+                {
+                    _eventsJsonWriter.WriteStartObject("damage_stats");
+                    foreach ((string playerName, int damage) in damageList)
+                    {
+                        _eventsJsonWriter.WriteNumber(playerName, damage);
+                    }
+                    _eventsJsonWriter.WriteEndObject(); // damage_stats
+                }
+            }
+
+            private void WriteRatingChanges(List<(string PlayerName, int Rating)> ratingList)
+            {
+                if (ratingList is not null)
+                {
+                    _eventsJsonWriter.WriteStartObject("rating_changes");
+                    foreach ((string playerName, int rating) in ratingList)
+                    {
+                        _eventsJsonWriter.WriteNumber(playerName, rating);
+                    }
+                    _eventsJsonWriter.WriteEndObject(); // damage_stats
+                }
             }
 
             public void WriteEventsArray(Utf8JsonWriter writer)
