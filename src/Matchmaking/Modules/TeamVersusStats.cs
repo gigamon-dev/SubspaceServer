@@ -175,6 +175,30 @@ namespace SS.Matchmaking.Modules
                     _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), $"Unable to get client setting identifier for {shipNames[shipIndex]}:EmpBomb.");
                     return false;
                 }
+
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[shipIndex], "CloakEnergy", out _shipClientSettingIds[shipIndex].CloakEnergyId))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), $"Unable to get client setting identifier for {shipNames[shipIndex]}:CloakEnergy.");
+                    return false;
+                }
+
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[shipIndex], "StealthEnergy", out _shipClientSettingIds[shipIndex].StealthEnergyId))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), $"Unable to get client setting identifier for {shipNames[shipIndex]}:StealthEnergy.");
+                    return false;
+                }
+
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[shipIndex], "XRadarEnergy", out _shipClientSettingIds[shipIndex].XRadarEnergyId))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), $"Unable to get client setting identifier for {shipNames[shipIndex]}:XRadarEnergy.");
+                    return false;
+                }
+
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[shipIndex], "AntiWarpEnergy", out _shipClientSettingIds[shipIndex].AntiWarpEnergyId))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), $"Unable to get client setting identifier for {shipNames[shipIndex]}:AntiWarpEnergy.");
+                    return false;
+                }
             }
 
             // Try to get the optional service for saving stats to a database.
@@ -983,6 +1007,8 @@ namespace SS.Matchmaking.Modules
                                 writer.WriteNumber("first_out"u8, matchStats.FirstOutCritical ? (short)FirstOut.YesCritical : (short)FirstOut.Yes);
                             }
 
+                            writer.WriteNumber("wasted_energy"u8, memberStats.WastedEnergy);
+
                             if (memberStats.WastedRepels > 0)
                                 writer.WriteNumber("wasted_repel"u8, memberStats.WastedRepels);
 
@@ -1112,6 +1138,10 @@ namespace SS.Matchmaking.Modules
                         MaximumRecharge = (short)_clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].MaximumRechargeId),
                         MaximumEnergy = (short)_clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].MaximumEnergyId),
                         HasEmpBomb = _clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].EmpBombId) != 0,
+                        CloakEnergy = (short)_clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].CloakEnergyId),
+                        StealthEnergy = (short)_clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].StealthEnergyId),
+                        XRadarEnergy = (short)_clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].XRadarEnergyId),
+                        AntiWarpEnergy = (short)_clientSettings.GetSetting(arena, _shipClientSettingIds[shipIndex].AntiWarpEnergyId),
                     };
                 }
 
@@ -1138,22 +1168,47 @@ namespace SS.Matchmaking.Modules
             }
             else if (action == PlayerAction.EnterArena)
             {
-                if (playerData.MemberStats is not null
-                    && arena == playerData.MemberStats.MatchStats.MatchData.Arena)
+                if (playerData.MemberStats is not null)
                 {
-                    AddDamageWatch(player, playerData);
+                    playerData.MemberStats.LastPositionTime = ServerTick.Now;
+
+                    if (arena == playerData.MemberStats.MatchStats.MatchData.Arena)
+                    {
+                        AddDamageWatch(player, playerData);
+                    }
                 }
             }
             else if (action == PlayerAction.LeaveArena)
             {
                 RemoveDamageWatch(player, playerData);
 
-                if (playerData.MemberStats is not null
-                    && arena == playerData.MemberStats.MatchStats?.MatchData?.Arena
+                MemberStats memberStats = playerData.MemberStats;
+                if (memberStats is not null
+                    && arena == memberStats.MatchStats?.MatchData?.Arena
                     && player.Ship != ShipType.Spec)
                 {
                     // The player is in a match and left the match's arena while in a ship.
-                    SetLagOut(playerData.MemberStats);
+                    SetLagOut(memberStats);
+
+                    // Wasted energy
+                    if (memberStats.FullEnergyStartTime is not null)
+                    {
+                        if (_arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
+                        {
+                            int shipIndex = (int)player.Ship;
+                            ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
+                            ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
+
+                            int duration = ServerTick.Now - memberStats.FullEnergyStartTime.Value;
+                            if (duration > 0)
+                            {
+                                AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
+                            }
+                        }
+
+                        memberStats.FullEnergyStartTime = null;
+                        memberStats.FullEnergyUtilityStatus = 0;
+                    }
                 }
             }
         }
@@ -1317,26 +1372,16 @@ namespace SS.Matchmaking.Modules
                     // Recent damage (used for calculating damage that contributed to a kill)
                     //
 
-                    if (attackerStats is not null)
+                    if (attackerStats is not null
+                        && player.Ship != ShipType.Spec) // there's a chance that the player was switched to spec and then the damage packet arrived
                     {
-                        int shipIndex = int.Clamp((int)player.Ship, 0, 7);
-
+                        int shipIndex = (int)player.Ship;
                         ShipSettings shipSettings = arenaSettings.ShipSettings[shipIndex];
 
                         // recharge rate = amount of energy in 10 seconds = amount of energy in 1000 ticks
-                        short maximumRecharge = 
-                            _clientSettings.TryGetSettingOverride(player, _shipClientSettingIds[shipIndex].MaximumRechargeId, out int maximumRechargeInt)
-                                ? (short)maximumRechargeInt
-                                : _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[shipIndex].MaximumRechargeId, out maximumRechargeInt) 
-                                    ? (short)maximumRechargeInt 
-                                    : shipSettings.MaximumRecharge;
+                        short maximumRecharge = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumRechargeId, shipSettings.MaximumRecharge);
 
-                        short maximumEnergy =
-                            _clientSettings.TryGetSettingOverride(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, out int maximumEnergyInt)
-                                ? (short)maximumEnergyInt
-                                : _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[shipIndex].MaximumEnergyId, out maximumEnergyInt)
-                                    ? (short)maximumEnergyInt
-                                    : shipSettings.MaximumEnergy;
+                        short maximumEnergy = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, shipSettings.MaximumEnergy);
 
                         playerStats.RemoveOldRecentDamage(maximumEnergy, maximumRecharge);
 
@@ -1344,23 +1389,27 @@ namespace SS.Matchmaking.Modules
                         uint empShutdownTicks = 0;
                         if (damageData.WeaponData.Type == WeaponCodes.Bomb || damageData.WeaponData.Type == WeaponCodes.ProxBomb)
                         {
-                            int attackerShipIndex = int.Clamp((int)attackerPlayer.Ship, 0, 7);
-
-                            // Only checking for an arena override on emp bomb, since it doesn't make sense to override that setting on the player-level.
-                            bool isEmp = _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[attackerShipIndex].EmpBombId, out int isEmpInt)
-                                ? isEmpInt != 0
-                                : arenaSettings.ShipSettings[attackerShipIndex].HasEmpBomb;
-
-                            if (isEmp)
+                            // TODO: maybe handle this edge case better, by keeping track of the player's previous ship when switching to spec
+                            if (attackerPlayer.Ship != ShipType.Spec) // there's a chance the attacker was switched to spec before the damage packet arrived
                             {
-                                // The formula for calculating how long an EMP bomb pauses recharge is:
-                                // (uint)(actualDamage * empBombShutdownTime / maxBombDamage);
-                                // where maxBombDamage = BombDamageLevel * EmpBombDamageRatio
-                                //
-                                // Also, notice this is looking at damageData.Damage which is not clamped.
-                                // The damage could have been a self-inflicted emp bomb that took the player all the way down to 0.
-                                // So, using damageData.Damage gives us the true shutdown time.
-                                empShutdownTicks = (uint)(damageData.Damage * arenaSettings.EmpBombShutdownTime / (arenaSettings.BombDamageLevel * arenaSettings.EmpBombDamageRatio));
+                                int attackerShipIndex = (int)attackerPlayer.Ship;
+
+                                // Only checking for an arena override on emp bomb, since it doesn't make sense to override the setting on the player-level.
+                                bool isEmp = _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[attackerShipIndex].EmpBombId, out int isEmpInt)
+                                    ? isEmpInt != 0
+                                    : arenaSettings.ShipSettings[attackerShipIndex].HasEmpBomb;
+
+                                if (isEmp)
+                                {
+                                    // The formula for calculating how long an EMP bomb pauses recharge is:
+                                    // (uint)(actualDamage * empBombShutdownTime / maxBombDamage);
+                                    // where maxBombDamage = BombDamageLevel * EmpBombDamageRatio
+                                    //
+                                    // Also, notice this is looking at damageData.Damage which is not clamped.
+                                    // The damage could have been a self-inflicted emp bomb that took the player all the way down to 0.
+                                    // So, using damageData.Damage gives us the true shutdown time.
+                                    empShutdownTicks = (uint)(damageData.Damage * arenaSettings.EmpBombShutdownTime / (arenaSettings.BombDamageLevel * arenaSettings.EmpBombDamageRatio));
+                                }
                             }
                         }
 
@@ -1456,7 +1505,7 @@ namespace SS.Matchmaking.Modules
             if (player is null)
                 return;
 
-            if (positionPacket.Weapon.Type == WeaponCodes.Null)
+            if (player.Ship == ShipType.Spec)
                 return;
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
@@ -1468,7 +1517,66 @@ namespace SS.Matchmaking.Modules
 
             MatchStats matchStats = memberStats.MatchStats;
             if (player.Arena != matchStats.MatchData.Arena)
-                return;
+                return;            
+
+            //
+            // Wasted energy
+            //
+
+            // For wasted energy tracking, ignore out of order packets.
+            if (positionPacket.Time > memberStats.LastPositionTime)
+            {
+                memberStats.LastPositionTime = positionPacket.Time;
+
+                Arena arena = player.Arena;
+                if (arena is not null && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
+                {
+                    int shipIndex = (int)player.Ship;
+                    ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
+                    ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
+                    short maximumEnergy = GetClientSetting(player, shipClientSettingIds.MaximumEnergyId, arenaShipSettings.MaximumEnergy);
+                    PlayerPositionStatus utilityStatus = positionPacket.Status & (PlayerPositionStatus.Stealth | PlayerPositionStatus.Cloak | PlayerPositionStatus.XRadar | PlayerPositionStatus.Antiwarp);
+
+                    // The player is at full energy if the player has the maximum energy or has maximum energy - 1 with at least one utility active.
+                    bool isAtFullEnergy = positionPacket.Energy == maximumEnergy || (positionPacket.Energy == (maximumEnergy - 1) && utilityStatus != 0);
+
+                    if (memberStats.FullEnergyStartTime is null)
+                    {
+                        // Was not at full energy.
+                        if (isAtFullEnergy)
+                        {
+                            memberStats.FullEnergyStartTime = positionPacket.Time;
+                            memberStats.FullEnergyUtilityStatus = utilityStatus;
+                        }
+                    }
+                    else
+                    {
+                        // Was at full energy
+                        if (!isAtFullEnergy || memberStats.FullEnergyUtilityStatus != utilityStatus)
+                        {
+                            // No longer at full energy, or there was a change in utility (stealth, cloak, xradar, antiwarp) use.
+                            int duration = positionPacket.Time - memberStats.FullEnergyStartTime.Value;
+                            if (duration > 0)
+                            {
+                                AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
+                            }
+
+                            if (isAtFullEnergy)
+                            {
+                                // Still at maximum energy (meaning we're in here because the player had a change in utility use).
+                                memberStats.FullEnergyStartTime = positionPacket.Time;
+                                memberStats.FullEnergyUtilityStatus = utilityStatus;
+                            }
+                            else
+                            {
+                                // No longer at full energy.
+                                memberStats.FullEnergyStartTime = null;
+                                memberStats.FullEnergyUtilityStatus = 0;
+                            }
+                        }
+                    }
+                }
+            }
 
             if (positionPacket.Weapon.Type != WeaponCodes.Null)
             {
@@ -1477,6 +1585,10 @@ namespace SS.Matchmaking.Modules
                 if (!playerData.AddWeaponUse(positionPacket.Weapon.Type, positionPacket.Time))
                     return; // This is a duplicate packet. Ignore it.
             }
+
+            //
+            // Weapon use
+            //
 
             switch (positionPacket.Weapon.Type)
             {
@@ -1566,6 +1678,7 @@ namespace SS.Matchmaking.Modules
                     break;
             }
         }
+
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             if (player is null)
@@ -1583,6 +1696,30 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // The player is in a match and is in the correct arena for that match.
+
+            if (oldShip != ShipType.Spec)
+            {
+                // Wasted energy
+                if (memberStats.FullEnergyStartTime is not null)
+                {
+                    Arena arena = player.Arena;
+                    if (arena is not null && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
+                    {
+                        int shipIndex = (int)oldShip;
+                        ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
+                        ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
+
+                        int duration = ServerTick.Now - memberStats.FullEnergyStartTime.Value;
+                        if (duration > 0)
+                        {
+                            AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
+                        }
+                    }
+
+                    memberStats.FullEnergyStartTime = null;
+                    memberStats.FullEnergyUtilityStatus = 0;
+                }
+            }
 
             if (oldShip != ShipType.Spec && newShip == ShipType.Spec)
             {
@@ -1946,7 +2083,7 @@ namespace SS.Matchmaking.Modules
             foreach (TeamStats teamStats in matchStats.Teams.Values)
             {
                 SendHorizonalRule(notifySet);
-                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team.Freq,-4}            Ki/De TK SK AS FR WR WRk Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg TKDmg | AcB AcG | Rat TRat |");
+                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team.Freq,-4}            Ki/De TK SK AS FR WR WRk WEPM Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat |");
                 SendHorizonalRule(notifySet);
 
                 int totalKills = 0;
@@ -1996,6 +2133,7 @@ namespace SS.Matchmaking.Modules
                         }
 
                         // Calculations
+                        int? wastedEnergy = memberStats.PlayTime == TimeSpan.Zero ? null : (int)(memberStats.WastedEnergy / memberStats.PlayTime.TotalMinutes);
                         int damageDealt = memberStats.DamageDealtBombs + memberStats.DamageDealtBullets;
                         int damageTaken = memberStats.DamageTakenBombs + memberStats.DamageTakenBullets + memberStats.DamageTakenTeam + memberStats.DamageSelf;
                         int totalDamage = damageDealt + damageTaken;
@@ -2037,10 +2175,11 @@ namespace SS.Matchmaking.Modules
                             $" {memberStats.ForcedReps,2}" +
                             $" {memberStats.WastedRepels,2}" +
                             $" {memberStats.WastedRockets,3}" +
+                            $" {wastedEnergy,4}" + 
                             $" {memberStats.MineFireCount,2}" +
                             $" {memberStats.LagOuts,2}" +
                             $"{(int)memberStats.PlayTime.TotalMinutes,3}:{memberStats.PlayTime:ss}" +
-                            $" | {damageDealt,6}/{damageTaken,6} {damageEfficiency,4:0%} {memberStats.KillDamage,5} {memberStats.ForcedRepDamage,5} {memberStats.DamageDealtTeam,5} {memberStats.TeamKillDamage,5}" +
+                            $" | {damageDealt,6}/{damageTaken,6} {damageEfficiency,4:0%} {memberStats.KillDamage,5} {memberStats.ForcedRepDamage,5} {memberStats.DamageDealtTeam,5}" +
                             $" | {bombAccuracy,3:N0} {gunAccuracy,3:N0}" +
                             $" |{ratingChange,4:+#;-#;0} {totalRating,4} |");
                     }
@@ -2063,10 +2202,11 @@ namespace SS.Matchmaking.Modules
                     $" {totalForcedReps,2}" +
                     $" {totalWastedRepels,2}" +
                     $" {totalWastedRockets,3}" +
+                    $"     " +
                     $" {totalMineFireCount,2}" +
                     $" {totalLagOuts,2}" +
                     $"      " +
-                    $" | {totalDamageDealt,6}/{totalDamageTaken,6} {totalDamageEfficiency,4:0%}                        " +
+                    $" | {totalDamageDealt,6}/{totalDamageTaken,6} {totalDamageEfficiency,4:0%}                  " +
                     $" | {totalBombAccuracy,3:N0} {totalGunAccuracy,3:N0}" +
                     $" |{(aveRatingChange / teamStats.Slots.Count),4:+#;-#;0} {(aveTotalRating / teamStats.Slots.Count),4} |");
             }
@@ -2076,7 +2216,7 @@ namespace SS.Matchmaking.Modules
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
-                _chat.SendSetMessage(notifySet, $"+-----------------------------------------------------------+--------------------------------------------+---------+----------+");
+                _chat.SendSetMessage(notifySet, $"+----------------------------------------------------------------+--------------------------------------+---------+----------+");
             }
         }
 
@@ -2112,6 +2252,66 @@ namespace SS.Matchmaking.Modules
             }
 
             matchStats.Reset();
+        }
+
+        private short GetClientSetting(Player player, ClientSettingIdentifier clientSettingIdentifier, short defaultValue)
+        {
+            if (player is null)
+                throw new ArgumentNullException(nameof(player));
+
+            if (_clientSettings.TryGetSettingOverride(player, clientSettingIdentifier, out int maximumRechargeInt))
+                return (short)maximumRechargeInt;
+
+            Arena arena = player.Arena;
+            if(arena is not null && _clientSettings.TryGetSettingOverride(arena, clientSettingIdentifier, out maximumRechargeInt))
+                return (short)maximumRechargeInt;
+
+            return defaultValue;
+        }
+
+        private void AddWastedEnergy(Player player, MemberStats memberStats, ShipSettings arenaShipSettings, ShipClientSettingIdentifiers shipClientSettingIds, int duration)
+        {
+            if (player is null)
+                return;
+
+            if (memberStats is null)
+                return;
+
+            if (duration <= 0)
+                return;
+
+            short utilityDrainRate = 0;
+
+            // stealth
+            if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.Stealth) == PlayerPositionStatus.Stealth)
+            {
+                short stealthEnergy = GetClientSetting(player, shipClientSettingIds.StealthEnergyId, arenaShipSettings.StealthEnergy);
+                utilityDrainRate += stealthEnergy;
+            }
+
+            // cloak
+            if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.Cloak) == PlayerPositionStatus.Cloak)
+            {
+                short cloakEnergy = GetClientSetting(player, shipClientSettingIds.CloakEnergyId, arenaShipSettings.CloakEnergy);
+                utilityDrainRate += cloakEnergy;
+            }
+
+            // x-radar
+            if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.XRadar) == PlayerPositionStatus.XRadar)
+            {
+                short xRadarEnergy = GetClientSetting(player, shipClientSettingIds.XRadarEnergyId, arenaShipSettings.XRadarEnergy);
+                utilityDrainRate += xRadarEnergy;
+            }
+
+            // anti-warp
+            if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.Antiwarp) == PlayerPositionStatus.Antiwarp)
+            {
+                short antiWarpEnergy = GetClientSetting(player, shipClientSettingIds.AntiWarpEnergyId, arenaShipSettings.AntiWarpEnergy);
+                utilityDrainRate += antiWarpEnergy;
+            }
+
+            short maximumRecharge = GetClientSetting(player, shipClientSettingIds.MaximumRechargeId, arenaShipSettings.MaximumRecharge);
+            memberStats.WastedEnergy += (int)((maximumRecharge - utilityDrainRate) / 1000f * duration);
         }
 
         #region Helper types
@@ -2559,6 +2759,31 @@ namespace SS.Matchmaking.Modules
 
             #endregion
 
+            #region Wasted Energy
+
+            /// <summary>
+            /// Time (ticks) of the latest position packet.
+            /// </summary>
+            public ServerTick LastPositionTime;
+
+            /// <summary>
+            /// Time (ticks) when the player hit full energy.
+            /// </summary>
+            public ServerTick? FullEnergyStartTime;
+
+            /// <summary>
+            /// Whether the player had stealth, cloak, xradar, or antiwarp on at <see cref="FullEnergyStartTime"/>.
+            /// This is used to calculate how much recharge is wasted (maximum recharge rate - cost of having the utilities activated).
+            /// </summary>
+            public PlayerPositionStatus FullEnergyUtilityStatus;
+
+            /// <summary>
+            /// The amount of energy that would have recharged, but the player was already at full energy.
+            /// </summary>
+            public int WastedEnergy;
+
+            #endregion
+
             #region Wasted items (died without using)
 
             public short WastedRepels;
@@ -2700,6 +2925,12 @@ namespace SS.Matchmaking.Modules
                 GunHitCount = 0;
                 BombHitCount = 0;
                 MineHitCount = 0;
+
+                // wasted energy
+                LastPositionTime = 0;
+                FullEnergyStartTime = null;
+                FullEnergyUtilityStatus = 0;
+                WastedEnergy = 0;
 
                 // items
                 WastedRepels = 0;
@@ -2907,9 +3138,29 @@ namespace SS.Matchmaking.Modules
             public required ClientSettingIdentifier MaximumEnergyId;
 
             /// <summary>
-            /// All:EmpBomb
+            /// All:EmpBomb - Whether the ship fires EMP bombs (0 = no, 1 = yes).
             /// </summary>
             public required ClientSettingIdentifier EmpBombId;
+
+            /// <summary>
+            /// All:CloakEnergy - Amount of energy required to have 'Cloak' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required ClientSettingIdentifier CloakEnergyId;
+
+            /// <summary>
+            /// All:StealthEnergy - Amount of energy required to have 'Stealth' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required ClientSettingIdentifier StealthEnergyId;
+
+            /// <summary>
+            /// All:XRadarEnergy - Amount of energy required to have 'X-Radar' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required ClientSettingIdentifier XRadarEnergyId;
+
+            /// <summary>
+            /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required ClientSettingIdentifier AntiWarpEnergyId;
         }
 
         private class ArenaSettings
@@ -2953,9 +3204,29 @@ namespace SS.Matchmaking.Modules
             public required short MaximumEnergy;
 
             /// <summary>
-            /// All:EmpBomb
+            /// All:EmpBomb - Whether the ship fires EMP bombs (0 = no, 1 = yes).
             /// </summary>
             public required bool HasEmpBomb;
+
+            /// <summary>
+            /// All:CloakEnergy - Amount of energy required to have 'Cloak' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required short CloakEnergy;
+
+            /// <summary>
+            /// All:StealthEnergy - Amount of energy required to have 'Stealth' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required short StealthEnergy;
+
+            /// <summary>
+            /// All:XRadarEnergy - Amount of energy required to have 'X-Radar' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required short XRadarEnergy;
+
+            /// <summary>
+            /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousanths per hundredth of a second).
+            /// </summary>
+            public required short AntiWarpEnergy;
         }
 
         #endregion
