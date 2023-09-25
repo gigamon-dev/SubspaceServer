@@ -49,6 +49,7 @@ namespace SS.Matchmaking.Modules
         #endregion
 
         private const int DefaultRating = 500;
+        private const int MinimumRating = 100;
 
         private IArenaManager _arenaManager;
         private IChat _chat;
@@ -250,33 +251,83 @@ namespace SS.Matchmaking.Modules
 
         #region ITeamVersusStatsBehavior
 
-        Task<bool> ITeamVersusStatsBehavior.BalanceTeamsAsync(IMatchConfiguration matchConfiguration, IReadOnlyList<TeamLineup> teamList)
+        async Task<bool> ITeamVersusStatsBehavior.BalanceTeamsAsync(IMatchConfiguration matchConfiguration, IReadOnlyList<TeamLineup> teamList)
         {
-            // TODO: 
+            if (matchConfiguration is null)
+                return false;
+
+            if (teamList.Count < 2)
+                return false;
 
             // Get ratings of each player.
-            //List<(string PlayerName, int Rating)> playerRatingList = new();
-            //foreach (TeamLineup teamLineup in teamList)
-            //{
-            //    foreach (string playerName in teamLineup.Players)
-            //    {
-            //        playerRatingList.Add((playerName, DefaultRating));
-            //    }
-            //}
+            Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase); // TODO: pool
 
-            //await GetPlayerRatings(playerRatingList);
+            foreach (TeamLineup teamLineup in teamList)
+            {
+                foreach (string playerName in teamLineup.Players)
+                {
+                    playerRatingDictionary[playerName] = DefaultRating;
+                }
+            }
 
-            // Sort the list by rating
-            //playerRatingList.Sort()
+            await _gameStatsRepository.GetPlayerRatingsAsync(matchConfiguration.GameTypeId, playerRatingDictionary);
 
-            //foreach (TeamLineup teamLineup in teamList)
-            //{
-            //    teamLineup.Players.Clear();
-            //}
+            // Create a list of player ratings sorted by rating.
+            List<(string PlayerName, int Rating)> playerRatingList = new(); // TODO: pool
+            foreach ((string playerName, int rating) in playerRatingDictionary)
+            {
+                playerRatingList.Add((playerName, rating));
+            }
 
-            // Assign players to teams using snake mode.
+            playerRatingList.Sort(PlayerRatingComparison);
 
-            return Task.FromResult(false);
+            // Clear the existing teams so that we can reassign all the players.
+            foreach (TeamLineup teamLineup in teamList)
+            {
+                teamLineup.Players.Clear();
+            }
+
+            // Assign players to teams snaking back and forth.
+            // This should give a decent distribution of skill (by rating).
+            bool ascending = true;
+            int playerIndex = 0;
+            int teamIndex = 0;
+            while (playerIndex < playerRatingList.Count)
+            {
+                teamList[teamIndex].Players.Add(playerRatingList[playerIndex++].PlayerName);
+
+                if (ascending)
+                {
+                    if (teamIndex == teamList.Count - 1)
+                    {
+                        ascending = false;
+                    }
+                    else
+                    {
+                        teamIndex++;
+                    }
+                }
+                else
+                {
+                    if (teamIndex == 0)
+                    {
+                        ascending = true;
+                    }
+                    else
+                    {
+                        teamIndex--;
+                    }
+                }
+                
+            }
+
+            return true;
+
+
+            static int PlayerRatingComparison((string PlayerName, int Rating) x, (string PlayerName, int Rating) y)
+            {
+                return -x.Rating.CompareTo(y.Rating); // rating desc
+            }
         }
 
         async Task ITeamVersusStatsBehavior.InitializeAsync(IMatchData matchData)
@@ -320,7 +371,7 @@ namespace SS.Matchmaking.Modules
 
             if (_gameStatsRepository is not null)
             {
-                await _gameStatsRepository.GetPlayerRatingsAsync(playerRatingDictionary);
+                await _gameStatsRepository.GetPlayerRatingsAsync(matchData.Configuration.GameTypeId, playerRatingDictionary);
             }
 
             foreach (TeamStats teamStats in matchStats.Teams.Values)
@@ -361,6 +412,8 @@ namespace SS.Matchmaking.Modules
 
                     matchStats.AddAssignSlotEvent(matchStats.StartTimestamp, slot.Team.Freq, slot.SlotIdx, slot.PlayerName);
                 }
+
+                teamStats.RefreshRemainingSlotsAndAverageRating();
             }
 
             return ValueTask.CompletedTask;
@@ -407,6 +460,31 @@ namespace SS.Matchmaking.Modules
             //
             // Update stats that are not damage related.
             //
+
+            // Whether to consider it a "first out" when calculating the killer player's rating.
+            bool isFirstOutKill = false;
+
+            // Whether to consider it a "first out" when calculating the killed player's rating.
+            bool isFirstOutDeath = false;
+
+            if (isKnockout && !matchStats.FirstOutProcessed)
+            {
+                matchStats.FirstOutProcessed = true;
+                isFirstOutKill = true;
+
+                // We need to check if the member was responsible for all of the deaths for the slot
+                // because there's a chance the player subbed into a slot that didn't have all lives remaining.
+                // For example, a player that subbed into a slot on its last life should not be marked with a "first out".
+                // However, a player that subbed in with all lives remaining should get marked as "first out" if they expend all the lives.
+                if (killedMemberStats.Deaths == matchData.Configuration.LivesPerPlayer)
+                {
+                    isFirstOutDeath = true;
+                    matchStats.FirstOut = killedMemberStats;
+                    matchStats.FirstOutCritical = 
+                        ((DateTime.UtcNow - matchStats.StartTimestamp).TotalMinutes < 10d) // knocked out before the 10 minute mark
+                        && (killedMemberStats.Kills < 2); // TODO: add a setting to control this? < 2 kills is the rule 4v4 uses, but this needs to support other modes (can't assume 3 lives per player, can't assume 2 teams only, etc..)
+                }
+            }
 
             // Update killer stats.
             if (isTeamKill)
@@ -520,6 +598,78 @@ namespace SS.Matchmaking.Modules
 
                 // Sort the list by: damage desc, name asc
                 damageList.Sort(PlayerDamageTupleComparison);
+
+                //
+                // Rating
+                //
+
+                float killPoints =
+                    isTeamKill
+                        ? -2 // team kill
+                        : isFirstOutKill
+                            ? 10 // first out
+                            : isKnockout && (killedMemberStats.TeamStats.RemainingSlots >= killerMemberStats.TeamStats.RemainingSlots)
+                                ? 7 // knockout
+                                : 5; // normal
+
+                float assistPoints = 
+                    isKnockout
+                        ? 1.5f // knockout
+                        : 1.0f; // normal
+
+                float deathPoints =
+                    isFirstOutDeath
+                        ? matchStats.FirstOutCritical
+                            ? -30 // First Out & Critical
+                            : -20 // First Out
+                        : isKnockout && (killedMemberStats.TeamStats.RemainingSlots >= killerMemberStats.TeamStats.RemainingSlots)
+                            ? -10 // KO
+                            : -4; // normal
+
+                Dictionary<string, float> ratingChanges = new(); // TODO: pool
+
+                // TODO: review this, differs than current 4v4, needs to work for any # of players and any # of teams
+                float teammateEnemiesFactor = (float)Math.Sqrt(killedMemberStats.TeamStats.RemainingSlots / Math.Max(1, killerMemberStats.TeamStats.RemainingSlots));
+
+                float killedKillerRatingFactor = 
+                    killerMemberStats.InitialRating == 0
+                        ? 1f
+                        : (float)Math.Sqrt(killedMemberStats.InitialRating / killerMemberStats.InitialRating);
+
+                // Kill (killer)
+                if (isTeamKill)
+                {
+                    // Doesn't use rating killed / rating killer.
+                    killerMemberStats.RatingChange += ratingChanges[killerPlayerName] = teammateEnemiesFactor * killPoints;
+                }
+                else
+                {
+                    killerMemberStats.RatingChange += ratingChanges[killerPlayerName] = killedKillerRatingFactor * teammateEnemiesFactor * killPoints;
+                }
+
+                // Assists (attackers other than the killer, that are not on the killed player's team)
+                foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
+                {
+                    if (killedMemberStats.TeamStats.Team.Freq != attacker.Freq
+                        && !string.Equals(killerPlayerName, attacker.PlayerName, StringComparison.OrdinalIgnoreCase)
+                        && matchStats.Teams.TryGetValue(attacker.Freq, out TeamStats attackerTeamStats))
+                    {
+                        SlotStats attackerSlotStats = attackerTeamStats.Slots[attacker.SlotIdx];
+                        MemberStats attackerMemberStats = attackerSlotStats.Members.Find(mStat => string.Equals(mStat.PlayerName, attacker.PlayerName, StringComparison.OrdinalIgnoreCase));
+                        attackerMemberStats.RatingChange += ratingChanges[attacker.PlayerName] = 
+                            assistPoints * (killedMemberStats.TeamStats.RemainingSlots / Math.Min(1, attackerTeamStats.RemainingSlots));
+                    }
+                }
+
+                // Death & Wasted Reps (killed)
+                float killedKillerTeamRatingRatio = 
+                    killerMemberStats.TeamStats.AverageRating == 0
+                        ? 1f
+                        : (killedMemberStats.InitialRating / killerMemberStats.TeamStats.AverageRating);
+
+                killedMemberStats.RatingChange += ratingChanges[killedPlayerName] = 
+                    (killedKillerRatingFactor * teammateEnemiesFactor * deathPoints)
+                    - (.5f * killedSlot.Repels * killedKillerTeamRatingRatio); 
 
                 //
                 // Send notifications
@@ -641,6 +791,8 @@ namespace SS.Matchmaking.Modules
                     _objectPoolManager.PlayerSetPool.Return(notifySet);
                 }
 
+                killedMemberStats.TeamStats.RefreshRemainingSlotsAndAverageRating();
+
                 matchStats.AddKillEvent(
                     timestamp,
                     killedPlayerName,
@@ -651,7 +803,8 @@ namespace SS.Matchmaking.Modules
                     isTeamKill,
                     xCoord,
                     yCoord,
-                    damageList);
+                    damageList,
+                    ratingChanges);
             }
             finally
             {
@@ -825,6 +978,11 @@ namespace SS.Matchmaking.Modules
                             writer.WriteNumber("bomb_hit_count"u8, memberStats.BombHitCount);
                             writer.WriteNumber("mine_hit_count"u8, memberStats.MineHitCount);
 
+                            if (matchStats.FirstOut == memberStats)
+                            {
+                                writer.WriteNumber("first_out"u8, matchStats.FirstOutCritical ? (short)FirstOut.YesCritical : (short)FirstOut.Yes);
+                            }
+
                             if (memberStats.WastedRepels > 0)
                                 writer.WriteNumber("wasted_repel"u8, memberStats.WastedRepels);
 
@@ -845,6 +1003,8 @@ namespace SS.Matchmaking.Modules
 
                             if (memberStats.WastedBricks > 0)
                                 writer.WriteNumber("wasted_brick"u8, memberStats.WastedBricks);
+
+                            writer.WriteNumber("rating_change"u8, (int)memberStats.RatingChange); // round towards zero (cut any fractional part off)
 
                             writer.WriteStartObject("ship_usage"u8);
                             for (int shipIndex = 0; shipIndex < memberStats.ShipUsage.Length; shipIndex++)
@@ -869,7 +1029,6 @@ namespace SS.Matchmaking.Modules
                             }
                             writer.WriteEndObject(); // ship_usage
 
-                            writer.WriteNumber("rating_change"u8, 0); // TODO: add rating logic
                             writer.WriteEndObject(); // team member object
                         }
 
@@ -1046,7 +1205,7 @@ namespace SS.Matchmaking.Modules
                     [memberStats.PlayerName] = DefaultRating
                 };
 
-                await _gameStatsRepository.GetPlayerRatingsAsync(playerRatingDictionary);
+                await _gameStatsRepository.GetPlayerRatingsAsync(matchStats.MatchData.Configuration.GameTypeId, playerRatingDictionary);
 
                 if (playerRatingDictionary.TryGetValue(memberStats.PlayerName, out int rating))
                     memberStats.InitialRating = rating;
@@ -1364,6 +1523,14 @@ namespace SS.Matchmaking.Modules
                             {
                                 attackerMemberStats.ForcedRepDamage += damage;
                                 attackerMemberStats.ForcedReps++; // TODO: do we want more criteria (a certain amount of damage or an even smaller damage window)?
+
+                                // Rating for forced rep to the attacker.
+                                float ratingRatio = 
+                                    attackerMemberStats.InitialRating == 0
+                                        ? 1f
+                                        : (memberStats.TeamStats.AverageRating / attackerMemberStats.InitialRating);
+
+                                attackerMemberStats.RatingChange += (.5f * ratingRatio);
                             }
                         }
 
@@ -1779,7 +1946,7 @@ namespace SS.Matchmaking.Modules
             foreach (TeamStats teamStats in matchStats.Teams.Values)
             {
                 SendHorizonalRule(notifySet);
-                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team.Freq,-4}            Ki/De TK SK AS FR WR WRk Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg TKDmg | AcB AcG |");
+                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team.Freq,-4}            Ki/De TK SK AS FR WR WRk Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg TKDmg | AcB AcG | Rat TRat |");
                 SendHorizonalRule(notifySet);
 
                 int totalKills = 0;
@@ -1799,6 +1966,8 @@ namespace SS.Matchmaking.Modules
                 uint totalGunHitCount = 0;
                 uint totalMineFireCount = 0;
                 uint totalMineHitCount = 0;
+                int aveRatingChange = 0;
+                int aveTotalRating = 0;
 
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
@@ -1835,6 +2004,8 @@ namespace SS.Matchmaking.Modules
                         uint bombMineHitCount = memberStats.BombHitCount + memberStats.MineHitCount;
                         float? bombAccuracy = bombMineFireCount > 0 ? (float)bombMineHitCount / bombMineFireCount * 100 : null;
                         float? gunAccuracy = memberStats.GunFireCount > 0 ? (float)memberStats.GunHitCount / memberStats.GunFireCount * 100 : null;
+                        int ratingChange = (int)memberStats.RatingChange;
+                        int totalRating = Math.Max(memberStats.InitialRating + ratingChange, MinimumRating);
 
                         totalKills += memberStats.Kills;
                         totalDeaths += memberStats.Deaths;
@@ -1853,6 +2024,8 @@ namespace SS.Matchmaking.Modules
                         totalGunHitCount += memberStats.GunHitCount;
                         totalMineFireCount += memberStats.MineFireCount;
                         totalMineHitCount += memberStats.MineHitCount;
+                        aveRatingChange += ratingChange;
+                        aveTotalRating += totalRating;
 
                         _chat.SendSetMessage(
                             notifySet,
@@ -1868,7 +2041,8 @@ namespace SS.Matchmaking.Modules
                             $" {memberStats.LagOuts,2}" +
                             $"{(int)memberStats.PlayTime.TotalMinutes,3}:{memberStats.PlayTime:ss}" +
                             $" | {damageDealt,6}/{damageTaken,6} {damageEfficiency,4:0%} {memberStats.KillDamage,5} {memberStats.ForcedRepDamage,5} {memberStats.DamageDealtTeam,5} {memberStats.TeamKillDamage,5}" +
-                            $" | {bombAccuracy,3:N0} {gunAccuracy,3:N0} |");
+                            $" | {bombAccuracy,3:N0} {gunAccuracy,3:N0}" +
+                            $" |{ratingChange,4:+#;-#;0} {totalRating,4} |");
                     }
                 }
 
@@ -1893,7 +2067,8 @@ namespace SS.Matchmaking.Modules
                     $" {totalLagOuts,2}" +
                     $"      " +
                     $" | {totalDamageDealt,6}/{totalDamageTaken,6} {totalDamageEfficiency,4:0%}                        " +
-                    $" | {totalBombAccuracy,3:N0} {totalGunAccuracy,3:N0} |");
+                    $" | {totalBombAccuracy,3:N0} {totalGunAccuracy,3:N0}" +
+                    $" |{(aveRatingChange / teamStats.Slots.Count),4:+#;-#;0} {(aveTotalRating / teamStats.Slots.Count),4} |");
             }
 
             SendHorizonalRule(notifySet);
@@ -1901,7 +2076,7 @@ namespace SS.Matchmaking.Modules
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
-                _chat.SendSetMessage(notifySet, $"+-----------------------------------------------------------+--------------------------------------------+---------+");
+                _chat.SendSetMessage(notifySet, $"+-----------------------------------------------------------+--------------------------------------------+---------+----------+");
             }
         }
 
@@ -1958,6 +2133,26 @@ namespace SS.Matchmaking.Modules
             public DateTime? EndTimestamp;
             public long? GameId;
 
+            #region First Out
+
+            /// <summary>
+            /// Whether the first knockout has occured.
+            /// </summary>
+            public bool FirstOutProcessed;
+
+            /// <summary>
+            /// The stats of the player that is marked as "First Out".
+            /// <see langword="null"/> if no player is marked as "First Out".
+            /// </summary>
+            public MemberStats FirstOut;
+
+            /// <summary>
+            /// Whether the <see cref="FirstOut"/> is considered "critical" based on certain criteria.
+            /// </summary>
+            public bool FirstOutCritical;
+
+            #endregion
+
             private MemoryStream _eventsJsonStream;
             private Utf8JsonWriter _eventsJsonWriter;
 
@@ -1980,6 +2175,9 @@ namespace SS.Matchmaking.Modules
                 StartTimestamp = DateTime.MinValue;
                 EndTimestamp = null;
                 GameId = null;
+                FirstOutProcessed = false;
+                FirstOut = null;
+                FirstOutCritical = false;
 
                 if (_eventsJsonStream is not null)
                 {
@@ -2050,7 +2248,8 @@ namespace SS.Matchmaking.Modules
                 bool isTeamKill,
                 short xCoord,
                 short yCoord,
-                List<(string PlayerName, int Damage)> damageList)
+                List<(string PlayerName, int Damage)> damageList,
+                Dictionary<string, float> ratingChangeDictionary)
             {
                 if (_eventsJsonWriter is null)
                     return;
@@ -2091,8 +2290,7 @@ namespace SS.Matchmaking.Modules
                 _eventsJsonWriter.WriteEndArray();
 
                 WriteDamageStats(damageList);
-
-                // TODO: WriteRatingChanges(ratingList);
+                WriteRatingChanges(ratingChangeDictionary);
 
                 _eventsJsonWriter.WriteEndObject();
             }
@@ -2106,20 +2304,20 @@ namespace SS.Matchmaking.Modules
                     {
                         _eventsJsonWriter.WriteNumber(playerName, damage);
                     }
-                    _eventsJsonWriter.WriteEndObject(); // damage_stats
+                    _eventsJsonWriter.WriteEndObject(); // damage_stats object
                 }
             }
 
-            private void WriteRatingChanges(List<(string PlayerName, int Rating)> ratingList)
+            private void WriteRatingChanges(Dictionary<string, float> ratingChangeDictionary)
             {
-                if (ratingList is not null)
+                if (ratingChangeDictionary is not null)
                 {
                     _eventsJsonWriter.WriteStartObject("rating_changes");
-                    foreach ((string playerName, int rating) in ratingList)
+                    foreach ((string playerName, float rating) in ratingChangeDictionary)
                     {
                         _eventsJsonWriter.WriteNumber(playerName, rating);
                     }
-                    _eventsJsonWriter.WriteEndObject(); // damage_stats
+                    _eventsJsonWriter.WriteEndObject(); // rating_changes object
                 }
             }
 
@@ -2155,10 +2353,43 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public readonly List<SlotStats> Slots = new();
 
+            public int RemainingSlots;
+            public int AverageRating;
+
             public void Initialize(MatchStats matchStats, ITeam team)
             {
                 MatchStats = matchStats ?? throw new ArgumentNullException(nameof(matchStats));
                 Team = team ?? throw new ArgumentNullException(nameof(team));
+
+                AverageRating = DefaultRating;
+            }
+
+            public void RefreshRemainingSlotsAndAverageRating()
+            {
+                RemainingSlots = 0;
+                int sum = 0;
+                int count = 0;
+
+                foreach (SlotStats slotStats in Slots)
+                {
+                    IPlayerSlot slot = slotStats.Slot;
+                    if (slot.Lives > 0)
+                    {
+                        RemainingSlots++;
+
+                        MemberStats currentMemberStats = slotStats.Current;
+                        if (currentMemberStats is not null)
+                        {
+                            sum += currentMemberStats.InitialRating;
+                            count++;
+                        }
+                    }
+                }
+
+                if (count > 0)
+                {
+                    AverageRating = sum / count;
+                }
             }
 
             public void Reset()
@@ -2166,6 +2397,8 @@ namespace SS.Matchmaking.Modules
                 MatchStats = null;
                 Team = null;
                 Slots.Clear();
+                RemainingSlots = 0;
+                AverageRating = 0;
             }
         }
 
@@ -2370,7 +2603,7 @@ namespace SS.Matchmaking.Modules
             /// The change in the player's rating due to the current match.
             /// This is an indicator of the player's individual performance in a match.
             /// </summary>
-            public int RatingChange;
+            public float RatingChange;
 
             #endregion
 
@@ -2492,6 +2725,26 @@ namespace SS.Matchmaking.Modules
                 InitialRating = DefaultRating;
                 RatingChange = 0;
             }
+        }
+
+        [Flags]
+        private enum FirstOut
+        {
+            /// <summary>
+            /// The player was not the first player in the match to get knocked out first.
+            /// </summary>
+            No = 0x00,
+
+            /// <summary>
+            /// The player was the first player in the match to get knocked out.
+            /// </summary>
+            Yes = 0x01,
+
+            /// <summary>
+            /// The player was the first player in the match to get knocked out and met the criteria for being critical.
+            /// The criteria for critical is: knocked out under 10 minutes and had less than 2 kills.
+            /// </summary>
+            YesCritical = 0x03,
         }
 
         private class PlayerData : IPooledExtraData

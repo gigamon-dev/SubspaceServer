@@ -2420,14 +2420,6 @@ namespace SS.Matchmaking.Modules
                     matchData.Status = MatchStatus.InProgress;
                     matchData.Started = DateTime.UtcNow;
 
-                    // Tell the stats module that the match has started.
-                    if (_teamVersusStatsBehavior is not null)
-                    {
-                        await _teamVersusStatsBehavior.MatchStartedAsync(matchData);
-                    }
-
-                    TeamVersusMatchStartedCallback.Fire(arena, matchData);
-
                     // Reset ships and move players to their starting locations.
                     foreach (Team team in matchData.Teams)
                     {
@@ -2448,6 +2440,14 @@ namespace SS.Matchmaking.Modules
                             SetShipAndFreq(playerSlot, false, startLocation);
                         }
                     }
+
+                    // Tell the stats module that the match has started.
+                    if (_teamVersusStatsBehavior is not null)
+                    {
+                        await _teamVersusStatsBehavior.MatchStartedAsync(matchData);
+                    }
+
+                    TeamVersusMatchStartedCallback.Fire(arena, matchData);
                 }
             }
         }
@@ -2798,7 +2798,7 @@ namespace SS.Matchmaking.Modules
 
             public int NumTeams { get; init; }
             public int PlayersPerTeam { get; init; }
-            public int LivesPerPlayer;
+            public int LivesPerPlayer { get; init; }
             public TimeSpan? TimeLimit;
             public TimeSpan? OverTimeLimit;
             public TimeSpan WinConditionDelay;

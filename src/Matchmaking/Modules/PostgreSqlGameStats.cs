@@ -83,7 +83,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        public async Task GetPlayerRatingsAsync(Dictionary<string, int> playerRatingDictionary)
+        public async Task GetPlayerRatingsAsync(long gameTypeId, Dictionary<string, int> playerRatingDictionary)
         {
             if (playerRatingDictionary is null)
                 throw new ArgumentNullException(nameof(playerRatingDictionary));
@@ -96,7 +96,7 @@ namespace SS.Matchmaking.Modules
 
             try
             {
-                NpgsqlCommand command = _dataSource.CreateCommand("select * from ss.get_player_rating($1)");
+                NpgsqlCommand command = _dataSource.CreateCommand("select * from ss.get_player_rating($1,$2)");
                 await using (command.ConfigureAwait(false))
                 {
                     // Using ArrayPool<string> is possible, but the array can be larger than needed.
@@ -106,6 +106,8 @@ namespace SS.Matchmaking.Modules
 
                     try
                     {
+                        command.Parameters.AddWithValue(NpgsqlDbType.Bigint, gameTypeId);
+
                         foreach (string playerName in playerRatingDictionary.Keys)
                             playerNameList.Add(playerName);
 

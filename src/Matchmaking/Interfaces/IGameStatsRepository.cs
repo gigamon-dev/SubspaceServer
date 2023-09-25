@@ -21,13 +21,14 @@ namespace SS.Matchmaking.Interfaces
         /// <summary>
         /// Gets the current rank of player(s).
         /// </summary>
+        /// <param name="gameTypeId">The game type to get ranks of players for.</param>
         /// <param name="playerRatingDictionary">
         /// A dictionary of the player(s) to get the rank of where the key is the player name and the value is the rating.
         /// The dictionary's comparer must be <see cref="StringComparer.OrdinalIgnoreCase"/>.
         /// The rating will be updated for the player(s) that data could be retrieved for.
         /// </param>
         /// <returns></returns>
-        Task GetPlayerRatingsAsync(Dictionary<string, int> playerRatingDictionary);
+        Task GetPlayerRatingsAsync(long gameTypeId, Dictionary<string, int> playerRatingDictionary);
 
         // TODO: Add MMR functionality
         //Task GetPlayerMMRsAsync(Dictionary<string, int> playerRatingDictionary);

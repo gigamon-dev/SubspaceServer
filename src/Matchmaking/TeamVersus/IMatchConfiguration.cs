@@ -16,5 +16,10 @@
         /// The required # of players per team to begin a match.
         /// </summary>
         int PlayersPerTeam { get; }
+
+        /// <summary>
+        /// The # of lives each player begins with.
+        /// </summary>
+        int LivesPerPlayer { get; }
     }
 }
