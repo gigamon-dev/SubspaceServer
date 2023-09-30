@@ -51,7 +51,7 @@ namespace SS.Matchmaking.Interfaces
         /// <summary>
         /// Called when a player in a match is killed.
         /// </summary>
-        /// <param name="timestampTicks">Tick count of when the kill was made.</param>
+        /// <param name="timestampTick">Tick count of when the kill was made.</param>
         /// <param name="timestamp">Timestamp of when the kill was made</param>
         /// <param name="matchData">The match data the kill is for.</param>
         /// <param name="killed">The player that was killed.</param>
@@ -61,7 +61,7 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="isKnockout">Whether the kill was a knock out (killed player has no more lives left).</param>
         /// <returns><see langword="true"/> if chat notifications were sent. Otherwise, <see langword="false"/>.</returns>
         ValueTask<bool> PlayerKilledAsync(
-            ServerTick timestampTicks,
+            ServerTick timestampTick,
             DateTime timestamp,
             IMatchData matchData,
             Player killed,

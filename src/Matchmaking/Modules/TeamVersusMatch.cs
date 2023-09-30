@@ -550,7 +550,7 @@ namespace SS.Matchmaking.Modules
             if (matchData.Status != MatchStatus.InProgress)
                 return;
 
-            ServerTick nowTicks = ServerTick.Now;
+            ServerTick nowTick = ServerTick.Now;
             DateTime now = DateTime.UtcNow;
 
             killedPlayerSlot.Lives--;
@@ -593,7 +593,7 @@ namespace SS.Matchmaking.Modules
             if (_teamVersusStatsBehavior is not null)
             {
                 isNotificationHandled = await _teamVersusStatsBehavior.PlayerKilledAsync(
-                    nowTicks,
+                    nowTick,
                     now,
                     matchData,
                     killed,
@@ -3133,7 +3133,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private struct ShipSettings
+        private readonly struct ShipSettings
         {
             public byte InitialBurst { get; init; }
             public byte InitialRepel { get; init; }

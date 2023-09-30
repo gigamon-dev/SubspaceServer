@@ -76,7 +76,7 @@ namespace SS.Matchmaking.Modules
         private ClientSettingIdentifier _bombDamageLevelClientSettingId;
         private ClientSettingIdentifier _eBombShutdownTimeClientSettingId;
         private ClientSettingIdentifier _eBombDamagePercentClientSettingId;
-        private ShipClientSettingIdentifiers[] _shipClientSettingIds = new ShipClientSettingIdentifiers[8];
+        private readonly ShipClientSettingIdentifiers[] _shipClientSettingIds = new ShipClientSettingIdentifiers[8];
 
         #endregion
 
@@ -444,7 +444,7 @@ namespace SS.Matchmaking.Modules
         }
 
         async ValueTask<bool> ITeamVersusStatsBehavior.PlayerKilledAsync(
-            ServerTick ticks,
+            ServerTick timestampTick,
             DateTime timestamp,
             IMatchData matchData,
             Player killed,
@@ -535,7 +535,8 @@ namespace SS.Matchmaking.Modules
             killedMemberStats.WastedPortals += killedSlot.Portals;
             killedMemberStats.WastedBricks += killedSlot.Bricks;
 
-            AddAndResetWastedEnergy(killed, killedMemberStats);
+            // There's a chance that the player was at full energy prior to getting killed (e.g. portal onto a stack of mines/bombs).
+            AddAndResetWastedEnergy(killed, killedMemberStats, killed.Ship, timestampTick);
 
             //
             // Gather some info in local variables prior to the delay.
@@ -580,7 +581,7 @@ namespace SS.Matchmaking.Modules
             try
             {
                 // Calculate damage stats.
-                CalculateDamageDealt(ticks, killedMemberStats, killedShip, damageDictionary);
+                CalculateDamageDealt(timestampTick, killedMemberStats, killedShip, damageDictionary);
                 killedMemberStats.ClearRecentDamage();
 
                 // Update attacker stats.
@@ -722,15 +723,15 @@ namespace SS.Matchmaking.Modules
 
                         // Kill notification
                         int assistCount = 0;
-                        foreach (var tuple in damageList)
+                        foreach ((string playerName, int damage) in damageList)
                         {
-                            if (string.Equals(killerPlayerName, tuple.PlayerName, StringComparison.OrdinalIgnoreCase))
+                            if (string.Equals(killerPlayerName, playerName, StringComparison.OrdinalIgnoreCase))
                                 continue;
 
                             if (sb.Length > 0)
                                 sb.Append(", ");
 
-                            sb.Append($"{tuple.PlayerName} ({tuple.Damage})");
+                            sb.Append($"{playerName} ({damage})");
                             assistCount++;
                         }
 
@@ -863,20 +864,37 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             matchStats.EndTimestamp = DateTime.UtcNow;
+            ServerTick endTick = ServerTick.Now;
 
-            // Refresh play times and ship usage data.
+            Arena arena = matchData.Arena; // null if the arena doesn't exist
+
+            // Refresh stats that are affected by the match ending: wasted energy, play time, and ship usage.
             foreach (TeamStats teamStats in matchStats.Teams.Values)
             {
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
                     foreach (MemberStats memberStats in slotStats.Members)
                     {
+                        // Wasted energy
+                        if (memberStats.IsCurrent && arena is not null)
+                        {
+                            Player player = _playerData.FindPlayer(memberStats.PlayerName);
+                            if (player is not null 
+                                && player.Ship != ShipType.Spec
+                                && player.Arena == arena)
+                            {
+                                AddAndResetWastedEnergy(player, memberStats, player.Ship, endTick);
+                            }
+                        }
+
+                        // Play time
                         if (memberStats.StartTime is not null)
                         {
                             memberStats.PlayTime += matchStats.EndTimestamp.Value - memberStats.StartTime.Value;
                             memberStats.StartTime = null;
                         }
 
+                        // Ship usage
                         if (memberStats.CurrentShip is not null && memberStats.CurrentShipStartTime is not null)
                         {
                             memberStats.ShipUsage[(int)memberStats.CurrentShip] += (matchStats.EndTimestamp.Value - memberStats.CurrentShipStartTime.Value);
@@ -1199,7 +1217,7 @@ namespace SS.Matchmaking.Modules
                     SetLagOut(memberStats);
 
                     // Wasted energy
-                    AddAndResetWastedEnergy(player, memberStats);
+                    AddAndResetWastedEnergy(player, memberStats, player.Ship, ServerTick.Now);
                 }
             }
         }
@@ -1691,7 +1709,7 @@ namespace SS.Matchmaking.Modules
             if (oldShip != ShipType.Spec)
             {
                 // Wasted energy
-                AddAndResetWastedEnergy(player, memberStats);
+                AddAndResetWastedEnergy(player, memberStats, oldShip, ServerTick.Now);
             }
 
             if (oldShip != ShipType.Spec && newShip == ShipType.Spec)
@@ -1762,7 +1780,7 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private void AddOrUpdatePlayerInfo(MatchStats matchStats, string playerName, Player player)
+        private static void AddOrUpdatePlayerInfo(MatchStats matchStats, string playerName, Player player)
         {
             if (matchStats is null || string.IsNullOrEmpty(playerName))
                 return;
@@ -1827,7 +1845,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void CalculateDamageDealt(ServerTick ticks, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary)
+        private void CalculateDamageDealt(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary)
         {
             if (memberStats is null || damageDictionary is null)
                 return;
@@ -1850,7 +1868,7 @@ namespace SS.Matchmaking.Modules
 
             // How many ticks it takes for the player's ship to reach full energy from empty (maximum energy and recharge rate assumed).
             uint fullEnergyTicks = (uint)float.Ceiling(maximumEnergy * 1000f / rechargeRate);
-            ServerTick cutoff = ticks - fullEnergyTicks;
+            ServerTick cutoff = asOfTick - fullEnergyTicks;
 
             // TODO: Maybe add a parameter for an additional logic when calculating damage for a kill, to add a check if the last damage record was for the killing blow.
             // If not and there is at least one damage record, use the latest record to figure out how much damage the killer would have needed to inflict,
@@ -1870,10 +1888,7 @@ namespace SS.Matchmaking.Modules
                 while (node is not null)
                 {
                     LinkedListNode<DamageInfo> previous = node.Previous;
-
                     ref DamageInfo damageInfo = ref node.ValueRef;
-
-                    uint ticksAgo = (uint)(ticks - damageInfo.Timestamp);
                     int damage = 0;
 
                     if (damageInfo.Timestamp < cutoff)
@@ -1935,7 +1950,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void SetLagOut(MemberStats playerStats)
+        private static void SetLagOut(MemberStats playerStats)
         {
             if (playerStats is null)
                 return;
@@ -2193,7 +2208,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void ResetMatchStats(MatchStats matchStats)
+        private static void ResetMatchStats(MatchStats matchStats)
         {
             // Clear the existing object.
             foreach (TeamStats teamStats in matchStats.Teams.Values)
@@ -2242,7 +2257,19 @@ namespace SS.Matchmaking.Modules
             return defaultValue;
         }
 
-        private void AddAndResetWastedEnergy(Player player, MemberStats memberStats)
+        /// <summary>
+        /// Processes a player's "wasted energy" stat.
+        /// This adds to the player's wasted energy stat and resets their "full energy" state.
+        /// </summary>
+        /// <param name="player">The player to process wasted energy for.</param>
+        /// <param name="memberStats">The player's stats.</param>
+        /// <param name="ship">
+        /// The ship that the player was using, used for calculating energy values.
+        /// This is passed in since since <see cref="Player.Ship"/> is the player's current ship, 
+        /// which is not going to be the correct ship when processing due to a ship change.
+        /// </param>
+        /// <param name="asOfTick">Timestamp (ticks) that the wasted energy should be calculated as of.</param>
+        private void AddAndResetWastedEnergy(Player player, MemberStats memberStats, ShipType ship, ServerTick asOfTick)
         {
             if (player is null)
                 return;
@@ -2252,20 +2279,24 @@ namespace SS.Matchmaking.Modules
 
             if (memberStats.FullEnergyStartTime is not null)
             {
+                // Add
                 Arena arena = player.Arena;
-                if (arena is not null && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
+                if (ship != ShipType.Spec
+                    && arena is not null 
+                    && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
                 {
-                    int shipIndex = (int)player.Ship;
+                    int shipIndex = (int)ship;
                     ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
                     ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
 
-                    int duration = ServerTick.Now - memberStats.FullEnergyStartTime.Value;
+                    int duration = asOfTick - memberStats.FullEnergyStartTime.Value;
                     if (duration > 0)
                     {
                         AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
                     }
                 }
 
+                // Reset
                 memberStats.FullEnergyStartTime = null;
                 memberStats.FullEnergyUtilityStatus = 0;
             }
@@ -2641,6 +2672,9 @@ namespace SS.Matchmaking.Modules
             public TeamStats TeamStats => SlotStats?.TeamStats;
             public SlotStats SlotStats { get; private set; }
 
+            /// <summary>
+            /// Whether the stats are for the current slot holder.
+            /// </summary>
             public bool IsCurrent => SlotStats?.Current == this;
 
             public string PlayerName { get; private set; }
