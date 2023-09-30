@@ -518,6 +518,11 @@ namespace SS.Matchmaking.Modules
             else
             {
                 killerMemberStats.Kills++;
+
+                if (isKnockout)
+                {
+                    killerMemberStats.Knockouts++;
+                }
             }
 
             // Update killed stats.
@@ -529,6 +534,8 @@ namespace SS.Matchmaking.Modules
             killedMemberStats.WastedDecoys += killedSlot.Decoys;
             killedMemberStats.WastedPortals += killedSlot.Portals;
             killedMemberStats.WastedBricks += killedSlot.Bricks;
+
+            AddAndResetWastedEnergy(killed, killedMemberStats);
 
             //
             // Gather some info in local variables prior to the delay.
@@ -982,6 +989,7 @@ namespace SS.Matchmaking.Modules
                             writer.WriteNumber("kills"u8, memberStats.Kills);
                             writer.WriteNumber("deaths"u8, memberStats.Deaths);
                             writer.WriteNumber("team_kills"u8, memberStats.TeamKills);
+                            writer.WriteNumber("knockouts"u8, memberStats.Knockouts);
                             writer.WriteNumber("solo_kills"u8, memberStats.SoloKills);
                             writer.WriteNumber("assists"u8, memberStats.Assists);
                             writer.WriteNumber("forced_reps"u8, memberStats.ForcedReps);
@@ -1191,24 +1199,7 @@ namespace SS.Matchmaking.Modules
                     SetLagOut(memberStats);
 
                     // Wasted energy
-                    if (memberStats.FullEnergyStartTime is not null)
-                    {
-                        if (_arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
-                        {
-                            int shipIndex = (int)player.Ship;
-                            ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
-                            ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
-
-                            int duration = ServerTick.Now - memberStats.FullEnergyStartTime.Value;
-                            if (duration > 0)
-                            {
-                                AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
-                            }
-                        }
-
-                        memberStats.FullEnergyStartTime = null;
-                        memberStats.FullEnergyUtilityStatus = 0;
-                    }
+                    AddAndResetWastedEnergy(player, memberStats);
                 }
             }
         }
@@ -1700,25 +1691,7 @@ namespace SS.Matchmaking.Modules
             if (oldShip != ShipType.Spec)
             {
                 // Wasted energy
-                if (memberStats.FullEnergyStartTime is not null)
-                {
-                    Arena arena = player.Arena;
-                    if (arena is not null && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
-                    {
-                        int shipIndex = (int)oldShip;
-                        ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
-                        ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
-
-                        int duration = ServerTick.Now - memberStats.FullEnergyStartTime.Value;
-                        if (duration > 0)
-                        {
-                            AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
-                        }
-                    }
-
-                    memberStats.FullEnergyStartTime = null;
-                    memberStats.FullEnergyUtilityStatus = 0;
-                }
+                AddAndResetWastedEnergy(player, memberStats);
             }
 
             if (oldShip != ShipType.Spec && newShip == ShipType.Spec)
@@ -2269,6 +2242,35 @@ namespace SS.Matchmaking.Modules
             return defaultValue;
         }
 
+        private void AddAndResetWastedEnergy(Player player, MemberStats memberStats)
+        {
+            if (player is null)
+                return;
+
+            if (memberStats is null)
+                return;
+
+            if (memberStats.FullEnergyStartTime is not null)
+            {
+                Arena arena = player.Arena;
+                if (arena is not null && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings arenaSettings))
+                {
+                    int shipIndex = (int)player.Ship;
+                    ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
+                    ref ShipClientSettingIdentifiers shipClientSettingIds = ref _shipClientSettingIds[shipIndex];
+
+                    int duration = ServerTick.Now - memberStats.FullEnergyStartTime.Value;
+                    if (duration > 0)
+                    {
+                        AddWastedEnergy(player, memberStats, arenaShipSettings, shipClientSettingIds, duration);
+                    }
+                }
+
+                memberStats.FullEnergyStartTime = null;
+                memberStats.FullEnergyUtilityStatus = 0;
+            }
+        }
+
         private void AddWastedEnergy(Player player, MemberStats memberStats, ShipSettings arenaShipSettings, ShipClientSettingIdentifiers shipClientSettingIds, int duration)
         {
             if (player is null)
@@ -2796,15 +2798,49 @@ namespace SS.Matchmaking.Modules
 
             #endregion
 
+            /// <summary>
+            /// Kills of enemy players.
+            /// </summary>
             public short Kills;
+
+            /// <summary>
+            /// Knockout kills of enemy players.
+            /// </summary>
+            public short Knockouts;
+
+            /// <summary>
+            /// Kills of enemy players made without the assistance others.
+            /// </summary>
             public short SoloKills;
+
+            /// <summary>
+            /// Kills of teammates.
+            /// </summary>
             public short TeamKills;
+
+            /// <summary>
+            /// Deaths.
+            /// </summary>
             public short Deaths;
+
+            /// <summary>
+            /// Kills assisted.
+            /// </summary>
             public short Assists;
+
+            /// <summary>
+            /// Repels forced out of enemy players.
+            /// </summary>
             public short ForcedReps;
 
+            /// <summary>
+            /// Duration of play.
+            /// </summary>
             public TimeSpan PlayTime;
 
+            /// <summary>
+            /// # of times lagged out (changed to spec or disconnected).
+            /// </summary>
             public short LagOuts;
 
             /// <summary>
