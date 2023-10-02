@@ -296,7 +296,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_MatchmakingQueueChanged(IMatchmakingQueue queue, QueueAction action, QueueItemType itemType)
+        private void Callback_MatchmakingQueueChanged(IMatchmakingQueue queue, QueueAction action)
         {
             if (action != QueueAction.Add
                 || !_queueDictionary.TryGetValue(queue.Name, out OneVersusOneQueue found)
