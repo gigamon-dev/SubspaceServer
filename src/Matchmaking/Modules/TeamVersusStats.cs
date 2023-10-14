@@ -34,6 +34,7 @@ namespace SS.Matchmaking.Modules
         private static readonly ObjectPool<TickRangeCalculator> s_tickRangeCalculatorPool;
         private static readonly ObjectPool<Dictionary<PlayerTeamSlot, int>> s_damageDictionaryPool;
         private static readonly ObjectPool<List<(string PlayerName, int Damage)>> s_damageListPool;
+        private static readonly ObjectPool<Dictionary<string, float>> s_ratingChangeDictionaryPool;
         //private readonly ObjectPool<MatchStats> _matchStatsObjectPool = new NonTransientObjectPool<MatchStats>(new MatchStatsPooledObjectPolicy());
 
         static TeamVersusStats()
@@ -44,7 +45,9 @@ namespace SS.Matchmaking.Modules
             s_tickRangeCalculatorPool = provider.Create(new TickRangeCalcualtorPooledObjectPolicy());
             s_damageDictionaryPool = provider.Create(new DamageDictionaryPooledObjectPolicy());
             s_damageListPool = provider.Create(new DamageListPooledObjectPolicy());
-        }
+            s_ratingChangeDictionaryPool = provider.Create(new RatingChangeDictionaryPooledObjectPolicy());
+
+		}
 
         #endregion
 
@@ -433,6 +436,17 @@ namespace SS.Matchmaking.Modules
                     {
                         SetStartedPlaying(player, memberStats);
                     }
+                    else
+                    {
+                        // This is just in case we decide to allow starting a match where a player has left.
+                        // E.g., in a team battle royale style game.
+						AddOrUpdatePlayerInfo(memberStats.MatchStats, player.Name, null);
+					}
+
+					// Players were changed into their initial ships prior to this method being called.
+					// However, the ShipChangedCallback will be fired asynchronously.
+					// This will more accurately track the ship usage.
+					ProcessShipUsage(memberStats, matchStats.StartTimestamp, player.Ship);
 
                     matchStats.AddAssignSlotEvent(matchStats.StartTimestamp, slot.Team.Freq, slot.SlotIdx, slot.PlayerName);
                 }
@@ -536,7 +550,7 @@ namespace SS.Matchmaking.Modules
             killedMemberStats.WastedBricks += killedSlot.Bricks;
 
             // There's a chance that the player was at full energy prior to getting killed (e.g. portal onto a stack of mines/bombs).
-            AddAndResetWastedEnergy(killed, killedMemberStats, killed.Ship, timestampTick);
+            ProcessWastedEnergy(killed, killedMemberStats, killed.Ship, timestampTick);
 
             //
             // Gather some info in local variables prior to the delay.
@@ -577,14 +591,16 @@ namespace SS.Matchmaking.Modules
 
             Dictionary<PlayerTeamSlot, int> damageDictionary = s_damageDictionaryPool.Get();
             List<(string PlayerName, int Damage)> damageList = s_damageListPool.Get();
+            Dictionary<string, float> ratingChangeDictionary = s_ratingChangeDictionaryPool.Get();
 
-            try
+			try
             {
                 // Calculate damage stats.
-                CalculateDamageDealt(timestampTick, killedMemberStats, killedShip, damageDictionary);
+                CalculateDamageSources(timestampTick, killedMemberStats, killedShip, damageDictionary);
                 killedMemberStats.ClearRecentDamage();
 
                 // Update attacker stats.
+                bool hasAssist = false;
                 foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
                 {
                     if (!matchStats.Teams.TryGetValue(attacker.Freq, out TeamStats attackerTeamStats))
@@ -594,24 +610,29 @@ namespace SS.Matchmaking.Modules
                     MemberStats attackerMemberStats = attackerSlotStats.Members.Find(mStat => string.Equals(mStat.PlayerName, attacker.PlayerName, StringComparison.OrdinalIgnoreCase));
                     if (killedSlot.Team.Freq == attacker.Freq)
                     {
-                        attackerMemberStats.TeamKillDamage += damage;
+                        if (!string.Equals(attacker.PlayerName, killedPlayerName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Damage from a teammate.
+                            attackerMemberStats.TeamKillDamage += damage;
+                        }
                     }
                     else
                     {
+                        // Damage from an enemy.
                         attackerMemberStats.KillDamage += damage;
 
-                        if (string.Equals(attackerMemberStats.PlayerName, killerPlayerName, StringComparison.OrdinalIgnoreCase))
+                        if (!string.Equals(attackerMemberStats.PlayerName, killerPlayerName, StringComparison.OrdinalIgnoreCase))
                         {
-                            if (damageDictionary.Count == 1)
-                            {
-                                attackerMemberStats.SoloKills++;
-                            }
-                        }
-                        else
-                        {
-                            attackerMemberStats.Assists++; // TODO: do we want more criteria (a minimum amount of damage)?
+                            // Note: Purposely awarding an assist even if the attacker was not on the killer's team (possible if there are more than 2 teams).
+							attackerMemberStats.Assists++; // TODO: do we want more criteria (a minimum amount of damage)?
+							hasAssist = true;
                         }
                     }
+                }
+
+                if (!hasAssist)
+                {
+                    killerMemberStats.SoloKills++;
                 }
 
                 // Create a list of players that dealt damage, with their damage sum.
@@ -658,8 +679,6 @@ namespace SS.Matchmaking.Modules
                             ? -10 // KO
                             : -4; // normal
 
-                Dictionary<string, float> ratingChanges = new(); // TODO: pool
-
                 // TODO: review this, differs than current 4v4, needs to work for any # of players and any # of teams
                 float teammateEnemiesFactor = (float)Math.Sqrt(killedMemberStats.TeamStats.RemainingSlots / Math.Max(1, killerMemberStats.TeamStats.RemainingSlots));
 
@@ -672,11 +691,11 @@ namespace SS.Matchmaking.Modules
                 if (isTeamKill)
                 {
                     // Doesn't use rating killed / rating killer.
-                    killerMemberStats.RatingChange += ratingChanges[killerPlayerName] = teammateEnemiesFactor * killPoints;
+                    killerMemberStats.RatingChange += ratingChangeDictionary[killerPlayerName] = teammateEnemiesFactor * killPoints;
                 }
                 else
                 {
-                    killerMemberStats.RatingChange += ratingChanges[killerPlayerName] = killedKillerRatingFactor * teammateEnemiesFactor * killPoints;
+                    killerMemberStats.RatingChange += ratingChangeDictionary[killerPlayerName] = killedKillerRatingFactor * teammateEnemiesFactor * killPoints;
                 }
 
                 // Assists (attackers other than the killer, that are not on the killed player's team)
@@ -688,7 +707,7 @@ namespace SS.Matchmaking.Modules
                     {
                         SlotStats attackerSlotStats = attackerTeamStats.Slots[attacker.SlotIdx];
                         MemberStats attackerMemberStats = attackerSlotStats.Members.Find(mStat => string.Equals(mStat.PlayerName, attacker.PlayerName, StringComparison.OrdinalIgnoreCase));
-                        attackerMemberStats.RatingChange += ratingChanges[attacker.PlayerName] = 
+                        attackerMemberStats.RatingChange += ratingChangeDictionary[attacker.PlayerName] = 
                             assistPoints * (killedMemberStats.TeamStats.RemainingSlots / Math.Min(1, attackerTeamStats.RemainingSlots));
                     }
                 }
@@ -699,7 +718,7 @@ namespace SS.Matchmaking.Modules
                         ? 1f
                         : (killedMemberStats.InitialRating / killerMemberStats.TeamStats.AverageRating);
 
-                killedMemberStats.RatingChange += ratingChanges[killedPlayerName] = 
+                killedMemberStats.RatingChange += ratingChangeDictionary[killedPlayerName] = 
                     (killedKillerRatingFactor * teammateEnemiesFactor * deathPoints)
                     - (.5f * killedSlot.Repels * killedKillerTeamRatingRatio); 
 
@@ -836,13 +855,14 @@ namespace SS.Matchmaking.Modules
                     xCoord,
                     yCoord,
                     damageList,
-                    ratingChanges);
+                    ratingChangeDictionary);
             }
             finally
             {
                 s_damageDictionaryPool.Return(damageDictionary);
                 s_damageListPool.Return(damageList);
-            }
+				s_ratingChangeDictionaryPool.Return(ratingChangeDictionary);
+			}
 
             return true;
 
@@ -875,31 +895,25 @@ namespace SS.Matchmaking.Modules
                 {
                     foreach (MemberStats memberStats in slotStats.Members)
                     {
-                        // Wasted energy
-                        if (memberStats.IsCurrent && arena is not null)
+                        if (memberStats.IsCurrent)
                         {
-                            Player player = _playerData.FindPlayer(memberStats.PlayerName);
-                            if (player is not null 
-                                && player.Ship != ShipType.Spec
-                                && player.Arena == arena)
+                            // Play time
+                            ProcessPlayTime(memberStats, matchStats.EndTimestamp.Value);
+
+                            // Ship usage
+                            ProcessShipUsage(memberStats, matchStats.EndTimestamp.Value, null);
+
+                            // Wasted energy
+                            if (arena is not null)
                             {
-                                AddAndResetWastedEnergy(player, memberStats, player.Ship, endTick);
+                                Player player = _playerData.FindPlayer(memberStats.PlayerName);
+                                if (player is not null
+                                    && player.Ship != ShipType.Spec
+                                    && player.Arena == arena)
+                                {
+                                    ProcessWastedEnergy(player, memberStats, player.Ship, endTick);
+                                }
                             }
-                        }
-
-                        // Play time
-                        if (memberStats.StartTime is not null)
-                        {
-                            memberStats.PlayTime += matchStats.EndTimestamp.Value - memberStats.StartTime.Value;
-                            memberStats.StartTime = null;
-                        }
-
-                        // Ship usage
-                        if (memberStats.CurrentShip is not null && memberStats.CurrentShipStartTime is not null)
-                        {
-                            memberStats.ShipUsage[(int)memberStats.CurrentShip] += (matchStats.EndTimestamp.Value - memberStats.CurrentShipStartTime.Value);
-                            memberStats.CurrentShip = null;
-                            memberStats.CurrentShipStartTime = null;
                         }
                     }
                 }
@@ -1215,9 +1229,8 @@ namespace SS.Matchmaking.Modules
                 {
                     // The player is in a match and left the match's arena while in a ship.
                     SetLagOut(memberStats);
-
-                    // Wasted energy
-                    AddAndResetWastedEnergy(player, memberStats, player.Ship, ServerTick.Now);
+                    ProcessShipUsage(memberStats, DateTime.UtcNow, null);
+                    ProcessWastedEnergy(player, memberStats, player.Ship, ServerTick.Now);
                 }
             }
         }
@@ -1288,7 +1301,7 @@ namespace SS.Matchmaking.Modules
             if (memberStats is null || !memberStats.IsCurrent)
                 return;
 
-            memberStats.MatchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Brick, null);
+            memberStats.MatchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Brick, null, null);
         }
 
         private void Callback_PlayerDamage(Player player, ServerTick timestamp, ReadOnlySpan<DamageData> damageDataSpan)
@@ -1319,127 +1332,139 @@ namespace SS.Matchmaking.Modules
                 // So, clamp the damage to the amount of energy the player has. So that we record the actual amount taken.
                 short damage = Math.Clamp(damageData.Damage, (short)0, damageData.Energy);
 
+				Player attackerPlayer;
+				MemberStats attackerStats = null;
+
+				if (player.Id == damageData.AttackerPlayerId)
+				{
+					// Self-inflicted damage (this includes going through a wormhole).
+					attackerPlayer = player;
+					attackerStats = playerStats;
+				}
+				else
+				{
+					attackerPlayer = _playerData.PidToPlayer(damageData.AttackerPlayerId);
+
+					if (attackerPlayer is not null)
+					{
+						if (attackerPlayer.TryGetExtraData(_pdKey, out PlayerData attackerPlayerData))
+							attackerStats = attackerPlayerData.MemberStats;
+
+						// There is a chance that the attacker was subbed out before the damage packet made it to us and is getting processed here,
+						// in which case we just won't record stats for the attacker.
+
+						/* 
+						// Possible to search like this
+						if (attackerStats is null)
+						{
+							// There's a chance that the attacker is no longer on the freq he was on when the damage was dealt.
+							// However, the attacker's current freq is our best guess.
+							if (matchStats.Teams.TryGetValue(attackerPlayer.Freq, out TeamStats attackerTeamStats))
+							{
+								foreach (SlotStats slotStats in attackerTeamStats.Slots)
+								{
+									attackerStats = slotStats.Members.Find(
+										mStat => string.Equals(mStat.PlayerName, attackerPlayer.Name, StringComparison.OrdinalIgnoreCase));
+
+									if (attackerStats is not null)
+										break;
+								}
+							}
+
+							if (attackerStats is null)
+							{
+								foreach (TeamStats teamStats in matchStats.Teams.Values)
+								{
+									foreach (SlotStats slotStats in teamStats.Slots)
+									{
+										attackerStats = slotStats.Members.Find(
+											mStat => string.Equals(mStat.PlayerName, attackerPlayer.Name, StringComparison.OrdinalIgnoreCase));
+
+										if (attackerStats is not null)
+											break;
+									}
+								}
+							}
+						}
+						*/
+					}
+				}
+
+				// If we haven't found the attacker's MemberStats by now, then too bad. We just won't record stats for the attacker.
+				// Note: It's possible that the attacker disconnected before the damage packet made it to us,
+				// in which case attackerPlayer will be null, and we just won't record stats for the attacker.
+
+				//
+				// Recent damage (used for calculating damage that contributed to a kill)
+				//
+
+				if (attackerStats is not null
+					&& player.Ship != ShipType.Spec) // there's a chance that the player was switched to spec and then the damage packet arrived
+				{
+					int shipIndex = (int)player.Ship;
+					ShipSettings shipSettings = arenaSettings.ShipSettings[shipIndex];
+
+					// recharge rate = amount of energy in 10 seconds = amount of energy in 1000 ticks
+					short maximumRecharge = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumRechargeId, shipSettings.MaximumRecharge);
+
+					short maximumEnergy = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, shipSettings.MaximumEnergy);
+
+					playerStats.RemoveOldRecentDamage(maximumEnergy, maximumRecharge);
+
+					// Calculate emp shutdown time.
+					uint empShutdownTicks = 0;
+					if (damageData.WeaponData.Type == WeaponCodes.Bomb || damageData.WeaponData.Type == WeaponCodes.ProxBomb)
+					{
+						// TODO: maybe handle this edge case better, by keeping track of the player's previous ship when switching to spec
+						if (attackerPlayer.Ship != ShipType.Spec) // there's a chance the attacker was switched to spec before the damage packet arrived
+						{
+							int attackerShipIndex = (int)attackerPlayer.Ship;
+
+							// Only checking for an arena override on emp bomb, since it doesn't make sense to override the setting on the player-level.
+							bool isEmp = _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[attackerShipIndex].EmpBombId, out int isEmpInt)
+								? isEmpInt != 0
+								: arenaSettings.ShipSettings[attackerShipIndex].HasEmpBomb;
+
+							if (isEmp)
+							{
+								// The formula for calculating how long an EMP bomb pauses recharge is:
+								// (uint)(actualDamage * empBombShutdownTime / maxBombDamage);
+								// where maxBombDamage = BombDamageLevel * EmpBombDamageRatio
+								//
+								// Also, notice this is looking at damageData.Damage which is not clamped.
+								// The damage could have been a self-inflicted emp bomb that took the player all the way down to 0.
+								// So, using damageData.Damage gives us the true shutdown time.
+								empShutdownTicks = (uint)(damageData.Damage * arenaSettings.EmpBombShutdownTime / (arenaSettings.BombDamageLevel * arenaSettings.EmpBombDamageRatio));
+							}
+						}
+					}
+
+					LinkedListNode<DamageInfo> node = s_damageInfoLinkedListNodePool.Get();
+					node.Value = new DamageInfo()
+					{
+						Timestamp = timestamp,
+						Damage = damage,
+						EmpBombShutdownTicks = empShutdownTicks,
+						Attacker = new PlayerTeamSlot(
+							attackerPlayer.Name,
+							attackerPlayer.Freq,
+							attackerStats.SlotStats.Slot.SlotIdx),
+					};
+					playerStats.RecentDamageTaken.AddLast(node);
+				}
+
+                //
+                // Damage stats
+                //
+
                 if (player.Id == damageData.AttackerPlayerId)
                 {
+                    // Self-inflicted damage.
                     playerStats.DamageSelf += damage;
                 }
                 else
                 {
-                    Player attackerPlayer = _playerData.PidToPlayer(damageData.AttackerPlayerId);
-
-                    // Note: It's possible that the attacker disconnected before the damage packet made it to us,
-                    // in which case attackerPlayer will be null, and we just won't record stats for the attacker.
-
-                    MemberStats attackerStats = null;
-                    if (attackerPlayer is not null)
-                    {
-                        if(attackerPlayer.TryGetExtraData(_pdKey, out PlayerData attackerPlayerData))
-                            attackerStats = attackerPlayerData.MemberStats;
-
-                        // There is a chance that the attacker was subbed out before the damage packet made it to us and is getting processed here,
-                        // in which case we just won't record stats for the attacker.
-
-                        /* 
-                        // Possible to search like this
-                        if (attackerStats is null)
-                        {
-                            // There's a chance that the attacker is no longer on the freq he was on when the damage was dealt.
-                            // However, the attacker's current freq is our best guess.
-                            if (matchStats.Teams.TryGetValue(attackerPlayer.Freq, out TeamStats attackerTeamStats))
-                            {
-                                foreach (SlotStats slotStats in attackerTeamStats.Slots)
-                                {
-                                    attackerStats = slotStats.Members.Find(
-                                        mStat => string.Equals(mStat.PlayerName, attackerPlayer.Name, StringComparison.OrdinalIgnoreCase));
-
-                                    if (attackerStats is not null)
-                                        break;
-                                }
-                            }
-
-                            if (attackerStats is null)
-                            {
-                                foreach (TeamStats teamStats in matchStats.Teams.Values)
-                                {
-                                    foreach (SlotStats slotStats in teamStats.Slots)
-                                    {
-                                        attackerStats = slotStats.Members.Find(
-                                            mStat => string.Equals(mStat.PlayerName, attackerPlayer.Name, StringComparison.OrdinalIgnoreCase));
-
-                                        if (attackerStats is not null)
-                                            break;
-                                    }
-                                }
-                            }
-                        }
-                        */
-                    }
-
-                    // If we haven't found the attacker's MemberStats by now, then too bad. We just won't record stats for the attacker.
-
-                    //
-                    // Recent damage (used for calculating damage that contributed to a kill)
-                    //
-
-                    if (attackerStats is not null
-                        && player.Ship != ShipType.Spec) // there's a chance that the player was switched to spec and then the damage packet arrived
-                    {
-                        int shipIndex = (int)player.Ship;
-                        ShipSettings shipSettings = arenaSettings.ShipSettings[shipIndex];
-
-                        // recharge rate = amount of energy in 10 seconds = amount of energy in 1000 ticks
-                        short maximumRecharge = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumRechargeId, shipSettings.MaximumRecharge);
-
-                        short maximumEnergy = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, shipSettings.MaximumEnergy);
-
-                        playerStats.RemoveOldRecentDamage(maximumEnergy, maximumRecharge);
-
-                        // Calculate emp shutdown time.
-                        uint empShutdownTicks = 0;
-                        if (damageData.WeaponData.Type == WeaponCodes.Bomb || damageData.WeaponData.Type == WeaponCodes.ProxBomb)
-                        {
-                            // TODO: maybe handle this edge case better, by keeping track of the player's previous ship when switching to spec
-                            if (attackerPlayer.Ship != ShipType.Spec) // there's a chance the attacker was switched to spec before the damage packet arrived
-                            {
-                                int attackerShipIndex = (int)attackerPlayer.Ship;
-
-                                // Only checking for an arena override on emp bomb, since it doesn't make sense to override the setting on the player-level.
-                                bool isEmp = _clientSettings.TryGetSettingOverride(arena, _shipClientSettingIds[attackerShipIndex].EmpBombId, out int isEmpInt)
-                                    ? isEmpInt != 0
-                                    : arenaSettings.ShipSettings[attackerShipIndex].HasEmpBomb;
-
-                                if (isEmp)
-                                {
-                                    // The formula for calculating how long an EMP bomb pauses recharge is:
-                                    // (uint)(actualDamage * empBombShutdownTime / maxBombDamage);
-                                    // where maxBombDamage = BombDamageLevel * EmpBombDamageRatio
-                                    //
-                                    // Also, notice this is looking at damageData.Damage which is not clamped.
-                                    // The damage could have been a self-inflicted emp bomb that took the player all the way down to 0.
-                                    // So, using damageData.Damage gives us the true shutdown time.
-                                    empShutdownTicks = (uint)(damageData.Damage * arenaSettings.EmpBombShutdownTime / (arenaSettings.BombDamageLevel * arenaSettings.EmpBombDamageRatio));
-                                }
-                            }
-                        }
-
-                        LinkedListNode<DamageInfo> node = s_damageInfoLinkedListNodePool.Get();
-                        node.Value = new DamageInfo()
-                        {
-                            Timestamp = timestamp,
-                            Damage = damage,
-                            EmpBombShutdownTicks = empShutdownTicks,
-                            Attacker = new PlayerTeamSlot(
-                                attackerPlayer.Name, 
-                                attackerPlayer.Freq, 
-                                attackerStats.SlotStats.Slot.SlotIdx),
-                        };
-                        playerStats.RecentDamageTaken.AddLast(node);
-                    }
-
-                    //
-                    // Damage stats
-                    //
-
+                    // Damage from an another player (enemy or teammate).
                     if (damageData.WeaponData.Type == WeaponCodes.Bullet || damageData.WeaponData.Type == WeaponCodes.BounceBullet)
                     {
                         // bullet damage
@@ -1506,7 +1531,7 @@ namespace SS.Matchmaking.Modules
                         }
                     }
                 }
-            }
+			}
         }
 
         private void Callback_PlayerPositionPacket(Player player, in C2S_PositionPacket positionPacket, bool hasExtraPositionData)
@@ -1607,7 +1632,7 @@ namespace SS.Matchmaking.Modules
                     break;
 
                 case WeaponCodes.Thor:
-                    matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Thor, null);
+                    matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Thor, null, null);
                     goto case WeaponCodes.Bomb;
 
                 case WeaponCodes.Bomb:
@@ -1621,16 +1646,17 @@ namespace SS.Matchmaking.Modules
                 case WeaponCodes.Burst:
                     //memberStats.BulletFireCount += All:BurstShrapnel // TODO: maybe? and if so, also remember to add BulletHitCount logic
 
-                    matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Burst, null);
+                    matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Burst, null, null);
                     break;
 
                 case WeaponCodes.Repel:
                     Dictionary<PlayerTeamSlot, int> damageDictionary = s_damageDictionaryPool.Get();
                     List<(string PlayerName, int Damage)> damageList = s_damageListPool.Get();
+                    Dictionary<string, float> ratingChangeDictionary = s_ratingChangeDictionaryPool.Get();
 
                     try
                     {
-                        CalculateDamageDealt(ServerTick.Now, memberStats, player.Ship, damageDictionary);
+                        CalculateDamageSources(ServerTick.Now, memberStats, player.Ship, damageDictionary);
 
                         // Update attacker stats.
                         foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
@@ -1651,7 +1677,17 @@ namespace SS.Matchmaking.Modules
                                         ? 1f
                                         : (memberStats.TeamStats.AverageRating / attackerMemberStats.InitialRating);
 
-                                attackerMemberStats.RatingChange += (.5f * ratingRatio);
+                                float change = .5f * ratingRatio;
+								attackerMemberStats.RatingChange += change;
+
+                                if (ratingChangeDictionary.TryGetValue(attacker.PlayerName, out float ratingChange))
+                                {
+                                    ratingChangeDictionary[attacker.PlayerName] = ratingChange + change;
+								}
+                                else
+                                {
+									ratingChangeDictionary[attacker.PlayerName] = change;
+								}
                             }
                         }
 
@@ -1669,10 +1705,11 @@ namespace SS.Matchmaking.Modules
                             }
                         }
 
-                        matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Repel, damageList);
+                        matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Repel, damageList, ratingChangeDictionary);
                     }
                     finally
                     {
+                        s_ratingChangeDictionaryPool.Return(ratingChangeDictionary);
                         s_damageDictionaryPool.Return(damageDictionary);
                         s_damageListPool.Return(damageList);
                     }
@@ -1680,7 +1717,7 @@ namespace SS.Matchmaking.Modules
                     break;
 
                 case WeaponCodes.Decoy:
-                    matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Decoy, null);
+                    matchStats.AddUseItemEvent(DateTime.UtcNow, player.Name, ShipItem.Decoy, null, null);
                     break;
 
                 default:
@@ -1704,12 +1741,15 @@ namespace SS.Matchmaking.Modules
             if (player.Arena != matchStats.MatchData.Arena)
                 return;
 
-            // The player is in a match and is in the correct arena for that match.
+			// The player is in a match and is in the correct arena for that match.
 
-            if (oldShip != ShipType.Spec)
+			DateTime now = DateTime.UtcNow;
+            ServerTick nowTick = ServerTick.Now;
+
+			if (oldShip != ShipType.Spec)
             {
-                // Wasted energy
-                AddAndResetWastedEnergy(player, memberStats, oldShip, ServerTick.Now);
+                // The player was in a ship.
+                ProcessWastedEnergy(player, memberStats, oldShip, nowTick);
             }
 
             if (oldShip != ShipType.Spec && newShip == ShipType.Spec)
@@ -1720,17 +1760,10 @@ namespace SS.Matchmaking.Modules
             else if (oldShip == ShipType.Spec && newShip != ShipType.Spec)
             {
                 // The player came out of spec and into a ship.
-                memberStats.StartTime = DateTime.UtcNow;
+                memberStats.StartTime = now;
             }
-
-            DateTime now = DateTime.UtcNow;
-            if (memberStats.CurrentShip is not null && memberStats.CurrentShipStartTime is not null)
-            {
-                memberStats.ShipUsage[(int)memberStats.CurrentShip] += (now - memberStats.CurrentShipStartTime.Value);
-            }
-
-            memberStats.CurrentShip = newShip == ShipType.Spec ? null : newShip;
-            memberStats.CurrentShipStartTime = newShip == ShipType.Spec ? null : now;
+            
+            ProcessShipUsage(memberStats, now, newShip);
 
             if (newShip != ShipType.Spec)
             {
@@ -1782,7 +1815,7 @@ namespace SS.Matchmaking.Modules
 
         private static void AddOrUpdatePlayerInfo(MatchStats matchStats, string playerName, Player player)
         {
-            if (matchStats is null || string.IsNullOrEmpty(playerName))
+            if (matchStats is null || string.IsNullOrWhiteSpace(playerName))
                 return;
 
             PlayerInfo playerInfo = new(player?.Squad, player?.Xres, player?.Yres);
@@ -1845,7 +1878,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void CalculateDamageDealt(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary)
+        private void CalculateDamageSources(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary)
         {
             if (memberStats is null || damageDictionary is null)
                 return;
@@ -1950,18 +1983,14 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private static void SetLagOut(MemberStats playerStats)
+        private static void SetLagOut(MemberStats memberStats)
         {
-            if (playerStats is null)
+            if (memberStats is null)
                 return;
 
-            if (playerStats.StartTime is not null)
-            {
-                playerStats.PlayTime += DateTime.UtcNow - playerStats.StartTime.Value;
-                playerStats.StartTime = null;
-            }
+            ProcessPlayTime(memberStats, DateTime.UtcNow);
 
-            playerStats.LagOuts++;
+            memberStats.LagOuts++;
         }
 
         private void GetPlayersToNotify(MatchStats matchStats, HashSet<Player> players)
@@ -2017,6 +2046,8 @@ namespace SS.Matchmaking.Modules
             if (notifySet is null || matchStats is null)
                 return;
 
+            DateTime now = DateTime.UtcNow;
+
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
             try
@@ -2050,7 +2081,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                TimeSpan gameDuration = (matchStats.EndTimestamp ?? DateTime.UtcNow) - matchStats.StartTimestamp;
+                TimeSpan gameDuration = (matchStats.EndTimestamp ?? now) - matchStats.StartTimestamp;
                 sb.Append($" -- Game Time: ");
                 sb.AppendFriendlyTimeSpan(gameDuration);
 
@@ -2153,7 +2184,17 @@ namespace SS.Matchmaking.Modules
                         aveRatingChange += ratingChange;
                         aveTotalRating += totalRating;
 
-                        _chat.SendSetMessage(
+                        TimeSpan playTime = memberStats.PlayTime;
+                        if (memberStats.StartTime is not null)
+                        {
+                            TimeSpan duration = (matchStats.EndTimestamp ?? now) - memberStats.StartTime.Value;
+                            if (duration > TimeSpan.Zero)
+                            {
+                                playTime += duration;
+                            }
+                        }
+
+						_chat.SendSetMessage(
                             notifySet,
                             $"| {playerName}" +
                             $" {memberStats.Kills,2}/{memberStats.Deaths,2}" +
@@ -2166,7 +2207,7 @@ namespace SS.Matchmaking.Modules
                             $" {wastedEnergy,4}" + 
                             $" {memberStats.MineFireCount,2}" +
                             $" {memberStats.LagOuts,2}" +
-                            $"{(int)memberStats.PlayTime.TotalMinutes,3}:{memberStats.PlayTime:ss}" +
+                            $"{(int)playTime.TotalMinutes,3}:{playTime:ss}" +
                             $" | {damageDealt,6}/{damageTaken,6} {damageEfficiency,4:0%} {memberStats.KillDamage,5} {memberStats.ForcedRepDamage,5} {memberStats.DamageDealtTeam,5}" +
                             $" | {bombAccuracy,3:N0} {gunAccuracy,3:N0}" +
                             $" |{ratingChange,4:+#;-#;0} {totalRating,4} |");
@@ -2258,8 +2299,64 @@ namespace SS.Matchmaking.Modules
         }
 
         /// <summary>
+        /// Processes a player's "play time" stat for when a player stops playing. This clears the timestamp the player started playing.
+        /// </summary>
+        /// <param name="memberStats">The stats of the player to process.</param>
+        /// <param name="asOf">The timestamp to calculate data as of.</param>
+        private static void ProcessPlayTime(MemberStats memberStats, DateTime asOf)
+        {
+            if (memberStats is null)
+                return;
+
+            if (memberStats.StartTime is not null)
+            {
+                TimeSpan duration = asOf - memberStats.StartTime.Value;
+                if (duration > TimeSpan.Zero)
+                {
+                    memberStats.PlayTime += duration;
+                }
+                
+                memberStats.StartTime = null;
+            }
+        }
+
+        /// <summary>
+        /// Processes a player's ship usage stats.
+        /// </summary>
+        /// <param name="memberStats">The stats of the player to process.</param>
+        /// <param name="asOf">The timestamp to calculate data as of.</param>
+        /// <param name="newShip">The player's new ship; <see langword="null"/> for no ship.</param>
+        private static void ProcessShipUsage(MemberStats memberStats, DateTime asOf, ShipType? newShip)
+        {
+            if (memberStats is null)
+                return;
+
+            // Add additional usage.
+            if (memberStats.CurrentShip is not null && memberStats.CurrentShipStartTime is not null)
+            {
+                TimeSpan duration = asOf - memberStats.CurrentShipStartTime.Value;
+                if (duration > TimeSpan.Zero)
+                {
+                    memberStats.ShipUsage[(int)memberStats.CurrentShip] += duration;
+                }    
+            }
+
+            // [Re]set current ship variables.
+            if (newShip is null || newShip == ShipType.Spec)
+            {
+                memberStats.CurrentShip = null;
+                memberStats.CurrentShipStartTime = null;
+            }
+            else
+            {
+                memberStats.CurrentShip = newShip;
+                memberStats.CurrentShipStartTime = asOf;
+            }
+        }
+
+        /// <summary>
         /// Processes a player's "wasted energy" stat.
-        /// This adds to the player's wasted energy stat and resets their "full energy" state.
+        /// If the player is in the "full energy" state, it will add to the player's wasted energy stat and reset the "full energy" state.
         /// </summary>
         /// <param name="player">The player to process wasted energy for.</param>
         /// <param name="memberStats">The player's stats.</param>
@@ -2269,7 +2366,7 @@ namespace SS.Matchmaking.Modules
         /// which is not going to be the correct ship when processing due to a ship change.
         /// </param>
         /// <param name="asOfTick">Timestamp (ticks) that the wasted energy should be calculated as of.</param>
-        private void AddAndResetWastedEnergy(Player player, MemberStats memberStats, ShipType ship, ServerTick asOfTick)
+        private void ProcessWastedEnergy(Player player, MemberStats memberStats, ShipType ship, ServerTick asOfTick)
         {
             if (player is null)
                 return;
@@ -2318,29 +2415,25 @@ namespace SS.Matchmaking.Modules
             // stealth
             if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.Stealth) == PlayerPositionStatus.Stealth)
             {
-                short stealthEnergy = GetClientSetting(player, shipClientSettingIds.StealthEnergyId, arenaShipSettings.StealthEnergy);
-                utilityDrainRate += stealthEnergy;
+                utilityDrainRate += GetClientSetting(player, shipClientSettingIds.StealthEnergyId, arenaShipSettings.StealthEnergy);
             }
 
             // cloak
             if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.Cloak) == PlayerPositionStatus.Cloak)
             {
-                short cloakEnergy = GetClientSetting(player, shipClientSettingIds.CloakEnergyId, arenaShipSettings.CloakEnergy);
-                utilityDrainRate += cloakEnergy;
+                utilityDrainRate += GetClientSetting(player, shipClientSettingIds.CloakEnergyId, arenaShipSettings.CloakEnergy);
             }
 
             // x-radar
             if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.XRadar) == PlayerPositionStatus.XRadar)
             {
-                short xRadarEnergy = GetClientSetting(player, shipClientSettingIds.XRadarEnergyId, arenaShipSettings.XRadarEnergy);
-                utilityDrainRate += xRadarEnergy;
+                utilityDrainRate += GetClientSetting(player, shipClientSettingIds.XRadarEnergyId, arenaShipSettings.XRadarEnergy);
             }
 
             // anti-warp
             if ((memberStats.FullEnergyUtilityStatus & PlayerPositionStatus.Antiwarp) == PlayerPositionStatus.Antiwarp)
             {
-                short antiWarpEnergy = GetClientSetting(player, shipClientSettingIds.AntiWarpEnergyId, arenaShipSettings.AntiWarpEnergy);
-                utilityDrainRate += antiWarpEnergy;
+                utilityDrainRate += GetClientSetting(player, shipClientSettingIds.AntiWarpEnergyId, arenaShipSettings.AntiWarpEnergy);
             }
 
             short maximumRecharge = GetClientSetting(player, shipClientSettingIds.MaximumRechargeId, arenaShipSettings.MaximumRecharge);
@@ -2456,7 +2549,8 @@ namespace SS.Matchmaking.Modules
                 DateTime timestamp, 
                 string playerName, 
                 ShipItem item, 
-                List<(string PlayerName, int Damage)> damageList)
+                List<(string PlayerName, int Damage)> damageList,
+				Dictionary<string, float> ratingChangeDictionary)
             {
                 if (_eventsJsonWriter is null)
                     return;
@@ -2467,6 +2561,7 @@ namespace SS.Matchmaking.Modules
                 _eventsJsonWriter.WriteString("player"u8, playerName);
                 _eventsJsonWriter.WriteNumber("ship_item_id"u8, (int)item);
                 WriteDamageStats(damageList);
+                WriteRatingChanges(ratingChangeDictionary);
 
                 _eventsJsonWriter.WriteEndObject();
             }
@@ -2530,7 +2625,7 @@ namespace SS.Matchmaking.Modules
 
             private void WriteDamageStats(List<(string PlayerName, int Damage)> damageList)
             {
-                if (damageList is not null)
+                if (damageList is not null && damageList.Count > 0)
                 {
                     _eventsJsonWriter.WriteStartObject("damage_stats");
                     foreach ((string playerName, int damage) in damageList)
@@ -2543,7 +2638,7 @@ namespace SS.Matchmaking.Modules
 
             private void WriteRatingChanges(Dictionary<string, float> ratingChangeDictionary)
             {
-                if (ratingChangeDictionary is not null)
+                if (ratingChangeDictionary is not null && ratingChangeDictionary.Count > 0)
                 {
                     _eventsJsonWriter.WriteStartObject("rating_changes");
                     foreach ((string playerName, float rating) in ratingChangeDictionary)
@@ -3396,7 +3491,24 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        #endregion
-    }
+		private class RatingChangeDictionaryPooledObjectPolicy : IPooledObjectPolicy<Dictionary<string, float>>
+		{
+			public Dictionary<string, float> Create()
+			{
+                return new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+			}
+
+			public bool Return(Dictionary<string, float> obj)
+			{
+                if (obj is null)
+                    return false;
+
+                obj.Clear();
+                return true;
+			}
+		}
+
+		#endregion
+	}
 }
 
