@@ -350,29 +350,32 @@ namespace SS.Core.Modules.FlagGame
                         flagData.LastSendTimestamp = now;
                     }
 
-                    if (ad.FlagGameRegistrationToken == null)
-                        ad.FlagGameRegistrationToken = arena.RegisterInterface<IFlagGame>(this);
-
-                    if (ad.StaticFlagGameRegistrationToken == null)
-                        ad.StaticFlagGameRegistrationToken = arena.RegisterInterface<IStaticFlagGame>(this);
+                    ad.FlagGameRegistrationToken ??= arena.RegisterInterface<IFlagGame>(this);
+                    ad.StaticFlagGameRegistrationToken ??= arena.RegisterInterface<IStaticFlagGame>(this);
 
                     _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SendFlagUpdates, arena);
                     _mainloopTimer.SetTimer(MainloopTimer_SendFlagUpdates, 500, 500, arena, arena);
                 }
                 else
                 {
+                    if (ad.Flags is not null)
+                    {
+                        // Previously was set as static flags, but no longer is.
+                        // Send a flag reset so that clients remove/hide the static flags.
+                        S2C_FlagReset flagResetPacket = new(-1, 0);
+                        _network.SendToArena(arena, null, ref flagResetPacket, NetSendFlags.Reliable);
+                    }
+
                     ad.IsPersistEnabled = false;
                     ad.Flags = null;
 
-                    if (ad.FlagGameRegistrationToken != null)
+                    if (ad.FlagGameRegistrationToken is not null)
                         arena.UnregisterInterface(ref ad.FlagGameRegistrationToken);
 
-                    if (ad.StaticFlagGameRegistrationToken != null)
+                    if (ad.StaticFlagGameRegistrationToken is not null)
                         arena.UnregisterInterface(ref ad.StaticFlagGameRegistrationToken);
 
                     _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SendFlagUpdates, arena);
-
-                    // TODO: does sending an empty, 1 byte 0x22 tell the client to remove the flags?
                 }
             }
             else if (action == ArenaAction.Destroy)
