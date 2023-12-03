@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <AssemblyName>SS.$(MSBuildProjectName)</AssemblyName>
@@ -11,12 +11,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.23.3" />
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="7.0.8">
+    <PackageReference Include="Google.Protobuf" Version="3.25.1" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="2.3.2" />
-    <PackageReference Include="Npgsql" Version="7.0.4" />
+    <PackageReference Include="Npgsql" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
