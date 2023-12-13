@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets
@@ -16,47 +18,33 @@ namespace SS.Packets
 
         public Banner(ReadOnlySpan<byte> data)
         {
-            _data = new(data);
+            if (data.Length != BannerData.Length)
+                throw new ArgumentOutOfRangeException(nameof(data), $"Must be {BannerData.Length} in length.");
+
+            data.CopyTo(_data);
         }
 
-        /// <summary>
-        /// Whether the banner is set.
-        /// </summary>
-        /// <remarks>
-        /// <see langword="false"/> means the data consists of all zeros.
-        /// </remarks>
-        public readonly bool IsSet => _data.IsSet;
+		/// <summary>
+		/// Whether the banner is set.
+		/// </summary>
+		/// <remarks>
+		/// <see langword="false"/> means the data consists of all zeros.
+		/// </remarks>
+		public readonly bool IsSet => MemoryExtensions.ContainsAnyExcept((ReadOnlySpan<byte>)_data, (byte)0);
 
-        /// <summary>
-        /// This nested struct is to allow <see cref="Banner"/> to be readonly.
-        /// <see cref="Banner"/> couldn't be readonly with the fixed size buffer directly inside of it.
-        /// Having <see cref="Banner"/> as a readonly struct helps prevent defensive copies when passed as an 'in' parameter.
-        /// </summary>
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        private unsafe struct BannerData
+		/// <summary>
+		/// This nested struct is to allow <see cref="Banner"/> to be readonly.
+		/// <see cref="Banner"/> couldn't be readonly with the fixed size buffer directly inside of it.
+		/// Having <see cref="Banner"/> as a readonly struct helps prevent defensive copies when passed as an 'in' parameter.
+		/// </summary>
+		[InlineArray(Length)]
+		private struct BannerData
         {
-            private const int DataLength = 96;
-            private fixed byte dataBytes[DataLength];
+            public const int Length = 96;
 
-            public BannerData(ReadOnlySpan<byte> data)
-            {
-                if (data.Length != DataLength)
-                    throw new ArgumentOutOfRangeException(nameof(data), $"Length was not {DataLength}.");
-
-                data.CopyTo(MemoryMarshal.CreateSpan(ref dataBytes[0], DataLength));
-            }
-
-            public readonly bool IsSet
-            {
-                get
-                {
-                    for (int i = 0; i < DataLength; i++)
-                        if (dataBytes[i] != 0)
-                            return true;
-
-                    return false;
-                }
-            }
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
         }
     }
 }
