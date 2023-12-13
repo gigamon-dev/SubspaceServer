@@ -816,12 +816,8 @@ namespace SS.Core.Modules
                 if (!HasCapGo(player))
                     return;
 
-                Span<byte> nameBytes = go.ArenaNameBytes[..Constants.MaxArenaNameLength].SliceNullTerminated();
-                int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
-                Debug.Assert(charCount <= Constants.MaxArenaNameLength);
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameBuffer);
-                Debug.Assert(decodedByteCount == nameBytes.Length);
-                name = nameBuffer[..charCount];
+                int charCount = go.GetArenaName(nameBuffer);
+				name = nameBuffer[..charCount];
             }
             else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
             {
