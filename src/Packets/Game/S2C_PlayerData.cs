@@ -1,5 +1,7 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Game
@@ -38,7 +40,7 @@ namespace SS.Packets.Game
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2C_PlayerData
+    public struct S2C_PlayerData
     {
         #region Static members
 
@@ -57,8 +59,8 @@ namespace SS.Packets.Game
         public byte Type;
         public sbyte Ship;
         public byte AcceptAudio;
-        private fixed byte nameBytes[NameBytesLength];
-        private fixed byte squadBytes[SquadBytesLength];
+        public NameInlineArray Name;
+        public SquadInlineArray Squad;
         private int killPoints;
         private int flagPoints;
         private short playerId;
@@ -70,22 +72,6 @@ namespace SS.Packets.Game
         private byte miscBitfield;
 
         #region Helper properties
-
-        public const int NameBytesLength = 20;
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
-
-        public void SetName(ReadOnlySpan<char> value)
-        {
-            NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameBytesLength), false);
-        }
-
-        public const int SquadBytesLength = 20;
-        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], SquadBytesLength);
-
-        public void SetSquad(ReadOnlySpan<char> value)
-        {
-            SquadBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(SquadBytesLength), false);
-        }
 
         public int KillPoints
         {
@@ -153,24 +139,68 @@ namespace SS.Packets.Game
             }
         }
 
-        /// <summary>
-        /// Whether clients should send data for damage done to this player.
-        /// </summary>
-        // FUTURE: not implemented in continuum yet
-        //public bool SendDamage
-        //{
-        //    get
-        //    {
-        //        return (miscBitfield & SendDamageMask) != 0;
-        //    }
-        //    set
-        //    {
-        //        if (value)
-        //            miscBitfield = (byte)(miscBitfield | SendDamageMask);
-        //        else
-        //            miscBitfield = (byte)(miscBitfield & ~SendDamageMask);
-        //    }
-        //}
+		/// <summary>
+		/// Whether clients should send data for damage done to this player.
+		/// </summary>
+		// FUTURE: not implemented in continuum yet
+		//public bool SendDamage
+		//{
+		//    get
+		//    {
+		//        return (miscBitfield & SendDamageMask) != 0;
+		//    }
+		//    set
+		//    {
+		//        if (value)
+		//            miscBitfield = (byte)(miscBitfield | SendDamageMask);
+		//        else
+		//            miscBitfield = (byte)(miscBitfield & ~SendDamageMask);
+		//    }
+		//}
+
+		#endregion
+
+		#region Inline Array Types
+
+		[InlineArray(Length)]
+		public struct NameInlineArray
+		{
+			public const int Length = 20;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct SquadInlineArray
+		{
+			public const int Length = 20;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
 
         #endregion
     }

@@ -95,9 +95,9 @@ namespace SS.Core.Modules
                 name = name[..Constants.MaxPlayerNameLength];
             }
 
-            player.Packet.SetName(name);
+            player.Packet.Name.Set(name);
             player.Name = name.ToString();
-            player.Packet.SetSquad("");
+            player.Packet.Squad.Set("");
             player.Squad = string.Empty;
             player.ClientName = "<internal fake player>";
             player.Ship = ship;

@@ -805,9 +805,9 @@ namespace SS.Core.Modules
                 Player oldPlayer = _playerData.FindPlayer(authResult.Name);
 
                 // Set new player's name. 
-                player.Packet.SetName(authResult.SendName); // this can truncate
+                player.Packet.Name.Set(authResult.SendName); // this can truncate
                 player.Name = Truncate(authResult.Name, Constants.MaxPlayerNameLength).ToString(); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
-                player.Packet.SetSquad(authResult.Squad); // this can truncate
+                player.Packet.Squad.Set(authResult.Squad); // this can truncate
                 player.Squad = Truncate(authResult.Squad, Constants.MaxSquadNameLength).ToString();
 
                 // Make sure we don't have two identical players.
