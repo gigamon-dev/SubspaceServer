@@ -1644,9 +1644,9 @@ namespace SS.Core.Modules
             pktBytes = pktBytes[recipientsLength..];
 
             // Text
-            if (pktBytes.Length > ChatPacket.MaxMessageChars)
+            if (pktBytes.Length > ChatPacket.MaxMessageBytes)
             {
-                pktBytes = pktBytes[..ChatPacket.MaxMessageChars];
+                pktBytes = pktBytes[..ChatPacket.MaxMessageBytes];
             }
 
             int index = pktBytes.IndexOf((byte)0);

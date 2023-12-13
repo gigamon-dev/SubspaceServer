@@ -496,17 +496,15 @@ namespace SS.Core.Modules
                     Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, sb.Length)];
                     sb.CopyTo(0, text, text.Length);
 
-                    ChatPacket cp = new();
-                    cp.Type = (byte)S2CPacketType.Chat;
-                    cp.ChatType = (byte)ChatMessageType.RemotePrivate;
-                    cp.Sound = (byte)sound;
-                    cp.PlayerId = -1;
-                    int length = ChatPacket.LengthWithoutMessage + cp.SetMessage(text);
+                    Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(text)];
+                    ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
+					chatPacket.Type = (byte)S2CPacketType.Chat;
+					chatPacket.ChatType = (byte)ChatMessageType.RemotePrivate;
+					chatPacket.Sound = (byte)sound;
+					chatPacket.PlayerId = -1;
+                    int length = ChatPacket.SetMessage(chatBytes, text);
 
-                    _network.SendToSet(
-                        set,
-                        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref cp, 1)).Slice(0, length),
-                        NetSendFlags.Reliable);
+                    _network.SendToSet(set, chatBytes[..length], NetSendFlags.Reliable);
                 }
                 finally
                 {
@@ -775,9 +773,15 @@ namespace SS.Core.Modules
             if (data is null)
                 return;
 
-            if (len < ChatPacket.MinLength
-                || len > ChatPacket.MaxLength) // Note: for some reason ASSS checks if > 500 instead
-            {
+			// Ideally we would check for len > ChatPacket.MaxLength (255 bytes), but Continuum seems to have a bug.
+			// It allows sending typing > 250 characters and sends a chat packet larger than the max (up to 261 bytes),
+            // though the text is null-terminated in the proper spot (limiting the message to 250 characters),
+            // but with seemingly garbage data in the remaining bytes.
+            // So, we'll allow 261, but only actually read up to the actual 250 characters.
+
+			if (len < ChatPacket.MinLength
+                || len > 261) // Note: for some reason ASSS checks if > 500 instead
+			{
                 _logManager.LogP(LogLevel.Malicious, nameof(Chat), player, $"Bad chat packet (length={len}).");
                 return;
             }
@@ -786,15 +790,16 @@ namespace SS.Core.Modules
             if (arena is null || player.Status != PlayerState.Playing)
                 return;
 
-            ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
+            Span<byte> dataSpan = data.AsSpan(0, len);
+            ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(dataSpan);
 
             // Determine which bytes are part of the message.
-            Span<byte> messageBytes = from.GetMessageBytes(len);
-            messageBytes = messageBytes.SliceNullTerminated();
+            Span<byte> messageBytes = ChatPacket.GetMessageBytes(dataSpan);
 
             // Decode the bytes.
-            Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(messageBytes)];
-            StringUtils.DefaultEncoding.GetChars(messageBytes, text);
+            Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetMaxCharCount(messageBytes.Length)];
+            int charsWritten = StringUtils.DefaultEncoding.GetChars(messageBytes, text);
+            text = text[..charsWritten];
 
             // Remove control characters from the chat message.
             StringUtils.ReplaceControlCharacters(text);
@@ -1024,17 +1029,15 @@ namespace SS.Core.Modules
 
             if (_network is not null)
             {
-                ChatPacket cp = new();
-                cp.Type = (byte)S2CPacketType.Chat;
-                cp.ChatType = (byte)type;
-                cp.Sound = (byte)sound;
-                cp.PlayerId = from is not null ? (short)from.Id : (short)-1;
-                int length = ChatPacket.LengthWithoutMessage + cp.SetMessage(message);
+				Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(message)];
+				ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
+				chatPacket.Type = (byte)S2CPacketType.Chat;
+				chatPacket.ChatType = (byte)type;
+				chatPacket.Sound = (byte)sound;
+				chatPacket.PlayerId = from is not null ? (short)from.Id : (short)-1;
+                int length = ChatPacket.SetMessage(chatBytes, message);
 
-                _network.SendToSet(
-                    set,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref cp, 1)).Slice(0, length),
-                    NetSendFlags.Reliable);
+                _network.SendToSet(set, chatBytes[..length], NetSendFlags.Reliable);
             }
 
             string ctype = GetChatType(type);
@@ -1433,12 +1436,12 @@ namespace SS.Core.Modules
             if (type == ChatMessageType.ModChat)
                 type = ChatMessageType.SysopWarning;
 
-            ChatPacket to = new();
-            to.Type = (byte)S2CPacketType.Chat;
-            to.ChatType = (byte)type;
-            to.Sound = (byte)sound;
-            to.PlayerId = (short)fromPid;
-            int length = ChatPacket.LengthWithoutMessage + to.SetMessage(msg); // This will truncate the msg if it's too long.
+			Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(msg)];
+			ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
+			chatPacket.Type = (byte)S2CPacketType.Chat;
+			chatPacket.ChatType = (byte)type;
+			chatPacket.Sound = (byte)sound;
+			chatPacket.PlayerId = (short)fromPid;
 
             HashSet<Player> filteredSet = _objectPoolManager.PlayerSetPool.Get();
 
@@ -1455,14 +1458,19 @@ namespace SS.Core.Modules
                     set.ExceptWith(filteredSet);
                 }
 
-
-                ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1))[..length];
-                _network?.SendToSet(set, bytes, flags);
-
-                if (_chatNetwork is not null && ctype is not null)
+                if (set.Count > 0)
                 {
-                    _chatNetwork.SendToSet(set, $"MSG:{ctype}:{player.Name}:{msg[chatNetOffset..]}");
-                }
+                    if (_network is not null)
+                    {
+						int length = ChatPacket.SetMessage(chatBytes, msg);
+						_network.SendToSet(set, chatBytes[..length], flags);
+					}
+
+					if (_chatNetwork is not null && ctype is not null)
+					{
+						_chatNetwork.SendToSet(set, $"MSG:{ctype}:{player.Name}:{msg[chatNetOffset..]}");
+					}
+				}
 
                 if (filteredSet.Count > 0)
                 {
@@ -1470,15 +1478,14 @@ namespace SS.Core.Modules
                     msg.CopyTo(filteredMsg);
 
                     bool replaced = _obscene.Filter(filteredMsg);
-                    if (replaced && _cfg.ObsceneFilterSendGarbageText)
-                    {
-                        length = ChatPacket.LengthWithoutMessage + to.SetMessage(filteredMsg);
-                        bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref to, 1))[..length];
-                    }
 
                     if (!replaced || (replaced && _cfg.ObsceneFilterSendGarbageText))
                     {
-                        _network?.SendToSet(filteredSet, bytes, flags);
+                        if (_network is not null)
+                        {
+                            int length = ChatPacket.SetMessage(chatBytes, filteredMsg);
+							_network.SendToSet(filteredSet, chatBytes[..length], flags);
+						}
 
                         if (_chatNetwork is not null && ctype is not null)
                         {
