@@ -183,7 +183,7 @@ namespace SS.Core.Modules
 
             ref readonly LoginPacket lp = ref authRequest.LoginPacket;
 
-            Span<byte> nameBytes = lp.NameBytes.SliceNullTerminated();
+            ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)lp.Name).SliceNullTerminated();
             Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
             int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
             Debug.Assert(decodedByteCount == nameBytes.Length);
@@ -197,7 +197,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> passwordBytes = lp.PasswordBytes.SliceNullTerminated();
+            ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)lp.Password).SliceNullTerminated();
             Span<char> passwordChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
             decodedByteCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordChars);
             Debug.Assert(decodedByteCount == passwordBytes.Length);

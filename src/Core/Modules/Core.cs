@@ -177,7 +177,7 @@ namespace SS.Core.Modules
 
             ref readonly LoginPacket lp = ref authRequest.LoginPacket;
 
-            Span<byte> nameBytes = lp.NameBytes.SliceNullTerminated();
+            ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)lp.Name).SliceNullTerminated();
             Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
             int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
             Debug.Assert(nameBytes.Length == decodedByteCount);
@@ -534,7 +534,7 @@ namespace SS.Core.Modules
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
                 // name
-                Span<byte> nameBytes = pkt.NameBytes.SliceNullTerminated();
+                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)pkt.Name).SliceNullTerminated();
                 Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
@@ -548,10 +548,10 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                StringUtils.WriteNullPaddedString(pkt.NameBytes, cleanName, false);
+                StringUtils.WriteNullPaddedString(pkt.Name, cleanName, false);
 
                 // pass must be nul-terminated
-                pkt.PasswordBytes[^1] = 0;
+                pkt.Password[^1] = 0;
 
                 // fill misc data
                 player.MacId = pkt.MacId;
@@ -643,24 +643,24 @@ namespace SS.Core.Modules
             LoginPacket loginPacket = new();
             loginPacket.CVersion = version;
 
-            if (StringUtils.DefaultEncoding.GetByteCount(cleanName) > loginPacket.NameBytes.Length)
+            if (StringUtils.DefaultEncoding.GetByteCount(cleanName) > LoginPacket.NameInlineArray.Length)
             {
                 _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
-            StringUtils.WriteNullPaddedString(loginPacket.NameBytes, cleanName, false);
-            loginPacket.NameBytes.Clear();
-            StringUtils.DefaultEncoding.GetBytes(cleanName, loginPacket.NameBytes);
+            StringUtils.WriteNullPaddedString(loginPacket.Name, cleanName, false);
+            loginPacket.Name.Clear();
+            StringUtils.DefaultEncoding.GetBytes(cleanName, loginPacket.Name);
 
-            if (StringUtils.DefaultEncoding.GetByteCount(password) > loginPacket.PasswordBytes.Length)
+            if (StringUtils.DefaultEncoding.GetByteCount(password) > LoginPacket.PasswordInlineArray.Length)
             {
                 _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
-            loginPacket.PasswordBytes.Clear();
-            StringUtils.DefaultEncoding.GetBytes(password, loginPacket.PasswordBytes);
+            loginPacket.Password.Clear();
+            StringUtils.DefaultEncoding.GetBytes(password, loginPacket.Password);
 
             loginPacket.MacId = 101;
 

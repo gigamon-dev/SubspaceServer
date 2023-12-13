@@ -125,7 +125,7 @@ namespace SS.Core.Modules
 
                         ban.Count++;
 
-                        Span<byte> nameBytes = authRequest.LoginPacket.NameBytes.SliceNullTerminated();
+                        ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)authRequest.LoginPacket.Name).SliceNullTerminated();
                         Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                         int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
                         Debug.Assert(nameBytes.Length == decodedByteCount);

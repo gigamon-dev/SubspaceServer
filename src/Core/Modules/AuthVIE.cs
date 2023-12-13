@@ -73,7 +73,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> nameBytes = authRequest.LoginPacket.NameBytes.SliceNullTerminated();
+            ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)authRequest.LoginPacket.Name).SliceNullTerminated();
             Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
             int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
             Debug.Assert(decodedByteCount == nameBytes.Length);

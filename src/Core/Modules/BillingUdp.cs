@@ -263,8 +263,8 @@ namespace SS.Core.Modules
                     S2B_UserLogin packet = new(
                         loginPacket.Flags,
                         ipAddress,
-                        loginPacket.NameBytes,
-                        loginPacket.PasswordBytes,
+                        loginPacket.Name,
+                        loginPacket.Password,
                         player.Id,
                         loginPacket.MacId,
                         loginPacket.TimeZoneBias,
@@ -305,12 +305,12 @@ namespace SS.Core.Modules
             else if (_billingFallback is not null)
             {
                 // Biller isn't connected, use fallback.
-                Span<byte> nameBytes = loginPacket.NameBytes.SliceNullTerminated();
+                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)loginPacket.Name).SliceNullTerminated();
                 Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
 
-                Span<byte> passwordBytes = loginPacket.PasswordBytes.SliceNullTerminated();
+                ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)loginPacket.Password).SliceNullTerminated();
                 Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
                 decodedByteCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
                 Debug.Assert(passwordBytes.Length == decodedByteCount);
@@ -1071,7 +1071,7 @@ namespace SS.Core.Modules
                 result.Code = AuthCode.OK;
                 result.Authenticated = true;
 
-                Span<byte> nameBytes = playerData.AuthRequest.LoginPacket.NameBytes.SliceNullTerminated();
+                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
                 Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
@@ -1087,7 +1087,7 @@ namespace SS.Core.Modules
                 result.Code = AuthCode.OK;
                 result.Authenticated = false;
 
-                Span<byte> nameBytes = playerData.AuthRequest.LoginPacket.NameBytes.SliceNullTerminated();
+                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
                 Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)+1];
                 nameChars[0] = '^';
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
