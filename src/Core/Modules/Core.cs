@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using CommunityToolkit.HighPerformance.Buffers;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -806,9 +807,9 @@ namespace SS.Core.Modules
 
                 // Set new player's name. 
                 player.Packet.Name.Set(authResult.SendName); // this can truncate
-                player.Name = Truncate(authResult.Name, Constants.MaxPlayerNameLength).ToString(); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
+                player.Name = StringPool.Shared.GetOrAdd(Truncate(authResult.Name, Constants.MaxPlayerNameLength)); // TODO: if SendName != Name, then wouldn't that break remote chat messages?
                 player.Packet.Squad.Set(authResult.Squad); // this can truncate
-                player.Squad = Truncate(authResult.Squad, Constants.MaxSquadNameLength).ToString();
+                player.Squad = StringPool.Shared.GetOrAdd(Truncate(authResult.Squad, Constants.MaxSquadNameLength));
 
                 // Make sure we don't have two identical players.
                 // If so, do not increment stage yet. We'll do it when the other player leaves.

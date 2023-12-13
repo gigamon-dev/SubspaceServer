@@ -1,3 +1,4 @@
+using CommunityToolkit.HighPerformance.Buffers;
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -158,12 +159,14 @@ namespace SS.Core.Modules
             {
                 int totalCreated = 0;
 
-                foreach (string name in permanentArenas.Split(new char[] { ',', ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                ReadOnlySpan<char> remaining = permanentArenas;
+                ReadOnlySpan<char> arenaName;
+                while (!(arenaName = remaining.GetToken(", \t\n", out remaining)).IsEmpty)
                 {
-                    ++totalCreated;
-                    _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Creating permanent arena '{name}'.");
-                    CreateArena(name, true);
-                }
+					++totalCreated;
+					_logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Creating permanent arena '{arenaName}'.");
+					CreateArena(arenaName, true);
+				}
 
                 _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Created {totalCreated} permanent arena(s).");
             }
@@ -1526,7 +1529,7 @@ namespace SS.Core.Modules
                 if (arena is null)
                 {
                     // create a non-permanent arena
-                    arena = CreateArena(name.ToString(), false);
+                    arena = CreateArena(name, false);
                     if (arena is null)
                     {
                         // if it fails, dump in first available
@@ -1607,9 +1610,10 @@ namespace SS.Core.Modules
             }
         }
 
-        private Arena CreateArena(string name, bool permanent)
+        private Arena CreateArena(ReadOnlySpan<char> name, bool permanent)
         {
-            Arena arena = new(Broker, name, this);
+            string arenaName = StringPool.Shared.GetOrAdd(name);
+            Arena arena = new(Broker, arenaName, this);
             arena.KeepAlive = permanent;
 
             WriteLock();
@@ -1621,7 +1625,7 @@ namespace SS.Core.Modules
                     arena.SetExtraData(keyId, factory.Get());
                 }
 
-                _arenaDictionary.Add(name, arena);
+                _arenaDictionary.Add(arenaName, arena);
                 _arenaTrie.Add(name, arena);
             }
             finally

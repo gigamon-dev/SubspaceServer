@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using CommunityToolkit.HighPerformance.Buffers;
+using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
 
@@ -96,7 +97,7 @@ namespace SS.Core.Modules
             }
 
             player.Packet.Name.Set(name);
-            player.Name = name.ToString();
+            player.Name = StringPool.Shared.GetOrAdd(name);
             player.Packet.Squad.Set("");
             player.Squad = string.Empty;
             player.ClientName = "<internal fake player>";
