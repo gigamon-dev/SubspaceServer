@@ -142,7 +142,7 @@ namespace SS.Core.Modules
             if (Path.GetFileName(clientPath).IsEmpty)
                 return false;
 
-            if (StringUtils.DefaultEncoding.GetByteCount(clientPath) > S2C_RequestFile.PathBytesLength)
+            if (StringUtils.DefaultEncoding.GetByteCount(clientPath) > S2C_RequestFile.PathInlineArray.Length)
                 return false;
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
