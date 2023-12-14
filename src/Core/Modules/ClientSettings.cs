@@ -97,16 +97,14 @@ namespace SS.Core.Modules
             {
                 Debug.Assert((S2C_ClientSettings.Length % 4) == 0);
 
-                S2C_ClientSettings cs = new();
-                Debug.Assert(cs.Int32Settings.Length == ClientSettingsConfig.LongNames.Length);
-                Debug.Assert(cs.Int16Settings.Length == ClientSettingsConfig.ShortNames.Length);
-                Debug.Assert(cs.ByteSettings.Length == ClientSettingsConfig.ByteNames.Length);
-                Debug.Assert(cs.PrizeWeightSettings.Length == ClientSettingsConfig.PrizeWeightNames.Length);
+                Debug.Assert(S2C_ClientSettings.Int32InlineArray.Length == ClientSettingsConfig.LongNames.Length);
+                Debug.Assert(S2C_ClientSettings.Int16InlineArray.Length == ClientSettingsConfig.ShortNames.Length);
+                Debug.Assert(S2C_ClientSettings.ByteInlineArray.Length == ClientSettingsConfig.ByteNames.Length);
+                Debug.Assert(S2C_ClientSettings.PrizeWeightInlineArray.Length == ClientSettingsConfig.PrizeWeightNames.Length);
 
-                ShipSettings ss = new();
-                Debug.Assert(ss.Int32Settings.Length == ClientSettingsConfig.ShipLongNames.Length);
-                Debug.Assert(ss.Int16Settings.Length == ClientSettingsConfig.ShipShortNames.Length);
-                Debug.Assert(ss.ByteSettings.Length == ClientSettingsConfig.ShipByteNames.Length);
+                Debug.Assert(ShipSettings.Int32InlineArray.Length == ClientSettingsConfig.ShipLongNames.Length);
+                Debug.Assert(ShipSettings.Int16InlineArray.Length == ClientSettingsConfig.ShipShortNames.Length);
+                Debug.Assert(ShipSettings.ByteInlineArray.Length == ClientSettingsConfig.ShipByteNames.Length);
             }
 #endif
             _adkey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -215,7 +213,7 @@ namespace SS.Core.Modules
                 {
                     if (key.Equals(ClientSettingsConfig.PrizeWeightNames[i].Key, StringComparison.OrdinalIgnoreCase))
                     {
-                        id = new ClientSettingIdentifier(false, ClientSettingIdentifierFieldType.Bit8, (int)Marshal.OffsetOf<S2C_ClientSettings>("prizeWeightSettings") + i, 0, 8);
+                        id = new ClientSettingIdentifier(false, ClientSettingIdentifierFieldType.Bit8, (int)Marshal.OffsetOf<S2C_ClientSettings>("PrizeWeightSettings") + i, 0, 8);
                         return true;
                     }
                 }
@@ -239,7 +237,7 @@ namespace SS.Core.Modules
 
                     int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("Ships")
                         + (int)Marshal.OffsetOf<AllShipSettings>(shipNames[shipIndex])
-                        + (int)Marshal.OffsetOf<ShipSettings>("int32Settings")
+                        + (int)Marshal.OffsetOf<ShipSettings>("Int32Settings")
                         + (i * 4);
 
                     id = new ClientSettingIdentifier(true, ClientSettingIdentifierFieldType.Bit32, byteOffset, 0, 32);
@@ -255,7 +253,7 @@ namespace SS.Core.Modules
                     int byteOffset =
                           (int)Marshal.OffsetOf<S2C_ClientSettings>("Ships")
                         + (int)Marshal.OffsetOf<AllShipSettings>(shipNames[shipIndex])
-                        + (int)Marshal.OffsetOf<ShipSettings>("int16Settings")
+                        + (int)Marshal.OffsetOf<ShipSettings>("Int16Settings")
                         + (i * 2);
 
                     id = new ClientSettingIdentifier(true, ClientSettingIdentifierFieldType.Bit16, byteOffset, 0, 16);
@@ -271,7 +269,7 @@ namespace SS.Core.Modules
                     int byteOffset =
                           (int)Marshal.OffsetOf<S2C_ClientSettings>("Ships")
                         + (int)Marshal.OffsetOf<AllShipSettings>(shipNames[shipIndex])
-                        + (int)Marshal.OffsetOf<ShipSettings>("byteSettings")
+                        + (int)Marshal.OffsetOf<ShipSettings>("ByteSettings")
                         + i;
 
                     id = new ClientSettingIdentifier(false, ClientSettingIdentifierFieldType.Bit8, byteOffset, 0, 8);
@@ -302,7 +300,7 @@ namespace SS.Core.Modules
                     int byteOffset =
                           (int)Marshal.OffsetOf<S2C_ClientSettings>("Ships")
                         + (int)Marshal.OffsetOf<AllShipSettings>(shipNames[shipIndex])
-                        + (int)Marshal.OffsetOf<ShipSettings>("int16Settings")
+                        + (int)Marshal.OffsetOf<ShipSettings>("Int16Settings")
                         + (10 * 2);
 
                     id = new ClientSettingIdentifier(false, ClientSettingIdentifierFieldType.Bit16, byteOffset, bitOffset, bitLength);
@@ -353,7 +351,7 @@ namespace SS.Core.Modules
                 if (section.Equals(ClientSettingsConfig.LongNames[i].Section, StringComparison.OrdinalIgnoreCase)
                     && key.Equals(ClientSettingsConfig.LongNames[i].Key, StringComparison.OrdinalIgnoreCase))
                 {
-                    int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("int32Settings") + (i * 4);
+                    int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("Int32Settings") + (i * 4);
                     id = new ClientSettingIdentifier(true, ClientSettingIdentifierFieldType.Bit32, byteOffset, 0, 32);
                     return true;
                 }
@@ -365,7 +363,7 @@ namespace SS.Core.Modules
                 if (section.Equals(ClientSettingsConfig.ShortNames[i].Section, StringComparison.OrdinalIgnoreCase)
                     && key.Equals(ClientSettingsConfig.ShortNames[i].Key, StringComparison.OrdinalIgnoreCase))
                 {
-                    int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("int16Settings") + (i * 2);
+                    int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("Int16Settings") + (i * 2);
                     id = new ClientSettingIdentifier(true, ClientSettingIdentifierFieldType.Bit16, byteOffset, 0, 16);
                     return true;
                 }
@@ -377,7 +375,7 @@ namespace SS.Core.Modules
                 if (section.Equals(ClientSettingsConfig.ByteNames[i].Section, StringComparison.OrdinalIgnoreCase)
                     && key.Equals(ClientSettingsConfig.ByteNames[i].Key, StringComparison.OrdinalIgnoreCase))
                 {
-                    int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("byteSettings") + i;
+                    int byteOffset = (int)Marshal.OffsetOf<S2C_ClientSettings>("ByteSettings") + i;
                     id = new ClientSettingIdentifier(false, ClientSettingIdentifierFieldType.Bit8, byteOffset, 0, 8);
                     return true;
                 }
@@ -639,17 +637,17 @@ namespace SS.Core.Modules
                 string shipName = shipNames[i];
 
                 // basic stuff
-                for (int j = 0; j < ss.Int32Settings.Length; j++)
+                for (int j = 0; j < ShipSettings.Int32InlineArray.Length; j++)
                 {
                     ss.Int32Settings[j] = _configManager.GetInt(ch, shipName, ClientSettingsConfig.ShipLongNames[j], 0);
                 }
 
-                for (int j = 0; j < ss.Int16Settings.Length; j++)
+                for (int j = 0; j < ShipSettings.Int16InlineArray.Length; j++)
                 {
                     ss.Int16Settings[j] = (short)_configManager.GetInt(ch, shipName, ClientSettingsConfig.ShipShortNames[j], 0);
                 }
 
-                for (int j = 0; j < ss.ByteSettings.Length; j++)
+                for (int j = 0; j < ShipSettings.ByteInlineArray.Length; j++)
                 {
                     ss.ByteSettings[j] = (byte)_configManager.GetInt(ch, shipName, ClientSettingsConfig.ShipByteNames[j], 0);
                 }
@@ -671,7 +669,7 @@ namespace SS.Core.Modules
                 wb.SeeMines = _configManager.GetInt(ch, shipName, "SeeMines", 0) != 0;
 
                 // strange bitfield
-                ref MiscBits misc = ref ss.MiscBits;
+				ref MiscBits misc = ref MemoryMarshal.Cast<short, MiscBits>(((Span<short>)ss.Int16Settings).Slice(10, 1))[0];
                 misc.SeeBombLevel = (byte)_configManager.GetInt(ch, shipName, "SeeBombLevel", 0);
                 misc.DisableFastShooting = _configManager.GetInt(ch, shipName, "DisableFastShooting", 0) != 0;
                 misc.Radius = (byte)_configManager.GetInt(ch, shipName, "Radius", 0);
@@ -687,12 +685,12 @@ namespace SS.Core.Modules
             }
 
             // rest of settings
-            for (int i = 0; i < cs.Int32Settings.Length; i++)
+            for (int i = 0; i < S2C_ClientSettings.Int32InlineArray.Length; i++)
             {
                 cs.Int32Settings[i] = _configManager.GetInt(ch, ClientSettingsConfig.LongNames[i].Section, ClientSettingsConfig.LongNames[i].Key, 0);
             }
 
-            for (int i = 0; i < cs.Int16Settings.Length; i++)
+            for (int i = 0; i < S2C_ClientSettings.Int16InlineArray.Length; i++)
             {
                 cs.Int16Settings[i] = (short)_configManager.GetInt(ch, ClientSettingsConfig.ShortNames[i].Section, ClientSettingsConfig.ShortNames[i].Key, 0);
 
@@ -707,14 +705,14 @@ namespace SS.Core.Modules
                 }
             }
 
-            for (int i = 0; i < cs.ByteSettings.Length; i++)
+            for (int i = 0; i < S2C_ClientSettings.ByteInlineArray.Length; i++)
             {
                 cs.ByteSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.ByteNames[i].Section, ClientSettingsConfig.ByteNames[i].Key, 0);
             }
 
             ushort total = 0;
             arenaData.pwps[0] = 0;
-            for (int i = 0; i < cs.PrizeWeightSettings.Length; i++)
+            for (int i = 0; i < S2C_ClientSettings.PrizeWeightInlineArray.Length; i++)
             {
                 cs.PrizeWeightSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.PrizeWeightNames[i].Section, ClientSettingsConfig.PrizeWeightNames[i].Key, 0);
                 arenaData.pwps[i + 1] = (total += cs.PrizeWeightSettings[i]);
@@ -727,7 +725,7 @@ namespace SS.Core.Modules
                 // likelyhood of an empty prize appearing
                 total = arenaData.pwps[0] = (ushort)_configManager.GetInt(ch, "DPrizeWeight", "NullPrize", 0);
 
-                for (int i = 0; i < cs.PrizeWeightSettings.Length; i++)
+                for (int i = 0; i < S2C_ClientSettings.PrizeWeightInlineArray.Length; i++)
                 {
                     arenaData.pwps[i + 1] = (total += (ushort)_configManager.GetInt(ch, ClientSettingsConfig.DeathPrizeWeightNames[i].Section, ClientSettingsConfig.DeathPrizeWeightNames[i].Key, 0));
                 }
