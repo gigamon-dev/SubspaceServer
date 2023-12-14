@@ -1,84 +1,183 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Directory
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2D_Announcement
+    public struct S2D_Announcement
     {
-        private static readonly int LengthWithoutDescription;
+		#region Static members
+
+		private static readonly int LengthWithoutDescription;
 
         static S2D_Announcement()
         {
-            LengthWithoutDescription = Marshal.SizeOf<S2D_Announcement>() - DescriptionBytesLength;
+            LengthWithoutDescription = Marshal.SizeOf<S2D_Announcement>() - Marshal.SizeOf<DescriptionInlineArray>();
         }
 
-        private uint ip;
-        public uint IP
+		#endregion
+
+		private uint ip;
+		private ushort port;
+		private ushort players;
+		private ushort scorekeeping;
+		private uint version;
+        public NameInlineArray Name;
+        public PasswordInlineArray Password;
+        public DescriptionInlineArray Description;
+
+		#region Helpers
+
+		public uint IP
         {
             get => LittleEndianConverter.Convert(ip);
             set => ip = LittleEndianConverter.Convert(value);
         }
 
-        private ushort port;
         public ushort Port
         {
             get => LittleEndianConverter.Convert(port);
             set => port = LittleEndianConverter.Convert(value);
         }
 
-        private ushort players;
         public ushort Players
         {
             get => LittleEndianConverter.Convert(players);
             set => players = LittleEndianConverter.Convert(value);
         }
 
-        private ushort scorekeeping;
         public ushort Scorekeeping
         {
             get => LittleEndianConverter.Convert(scorekeeping);
             set => scorekeeping = LittleEndianConverter.Convert(value);
         }
 
-        private uint version;
         public uint Version
         {
             get => LittleEndianConverter.Convert(version);
             set => version = LittleEndianConverter.Convert(value);
         }
 
-        private const int NameBytesLength = 32;
-        private fixed byte nameBytes[NameBytesLength];
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
-        public string Name
-        {
-            get => NameBytes.ReadNullTerminatedASCII();
-            set => NameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(NameBytesLength - 1));
-        }
+		/// <summary>
+		/// This packet is of variable length based on the <see cref="Description"/>. Use this property to tell how many bytes to send.
+		/// </summary>
+		public readonly int Length => LengthWithoutDescription + ((ReadOnlySpan<byte>)Description).SliceNullTerminated().Length + 1;
 
-        private const int PasswordBytesLength = 48;
-        private fixed byte passwordBytes[PasswordBytesLength];
-        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
-        public string Password
-        {
-            get => PasswordBytes.ReadNullTerminatedASCII();
-            set => PasswordBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(PasswordBytesLength - 1));
-        }
+		#endregion
 
-        private const int DescriptionBytesLength = 386;
-        private fixed byte descriptionBytes[DescriptionBytesLength];
-        public Span<byte> DescriptionBytes => MemoryMarshal.CreateSpan(ref descriptionBytes[0], DescriptionBytesLength);
-        public string Description
-        {
-            get => DescriptionBytes.ReadNullTerminatedASCII();
-            set => DescriptionBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(DescriptionBytesLength - 1));
-        }
+		#region Inline Array Types
 
-        /// <summary>
-        /// This packet is of variable length based on the <see cref="Description"/>. Use this property to tell how many bytes to send.
-        /// </summary>
-        public int Length => LengthWithoutDescription + DescriptionBytes.SliceNullTerminated().Length + 1;
-    }
+		[InlineArray(Length)]
+		public struct NameInlineArray
+		{
+			public const int Length = 32;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public NameInlineArray(ReadOnlySpan<char> name)
+			{
+				Set(name);
+			}
+
+			public static implicit operator NameInlineArray(string value)
+			{
+				return new(value);
+			}
+
+			public int Get(Span<char> destination)
+			{
+				Span<byte> bytes = ((Span<byte>)this).SliceNullTerminated();
+				return StringUtils.DefaultEncoding.GetChars(bytes, destination);
+			}
+
+			public void Set(ReadOnlySpan<char> value)
+            {
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct PasswordInlineArray
+		{
+			public const int Length = 48;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public PasswordInlineArray(ReadOnlySpan<char> name)
+			{
+				Set(name);
+			}
+
+			public static implicit operator PasswordInlineArray(string value)
+			{
+				return new(value);
+			}
+
+			public int Get(Span<char> destination)
+			{
+				Span<byte> bytes = ((Span<byte>)this).SliceNullTerminated();
+				return StringUtils.DefaultEncoding.GetChars(bytes, destination);
+			}
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct DescriptionInlineArray
+		{
+			public const int Length = 386;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public DescriptionInlineArray(ReadOnlySpan<char> name)
+			{
+				Set(name);
+			}
+
+			public static implicit operator DescriptionInlineArray(string value)
+			{
+				return new(value);
+			}
+
+			public int Get(Span<char> destination)
+			{
+				Span<byte> bytes = ((Span<byte>)this).SliceNullTerminated();
+				return StringUtils.DefaultEncoding.GetChars(bytes, destination);
+			}
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		#endregion
+	}
 }
