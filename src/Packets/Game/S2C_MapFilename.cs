@@ -1,50 +1,53 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2C_MapFilename
+    public struct S2C_MapFilename
     {
-        /// <summary>
-        /// The maximum # of lvz files a <see cref="S2C_MapFilename"/> packet can represent.
-        /// </summary>
-        public const int MaxLvzFiles = 16;
+		#region Constants
+
+		/// <summary>
+		/// The maximum # of lvz files a <see cref="S2C_MapFilename"/> packet can represent.
+		/// </summary>
+		public const int MaxLvzFiles = 16;
 
         /// <summary>
         /// The maximum # of files (lvl and lvz files) a <see cref="S2C_MapFilename"/> packet can represent.
         /// </summary>
         public const int MaxFiles = MaxLvzFiles + 1; // +1 for map file
 
-        // Type
-        public byte Type;
+        #endregion
 
-        // Files
-        private const int FileBytesLength = File.Length * MaxFiles;
-        private fixed byte filesBytes[FileBytesLength];
-        private Span<File> Files => MemoryMarshal.Cast<byte, File>(MemoryMarshal.CreateSpan(ref filesBytes[0], FileBytesLength));
+        public byte Type;
+        private FilesInlineArray Files;
 
         public S2C_MapFilename()
         {
             Type = (byte)S2CPacketType.MapFilename;
         }
 
-        /// <summary>
-        /// Sets file info for the original, non-continuum version of the packet, 
-        /// which doesn't include <see cref="File.Size"/> and can only contain 1 entry, the .lvl file.
-        /// This is for VIE clients (non-bot) that don't support the continuum version of the packet (.lvl file only).
-        /// </summary>
-        /// <param name="fileName">The .lvl file name.</param>
-        /// <param name="checksum">The checksum of the file.</param>
-        /// <returns>Number of bytes for the packet.</returns>
-        public int SetFileInfo(string fileName, uint checksum)
+		#region Methods
+
+		/// <summary>
+		/// Sets file info for the original, non-continuum version of the packet, 
+		/// which doesn't include <see cref="File.Size"/> and can only contain 1 entry, the .lvl file.
+		/// This is for VIE clients (non-bot) that don't support the continuum version of the packet (.lvl file only).
+		/// </summary>
+		/// <param name="fileName">The .lvl file name.</param>
+		/// <param name="checksum">The checksum of the file.</param>
+		/// <returns>Number of bytes for the packet.</returns>
+		public int SetFileInfo(string fileName, uint checksum)
         {
             if (string.IsNullOrWhiteSpace(fileName))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
 
             ref File file = ref Files[0];
-            file.FileName = fileName;
+            file.FileName.Set(fileName);
             file.Checksum = checksum;
 
             return 1 + File.LengthWithoutSize;
@@ -68,43 +71,81 @@ namespace SS.Packets.Game
                 throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
 
             ref File file = ref Files[fileIndex];
-            file.FileName = fileName;
+            file.FileName.Set(fileName);
             file.Checksum = checksum;
             file.Size = size;
 
             return 1 + ((fileIndex + 1) * File.Length);
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public unsafe struct File
-        {
-            // File Name
-            private const int FileNameBytesLength = 16;
-            private fixed byte fileNameBytes[FileNameBytesLength];
-            public Span<byte> FileNameBytes => MemoryMarshal.CreateSpan(ref fileNameBytes[0], FileNameBytesLength);
-            public ReadOnlySpan<char> FileName
-            {
-                set => FileNameBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(FileNameBytesLength), false);
-            }
+		#endregion
 
-            // Checksum
+		#region Types
+
+		[StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct File
+        {
+			#region Constants
+
+            /// <summary>
+            /// The # of bytes, including the size (Continuum).
+            /// </summary>
+			public const int Length = 24;
+
+            /// <summary>
+            /// The # of bytes, without the size (VIE).
+            /// </summary>
+			public const int LengthWithoutSize = 20;
+
+            #endregion
+
+            public FileNameInlineArray FileName;
             private uint checksum;
-            public uint Checksum
+            private uint size; // Continuum only
+
+			#region Helper Properties
+
+			public uint Checksum
             {
                 get => LittleEndianConverter.Convert(checksum);
                 set => checksum = LittleEndianConverter.Convert(value);
             }
 
-            // Size (continuum only)
-            private uint size;
-            public uint Size
+			public uint Size
             {
                 get => LittleEndianConverter.Convert(size);
                 set => size = LittleEndianConverter.Convert(value);
             }
 
-            public const int Length = 24;
-            public const int LengthWithoutSize = 20;
+			#endregion
+
+			#region Inline Array Types
+
+			[InlineArray(Length)]
+			public struct FileNameInlineArray
+			{
+				public const int Length = 16;
+
+				[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+				[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+				private byte _element0;
+
+				public void Set(ReadOnlySpan<char> value)
+				{
+					StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+				}
+			}
+
+            #endregion
         }
+
+		[InlineArray(MaxFiles)]
+		public struct FilesInlineArray
+        {
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private File _element0;
+		}
+
+        #endregion
     }
 }
