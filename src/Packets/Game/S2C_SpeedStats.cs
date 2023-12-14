@@ -1,5 +1,7 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Game
@@ -8,9 +10,14 @@ namespace SS.Packets.Game
     /// Packet sent at the end of a 'speed' game.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2C_SpeedStats
+    public struct S2C_SpeedStats
     {
         #region Static members
+
+        /// <summary>
+        /// The # of top scores a <see cref="S2C_SpeedStats"/> can contain.
+        /// </summary>
+        public const int TopScoreCount = 5;
 
         public static readonly int Length;
 
@@ -28,18 +35,30 @@ namespace SS.Packets.Game
         private ushort rank;
         private int score;
 
-        // top 5
-        private fixed int scores[5];
-        private fixed short playerIds[5];
+		// top 5
+		public ScoresInlineArray TopScores;
+		public PlayerIdsInlineArray TopPlayerIds;
 
-        #region Helper Properties
+		public S2C_SpeedStats(bool isPersonalBest, ushort rank, int score)
+		{
+			Type = (byte)S2CPacketType.Speed;
 
-        public bool IsPersonalBest => best != 0;
+			best = isPersonalBest ? (byte)1 : (byte)0;
+			this.rank = LittleEndianConverter.Convert(rank);
+			this.score = LittleEndianConverter.Convert(score);
+
+			for (int index = 0; index < TopScoreCount; index++)
+			{
+				ClearTopScore(index);
+			}
+		}
+
+		#region Helper Properties
+
+		public bool IsPersonalBest => best != 0;
         public ushort Rank => LittleEndianConverter.Convert(rank);
         public int Score => LittleEndianConverter.Convert(score);
-        private Span<int> Scores => MemoryMarshal.CreateSpan(ref scores[0], 5);
-        private Span<short> PlayerIds => MemoryMarshal.CreateSpan(ref playerIds[0], 5);
-
+        
         #endregion
 
         #region Helper methods
@@ -51,46 +70,52 @@ namespace SS.Packets.Game
             this.score = LittleEndianConverter.Convert(score);
         }
 
-        public void GetPlayerScore(int index, out short playerId, out int score)
+        public void GetTopScore(int index, out short playerId, out int score)
         {
-            if (index < 0 && index >= Scores.Length)
+            if (index < 0 && index >= TopScoreCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
-            playerId = LittleEndianConverter.Convert(PlayerIds[index]);
-            score = LittleEndianConverter.Convert(Scores[index]);
+            playerId = LittleEndianConverter.Convert(TopPlayerIds[index]);
+            score = LittleEndianConverter.Convert(TopScores[index]);
         }
 
-        public void SetPlayerScore(int index, short playerId, int score)
+        public void SetTopScore(int index, short playerId, int score)
         {
-            if (index < 0 && index >= Scores.Length)
+            if (index < 0 && index >= TopScoreCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
-            PlayerIds[index] = LittleEndianConverter.Convert(playerId);
-            Scores[index] = LittleEndianConverter.Convert(score);
+            TopPlayerIds[index] = LittleEndianConverter.Convert(playerId);
+            TopScores[index] = LittleEndianConverter.Convert(score);
         }
 
-        public void ClearPlayerScore(int index)
+        public void ClearTopScore(int index)
         {
-            if (index < 0 && index >= Scores.Length)
+            if (index < 0 && index >= TopScoreCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
-            SetPlayerScore(index, -1, 0);
+            SetTopScore(index, -1, 0);
         }
 
         #endregion
 
-        public S2C_SpeedStats(bool isPersonalBest, ushort rank, int score)
+		#region Inline Array Types
+
+		[InlineArray(TopScoreCount)]
+        public struct ScoresInlineArray
         {
-            Type = (byte)S2CPacketType.Speed;
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private int _element0;
+		}
 
-            best = isPersonalBest ? (byte)1 : (byte)0;
-            this.rank = LittleEndianConverter.Convert(rank);
-            this.score = LittleEndianConverter.Convert(score);
+		[InlineArray(TopScoreCount)]
+		public struct PlayerIdsInlineArray
+		{
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private short _element0;
+		}
 
-            for (int index = 0; index < 5; index++)
-            {
-                ClearPlayerScore(index);
-            }
-        }
+        #endregion
     }
 }

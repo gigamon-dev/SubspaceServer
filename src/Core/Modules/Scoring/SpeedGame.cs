@@ -381,7 +381,7 @@ namespace SS.Core.Modules.Scoring
                         if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Game, out long killPoints))
                             killPoints = 0; // this shouldn't happen
 
-                        packet.SetPlayerScore(i, (short)player.Id, (int)killPoints);
+                        packet.SetTopScore(i, (short)player.Id, (int)killPoints);
                     }
 
                     // Send the packet to each player in the arena, with personal stats.
