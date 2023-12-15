@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2B_UserCommand
+    public struct S2B_UserCommand
     {
 		#region Static members
 

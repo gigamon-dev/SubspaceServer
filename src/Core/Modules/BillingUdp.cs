@@ -724,7 +724,9 @@ namespace SS.Core.Modules
             }
             else if (type == ChatMessageType.RemotePrivate && toPlayer is null) // remote private message to a player not on the server
             {
-                S2B_UserPrivateChat packet = new(
+                Span<byte> packetBytes = stackalloc byte[S2B_UserPrivateChat.MaxLength];
+                ref S2B_UserPrivateChat packet = ref MemoryMarshal.AsRef<S2B_UserPrivateChat>(packetBytes);
+                packet = new(
                     -1, // for some odd reason ConnectionID >= 0 indicates global broadcast message
                     1, 
                     2, 
@@ -747,7 +749,7 @@ namespace SS.Core.Modules
                         Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserPrivateChat.MaxTextChars, sb.Length)];
                         sb.CopyTo(0, textBuffer, textBuffer.Length);
 
-                        bytesWritten = packet.SetText(textBuffer);
+                        bytesWritten = S2B_UserPrivateChat.SetText(packetBytes, textBuffer);
                     }
                     finally
                     {
@@ -756,10 +758,7 @@ namespace SS.Core.Modules
 
                     lock (_lockObj)
                     {
-                        _networkClient.SendPacket(
-                            _cc,
-                            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..(S2B_UserPrivateChat.LengthWithoutText + bytesWritten)],
-                            NetSendFlags.Reliable);
+                        _networkClient.SendPacket(_cc, packetBytes[..bytesWritten], NetSendFlags.Reliable);
                     }
                 }
             }
