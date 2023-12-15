@@ -441,7 +441,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (length < 1 || length - 1 > S2B_UserDemographics.DataLength)
+            if (length < 1 || length - 1 > S2B_UserDemographics.DataInlineArray.Length)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), player, $"Invalid demographics packet length {length}.");
                 return;
@@ -457,12 +457,12 @@ namespace SS.Core.Modules
 
                 if (playerData.IsKnownToBiller)
                 {
-                    S2B_UserDemographics packet = new(player.Id);
-                    data.AsSpan(1, length - 1).CopyTo(packet.Data);
-                    _networkClient.SendPacket(
-                        _cc,
-                        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..(S2B_UserDemographics.LengthWithoutData + length - 1)],
-                        NetSendFlags.Reliable);
+                    Span<byte> packetBytes = stackalloc byte[S2B_UserDemographics.Length];
+                    ref S2B_UserDemographics packet = ref MemoryMarshal.AsRef<S2B_UserDemographics>(packetBytes);
+                    packet = new(player.Id);
+                    int packetLength = packet.SetData(data.AsSpan(1, length - 1));
+
+                    _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
 
                     playerData.HasDemographics = true;
                 }
