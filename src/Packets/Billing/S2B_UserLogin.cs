@@ -1,28 +1,24 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2B_UserLogin
+    public struct S2B_UserLogin
     {
         #region Static members
 
         /// <summary>
-        /// Maximum # of bytes in a packet.
+        /// Maximum # of bytes in a packet, not including the <see cref="S2B_UserLogin_ClientExtraData"/> that Continuum sends.
         /// </summary>
         public static readonly int Length;
-
-        /// <summary>
-        /// # of bytes without <see cref="ClientExtraDataBytes"/>
-        /// </summary>
-        public static readonly int LengthWithoutClientExtraData;
 
         static S2B_UserLogin()
         {
             Length = Marshal.SizeOf<S2B_UserLogin>();
-            LengthWithoutClientExtraData = Length - ClientExtraDataBytesLength;
         }
 
         #endregion
@@ -30,15 +26,15 @@ namespace SS.Packets.Billing
         public readonly byte Type;
         public byte MakeNew;
         private uint ipAddress;
-        private fixed byte nameBytes[NameBytesLength];
-        private fixed byte passwordBytes[PasswordBytesLength];
+        public NameInlineArray Name;
+        public PasswordInlineArray Password;
         private int connectionId;
         private uint machineId;
         private int timeZone;
         private byte Unused0;
         private byte Sysop;
         private ushort clientVersion;
-        private fixed byte clientExtraDataBytes[ClientExtraDataBytesLength];
+        // Followed by client extra data bytes (Continuum only)
 
         public S2B_UserLogin(
             byte makeNew, 
@@ -61,18 +57,18 @@ namespace SS.Packets.Billing
             this.clientVersion = LittleEndianConverter.Convert(clientVersion);
 
             name = name.SliceNullTerminated();
-            if (name.Length > NameBytes.Length)
-                name = name[..NameBytes.Length];
+            if (name.Length > NameInlineArray.Length)
+                name = name[..NameInlineArray.Length];
 
-            name.CopyTo(NameBytes);
-            NameBytes[name.Length..].Clear();
+            name.CopyTo(Name);
+            Name[name.Length..].Clear();
 
             password = password.SliceNullTerminated();
-            if (password.Length > PasswordBytes.Length)
-                password = password[..PasswordBytes.Length];
+            if (password.Length > PasswordInlineArray.Length)
+                password = password[..PasswordInlineArray.Length];
 
-            password.CopyTo(PasswordBytes);
-            PasswordBytes[password.Length..].Clear();
+            password.CopyTo(Password);
+            Password[password.Length..].Clear();
         }
 
         #region Helpers
@@ -82,12 +78,6 @@ namespace SS.Packets.Billing
             get => LittleEndianConverter.Convert(ipAddress);
             set => ipAddress = LittleEndianConverter.Convert(value);
         }
-
-        private const int NameBytesLength = 32;
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
-
-        private const int PasswordBytesLength = 32;
-        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
 
         public int ConnectionId
         {
@@ -113,9 +103,50 @@ namespace SS.Packets.Billing
             set => clientVersion = LittleEndianConverter.Convert(value);
         }
 
-        public const int ClientExtraDataBytesLength = 256;
-        public Span<byte> ClientExtraDataBytes => MemoryMarshal.CreateSpan(ref clientExtraDataBytes[0], ClientExtraDataBytesLength);
+		#endregion
 
-        #endregion
+		#region Inline Array Types
+
+		[InlineArray(Length)]
+		public struct NameInlineArray
+		{
+			public const int Length = 32;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct PasswordInlineArray
+		{
+			public const int Length = 32;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		#endregion
+	}
+
+	[InlineArray(Length)]
+	public struct S2B_UserLogin_ClientExtraData
+    {
+		public const int Length = 256;
+
+		[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+		[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+		private byte _element0;
     }
 }

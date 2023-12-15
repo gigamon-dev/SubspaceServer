@@ -260,7 +260,10 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    S2B_UserLogin packet = new(
+					ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
+                    Span<byte> packetBytes = stackalloc byte[S2B_UserLogin.Length + int.Min(S2B_UserLogin_ClientExtraData.Length, extraBytes.Length)];
+                    ref S2B_UserLogin packet = ref MemoryMarshal.AsRef<S2B_UserLogin>(packetBytes);
+                    packet = new(
                         loginPacket.Flags,
                         ipAddress,
                         loginPacket.Name,
@@ -270,23 +273,19 @@ namespace SS.Core.Modules
                         loginPacket.TimeZoneBias,
                         loginPacket.CVersion);
 
-                    int packetLength = S2B_UserLogin.LengthWithoutClientExtraData;
-
-                    ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
                     if (!extraBytes.IsEmpty)
                     {
                         // There is extra data at the end of the login packet.
                         // For Continuum, it's the ContId field of the login packet.
-                        if (extraBytes.Length > S2B_UserLogin.ClientExtraDataBytesLength)
+                        if (extraBytes.Length > S2B_UserLogin_ClientExtraData.Length)
                         {
-                            extraBytes = extraBytes[..S2B_UserLogin.ClientExtraDataBytesLength];
+                            extraBytes = extraBytes[..S2B_UserLogin_ClientExtraData.Length];
                         }
 
-                        extraBytes.CopyTo(packet.ClientExtraDataBytes);
-                        packetLength += extraBytes.Length;
+						ref S2B_UserLogin_ClientExtraData clientExtraData = ref MemoryMarshal.AsRef<S2B_UserLogin_ClientExtraData>(packetBytes[S2B_UserLogin.Length..]);
+						extraBytes.CopyTo(clientExtraData);
                     }
 
-                    ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..packetLength];
                     _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
                     playerData.IsKnownToBiller = true;
                     _pendingAuths++;
