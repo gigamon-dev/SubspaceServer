@@ -1,39 +1,68 @@
-﻿using SS.Utilities;
+﻿using SS.Packets.Game;
+using SS.Utilities;
 using System;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct B2S_UserCommandChat
+    public struct B2S_UserCommandChat
     {
-        #region Static members
+		#region Static members
 
-        public static readonly int MinLength;
-        public static readonly int MaxLength;
-        public static readonly int LengthWithoutText;
+		/// <summary>
+		/// The maximum # of bytes the text portion of the packet can be.
+		/// </summary>
+		public const int MaxTextBytes = ChatPacket.MaxMessageBytes;
 
-        static B2S_UserCommandChat()
+		/// <summary>
+		/// The length of the header (excludes the variable length text) in bytes.
+		/// </summary>
+		public static readonly int HeaderLength;
+
+		/// <summary>
+		/// The minimum packet length (empty text, only containing a null-terminator) in bytes.
+		/// </summary>
+		public static readonly int MinLength;
+
+		/// <summary>
+		/// The maximum packet length (maxed out text) in bytes.
+		/// </summary>
+		public static readonly int MaxLength;
+
+		static B2S_UserCommandChat()
         {
-            MaxLength = Marshal.SizeOf<B2S_UserCommandChat>();
-            LengthWithoutText = MaxLength - TextBytesLength;
-            MinLength = LengthWithoutText + 1;
-        }
+			HeaderLength = Marshal.SizeOf<B2S_UserCommandChat>();
+			MinLength = HeaderLength + 1;
+			MaxLength = HeaderLength + MaxTextBytes;
+		}
 
-        #endregion
+		/// <summary>
+		/// Gets the text bytes of a packet.
+		/// </summary>
+		/// <param name="packetBytes">The full packet to get the text bytes of.</param>
+		/// <returns>A slice of <paramref name="packetBytes"/> containing the text bytes.</returns>
+		public static Span<byte> GetTextBytes(Span<byte> packetBytes)
+		{
+			if (packetBytes.Length <= HeaderLength)
+				return Span<byte>.Empty;
 
-        public byte Type;
+			packetBytes = packetBytes[HeaderLength..];
+			if (packetBytes.Length > MaxTextBytes)
+				packetBytes = packetBytes[..MaxTextBytes];
+
+			return packetBytes;
+		}
+
+		#endregion
+
+		public byte Type;
         private int connectionId;
-        private fixed byte textBytes[TextBytesLength];
+		// Followed by the text bytes which must be null-terminated.
 
-        #region Helpers
+		#region Helpers
 
-        public int ConnectionId => LittleEndianConverter.Convert(connectionId);
-
-        private const int TextBytesLength = 250;
-        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], TextBytesLength);
-
-        public Span<byte> GetTextBytes(int packetLength) => TextBytes[..Math.Min(packetLength - LengthWithoutText, TextBytesLength)];
+		public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
         #endregion
     }

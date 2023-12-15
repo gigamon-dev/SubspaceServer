@@ -1415,7 +1415,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(pkt);
+            Span<byte> pktSpan = pkt.AsSpan(0, len);
+			ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(pktSpan);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
@@ -1424,7 +1425,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = packet.GetTextBytes(len);
+            Span<byte> textBytes = B2S_UserCommandChat.GetTextBytes(pktSpan);
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
@@ -1459,7 +1460,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(pkt);
+            Span<byte> pktSpan = pkt.AsSpan(0, len);
+			ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(pktSpan);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
@@ -1468,7 +1470,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = B2S_UserChannelChat.GetTextBytes(pkt.AsSpan(0, len));
+            Span<byte> textBytes = B2S_UserChannelChat.GetTextBytes(pktSpan);
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
