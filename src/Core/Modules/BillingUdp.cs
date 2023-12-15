@@ -1281,7 +1281,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref B2S_UserPrivateChat packet = ref MemoryMarshal.AsRef<B2S_UserPrivateChat>(pkt);
+            Span<byte> pktSpan = pkt.AsSpan(0, len);
+            ref B2S_UserPrivateChat packet = ref MemoryMarshal.AsRef<B2S_UserPrivateChat>(pktSpan);
 
             if (packet.SubType != 2)
             {
@@ -1289,7 +1290,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = packet.GetTextBytes(len);
+            Span<byte> textBytes = B2S_UserPrivateChat.GetTextBytes(pktSpan);
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
