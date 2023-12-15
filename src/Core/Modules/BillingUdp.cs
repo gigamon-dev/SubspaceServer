@@ -1468,7 +1468,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = packet.GetTextBytes(len);
+            Span<byte> textBytes = B2S_UserChannelChat.GetTextBytes(pkt.AsSpan(0, len));
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
