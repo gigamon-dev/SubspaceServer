@@ -696,32 +696,31 @@ namespace SS.Core.Modules
 
             if (type == ChatMessageType.Chat)
             {
-                S2B_UserChannelChat packet = new(player.Id);
+                Span<byte> packetBytes = stackalloc byte[S2B_UserChannelChat.MaxLength];
+                ref S2B_UserChannelChat packet = ref MemoryMarshal.AsRef<S2B_UserChannelChat>(packetBytes);
+                packet = new(player.Id);
                 ReadOnlySpan<char> channel = message.GetToken(';', out ReadOnlySpan<char> remaining);
 
                 // Note that this supports a channel name in place of the usual channel number.
                 // e.g., ;foo;this is a message to the foo channel
                 // Most billers probably don't support this feature yet.
                 if (!channel.IsEmpty 
-                    && StringUtils.DefaultEncoding.GetByteCount(channel) < packet.ChannelBytes.Length // < to allow for the null-terminator
+                    && StringUtils.DefaultEncoding.GetByteCount(channel) < S2B_UserChannelChat.ChannelInlineArray.Length // < to allow for the null-terminator
                     && remaining.Length > 0) // found ;
                 {
-                    packet.Channel = channel;
+                    packet.Channel.Set(channel);
                     message = remaining[1..]; // skip the ;
                 }
                 else
                 {
-                    packet.Channel = "1";
+                    packet.Channel.Set("1");
                 }
 
-                int bytesWritten = packet.SetText(message);
+                int length = S2B_UserChannelChat.SetText(packetBytes, message);
 
                 lock (_lockObj)
                 {
-                    _networkClient.SendPacket(
-                        _cc,
-                        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..(S2B_UserChannelChat.LengthWithoutText + bytesWritten)],
-                        NetSendFlags.Reliable);
+                    _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
                 }
             }
             else if (type == ChatMessageType.RemotePrivate && toPlayer is null) // remote private message to a player not on the server

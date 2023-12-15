@@ -1,30 +1,68 @@
-﻿using SS.Utilities;
+﻿using SS.Packets.Game;
+using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2B_UserChannelChat
+    public struct S2B_UserChannelChat
     {
-        #region Static members
+		#region Static members
 
-        /// <summary>
-        /// The # of bytes of the packet, excluding the text portion.
-        /// </summary>
-        public static readonly int LengthWithoutText;
+		/// <summary>
+		/// The maximum # of bytes the text portion of the packet can be.
+		/// </summary>
+		public const int MaxTextBytes = ChatPacket.MaxMessageBytes;
 
-        static S2B_UserChannelChat()
+		/// <summary>
+		/// The length of the header (excludes the variable length text) in bytes.
+		/// </summary>
+		public static readonly int HeaderLength;
+
+		/// <summary>
+		/// The minimum packet length (empty text, only containing a null-terminator) in bytes.
+		/// </summary>
+		public static readonly int MinLength;
+
+		/// <summary>
+		/// The maximum packet length (maxed out text) in bytes.
+		/// </summary>
+		public static readonly int MaxLength;
+
+		static S2B_UserChannelChat()
         {
-            LengthWithoutText = Marshal.SizeOf<S2B_UserChannelChat>() - TextBytesLength;
-        }
+			HeaderLength = Marshal.SizeOf<S2B_UserChannelChat>();
+			MinLength = HeaderLength + 1;
+			MaxLength = HeaderLength + MaxTextBytes;
+		}
 
-        #endregion
+		/// <summary>
+		/// Writes the message portion of a chat packet.
+		/// </summary>
+		/// <remarks>
+		/// The <paramref name="message"/> is truncated if it does not fit.
+		/// </remarks>
+		/// <param name="packetBytes">The bytes of the entire chat packet.</param>
+		/// <param name="message">The message to write into the chat packet.</param>
+		/// <returns>The resulting length (bytes) of the chat packet.</returns>
+		public static int SetText(Span<byte> packetBytes, ReadOnlySpan<char> message)
+		{
+			packetBytes = packetBytes[HeaderLength..];
+			if (packetBytes.Length > MaxTextBytes)
+				packetBytes = packetBytes[..MaxTextBytes];
 
-        public readonly byte Type;
+			return HeaderLength + packetBytes.WriteNullTerminatedString(message.TruncateForEncodedByteLimit(packetBytes.Length - 1));
+		}
+
+		#endregion
+
+		public readonly byte Type;
         private int connectionId;
-        private fixed byte channelBytes[ChannelBytesLength];
-        private fixed byte textBytes[TextBytesLength];
+        public ChannelInlineArray Channel;
+		// Followed by the text bytes which must be null-terminated.
 
         public S2B_UserChannelChat(int connectionId)
         {
@@ -32,16 +70,23 @@ namespace SS.Packets.Billing
             this.connectionId = LittleEndianConverter.Convert(connectionId);
         }
 
-        #region Helpers
+		#region Inline Array Types
 
-        private const int ChannelBytesLength = 32;
-        public Span<byte> ChannelBytes => MemoryMarshal.CreateSpan(ref channelBytes[0], ChannelBytesLength);
-        public ReadOnlySpan<char> Channel { set => ChannelBytes.WriteNullPaddedString(value.TruncateForEncodedByteLimit(ChannelBytesLength - 1)); }
+		[InlineArray(Length)]
+		public struct ChannelInlineArray
+		{
+			public const int Length = 32;
 
-        private const int TextBytesLength = 250;
-        public Span<byte> TextBytes => MemoryMarshal.CreateSpan(ref textBytes[0], TextBytesLength);
-        public int SetText(ReadOnlySpan<char> value) => TextBytes.WriteNullTerminatedString(value.TruncateForEncodedByteLimit(TextBytesLength - 1));
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
 
-        #endregion
-    }
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+			}
+		}
+
+		#endregion
+	}
 }
