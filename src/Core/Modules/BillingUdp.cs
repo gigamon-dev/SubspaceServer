@@ -924,32 +924,31 @@ namespace SS.Core.Modules
             if (_chat.GetPlayerChatMask(player).IsRestricted(ChatMessageType.BillerCommand))
                 return;
 
-            S2B_UserCommand packet = new(player.Id);
-            int bytesWritten;
+            Span<byte> packetBytes = stackalloc byte[S2B_UserCommand.MaxLength];
+            ref S2B_UserCommand packet = ref MemoryMarshal.AsRef<S2B_UserCommand>(packetBytes);
+			packet = new(player.Id);
+			int length;
 
             if (line.StartsWith("chat=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("chat ", StringComparison.OrdinalIgnoreCase))
             {
-                bytesWritten = RewriteChatCommand(player, line, ref packet);
+				length = RewriteChatCommand(player, line, packetBytes);
             }
             else
             {
-                // Write the command prepended with the question mark.
-                bytesWritten = packet.SetText(line, true);
+				// Write the command prepended with the question mark.
+				length = S2B_UserCommand.SetText(packetBytes, line, true);
             }
 
             lock (_lockObj)
             {
-                _networkClient.SendPacket(
-                    _cc,
-                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..(S2B_UserCommand.LengthWithoutText + bytesWritten)],
-                    NetSendFlags.Reliable);
+                _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
             }
 
             [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, typeof(string), Description = "Comma separated staff chat list.")]
             [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to staff chats.")]
             [ConfigHelp("Billing", "LocalChats", ConfigScope.Global, typeof(string), Description = "Comma separated local chat list.")]
             [ConfigHelp("Billing", "LocalChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to local chats.")]
-            int RewriteChatCommand(Player player, ReadOnlySpan<char> line, ref S2B_UserCommand packet)
+            int RewriteChatCommand(Player player, ReadOnlySpan<char> line, Span<byte> packetBytes)
             {
                 static bool FindChat(ReadOnlySpan<char> searchFor, ReadOnlySpan<char> list)
                 {
@@ -1040,7 +1039,7 @@ namespace SS.Core.Modules
 
                     Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserCommand.MaxTextChars, sb.Length)];
                     sb.CopyTo(0, textBuffer, textBuffer.Length);
-                    return packet.SetText(textBuffer, false);
+                    return S2B_UserCommand.SetText(packetBytes, textBuffer, false);
                 }
                 finally
                 {
