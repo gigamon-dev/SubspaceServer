@@ -1,11 +1,13 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct S2B_ServerConnect
+    public struct S2B_ServerConnect
     {
         #region Static members
 
@@ -25,9 +27,9 @@ namespace SS.Packets.Billing
         private uint serverId;
         private uint groupId;
         private uint scoreId;
-        private fixed byte serverNameBytes[ServerNameBytesLength];
+        public ServerNameInlineArray ServerName;
         private ushort port;
-        private fixed byte passwordBytes[PasswordBytesLength];
+        public PasswordInlineArray Password;
 
         public S2B_ServerConnect(uint serverId, uint groupId, uint scoreId, ReadOnlySpan<char> serverName, ushort port, ReadOnlySpan<char> password)
         {
@@ -36,19 +38,42 @@ namespace SS.Packets.Billing
             this.groupId = LittleEndianConverter.Convert(groupId);
             this.scoreId = LittleEndianConverter.Convert(scoreId);
             this.port = LittleEndianConverter.Convert(port);
-            ServerNameBytes.WriteNullPaddedString(serverName.TruncateForEncodedByteLimit(ServerNameBytesLength - 1));
-            PasswordBytes.WriteNullPaddedString(password.TruncateForEncodedByteLimit(PasswordBytesLength - 1));
+            ServerName.Set(serverName);
+            Password.Set(password);
         }
 
-        #region Helpers
+		#region Inline Array Types
 
-        private const int ServerNameBytesLength = 126;
-        public Span<byte> ServerNameBytes => MemoryMarshal.CreateSpan(ref serverNameBytes[0], ServerNameBytesLength);
+		[InlineArray(Length)]
+		public struct ServerNameInlineArray
+		{
+			public const int Length = 126;
 
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
 
-        private const int PasswordBytesLength = 32;
-        public Span<byte> PasswordBytes => MemoryMarshal.CreateSpan(ref passwordBytes[0], PasswordBytesLength);
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+			}
+		}
 
-        #endregion
-    }
+		[InlineArray(Length)]
+		public struct PasswordInlineArray
+		{
+			public const int Length = 32;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+			}
+		}
+
+		#endregion
+	}
 }
