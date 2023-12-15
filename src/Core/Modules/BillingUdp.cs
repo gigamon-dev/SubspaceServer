@@ -1217,14 +1217,14 @@ namespace SS.Core.Modules
                 result.Code = result.DemoData ? AuthCode.AskDemographics : AuthCode.OK;
                 result.Authenticated = true;
 
-                Span<byte> nameBytes = packet.NameBytes.SliceNullTerminated();
+                Span<byte> nameBytes = ((Span<byte>)packet.Name).SliceNullTerminated();
                 Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
                 result.SetName(nameChars);
                 result.SetSendName(nameChars);
 
-                Span<byte> squadBytes = packet.SquadBytes.SliceNullTerminated();
+                Span<byte> squadBytes = ((Span<byte>)packet.Squad).SliceNullTerminated();
                 Span<char> squadChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(squadBytes)];
                 decodedByteCount = StringUtils.DefaultEncoding.GetChars(squadBytes, squadChars);
                 Debug.Assert(squadBytes.Length == decodedByteCount);

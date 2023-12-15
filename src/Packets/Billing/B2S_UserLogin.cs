@@ -1,5 +1,7 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
@@ -18,7 +20,7 @@ namespace SS.Packets.Billing
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct B2S_UserLogin
+    public struct B2S_UserLogin
     {
         #region Static members
 
@@ -43,8 +45,8 @@ namespace SS.Packets.Billing
         public readonly byte Type;
         private byte result;
         private int connectionId;
-        private fixed byte nameBytes[NameBytesLength];
-        private fixed byte squadBytes[SquadBytesLength];
+        public NameInlineArray Name;
+        public SquadInlineArray Squad;
         public Banner Banner;
         private uint secondsPlayed;
         public FirstLogin FirstLogin;
@@ -63,46 +65,64 @@ namespace SS.Packets.Billing
 
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
-        private const int NameBytesLength = 24;
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], NameBytesLength);
-
-        private const int SquadBytesLength = 24;
-        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], SquadBytesLength);
-
         public TimeSpan Usage => TimeSpan.FromSeconds(LittleEndianConverter.Convert(secondsPlayed));
 
         public uint UserId => LittleEndianConverter.Convert(userId);
 
+		#endregion
+
+		#region Inline Array Types
+
+		[InlineArray(Length)]
+		public struct NameInlineArray
+		{
+			public const int Length = 24;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+		}
+
+		[InlineArray(Length)]
+		public struct SquadInlineArray
+		{
+			public const int Length = 24;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+		}
+
         #endregion
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct FirstLogin
-    {
-        private ushort year;
-        private ushort month;
-        private ushort day;
-        private ushort hour;
-        private ushort minute;
-        private ushort second;
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+	public struct FirstLogin
+	{
+		private ushort year;
+		private ushort month;
+		private ushort day;
+		private ushort hour;
+		private ushort minute;
+		private ushort second;
 
-        public DateTime? ToDateTime()
-        {
-            if (year == 0 && month == 0 && day == 0)
-            {
-                // The biller might send all zeros. Consider that to be null.
-                return null;
-            }
-            else
-            {
-                return new(
-                    LittleEndianConverter.Convert(year),
-                    LittleEndianConverter.Convert(month),
-                    LittleEndianConverter.Convert(day),
-                    LittleEndianConverter.Convert(hour),
-                    LittleEndianConverter.Convert(minute),
-                    LittleEndianConverter.Convert(second));
-            }
-        }
-    }
+		public DateTime? ToDateTime()
+		{
+			if (year == 0 && month == 0 && day == 0)
+			{
+				// The biller might send all zeros. Consider that to be null.
+				return null;
+			}
+			else
+			{
+				return new(
+					LittleEndianConverter.Convert(year),
+					LittleEndianConverter.Convert(month),
+					LittleEndianConverter.Convert(day),
+					LittleEndianConverter.Convert(hour),
+					LittleEndianConverter.Convert(minute),
+					LittleEndianConverter.Convert(second));
+			}
+		}
+	}
 }
