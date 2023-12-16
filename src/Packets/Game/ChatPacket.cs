@@ -114,7 +114,10 @@ namespace SS.Packets.Game
 		public static int SetMessage(Span<byte> packetBytes, ReadOnlySpan<char> message)
 		{
 			packetBytes = packetBytes[HeaderLength..];
-			return HeaderLength + packetBytes.WriteNullTerminatedString(message.TruncateForEncodedByteLimit(packetBytes.Length));
+			if (packetBytes.Length > MaxMessageBytes)
+				packetBytes = packetBytes[..MaxMessageBytes];
+
+			return HeaderLength + packetBytes.WriteNullTerminatedString(message.TruncateForEncodedByteLimit(packetBytes.Length - 1));
 		}
 
 		#endregion
