@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <RootNamespace>SS.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <AssemblyName>SS.$(MSBuildProjectName)</AssemblyName>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <OutDir>$(SolutionDir)SubspaceServer\Zone\bin\modules\Replay</OutDir>

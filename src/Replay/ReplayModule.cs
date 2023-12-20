@@ -1256,7 +1256,7 @@ namespace SS.Replay
                     return;
                 }
 
-                ReadOnlySpan<byte> headerBytes = fileHeader.HeaderBytes.SliceNullTerminated();
+                ReadOnlySpan<byte> headerBytes = ((ReadOnlySpan<byte>)fileHeader.Header).SliceNullTerminated();
                 Span<char> headerChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(headerBytes)];
                 int decodedBytes = StringUtils.DefaultEncoding.GetChars(headerBytes, headerChars);
                 Debug.Assert(decodedBytes == headerBytes.Length);
@@ -1319,7 +1319,7 @@ namespace SS.Replay
                         {
                             sb.Append($"Starting playback of '{path}' recorded ");
 
-                            ReadOnlySpan<byte> arenaNameBytes = fileHeader.ArenaNameBytes.SliceNullTerminated();
+                            ReadOnlySpan<byte> arenaNameBytes = ((ReadOnlySpan<byte>)fileHeader.ArenaName).SliceNullTerminated();
                             Span<char> arenaNameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(arenaNameBytes)];
                             decodedBytes = StringUtils.DefaultEncoding.GetChars(arenaNameBytes, arenaNameChars);
                             Debug.Assert(decodedBytes == arenaNameBytes.Length);
@@ -1327,7 +1327,7 @@ namespace SS.Replay
                             if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
                                 sb.Append($"in arena {arenaNameChars} ");
 
-                            ReadOnlySpan<byte> recorderBytes = fileHeader.RecorderBytes.SliceNullTerminated();
+                            ReadOnlySpan<byte> recorderBytes = ((ReadOnlySpan<byte>)fileHeader.Recorder).SliceNullTerminated();
                             Span<char> recorderChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(recorderBytes)];
                             decodedBytes = StringUtils.DefaultEncoding.GetChars(recorderBytes, recorderChars);
                             Debug.Assert(decodedBytes == recorderBytes.Length);
@@ -1733,7 +1733,7 @@ namespace SS.Replay
                         case EventType.Enter:
                             ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
 
-                            Span<byte> nameBytes = enter.NameBytes.SliceNullTerminated();
+                            ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)enter.Name).SliceNullTerminated();
                             Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)+1];
                             name[0] = '~';
                             int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name[1..]);

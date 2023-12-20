@@ -1,11 +1,13 @@
 ﻿using SS.Core;
 using SS.Utilities;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Replay.FileFormat.Events
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct Enter
+    public struct Enter
     {
         #region Static members
 
@@ -20,8 +22,8 @@ namespace SS.Replay.FileFormat.Events
 
         public EventHeader Header;
         private short playerId;
-        private fixed byte nameBytes[nameBytesLength];
-        private fixed byte squadBytes[squadBytesLength];
+        public NameInlineArray Name;
+        public SquadInlineArray Squad;
         private short ship;
         private short freq;
 
@@ -29,11 +31,11 @@ namespace SS.Replay.FileFormat.Events
         {
             Header = new EventHeader(ticks, EventType.Enter);
             this.playerId = LittleEndianConverter.Convert(playerId);
-            this.ship = LittleEndianConverter.Convert((short)ship);
+			this.ship = LittleEndianConverter.Convert((short)ship);
             this.freq = LittleEndianConverter.Convert(freq);
-            SetName(name);
-            SetSquad(squad);
-        }
+			Name.Set(name);
+			Squad.Set(squad);
+		}
 
         #region Helper properties
 
@@ -41,22 +43,6 @@ namespace SS.Replay.FileFormat.Events
         {
             get => LittleEndianConverter.Convert(playerId);
             set => playerId = LittleEndianConverter.Convert(value);
-        }
-
-        private const int nameBytesLength = 24;
-        public Span<byte> NameBytes => MemoryMarshal.CreateSpan(ref nameBytes[0], nameBytesLength);
-
-        public void SetName(ReadOnlySpan<char> value)
-        {
-            StringUtils.WriteNullPaddedString(NameBytes, value, true);
-        }
-
-        private const int squadBytesLength = 24;
-        public Span<byte> SquadBytes => MemoryMarshal.CreateSpan(ref squadBytes[0], squadBytesLength);
-
-        public void SetSquad(ReadOnlySpan<char> value)
-        {
-            StringUtils.WriteNullPaddedString(SquadBytes, value, true);
         }
 
         public ShipType Ship
@@ -71,6 +57,50 @@ namespace SS.Replay.FileFormat.Events
             set => freq = LittleEndianConverter.Convert(value);
         }
 
-        #endregion
-    }
+		#endregion
+
+		#region Inline Array Types
+
+		[InlineArray(Length)]
+		public struct NameInlineArray
+		{
+			public const int Length = 24;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct SquadInlineArray
+		{
+			public const int Length = 24;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		#endregion
+	}
 }

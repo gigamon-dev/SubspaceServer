@@ -1,10 +1,12 @@
 ﻿using SS.Utilities;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace SS.Replay.FileFormat
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public unsafe struct FileHeader
+    public struct FileHeader
     {
         #region Static members
 
@@ -15,9 +17,13 @@ namespace SS.Replay.FileFormat
             Length = Marshal.SizeOf(typeof(FileHeader));
         }
 
-        #endregion
+		#endregion
 
-        private fixed byte headerBytes[HeaderBytesLength]; // or intead maybe use: private ulong header;
+		/// <summary>
+		/// Always "asssgame".
+		/// </summary>
+		public HeaderInlineArray Header;
+
         private uint version;
         private uint offset;
         private uint events;
@@ -26,21 +32,18 @@ namespace SS.Replay.FileFormat
         private uint specFreq;
         private long recorded;
         private uint mapChecksum;
-        private fixed byte recorderBytes[RecorderBytesLength];
-        private fixed byte arenaNameBytes[ArenaNameBytesLength];
+
+		/// <summary>
+		/// The name of the player who recorded it.
+		/// </summary>
+		public RecorderInlineArray Recorder;
+
+		/// <summary>
+		/// The name of the arena that the replay was recorded in.
+		/// </summary>
+		public ArenaNameInlineArray ArenaName;
 
         #region Helper properties
-
-        private const int HeaderBytesLength = 8;
-        public Span<byte> HeaderBytes => MemoryMarshal.CreateSpan(ref headerBytes[0], HeaderBytesLength);
-
-        /// <summary>
-        /// Always "asssgame".
-        /// </summary>
-        public ReadOnlySpan<char> Header
-        {
-            set => StringUtils.WriteNullPaddedString(HeaderBytes, value, false);
-        }
 
         /// <summary>
         /// To tell if the file is compatible.
@@ -114,28 +117,100 @@ namespace SS.Replay.FileFormat
             set => mapChecksum = LittleEndianConverter.Convert(value);
         }
 
-        private const int RecorderBytesLength = 24;
-        public Span<byte> RecorderBytes => MemoryMarshal.CreateSpan(ref recorderBytes[0], RecorderBytesLength);
+		#endregion
 
-        /// <summary>
-        /// The name of the player who recorded it.
-        /// </summary>
-        public ReadOnlySpan<char> Recorder
-        {
-            set => StringUtils.WriteNullPaddedString(RecorderBytes, value, false);
-        }
+		#region Inline Array Types
 
-        private const int ArenaNameBytesLength = 24;
-        public Span<byte> ArenaNameBytes => MemoryMarshal.CreateSpan(ref arenaNameBytes[0], ArenaNameBytesLength);
+		[InlineArray(Length)]
+		public struct HeaderInlineArray
+		{
+			public const int Length = 8;
 
-        /// <summary>
-        /// The name of the arena that was recorded.
-        /// </summary>
-        public ReadOnlySpan<char> ArenaName
-        {
-            set => StringUtils.WriteNullPaddedString(ArenaNameBytes, value, false);
-        }
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
 
-        #endregion
-    }
+			public HeaderInlineArray(ReadOnlySpan<char> name)
+			{
+				Set(name);
+			}
+
+			public static implicit operator HeaderInlineArray(string value)
+			{
+				return new(value);
+			}
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct RecorderInlineArray
+		{
+			public const int Length = 24;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public RecorderInlineArray(ReadOnlySpan<char> name)
+			{
+				Set(name);
+			}
+
+			public static implicit operator RecorderInlineArray(string value)
+			{
+				return new(value);
+			}
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		[InlineArray(Length)]
+		public struct ArenaNameInlineArray
+		{
+			public const int Length = 24;
+
+			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+			private byte _element0;
+
+			public ArenaNameInlineArray(ReadOnlySpan<char> name)
+			{
+				Set(name);
+			}
+
+			public static implicit operator ArenaNameInlineArray(string value)
+			{
+				return new(value);
+			}
+
+			public void Set(ReadOnlySpan<char> value)
+			{
+				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+			}
+
+			public void Clear()
+			{
+				((Span<byte>)this).Clear();
+			}
+		}
+
+		#endregion
+	}
 }
