@@ -67,18 +67,7 @@ namespace SS.Core.Modules
 
         void IPrng.Shuffle<T>(Span<T> values)
         {
-            // TODO: with .NET 8 replace with _random.Shuffle(values);
-
-            // Fisher–Yates shuffle
-            for (int i = values.Length - 1; i > 0; i--)
-            {
-                int randomIndex = ((IPrng)this).Number(0, i);
-                if (randomIndex != i)
-                {
-                    // swap
-                    (values[randomIndex], values[i]) = (values[i], values[randomIndex]);
-                }
-            }
+            _random.Shuffle(values);
         }
 
         void IPrng.Shuffle<T>(IList<T> values)
