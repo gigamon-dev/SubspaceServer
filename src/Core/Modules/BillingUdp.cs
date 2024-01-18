@@ -1300,91 +1300,108 @@ namespace SS.Core.Modules
 
             if (text.Length >= 1 && text[0] == ':') // private message
             {
-                // HACK: the compiler wouldn't allow use of StringUtils.GetToken(...) with the stack allocated Span<char>, but it does if it's wrapped in another method. Review this later...
-                ProcessRemotePrivateMessage(in packet, text);
+                ProcessRemotePrivateMessage((ChatSound)packet.Sound, text);
             }
             else // broadcast message
             {
                 _chat.SendArenaMessage((Arena)null, (ChatSound)packet.Sound, text);
             }
-        }
 
-        private void ProcessRemotePrivateMessage(in B2S_UserPrivateChat packet, Span<char> text)
-        {
-            // Remote private messages should be in the format:
-            // :recpient:(sender)>message
-            // recipient can be a squad, in which case it begins with a #
-            // if sender has )> in their name, then too bad, we take the first )>
 
-            if (text.Length < 3) // minimum of a 1 character recipient and no message
-                return;
+			void ProcessRemotePrivateMessage(ChatSound sound, ReadOnlySpan<char> text)
+			{
+				// Remote private messages should be in the format:
+				// :recipient:(sender)>message
+				// recipient can be a squad, in which case it begins with a #
+				// if sender has )> in their name, then too bad, we take the first )>
 
-            Span<char> recipient = text.GetToken(':', out Span<char> remaining);
-            if (recipient.Length < 1 || remaining.Length < 4 || remaining[1] != '(')
-                return;
+				Span<Range> ranges = stackalloc Range[3];
+				int numRanges = text.Split(ranges, ':', StringSplitOptions.None);
+				if (numRanges != 3 || !text[ranges[0]].IsEmpty)
+					return;
 
-            remaining = remaining[2..]; // skip the :
+				ReadOnlySpan<char> recipient = text[ranges[1]];
+				if (recipient.IsEmpty)
+					return;
 
-            int index = remaining.IndexOf(")>");
-            if (index == -1 || index == 0 || index > 30)
-                return;
+				bool isSquadRecipient = recipient[0] == '#';
+				if (isSquadRecipient)
+				{
+					recipient = recipient[1..];
 
-            Span<char> sender = remaining[..index];
-            remaining = remaining[(index + 2)..];
+					if (recipient.IsEmpty || recipient.Length > Constants.MaxSquadNameLength)
+						return;
+				}
+				else if (recipient.Length > Constants.MaxPlayerNameLength)
+				{
+					return;
+				}
 
-            if (recipient[0] == '#')
-            {
-                // squad message
-                recipient = recipient[1..];
-                if (recipient.Length < 1)
-                    return;
+				ReadOnlySpan<char> remaining = text[ranges[2]];
+				if (remaining.IsEmpty || remaining[0] != '(')
+					return;
 
-                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+				remaining = remaining[1..];
+				numRanges = remaining.Split(ranges[..2], ")>", StringSplitOptions.None);
+				if (numRanges != 2)
+					return;
 
-                try
-                {
-                    _playerData.Lock();
+				ReadOnlySpan<char> sender = remaining[ranges[0]];
+				if (sender.IsEmpty)
+					return;
 
-                    try
-                    {
-                        foreach (Player player in _playerData.Players)
-                            if (MemoryExtensions.Equals(player.Squad, recipient, StringComparison.OrdinalIgnoreCase))
-                                set.Add(player);
-                    }
-                    finally
-                    {
-                        _playerData.Unlock();
-                    }
+				ReadOnlySpan<char> message = remaining[ranges[1]];
 
-                    if (set.Count == 0)
-                        return;
+				if (isSquadRecipient)
+				{
+					// squad message
+					HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-                    _chat.SendRemotePrivMessage(set, (ChatSound)packet.Sound, recipient, sender, remaining);
-                }
-                finally
-                {
-                    _objectPoolManager.PlayerSetPool.Return(set);
-                }
-            }
-            else
-            {
-                Player player = _playerData.FindPlayer(recipient);
-                if (player is null)
-                    return;
+					try
+					{
+						_playerData.Lock();
 
-                HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+						try
+						{
+							foreach (Player player in _playerData.Players)
+								if (MemoryExtensions.Equals(player.Squad, recipient, StringComparison.OrdinalIgnoreCase))
+									set.Add(player);
+						}
+						finally
+						{
+							_playerData.Unlock();
+						}
 
-                try
-                {
-                    set.Add(player);
-                    _chat.SendRemotePrivMessage(set, (ChatSound)packet.Sound, null, sender, remaining);
-                }
-                finally
-                {
-                    _objectPoolManager.PlayerSetPool.Return(set);
-                }
-            }
-        }
+						if (set.Count == 0)
+							return;
+
+						_chat.SendRemotePrivMessage(set, sound, recipient, sender, message);
+					}
+					finally
+					{
+						_objectPoolManager.PlayerSetPool.Return(set);
+					}
+				}
+				else
+				{
+					Player player = _playerData.FindPlayer(recipient);
+					if (player is null)
+						return;
+
+					HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+					try
+					{
+						set.Add(player);
+						_chat.SendRemotePrivMessage(set, sound, null, sender, message);
+					}
+					finally
+					{
+						_objectPoolManager.PlayerSetPool.Return(set);
+					}
+				}
+			}
+		}
 
         private void ProcessUserKickout(byte[] pkt, int len)
         {
