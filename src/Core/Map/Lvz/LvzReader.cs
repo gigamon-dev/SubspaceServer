@@ -1,8 +1,8 @@
-﻿using Ionic.Zlib;
-using SS.Packets.Game;
+﻿using SS.Packets.Game;
 using System;
 using System.Buffers;
 using System.IO;
+using System.IO.Compression;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 
@@ -102,7 +102,7 @@ namespace SS.Core.Map.Lvz
                         {
                             using MemoryMappedViewStream vs = mmf.CreateViewStream(position, compressionHeader.CompressedSize, MemoryMappedFileAccess.Read);
                             {
-                                using ZlibStream zlibStream = new(vs, CompressionMode.Decompress, CompressionLevel.Default);
+                                using ZLibStream zlibStream = new(vs, CompressionMode.Decompress, true);
                                 zlibStream.CopyTo(ms);
                             }
 

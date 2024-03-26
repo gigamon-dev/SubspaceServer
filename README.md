@@ -34,11 +34,14 @@ To build the server,
 - Remember to place a copy of **Continuum.exe** (currently 0.40) into the zone's **'clients'** folder: `"src/SubspaceServer/Zone/clients"` before running.
 
 ## Dependencies
+- [CommunityToolkit.HighPerformance](https://www.nuget.org/packages/CommunityToolkit.HighPerformance) - for reducing string allocations by using StringPool
 - [Google.Protobuf](https://www.nuget.org/packages/Google.Protobuf) - for serializing data
-- [Iconic.Zlib.Netstandard](https://www.nuget.org/packages/Iconic.Zlib.Netstandard) - for zlib and crc32
-- [Microsoft.Data.Sqlite](https://www.nuget.org/packages/Microsoft.Data.Sqlite) - embedded database for persisting player and arena data
-- [Microsoft.Extensions.ObjectPool](https://www.nuget.org/packages/Microsoft.Extensions.ObjectPool) - object pooling to reduce the need to garbage collect
+- [Microsoft.Data.Sqlite](https://www.nuget.org/packages/Microsoft.Data.Sqlite) - for an embedded database that persists player and arena data
+- [Microsoft.Extensions.ObjectPool](https://www.nuget.org/packages/Microsoft.Extensions.ObjectPool) - object pooling to reduce allocations and the need to garbage collect
+- [Microsoft.IO.RecyclableMemoryStream](https://www.nuget.org/packages/Microsoft.IO.RecyclableMemoryStream) - for an improved MemoryStream with regards to performance and garbage collection
+- [Npgsql](https://www.nuget.org/packages/Npgsql) - for connecting to a PostgreSQL database (optional)
 - [SixLabors.ImageSharp](https://www.nuget.org/packages/SixLabors.ImageSharp) - for creating images of maps
+- [System.IO.Hashing](https://www.nuget.org/packages/System.IO.Hashing) - for a CRC-32 implementation compatible with zlib's
 
 ## License
 GNU GPLv2, since that's what *A Small Subspace Server* uses and much of this can be considered as being a derivative of it.

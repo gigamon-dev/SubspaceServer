@@ -1,5 +1,4 @@
-﻿using Ionic.Zlib;
-using Microsoft.Extensions.ObjectPool;
+﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -8,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.IO.Hashing;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -283,10 +283,10 @@ namespace SS.Core.Modules
                     {
                         // compress using zlib
                         using MemoryStream compressedStream = new();
-                        using (ZlibStream zlibStream = new(
+                        using (ZLibStream zlibStream = new(
                             compressedStream,
-                            CompressionMode.Compress,
-                            CompressionLevel.Default))
+                            CompressionLevel.Optimal,
+                            false))
                         {
                             inputStream.CopyTo(zlibStream);
                         }
@@ -641,10 +641,10 @@ namespace SS.Core.Modules
 
                             // compress using zlib
                             using MemoryStream compressedStream = new();
-                            using (ZlibStream zlibStream = new(
+                            using (ZLibStream zlibStream = new(
                                 compressedStream,
-                                CompressionMode.Compress,
-                                CompressionLevel.Default)) // Note: Had issues when it was CompressionLevel.BestCompression, contiuum didn't decrypt
+                                CompressionLevel.Optimal,
+                                false))
                             {
                                 newsStream.CopyTo(zlibStream);
                             }
