@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Hashing;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules
@@ -35,6 +36,7 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
         private IMapNewsDownload _mapNewsDownload;
+        private IObjectPoolManager _objectPoolManager;
         private IPersistExecutor _persistExecutor;
         private IPlayerData _playerData;
         private IScoreStats _scoreStats;
@@ -69,6 +71,7 @@ namespace SS.Core.Modules
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             IMapNewsDownload mapNewsDownload,
+            IObjectPoolManager objectPoolManager,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -79,6 +82,7 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _mapNewsDownload = mapNewsDownload ?? throw new ArgumentNullException(nameof(mapNewsDownload));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _network = broker.GetInterface<INetwork>();
@@ -1054,9 +1058,18 @@ namespace SS.Core.Modules
 
             try
             {
-                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
-                Ionic.Crc.CRC32 crc32 = new();
-                return (uint)crc32.GetCrc32(fs);
+				using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+				Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+
+				try
+				{
+					crc32.Append(fs);
+					return crc32.GetCurrentHashAsUInt32();
+				}
+				finally
+				{
+					_objectPoolManager.Crc32Pool.Return(crc32);
+				}
             }
             catch (Exception ex)
             {

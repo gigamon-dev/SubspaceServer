@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Utilities;
 using System.Collections.Generic;
+using System.IO.Hashing;
 using System.Net;
 using System.Text;
 
@@ -81,5 +82,10 @@ namespace SS.Core.ComponentInterfaces
         /// Pool of <see cref="IPEndPoint"/> objects.
         /// </summary>
         ObjectPool<IPEndPoint> IPEndPointPool { get; }
+
+        /// <summary>
+        /// Pool of <see cref="Crc32"/> objects.
+        /// </summary>
+        ObjectPool<Crc32> Crc32Pool { get; }
     }
 }

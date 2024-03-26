@@ -4,6 +4,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO.Hashing;
 using System.Net;
 using System.Text;
 
@@ -25,7 +26,7 @@ namespace SS.Core.Modules
         private ObjectPool<HashSet<string>> _nameHashSetPool;
         private ObjectPool<StringBuilder> _stringBuilderPool;
         private ObjectPool<IPEndPoint> _ipEndPointPool;
-        
+        private ObjectPool<Crc32> _crc32Pool;
 
         public bool Load(ComponentBroker broker)
         {
@@ -37,6 +38,7 @@ namespace SS.Core.Modules
             _nameHashSetPool = _provider.Create(new NameHashSetPooledObjectPolicy());
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
             _ipEndPointPool = _provider.Create(new IPEndPointPooledObjectPolicy());
+            _crc32Pool = _provider.Create(new Crc32PooledObjectPolicy());
 
             return true;
         }
@@ -66,7 +68,7 @@ namespace SS.Core.Modules
 
         bool IObjectPoolManager.TryRemoveTracked(IPool pool) => _poolDictionary.TryRemove(pool, out _);
 
-        ObjectPool <HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
+        ObjectPool<HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
 
         ObjectPool<HashSet<Arena>> IObjectPoolManager.ArenaSetPool => _arenaHashSetPool;
 
@@ -75,6 +77,8 @@ namespace SS.Core.Modules
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
 
         ObjectPool<IPEndPoint> IObjectPoolManager.IPEndPointPool => _ipEndPointPool;
+
+        ObjectPool<Crc32> IObjectPoolManager.Crc32Pool => _crc32Pool;
 
         #endregion
 
@@ -154,6 +158,23 @@ namespace SS.Core.Modules
                 return true;
             }
         }
+
+		private class Crc32PooledObjectPolicy : PooledObjectPolicy<Crc32>
+		{
+			public override Crc32 Create()
+			{
+                return new Crc32();
+			}
+
+			public override bool Return(Crc32 obj)
+			{
+                if (obj is null)
+                    return false;
+
+                obj.Reset();
+                return true;
+			}
+		}
 
         #endregion
     }

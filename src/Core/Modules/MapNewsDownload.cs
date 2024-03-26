@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Hashing;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -27,7 +28,8 @@ namespace SS.Core.Modules
         private IMainloop _mainloop;
         private IArenaManager _arenaManager;
         private IMapData _mapData;
-        private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
+        private IObjectPoolManager _objectPoolManager;
+		private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
 
         private ArenaDataKey<List<MapDownloadData>> _dlKey;
 
@@ -62,7 +64,8 @@ namespace SS.Core.Modules
             IConfigManager configManager,
             IMainloop mainloop,
             IArenaManager arenaManager,
-            IMapData mapData)
+            IMapData mapData,
+            IObjectPoolManager objectPoolManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -72,6 +75,7 @@ namespace SS.Core.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
             _dlKey = _arenaManager.AllocateArenaData(new MapDownloadDataListPooledObjectPolicy());
 
@@ -261,8 +265,17 @@ namespace SS.Core.Modules
                     mdd.uncmplen = (uint)inputStream.Length;
 
                     // calculate CRC
-                    Ionic.Crc.CRC32 crc32 = new();
-                    mdd.checksum = (uint)crc32.GetCrc32(inputStream);
+                    Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+
+                    try
+                    {
+                        crc32.Append(inputStream);
+                        mdd.checksum = crc32.GetCurrentHashAsUInt32();
+                    }
+                    finally
+                    {
+                        _objectPoolManager.Crc32Pool.Return(crc32);
+                    }
 
                     inputStream.Position = 0;
 
@@ -606,10 +619,19 @@ namespace SS.Core.Modules
                         try
                         {
                             // calculate the checksum
-                            Ionic.Crc.CRC32 crc32 = new();
-                            checksum = (uint)crc32.GetCrc32(newsStream);
+                            Crc32 crc32 = _parent._objectPoolManager.Crc32Pool.Get();
 
-                            if (_newsChecksum != null && _newsChecksum.Value == checksum)
+							try
+							{
+								crc32.Append(newsStream);
+								checksum = crc32.GetCurrentHashAsUInt32();
+							}
+							finally
+							{
+								_parent._objectPoolManager.Crc32Pool.Return(crc32);
+							}
+
+							if (_newsChecksum != null && _newsChecksum.Value == checksum)
                             {
                                 _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Checked '{_newsFilename}', but there was no change (checksum {checksum:X}).");
                                 return; // same checksum, no change

@@ -3,6 +3,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Hashing;
 using System.Threading;
 
 namespace SS.Core.Modules
@@ -20,8 +21,9 @@ namespace SS.Core.Modules
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
+        private IObjectPoolManager _objectPoolManager;
 
-        private InterfaceRegistrationToken<IObscene> _iObsceneRegistrationToken;
+		private InterfaceRegistrationToken<IObscene> _iObsceneRegistrationToken;
 
         private const string ObsceneFileName = "obscene.txt";
         private const string Replace = "%@$&%*!#@&%!#&*$#?@!*%@&!%#&%!?$*#!*$&@#&%$!*%@#&%!@&#$!*@&$%*@?";
@@ -30,7 +32,7 @@ namespace SS.Core.Modules
         private FileSystemWatcher _fileSystemWatcher;
 
         private readonly ReaderWriterLockSlim _rwLock = new();
-        private int? _checksum = null;
+        private uint? _checksum = null;
         private List<string> _obsceneList = null;
 
         #region Module members
@@ -40,12 +42,14 @@ namespace SS.Core.Modules
             ICommandManager commandManager,
             IConfigManager configManager,
             ILogManager logManager,
-            IMainloop mainloop)
+            IMainloop mainloop,
+            IObjectPoolManager objectPoolManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
             _fileSystemWatcher = new(".", ObsceneFileName);
             _fileSystemWatcher.NotifyFilter = NotifyFilters.LastWrite;
@@ -158,7 +162,7 @@ namespace SS.Core.Modules
             try
             {
 
-                int checksum;
+                uint checksum;
                 List<string> obsceneList;
 
                 try
@@ -202,12 +206,21 @@ namespace SS.Core.Modules
 
                     using StreamReader sr = new(fs, StringUtils.DefaultEncoding);
 
-                    //
-                    // Checksum
-                    //
+					//
+					// Checksum
+					//
 
-                    Ionic.Crc.CRC32 crc32 = new();
-                    checksum = crc32.GetCrc32(fs);
+					Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+
+					try
+					{
+						crc32.Append(fs);
+						checksum =  crc32.GetCurrentHashAsUInt32();
+					}
+					finally
+					{
+						_objectPoolManager.Crc32Pool.Return(crc32);
+					}
 
                     if (_checksum != null && _checksum == checksum)
                         return; // no change

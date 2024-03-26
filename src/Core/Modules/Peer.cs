@@ -1,5 +1,4 @@
-﻿using Ionic.Crc;
-using Microsoft.Extensions.ObjectPool;
+﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Packets.Peer;
@@ -10,7 +9,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.IO;
+using System.IO.Hashing;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -20,20 +19,20 @@ using static SS.Core.ComponentInterfaces.IPeer;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides functionality to communicate with other "peer" zones to send and/or receive:
-    /// <list type="bullet">
-    /// <item>Player lists (list of arenas and players in each)</item>
-    /// <item>Player counts (overall for the zone)</item>
-    /// <item>Zone messages and alert (moderator) messages</item>
-    /// <item>The ability to redirect a player to a peer's arena.</item>
-    /// </list>
-    /// </summary>
-    /// <remarks>
-    /// The original implementation for ASSS was written by Sharvil Nanavati (Snrrrub) in C++.
-    /// JoWie rewrote it into a C module, and this is based on JoWie's C module.
-    /// </remarks>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides functionality to communicate with other "peer" zones to send and/or receive:
+	/// <list type="bullet">
+	/// <item>Player lists (list of arenas and players in each)</item>
+	/// <item>Player counts (overall for the zone)</item>
+	/// <item>Zone messages and alert (moderator) messages</item>
+	/// <item>The ability to redirect a player to a peer's arena.</item>
+	/// </list>
+	/// </summary>
+	/// <remarks>
+	/// The original implementation for ASSS was written by Sharvil Nanavati (Snrrrub) in C++.
+	/// JoWie rewrote it into a C module, and this is based on JoWie's C module.
+	/// </remarks>
+	[CoreModuleInfo]
     public class Peer : IModule, IPeer, IStringBuilderPoolProvider
     {
         private static readonly TimeSpan StaleArenaTimeout = TimeSpan.FromSeconds(30);
@@ -966,22 +965,11 @@ namespace SS.Core.Modules
                     uint hash = 0xDEADBEEF;
                     string password = _configManager.GetStr(_configManager.Global, peerSection, "Password");
                     if (!string.IsNullOrWhiteSpace(password))
-                    {
-                        byte[] bytes = ArrayPool<byte>.Shared.Rent(StringUtils.DefaultEncoding.GetByteCount(password));
-                        try
-                        {
-                            int numBytes = StringUtils.DefaultEncoding.GetBytes(password, bytes);
-                            using MemoryStream ms = new(bytes, 0, numBytes);
-                            CRC32 crc32 = new();
-                            hash = (uint)(~crc32.GetCrc32(ms));
-                        }
-                        finally
-                        {
-                            ArrayPool<byte>.Shared.Return(bytes);
-                        }
-                    }
+					{
+						hash = GetHash(password);
+					}
 
-                    PeerZone peerZone = new(
+					PeerZone peerZone = new(
                         new PeerZoneConfig()
                         {
                             Id = i,
@@ -1060,7 +1048,30 @@ namespace SS.Core.Modules
 
             _mainloopTimer.SetTimer(MainloopTimer_PeriodicUpdate, 1000, 1000, null);
             _mainloopTimer.SetTimer(MainloopTimer_RemoveStaleArenas, 10000, 10000, null);
-        }
+
+
+			static uint GetHash(string password)
+			{
+				int numBytes = StringUtils.DefaultEncoding.GetByteCount(password);
+				byte[] byteArray = null;
+				Span<byte> byteSpan = numBytes <= 1024
+					? stackalloc byte[numBytes]
+					: (byteArray = ArrayPool<byte>.Shared.Rent(StringUtils.DefaultEncoding.GetByteCount(password)));
+
+				try
+				{
+					numBytes = StringUtils.DefaultEncoding.GetBytes(password, byteSpan);
+					return ~Crc32.HashToUInt32(byteSpan[..numBytes]);
+				}
+				finally
+				{
+					if (byteArray is not null)
+					{
+						ArrayPool<byte>.Shared.Return(byteArray);
+					}
+				}
+			}
+		}
 
         private void CleanupPeerZone(PeerZone peerZone)
         {
