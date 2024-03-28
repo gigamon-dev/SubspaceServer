@@ -187,16 +187,26 @@ namespace SS.Core.Modules
         /// </remarks>
         private readonly byte[] _receiveBuffer = GC.AllocateArray<byte>(length: 65527, pinned: true);
 
-        // TODO: Use a pinned array for sending too?
-        // Socket sends can be done by:
-        // - the send thread
-        // - the receive thread (it also responds for core packets: sending ACKs, time sync response, responses from connection init handlers, etc...).
-        // - the reliable thread(s) (it also responds for core packets)
-        // Probably need a pool? Get one large byte[] and split it into multiple Memory<byte> of 512 bytes? Would need 2 + # of reliable threads
-        //private readonly byte[] _receiveBuffer = GC.AllocateArray<byte>(length: 512*(2+reliableThreadCount), pinned: true);
-        //private readonly ConcurrentBag<Memory<byte>> _sendBufferPool = 
+		/// <summary>
+		/// A reusable IPv4 <see cref="SocketAddress"/> to be used only by the <see cref="ReceiveThread"/>.
+		/// </summary>
+		private SocketAddress _receiveSocketAddressV4 = new(AddressFamily.InterNetwork);
 
-        public Network()
+		/// <summary>
+		/// A reusable IPv6 <see cref="SocketAddress"/> to be used only by the <see cref="ReceiveThread"/>.
+		/// </summary>
+		private SocketAddress _receiveSocketAddressV6 = new(AddressFamily.InterNetworkV6);
+
+		// TODO: Use a pinned array for sending too?
+		// Socket sends can be done by:
+		// - the send thread
+		// - the receive thread (it also responds for core packets: sending ACKs, time sync response, responses from connection init handlers, etc...).
+		// - the reliable thread(s) (it also responds for core packets)
+		// Probably need a pool? Get one large byte[] and split it into multiple Memory<byte> of 512 bytes? Would need 2 + # of reliable threads
+		//private readonly byte[] _receiveBuffer = GC.AllocateArray<byte>(length: 512*(2+reliableThreadCount), pinned: true);
+		//private readonly ConcurrentBag<Memory<byte>> _sendBufferPool = 
+
+		public Network()
         {
             _oohandlers = new CorePacketHandler[20];
 
@@ -1669,7 +1679,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        bytesReceived = ld.GameSocket.ReceiveFrom(_receiveBuffer, _receiveBuffer.Length, SocketFlags.None, ref remoteEP);
+						bytesReceived = ld.GameSocket.ReceiveFrom(_receiveBuffer, _receiveBuffer.Length, SocketFlags.None, ref remoteEP);
                     }
                     catch (SocketException ex)
                     {
@@ -1846,263 +1856,252 @@ namespace SS.Core.Modules
                 if (ld is null)
                     return;
 
-                IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
+                SocketAddress receivedAddress = ld.PingSocket.AddressFamily == AddressFamily.InterNetworkV6 ? _receiveSocketAddressV6 : _receiveSocketAddressV4;
+
+                int numBytes;
 
                 try
                 {
-                    int numBytes;
-                    EndPoint receivedFrom = remoteIPEP;
+                    numBytes = ld.PingSocket.ReceiveFrom(_receiveBuffer, SocketFlags.None, receivedAddress);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
+
+                if (numBytes != 4 && numBytes != 8)
+                    return;
+
+                //
+                // Refresh data (if needed)
+                //
+
+                if (_pingData.LastRefresh == null
+                    || (DateTime.UtcNow - _pingData.LastRefresh) > _config.PingRefreshThreshold)
+                {
+                    uint globalTotal = 0;
+                    uint globalPlaying = 0;
+
+                    Span<byte> remainingArenaSummary = _pingData.ArenaSummaryBytes;
+
+                    // Reset temporary counts for arenas.
+                    foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
+                    {
+                        stats.TempTotal = stats.TempPlaying = 0;
+                    }
+
+                    IArenaManager arenaManager = _broker.GetInterface<IArenaManager>();
+                    if (arenaManager is not null)
+                    {
+                        try
+                        {
+                            arenaManager.Lock();
+
+                            try
+                            {
+                                // Refresh stats.
+                                arenaManager.GetPopulationSummary(out int total, out int playing);
+
+                                // Get global stats.
+                                globalTotal = (uint)total;
+                                globalPlaying = (uint)playing;
+
+                                // Get arena stats.
+                                foreach (Arena arena in arenaManager.Arenas)
+                                {
+                                    // Arena summary for ping/info payload
+                                    if (arena.Status == ArenaState.Running
+                                        && !arena.IsPrivate
+                                        && remainingArenaSummary.Length > StringUtils.DefaultEncoding.GetByteCount(arena.Name) + 1 + 2 + 2 + 1) // name + null-terminator + Int16 total + Int16 playing + enough space for a single nul to the series
+                                    {
+                                        // Name
+                                        int bytesWritten = StringUtils.WriteNullTerminatedString(remainingArenaSummary, arena.Name);
+                                        remainingArenaSummary = remainingArenaSummary[bytesWritten..];
+
+                                        // Total
+                                        BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arena.Total > ushort.MaxValue ? ushort.MaxValue : (ushort)arena.Total);
+                                        remainingArenaSummary = remainingArenaSummary[2..];
+
+                                        // Playing
+                                        BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arena.Playing > ushort.MaxValue ? ushort.MaxValue : (ushort)arena.Playing);
+                                        remainingArenaSummary = remainingArenaSummary[2..];
+                                    }
+
+                                    // Connect As
+                                    if (_pingData.ConnectAsPopulationStats.TryGetValue(arena.BaseName, out PopulationStats stats))
+                                    {
+                                        stats.TempTotal += (uint)arena.Total;
+                                        stats.TempPlaying += (uint)arena.Playing;
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                arenaManager.Unlock();
+                            }
+                        }
+                        finally
+                        {
+                            _broker.ReleaseInterface(ref arenaManager);
+                        }
+                    }
+
+                    if (remainingArenaSummary.Length != _pingData.ArenaSummaryBytes.Length)
+                    {
+                        // A one-byte chunk with a zero-length name (that is, a single nul byte) indicates the end of the series.
+                        remainingArenaSummary[0] = 0;
+                        remainingArenaSummary = remainingArenaSummary[1..];
+                    }
+
+                    _pingData.ArenaSummaryLength = _pingData.ArenaSummaryBytes.Length - remainingArenaSummary.Length;
+
+                    // Set arena stats.
+                    foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
+                    {
+                        stats.SetStats(stats.TempTotal, stats.TempPlaying);
+                    }
+
+                    // Get peer stats.
+                    uint peerTotal = 0;
+                    IPeer peer = _broker.GetInterface<IPeer>();
+                    if (peer is not null)
+                    {
+                        try
+                        {
+                            peerTotal = (uint)peer.GetPopulationSummary();
+                            // peer protocol does not provide a "playing" count
+                        }
+                        finally
+                        {
+                            _broker.ReleaseInterface(ref peer);
+                        }
+                    }
+
+                    // Set global stats.
+                    _pingData.Global.SetStats(globalTotal + peerTotal, globalPlaying);
+
+                    // Note: LastRefresh is only accessed by this thread. So, no write lock needed.
+                    _pingData.LastRefresh = DateTime.UtcNow;
+                }
+
+                //
+                // Respond
+                //
+
+                if (numBytes == 4)
+                {
+                    // Regular "simple" ping protocol
+
+                    // Reuse the buffer for sending.
+                    Span<byte> data = _receiveBuffer.AsSpan(0, 8);
+
+                    // Copy bytes received.
+                    Span<byte> valueSpan = data[..4];
+                    valueSpan.CopyTo(data.Slice(4, 4));
+
+                    if (string.IsNullOrWhiteSpace(ld.ConnectAs)
+                        || !_pingData.ConnectAsPopulationStats.TryGetValue(ld.ConnectAs, out PopulationStats stats))
+                    {
+                        stats = _pingData.Global;
+                    }
+
+                    // # of clients
+                    // Note: ASSS documentation says it's a UInt32, but it appears Continuum looks at only the first 2 bytes as an UInt16.
+                    uint count;
+                    stats.GetStats(out uint total, out uint playing);
+                    if ((_config.SimplePingPopulationMode & PingPopulationMode.Total) != 0)
+                    {
+                        if ((_config.SimplePingPopulationMode & PingPopulationMode.Playing) != 0)
+                        {
+                            // Alternate between total and playing counts every 3 seconds.
+                            // Note: ASSS uses the data received (which should be a timestamp from the client). Instead, this uses the server's tick count.
+                            count = ServerTick.Now % 600 < 300 ? total : playing;
+                        }
+                        else
+                        {
+                            count = total;
+                        }
+                    }
+                    else if ((_config.SimplePingPopulationMode & PingPopulationMode.Playing) != 0)
+                    {
+                        count = playing;
+                    }
+                    else
+                    {
+                        count = 0;
+                    }
+
+                    BinaryPrimitives.WriteUInt32LittleEndian(valueSpan, count);
 
                     try
                     {
-                        numBytes = ld.PingSocket.ReceiveFrom(_receiveBuffer, SocketFlags.None, ref receivedFrom);
+                        int bytesSent = ld.PingSocket.SendTo(data, SocketFlags.None, receivedAddress);
                     }
                     catch (SocketException ex)
                     {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {receivedAddress} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
                         return;
                     }
                     catch (Exception ex)
                     {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {receivedAddress} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
                         return;
-                    }
-
-                    if (receivedFrom is not IPEndPoint remoteEndPoint)
-                        return;
-
-                    if (numBytes != 4 && numBytes != 8)
-                        return;
-
-                    //
-                    // Refresh data (if needed)
-                    //
-
-                    if (_pingData.LastRefresh == null
-                        || (DateTime.UtcNow - _pingData.LastRefresh) > _config.PingRefreshThreshold)
-                    {
-                        uint globalTotal = 0;
-                        uint globalPlaying = 0;
-
-                        Span<byte> remainingArenaSummary = _pingData.ArenaSummaryBytes;
-
-                        // Reset temporary counts for arenas.
-                        foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
-                        {
-                            stats.TempTotal = stats.TempPlaying = 0;
-                        }
-
-                        IArenaManager arenaManager = _broker.GetInterface<IArenaManager>();
-                        if (arenaManager is not null)
-                        {
-                            try
-                            {
-                                arenaManager.Lock();
-
-                                try
-                                {
-                                    // Refresh stats.
-                                    arenaManager.GetPopulationSummary(out int total, out int playing);
-
-                                    // Get global stats.
-                                    globalTotal = (uint)total;
-                                    globalPlaying = (uint)playing;
-
-                                    // Get arena stats.
-                                    foreach (Arena arena in arenaManager.Arenas)
-                                    {
-                                        // Arena summary for ping/info payload
-                                        if (arena.Status == ArenaState.Running
-                                            && !arena.IsPrivate
-                                            && remainingArenaSummary.Length > StringUtils.DefaultEncoding.GetByteCount(arena.Name) + 1 + 2 + 2 + 1) // name + null-terminator + Int16 total + Int16 playing + enough space for a single nul to the series
-                                        {
-                                            // Name
-                                            int bytesWritten = StringUtils.WriteNullTerminatedString(remainingArenaSummary, arena.Name);
-                                            remainingArenaSummary = remainingArenaSummary[bytesWritten..];
-
-                                            // Total
-                                            BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arena.Total > ushort.MaxValue ? ushort.MaxValue : (ushort)arena.Total);
-                                            remainingArenaSummary = remainingArenaSummary[2..];
-
-                                            // Playing
-                                            BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arena.Playing > ushort.MaxValue ? ushort.MaxValue : (ushort)arena.Playing);
-                                            remainingArenaSummary = remainingArenaSummary[2..];
-                                        }
-
-                                        // Connect As
-                                        if (_pingData.ConnectAsPopulationStats.TryGetValue(arena.BaseName, out PopulationStats stats))
-                                        {
-                                            stats.TempTotal += (uint)arena.Total;
-                                            stats.TempPlaying += (uint)arena.Playing;
-                                        }
-                                    }
-                                }
-                                finally
-                                {
-                                    arenaManager.Unlock();
-                                }
-                            }
-                            finally
-                            {
-                                _broker.ReleaseInterface(ref arenaManager);
-                            }
-                        }
-
-                        if (remainingArenaSummary.Length != _pingData.ArenaSummaryBytes.Length)
-                        {
-                            // A one-byte chunk with a zero-length name (that is, a single nul byte) indicates the end of the series.
-                            remainingArenaSummary[0] = 0;
-                            remainingArenaSummary = remainingArenaSummary[1..];
-                        }
-
-                        _pingData.ArenaSummaryLength = _pingData.ArenaSummaryBytes.Length - remainingArenaSummary.Length;
-
-                        // Set arena stats.
-                        foreach (PopulationStats stats in _pingData.ConnectAsPopulationStats.Values)
-                        {
-                            stats.SetStats(stats.TempTotal, stats.TempPlaying);
-                        }
-
-                        // Get peer stats.
-                        uint peerTotal = 0;
-                        IPeer peer = _broker.GetInterface<IPeer>();
-                        if (peer is not null)
-                        {
-                            try
-                            {
-                                peerTotal = (uint)peer.GetPopulationSummary();
-                                // peer protocol does not provide a "playing" count
-                            }
-                            finally
-                            {
-                                _broker.ReleaseInterface(ref peer);
-                            }
-                        }
-
-                        // Set global stats.
-                        _pingData.Global.SetStats(globalTotal + peerTotal, globalPlaying);
-
-                        // Note: LastRefresh is only accessed by this thread. So, no write lock needed.
-                        _pingData.LastRefresh = DateTime.UtcNow;
-                    }
-
-                    //
-                    // Respond
-                    //
-
-                    if (numBytes == 4)
-                    {
-                        // Regular "simple" ping protocol
-
-                        // Reuse the buffer for sending.
-                        Span<byte> data = _receiveBuffer.AsSpan(0, 8);
-
-                        // Copy bytes received.
-                        Span<byte> valueSpan = data[..4];
-                        valueSpan.CopyTo(data.Slice(4, 4));
-
-                        if (string.IsNullOrWhiteSpace(ld.ConnectAs)
-                            || !_pingData.ConnectAsPopulationStats.TryGetValue(ld.ConnectAs, out PopulationStats stats))
-                        {
-                            stats = _pingData.Global;
-                        }
-
-                        // # of clients
-                        // Note: ASSS documentation says it's a UInt32, but it appears Continuum looks at only the first 2 bytes as an UInt16.
-                        uint count;
-                        stats.GetStats(out uint total, out uint playing);
-                        if ((_config.SimplePingPopulationMode & PingPopulationMode.Total) != 0)
-                        {
-                            if ((_config.SimplePingPopulationMode & PingPopulationMode.Playing) != 0)
-                            {
-                                // Alternate between total and playing counts every 3 seconds.
-                                // Note: ASSS uses the data received (which should be a timestamp from the client). Instead, this uses the server's tick count.
-                                count = ServerTick.Now % 600 < 300 ? total : playing;
-                            }
-                            else
-                            {
-                                count = total;
-                            }
-                        }
-                        else if ((_config.SimplePingPopulationMode & PingPopulationMode.Playing) != 0)
-                        {
-                            count = playing;
-                        }
-                        else
-                        {
-                            count = 0;
-                        }
-
-                        BinaryPrimitives.WriteUInt32LittleEndian(valueSpan, count);
-
-                        try
-                        {
-                            int bytesSent = ld.PingSocket.SendTo(data, SocketFlags.None, remoteEndPoint);
-                        }
-                        catch (SocketException ex)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
-                            return;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
-                            return;
-                        }
-                    }
-                    else if (numBytes == 8)
-                    {
-                        // ASSS ping/information protocol
-                        Span<byte> optionsSpan = _receiveBuffer.AsSpan(4, 4);
-                        PingOptionFlags optionsIn = (PingOptionFlags)BinaryPrimitives.ReadUInt32LittleEndian(optionsSpan);
-                        PingOptionFlags optionsOut = PingOptionFlags.None;
-                        Span<byte> remainingBuffer = _receiveBuffer.AsSpan(8);
-
-                        // Global summary
-                        if ((optionsIn & PingOptionFlags.GlobalSummary) != 0
-                            && remainingBuffer.Length >= 8)
-                        {
-                            _pingData.Global.GetStats(out uint total, out uint playing);
-                            BinaryPrimitives.WriteUInt32LittleEndian(remainingBuffer, total);
-                            remainingBuffer = remainingBuffer[4..];
-                            BinaryPrimitives.WriteUInt32LittleEndian(remainingBuffer, playing);
-                            remainingBuffer = remainingBuffer[4..];
-                            optionsOut |= PingOptionFlags.GlobalSummary;
-                        }
-
-                        // Arena summary
-                        if ((optionsIn & PingOptionFlags.ArenaSummary) != 0
-                            && _pingData.ArenaSummaryLength > 0
-                            && remainingBuffer.Length >= _pingData.ArenaSummaryLength)
-                        {
-                            _pingData.ArenaSummaryBytes.AsSpan(0, _pingData.ArenaSummaryLength).CopyTo(remainingBuffer);
-                            remainingBuffer = remainingBuffer[_pingData.ArenaSummaryLength..];
-                            optionsOut |= PingOptionFlags.ArenaSummary;
-                        }
-
-                        // Fill in the outgoing options.
-                        BinaryPrimitives.WriteUInt32LittleEndian(optionsSpan, (uint)optionsOut);
-
-                        // Send the packet.
-                        try
-                        {
-                            int bytesSent = ld.PingSocket.SendTo(_receiveBuffer.AsSpan(0, _receiveBuffer.Length - remainingBuffer.Length), SocketFlags.None, remoteEndPoint);
-                        }
-                        catch (SocketException ex)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
-                            return;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
-                            return;
-                        }
                     }
                 }
-                finally
+                else if (numBytes == 8)
                 {
-                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+                    // ASSS ping/information protocol
+                    Span<byte> optionsSpan = _receiveBuffer.AsSpan(4, 4);
+                    PingOptionFlags optionsIn = (PingOptionFlags)BinaryPrimitives.ReadUInt32LittleEndian(optionsSpan);
+                    PingOptionFlags optionsOut = PingOptionFlags.None;
+                    Span<byte> remainingBuffer = _receiveBuffer.AsSpan(8);
+
+                    // Global summary
+                    if ((optionsIn & PingOptionFlags.GlobalSummary) != 0
+                        && remainingBuffer.Length >= 8)
+                    {
+                        _pingData.Global.GetStats(out uint total, out uint playing);
+                        BinaryPrimitives.WriteUInt32LittleEndian(remainingBuffer, total);
+                        remainingBuffer = remainingBuffer[4..];
+                        BinaryPrimitives.WriteUInt32LittleEndian(remainingBuffer, playing);
+                        remainingBuffer = remainingBuffer[4..];
+                        optionsOut |= PingOptionFlags.GlobalSummary;
+                    }
+
+                    // Arena summary
+                    if ((optionsIn & PingOptionFlags.ArenaSummary) != 0
+                        && _pingData.ArenaSummaryLength > 0
+                        && remainingBuffer.Length >= _pingData.ArenaSummaryLength)
+                    {
+                        _pingData.ArenaSummaryBytes.AsSpan(0, _pingData.ArenaSummaryLength).CopyTo(remainingBuffer);
+                        remainingBuffer = remainingBuffer[_pingData.ArenaSummaryLength..];
+                        optionsOut |= PingOptionFlags.ArenaSummary;
+                    }
+
+                    // Fill in the outgoing options.
+                    BinaryPrimitives.WriteUInt32LittleEndian(optionsSpan, (uint)optionsOut);
+
+                    // Send the packet.
+                    try
+                    {
+                        int bytesSent = ld.PingSocket.SendTo(_receiveBuffer.AsSpan(0, _receiveBuffer.Length - remainingBuffer.Length), SocketFlags.None, receivedAddress);
+                    }
+                    catch (SocketException ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {receivedAddress} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {receivedAddress} with ping socket {ld.PingSocket.LocalEndPoint}. {ex}");
+                        return;
+                    }
                 }
 
                 Interlocked.Increment(ref _globalStats.pcountpings);
