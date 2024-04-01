@@ -23,9 +23,9 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private IServerTimer _serverTimer;
 
-        private readonly Dictionary<IPAddress, Socket> _socketDictionary = new ();
-        private readonly List<DirectoryListing> _listings = new();
-        private readonly List<IPEndPoint> _servers = new();
+        private readonly Dictionary<IPAddress, Socket> _socketDictionary = [];
+        private readonly List<DirectoryListing> _listings = [];
+        private readonly List<(IPEndPoint, SocketAddress)> _servers = [];
         private readonly object _lock = new();
 
         public bool Load(
@@ -180,7 +180,7 @@ namespace SS.Core.Modules
                         continue;
                     }
 
-                    _servers.Add(directoryEndpoint);
+                    _servers.Add((directoryEndpoint, directoryEndpoint.Serialize()));
 
                     _logManager.LogM(LogLevel.Info, nameof(DirectoryPublisher), $"Using '{entry.HostName}' ({directoryEndpoint}) as a directory server.");
                 }
@@ -265,11 +265,11 @@ namespace SS.Core.Modules
                     Span<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref listing.Packet, 1))[..length];
 
                     // send
-                    foreach (IPEndPoint endPoint in _servers)
+                    foreach ((IPEndPoint endPoint, SocketAddress socketAddress) in _servers)
                     {
                         try
                         {
-                            listing.Socket.SendTo(data, SocketFlags.None, endPoint);
+                            listing.Socket.SendTo(data, SocketFlags.None, socketAddress);
                         }
                         catch (SocketException ex)
                         {
