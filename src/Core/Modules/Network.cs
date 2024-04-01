@@ -85,10 +85,10 @@ namespace SS.Core.Modules
         /// Dictionary of known player connections.
         /// </summary>
         /// <remarks>
-        /// Key = EndPoint (IP + port)
+        /// Key = SocketAddress (buffer containing IP, port, and address family)
         /// Value = Player
         /// </remarks>
-        private readonly ConcurrentDictionary<EndPoint, Player> _clientDictionary = new();
+        private readonly ConcurrentDictionary<SocketAddress, Player> _playerConnections = new();
 
         /// <summary>
         /// Dictionary of active client connections.
@@ -96,7 +96,7 @@ namespace SS.Core.Modules
         /// <remarks>
         /// Synchronized with <see cref="_clientConnectionsLock"/>.
         /// </remarks>
-        private readonly Dictionary<EndPoint, NetClientConnection> _clientConnections = new();
+        private readonly Dictionary<SocketAddress, NetClientConnection> _clientConnections = new();
         private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.NoRecursion);
 
         private delegate void CorePacketHandler(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags);
@@ -671,18 +671,19 @@ namespace SS.Core.Modules
 
         Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld)
         {
-            if (ld == null)
-                throw new ArgumentNullException(nameof(ld));
+			ArgumentNullException.ThrowIfNull(remoteEndpoint);
+			ArgumentNullException.ThrowIfNull(ld);
 
-            // certain ports may have restrictions on client types
-            if ((clientType == ClientType.VIE && !ld.AllowVIE)
+			// certain ports may have restrictions on client types
+			if ((clientType == ClientType.VIE && !ld.AllowVIE)
                 || (clientType == ClientType.Continuum && !ld.AllowContinuum))
             {
                 return null;
             }
 
             // try to find a matching player for the endpoint
-            if (remoteEndpoint != null && _clientDictionary.TryGetValue(remoteEndpoint, out Player player))
+            SocketAddress remoteAddress = remoteEndpoint.Serialize();
+            if (_playerConnections.TryGetValue(remoteAddress, out Player player))
             {
                 // We found it. If its status is Connected, just return the pid.
                 // It means we have to redo part of the connection init.
@@ -735,12 +736,9 @@ namespace SS.Core.Modules
                 _ => "<unknown game client>",
             };
 
-            if (remoteEndpoint != null)
-            {
-                conn.RemoteEndpoint = remoteEndpoint;
-
-                _clientDictionary[remoteEndpoint] = player;
-            }
+            conn.RemoteAddress = remoteAddress;
+			conn.RemoteEndpoint = remoteEndpoint;
+			_playerConnections[remoteAddress] = player;
 
             _playerData.WriteLock();
             try
@@ -752,14 +750,7 @@ namespace SS.Core.Modules
                 _playerData.WriteUnlock();
             }
 
-            if (remoteEndpoint != null)
-            {
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"New connection from {remoteEndpoint}.");
-            }
-            else
-            {
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"New internal connection.");
-            }
+			_logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"New connection from {remoteEndpoint}.");
 
             return player;
         }
@@ -1105,7 +1096,7 @@ namespace SS.Core.Modules
 
             try
             {
-                added = _clientConnections.TryAdd(remoteEndpoint, cc);
+                added = _clientConnections.TryAdd(cc.ConnData.RemoteAddress, cc);
             }
             finally
             {
@@ -1667,119 +1658,102 @@ namespace SS.Core.Modules
                 if (ld is null)
                     return;
 
-                Span<byte> data;
                 int bytesReceived;
-                Player player;
-                ConnData conn;
-                IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
+				SocketAddress receivedAddress = ld.GameSocket.AddressFamily == AddressFamily.InterNetworkV6 ? _receiveSocketAddressV6 : _receiveSocketAddressV4;
 
-                try
+				try
                 {
-                    EndPoint remoteEP = remoteIPEP;
+					bytesReceived = ld.GameSocket.ReceiveFrom(_receiveBuffer, SocketFlags.None, receivedAddress);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
 
-                    try
-                    {
-						bytesReceived = ld.GameSocket.ReceiveFrom(_receiveBuffer, _receiveBuffer.Length, SocketFlags.None, ref remoteEP);
-                    }
-                    catch (SocketException ex)
-                    {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from game socket {ld.GameSocket.LocalEndPoint}. {ex}");
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from game socket {ld.GameSocket.LocalEndPoint}. {ex}");
-                        return;
-                    }
+                if (bytesReceived <= 0)
+                {
+                    return;
+                }
 
-                    if (bytesReceived <= 0)
-                    {
-                        return;
-                    }
+				Span<byte> data = _receiveBuffer.AsSpan(0, bytesReceived);
+                bool isConnectionInitPacket = IsConnectionInitPacket(data);
 
-                    data = _receiveBuffer.AsSpan(0, bytesReceived);
-                    bool isConnectionInitPacket = IsConnectionInitPacket(data);
+                // TODO: Add some type of denial of service / flood detection for bad packet sizes? block by ip/port?
+                // TODO: Add some type of denial of service / flood detection for repeated connection init attempts over a threshold? block by ip/port?
 
-                    // TODO: Add some type of denial of service / flood detection for bad packet sizes? block by ip/port?
-                    // TODO: Add some type of denial of service / flood detection for repeated connection init attempts over a threshold? block by ip/port?
+                // TODO: Distinguish between actual connection init packets and peer packets by checking if the remote endpoint (IP + port) is from a configured peer.
+                // Connection init packets should be normal sized game packets, <= Constants.MaxPacket.
+                // Peer packets can be much larger than game packets.
 
-                    // TODO: Distinguish between actual connection init packets and peer packets by checking if the remote endpoint (IP + port) is from a configured peer.
-                    // Connection init packets should be normal sized game packets, <= Constants.MaxPacket.
-                    // Peer packets can be much larger than game packets.
-
-                    if (isConnectionInitPacket && bytesReceived > Constants.MaxConnInitPacket)
-                    {
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a connection init packet that is too large ({bytesReceived} bytes) from {remoteEP}.");
-                        return;
-                    }
-                    else if (!isConnectionInitPacket && bytesReceived > Constants.MaxPacket) // TODO: verify that this is the true maximum, I've read articles that said it was 520 (due to the VIE encryption limit)
-                    {
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a game packet that is too large ({bytesReceived} bytes) from {remoteEP}.");
-                        return;
-                    }
+                if (isConnectionInitPacket && bytesReceived > Constants.MaxConnInitPacket)
+                {
+                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a connection init packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
+                    return;
+                }
+                else if (!isConnectionInitPacket && bytesReceived > Constants.MaxPacket) // TODO: verify that this is the true maximum, I've read articles that said it was 520 (due to the VIE encryption limit)
+                {
+                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a game packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
+                    return;
+                }
 
 #if CFG_DUMP_RAW_PACKETS
-                    DumpPk($"RECV: {bytesReceived} bytes", data);
+                DumpPk($"RECV: {bytesReceived} bytes", data);
 #endif
 
-                    if (remoteEP is not IPEndPoint remoteEndPoint)
-                    {
-                        return;
-                    }
-
-                    if (_clientDictionary.TryGetValue(remoteEndPoint, out player) == false)
-                    {
-                        // this might be a new connection. make sure it's really a connection init packet
-                        if (isConnectionInitPacket)
-                        {
-                            ProcessConnectionInit(remoteEndPoint, _receiveBuffer, bytesReceived, ld);
-                        }
-#if CFG_LOG_STUPID_STUFF
-                        else if (bytesReceived > 1)
-                        {
-                            _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({data[0]:X2} {data[1]:X2} ; {bytesReceived} bytes) before connection established.");
-                        }
-                        else
-                        {
-                            _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({data[0]:X2} ; {bytesReceived} bytes) before connection established.");
-                        }
-#endif
-                        return;
-                    }
-
-                    if (!player.TryGetExtraData(_connKey, out conn))
-                    {
-                        return;
-                    }
-
+                if (!_playerConnections.TryGetValue(receivedAddress, out Player player))
+                {
+                    // this might be a new connection. make sure it's really a connection init packet
                     if (isConnectionInitPacket)
                     {
-                        // here, we have a connection init, but it's from a
-                        // player we've seen before. there are a few scenarios:
-                        if (player.Status == PlayerState.Connected)
-                        {
-                            // if the player is in PlayerState.Connected, it means that
-                            // the connection init response got dropped on the
-                            // way to the client. we have to resend it.
-                            ProcessConnectionInit(remoteEndPoint, _receiveBuffer, bytesReceived, ld);
-                        }
-                        else
-                        {
-                            // otherwise, he probably just lagged off or his
-                            // client crashed. ideally, we'd postpone this
-                            // packet, initiate a logout procedure, and then
-                            // process it. we can't do that right now, so drop
-                            // the packet, initiate the logout, and hope that
-                            // the client re-sends it soon. 
-                            _playerData.KickPlayer(player);
-                        }
-
-                        return;
+                        ProcessConnectionInit(receivedAddress, _receiveBuffer, bytesReceived, ld);
                     }
+#if CFG_LOG_STUPID_STUFF
+                    else if (bytesReceived > 1)
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({data[0]:X2} {data[1]:X2} ; {bytesReceived} bytes) before connection established.");
+                    }
+                    else
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received data ({data[0]:X2} ; {bytesReceived} bytes) before connection established.");
+                    }
+#endif
+                    return;
                 }
-                finally
+
+                if (!player.TryGetExtraData(_connKey, out ConnData conn))
                 {
-                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+                    return;
+                }
+
+                if (isConnectionInitPacket)
+                {
+                    // here, we have a connection init, but it's from a
+                    // player we've seen before. there are a few scenarios:
+                    if (player.Status == PlayerState.Connected)
+                    {
+                        // if the player is in PlayerState.Connected, it means that
+                        // the connection init response got dropped on the
+                        // way to the client. we have to resend it.
+                        ProcessConnectionInit(receivedAddress, _receiveBuffer, bytesReceived, ld);
+                    }
+                    else
+                    {
+                        // otherwise, he probably just lagged off or his
+                        // client crashed. ideally, we'd postpone this
+                        // packet, initiate a logout procedure, and then
+                        // process it. we can't do that right now, so drop
+                        // the packet, initiate the logout, and hope that
+                        // the client re-sends it soon. 
+                        _playerData.KickPlayer(player);
+                    }
+
+                    return;
                 }
 
                 // we shouldn't get packets in this state, but it's harmless if we do
@@ -1829,9 +1803,12 @@ namespace SS.Core.Modules
                         && ((data[1] == 0x01) || (data[1] == 0x11));
                 }
 
-                bool ProcessConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+                bool ProcessConnectionInit(SocketAddress remoteAddress, byte[] buffer, int len, ListenData ld)
                 {
-                    _connectionInitLock.EnterReadLock();
+                    // TODO: Investigate not allocating IPEndPoint until the last possible moment (when we need to know IP and port). Also, remember that ConnectionInit also includes Peer data.
+                    IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
+
+					_connectionInitLock.EnterReadLock();
 
                     try
                     {
@@ -2110,90 +2087,81 @@ namespace SS.Core.Modules
             void HandleClientPacketReceived()
             {
                 int bytesReceived;
-                IPEndPoint remoteIPEP = _objectPoolManager.IPEndPointPool.Get();
+				SocketAddress receivedAddress = _clientSocket.AddressFamily == AddressFamily.InterNetworkV6 ? _receiveSocketAddressV6 : _receiveSocketAddressV4;
 
                 try
                 {
-                    EndPoint receivedFrom = remoteIPEP;
+                    bytesReceived = _clientSocket.ReceiveFrom(_receiveBuffer, SocketFlags.None, receivedAddress);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from client socket {_clientSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from client socket {_clientSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
 
-                    try
-                    {
-                        bytesReceived = _clientSocket.ReceiveFrom(_receiveBuffer, _receiveBuffer.Length, SocketFlags.None, ref receivedFrom);
-                    }
-                    catch (SocketException ex)
-                    {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when receiving from client socket {_clientSocket.LocalEndPoint}. {ex}");
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when receiving from client socket {_clientSocket.LocalEndPoint}. {ex}");
-                        return;
-                    }
+                if (bytesReceived < 1)
+                {
+                    return;
+                }
 
-                    if (bytesReceived < 1)
-                    {
-                        return;
-                    }
-
-                    Span<byte> data = _receiveBuffer.AsSpan(0, bytesReceived);
+                Span<byte> data = _receiveBuffer.AsSpan(0, bytesReceived);
 
 #if CFG_DUMP_RAW_PACKETS
-                    DumpPk($"RAW CLIENT DATA: {bytesReceived} bytes", data);
+                DumpPk($"RAW CLIENT DATA: {bytesReceived} bytes", data);
 #endif
 
-                    bool found;
-                    NetClientConnection cc;
+                bool found;
+                NetClientConnection cc;
 
-                    _clientConnectionsLock.EnterReadLock();
+                _clientConnectionsLock.EnterReadLock();
 
-                    try
-                    {
-                        found = _clientConnections.TryGetValue(receivedFrom, out cc);
-                    }
-                    finally
-                    {
-                        _clientConnectionsLock.ExitReadLock();
-                    }
-
-                    if (found)
-                    {
-                        ConnData conn = cc.ConnData;
-
-                        if (cc.Encryptor is not null)
-                        {
-                            bytesReceived = cc.Encryptor.Decrypt(cc, _receiveBuffer, bytesReceived);
-                            data = _receiveBuffer.AsSpan(0, bytesReceived);
-
-#if CFG_DUMP_RAW_PACKETS
-                            DumpPk($"DECRYPTED CLIENT DATA: {bytesReceived} bytes", data);
-#endif
-                        }
-
-                        if (bytesReceived > 0)
-                        {
-                            conn.lastPkt = DateTime.UtcNow;
-                            conn.bytesReceived += (ulong)bytesReceived;
-                            conn.pktReceived++;
-                            Interlocked.Add(ref _globalStats.byterecvd, (ulong)bytesReceived);
-                            Interlocked.Increment(ref _globalStats.pktrecvd);
-
-                            ProcessBuffer(data, conn, NetReceiveFlags.None);
-                        }
-                        else
-                        {
-                            _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) Failed to decrypt packet.");
-                        }
-
-                        return;
-                    }
-
-                    _logManager.LogM(LogLevel.Warn, nameof(Network), $"Got data on the client port that was not from any known connection ({receivedFrom}).");
+                try
+                {
+                    found = _clientConnections.TryGetValue(receivedAddress, out cc);
                 }
                 finally
                 {
-                    _objectPoolManager.IPEndPointPool.Return(remoteIPEP);
+                    _clientConnectionsLock.ExitReadLock();
                 }
+
+                if (found)
+                {
+                    ConnData conn = cc.ConnData;
+
+                    if (cc.Encryptor is not null)
+                    {
+                        bytesReceived = cc.Encryptor.Decrypt(cc, _receiveBuffer, bytesReceived);
+                        data = _receiveBuffer.AsSpan(0, bytesReceived);
+
+#if CFG_DUMP_RAW_PACKETS
+                        DumpPk($"DECRYPTED CLIENT DATA: {bytesReceived} bytes", data);
+#endif
+                    }
+
+                    if (bytesReceived > 0)
+                    {
+                        conn.lastPkt = DateTime.UtcNow;
+                        conn.bytesReceived += (ulong)bytesReceived;
+                        conn.pktReceived++;
+                        Interlocked.Add(ref _globalStats.byterecvd, (ulong)bytesReceived);
+                        Interlocked.Increment(ref _globalStats.pktrecvd);
+
+                        ProcessBuffer(data, conn, NetReceiveFlags.None);
+                    }
+                    else
+                    {
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) Failed to decrypt packet.");
+                    }
+
+                    return;
+                }
+
+                _logManager.LogM(LogLevel.Warn, nameof(Network), $"Got data on the client port that was not from any known connection ({receivedAddress}).");
             }
         }
 
@@ -2700,7 +2668,7 @@ namespace SS.Core.Modules
                     // log message
                     _logManager.LogM(LogLevel.Info, nameof(Network), $"[{player.Name}] [pid={player.Id}] Disconnected.");
 
-                    if (_clientDictionary.TryRemove(conn.RemoteEndpoint, out _) == false)
+                    if (_playerConnections.TryRemove(conn.RemoteAddress, out _) == false)
                         _logManager.LogM(LogLevel.Error, nameof(Network), "Established connection not in hash table.");
 
                     toFree.Add(player);
@@ -3292,7 +3260,7 @@ namespace SS.Core.Modules
 
             try
             {
-                conn.whichSock.SendTo(encryptedBuffer, SocketFlags.None, conn.RemoteEndpoint);
+                conn.whichSock.SendTo(encryptedBuffer, SocketFlags.None, conn.RemoteAddress);
             }
             catch (SocketException ex)
             {
@@ -3522,7 +3490,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _clientConnections.Remove(cc.ConnData.RemoteEndpoint);
+                _clientConnections.Remove(cc.ConnData.RemoteAddress);
             }
             finally
             {
@@ -3615,6 +3583,11 @@ namespace SS.Core.Modules
             /// The client this is a part of, or <see langword="null"/> for a player connection.
             /// </summary>
             public NetClientConnection cc;
+
+			/// <summary>
+			/// The remote address to communicate with.
+			/// </summary>
+			public SocketAddress RemoteAddress;
 
             /// <summary>
             /// The remote address to communicate with.
@@ -3834,6 +3807,7 @@ namespace SS.Core.Modules
             {
                 p = null;
                 cc = null;
+                RemoteAddress = null;
                 RemoteEndpoint = null;
                 whichSock = null;
                 s2cn = 0;
@@ -3922,6 +3896,7 @@ namespace SS.Core.Modules
             {
                 ConnData = new ConnData(Constants.IncomingReliableBufferLength_ClientConnection);
                 ConnData.cc = this;
+                ConnData.RemoteAddress = remoteEndpoint.Serialize();
                 ConnData.RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
                 ConnData.whichSock = socket ?? throw new ArgumentNullException(nameof(socket));
                 ConnData.Initalize(null, null, bwLimit);

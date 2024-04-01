@@ -2,15 +2,14 @@
 using SS.Utilities;
 using System.Collections.Generic;
 using System.IO.Hashing;
-using System.Net;
 using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
-    /// <summary>
-    /// Interface for a module that manages and tracks object pool usage.
-    /// </summary>
-    public interface IObjectPoolManager : IComponentInterface
+	/// <summary>
+	/// Interface for a module that manages and tracks object pool usage.
+	/// </summary>
+	public interface IObjectPoolManager : IComponentInterface
     {
         /// <summary>
         /// Gets the default pool for a given type and begins tracking the pool if it isn't already being tracked.
@@ -77,11 +76,6 @@ namespace SS.Core.ComponentInterfaces
         /// Pool of <see cref="StringBuilder"/> objects.
         /// </summary>
         ObjectPool<StringBuilder> StringBuilderPool { get; }
-
-        /// <summary>
-        /// Pool of <see cref="IPEndPoint"/> objects.
-        /// </summary>
-        ObjectPool<IPEndPoint> IPEndPointPool { get; }
 
         /// <summary>
         /// Pool of <see cref="Crc32"/> objects.

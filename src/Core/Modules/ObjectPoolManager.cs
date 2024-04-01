@@ -5,15 +5,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO.Hashing;
-using System.Net;
 using System.Text;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module for managing and tracking object pool usage.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module for managing and tracking object pool usage.
+	/// </summary>
+	[CoreModuleInfo]
     public class ObjectPoolManager : IModule, IObjectPoolManager
     {
         private InterfaceRegistrationToken<IObjectPoolManager> _iObjectPoolManagerToken;
@@ -25,7 +24,6 @@ namespace SS.Core.Modules
         private ObjectPool<HashSet<Arena>> _arenaHashSetPool;
         private ObjectPool<HashSet<string>> _nameHashSetPool;
         private ObjectPool<StringBuilder> _stringBuilderPool;
-        private ObjectPool<IPEndPoint> _ipEndPointPool;
         private ObjectPool<Crc32> _crc32Pool;
 
         public bool Load(ComponentBroker broker)
@@ -37,7 +35,6 @@ namespace SS.Core.Modules
             _arenaHashSetPool = _provider.Create(new ArenaHashSetPooledObjectPolicy());
             _nameHashSetPool = _provider.Create(new NameHashSetPooledObjectPolicy());
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
-            _ipEndPointPool = _provider.Create(new IPEndPointPooledObjectPolicy());
             _crc32Pool = _provider.Create(new Crc32PooledObjectPolicy());
 
             return true;
@@ -75,8 +72,6 @@ namespace SS.Core.Modules
         ObjectPool<HashSet<string>> IObjectPoolManager.NameHashSetPool => _nameHashSetPool;
 
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
-
-        ObjectPool<IPEndPoint> IObjectPoolManager.IPEndPointPool => _ipEndPointPool;
 
         ObjectPool<Crc32> IObjectPoolManager.Crc32Pool => _crc32Pool;
 
@@ -137,24 +132,6 @@ namespace SS.Core.Modules
                     return false;
 
                 obj.Clear();
-                return true;
-            }
-        }
-
-        private class IPEndPointPooledObjectPolicy : PooledObjectPolicy<IPEndPoint>
-        {
-            public override IPEndPoint Create()
-            {
-                return new IPEndPoint(IPAddress.Any, 0);
-            }
-
-            public override bool Return(IPEndPoint obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Address = IPAddress.Any;
-                obj.Port = 0;
                 return true;
             }
         }
