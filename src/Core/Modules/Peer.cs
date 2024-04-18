@@ -59,8 +59,10 @@ namespace SS.Core.Modules
         // I am taking this approach for all exposed lists, and I think that should be ok performance-wise since:
         // - there will not be many peer zones (and peer zones are not removed anyway, the list is based on what's configured)
         // - each zone won't have too many arenas (though they do get removed)
-        private readonly List<PeerZone> _peers = new();
+        private readonly List<PeerZone> _peers = [];
         private readonly ReadOnlyCollection<PeerZone> _readOnlyPeers;
+
+        private readonly Dictionary<SocketAddress, PeerZone> _peerDictionary = [];
 
         private readonly ObjectPool<PeerArena> _peerArenaPool = new NonTransientObjectPool<PeerArena>(new PeerArenaPooledObjectPolicy());
         private readonly ObjectPool<PeerArenaName> _peerArenaNamePool = new NonTransientObjectPool<PeerArenaName>(new PeerArenaNamePooledObjectPolicy());
@@ -334,10 +336,19 @@ namespace SS.Core.Modules
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
 
-            return FindZone(endpoint);
+            SocketAddress address = endpoint.Serialize();
+            return FindZone(address);
         }
 
-        IPeerArena IPeer.FindArena(ReadOnlySpan<char> arenaName, bool remote)
+		IPeerZone IPeer.FindZone(SocketAddress address)
+		{
+			if (!_rwLock.IsReadLockHeld)
+				throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
+
+			return FindZone(address);
+		}
+
+		IPeerArena IPeer.FindArena(ReadOnlySpan<char> arenaName, bool remote)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
@@ -527,7 +538,7 @@ namespace SS.Core.Modules
                 ref PeerPacketHeader header = ref MemoryMarshal.AsRef<PeerPacketHeader>(peerZone.PlayerListBuffer);
                 header = new(peerZone.Config.PasswordHash, PeerPacketType.PlayerList, ServerTick.Now);
 
-                _networkEncryption.ReallyRawSend(peerZone.Config.IPEndPoint, peerZone.PlayerListBuffer.AsSpan(0, pos), listenData);
+                _networkEncryption.ReallyRawSend(peerZone.Config.SocketAddress, peerZone.PlayerListBuffer.AsSpan(0, pos), listenData);
 
                 static void AppendArenaIdToBuffer(ref byte[] buffer, ref int pos, uint arenaId)
                 {
@@ -572,7 +583,7 @@ namespace SS.Core.Modules
                     BinaryPrimitives.WriteUInt16LittleEndian(packet[PeerPacketHeader.Length..], (ushort)total);
                 }
 
-                _networkEncryption.ReallyRawSend(peerZone.Config.IPEndPoint, packet, listenData);
+                _networkEncryption.ReallyRawSend(peerZone.Config.SocketAddress, packet, listenData);
             }
         }
 
@@ -607,36 +618,36 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool ConnectionInitHandler(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        private bool ConnectionInitHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
         {
-            if (len < 12 || buffer[0] != 0x00 || buffer[1] != 0x01 || buffer[6] != 0x0FF)
+            if (data.Length < 12 || data[0] != 0x00 || data[1] != 0x01 || data[6] != 0x0FF)
             {
                 // Not the peer protocol.
                 return false;
             }
 
-            ref PeerPacketHeader packetHeader = ref MemoryMarshal.AsRef<PeerPacketHeader>(buffer);
+            ref readonly PeerPacketHeader packetHeader = ref MemoryMarshal.AsRef<PeerPacketHeader>(data);
 
             _rwLock.EnterWriteLock();
 
             try
             {
-                PeerZone peerZone = FindZone(remoteEndpoint);
+                PeerZone peerZone = FindZone(remoteAddress);
                 if (peerZone is null)
                 {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteEndpoint}, but this address has not been configured.");
+                    _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but this address has not been configured.");
                     return true;
                 }
 
                 if (peerZone.Config.PasswordHash != packetHeader.Password)
                 {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteEndpoint}, but the password is incorrect.");
+                    _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but the password is incorrect.");
                     return true;
                 }
 
                 if (peerZone.Config.SendOnly)
                 {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteEndpoint}, but this peer is configured as SendOnly.");
+                    _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but this peer is configured as SendOnly.");
                     return true;
                 }
 
@@ -649,7 +660,7 @@ namespace SS.Core.Modules
 
                 peerZone.Timestamps[packetHeader.Timestamp & 0xFF] = packetHeader.Timestamp;
 
-                Span<byte> payload = buffer.AsSpan(0, len)[PeerPacketHeader.Length..];
+                ReadOnlySpan<byte> payload = data[PeerPacketHeader.Length..];
 
                 switch (packetHeader.Type)
                 {
@@ -674,7 +685,7 @@ namespace SS.Core.Modules
                 _rwLock.ExitWriteLock();
             }
 
-            void HandlePlayerList(PeerZone peerZone, Span<byte> payload)
+            void HandlePlayerList(PeerZone peerZone, ReadOnlySpan<byte> payload)
             {
                 /* Format:
                  * [
@@ -703,11 +714,11 @@ namespace SS.Core.Modules
                     uint id = BinaryPrimitives.ReadUInt32LittleEndian(payload);
                     payload = payload[4..];
 
-                    //
-                    // Arena Name
-                    //
+					//
+					// Arena Name
+					//
 
-                    Span<byte> remoteNameBytes = payload.SliceNullTerminated();
+					ReadOnlySpan<byte> remoteNameBytes = payload.SliceNullTerminated();
                     if (remoteNameBytes.IsEmpty)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(Peer), $"Zone peer {peerZone.Config.IPEndPoint} sent us a player list with an empty arena name.");
@@ -754,7 +765,7 @@ namespace SS.Core.Modules
                                 break; // end of player list
                             }
 
-                            Span<byte> playerNameBytes = payload.SliceNullTerminated();
+							ReadOnlySpan<byte> playerNameBytes = payload.SliceNullTerminated();
                             if (playerNameBytes.Length + 1 > payload.Length || payload[playerNameBytes.Length] != 0x00)
                             {
                                 // not null terminated
@@ -807,7 +818,7 @@ namespace SS.Core.Modules
                             break; // end of player list
                         }
 
-                        Span<byte> playerNameBytes = payload.SliceNullTerminated();
+						ReadOnlySpan<byte> playerNameBytes = payload.SliceNullTerminated();
                         if (playerNameBytes.Length + 1 > payload.Length || payload[playerNameBytes.Length] != 0x00)
                         {
                             // not null terminated
@@ -831,7 +842,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            void HandleMessage(PeerZone peerZone, PeerPacketType packetType, Span<byte> payload)
+            void HandleMessage(PeerZone peerZone, PeerPacketType packetType, ReadOnlySpan<byte> payload)
             {
                 /* Format:
                  * <peer packet header (12 bytes)>
@@ -869,7 +880,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            void HandlePlayerCount(PeerZone peerZone, Span<byte> payload)
+            void HandlePlayerCount(PeerZone peerZone, ReadOnlySpan<byte> payload)
             {
                 if (payload.Length < 2)
                 {
@@ -1038,6 +1049,11 @@ namespace SS.Core.Modules
 
                     _peers.Add(peerZone);
 
+                    if (!_peerDictionary.TryAdd(peerZone.Config.SocketAddress, peerZone))
+                    {
+						_logManager.LogM(LogLevel.Warn, nameof(Peer), $"Zone peer {i} at {peerZone.Config.IPEndPoint} is a duplicate. Check the config.");
+					}
+
                     _logManager.LogM(LogLevel.Info, nameof(Peer), $"Zone peer {i} at {peerZone.Config.IPEndPoint} (player {(peerZone.Config.SendPlayerList ? "list" : "count")})");
                 }
             }
@@ -1184,18 +1200,15 @@ namespace SS.Core.Modules
             return peerZone.Config.RelayArenas.Contains(localName);
         }
 
-        private PeerZone FindZone(IPEndPoint endpoint)
+        private PeerZone FindZone(SocketAddress address)
         {
-            if (endpoint is null)
+            if (address is null)
                 return null;
 
-            foreach (PeerZone peerZone in _peers)
-            {
-                if (endpoint.Equals(peerZone.Config.IPEndPoint))
-                    return peerZone;
-            }
-
-            return null;
+            if (_peerDictionary.TryGetValue(address, out PeerZone peerZone))
+                return peerZone;
+            else
+                return null;
         }
 
         private void SendMessageToPeer(PeerPacketType packetType, byte messageType, ReadOnlySpan<char> message)
@@ -1244,7 +1257,7 @@ namespace SS.Core.Modules
                     // Field that is specific to a peer zone.
                     header.Password = peerZone.Config.PasswordHash;
 
-                    _networkEncryption.ReallyRawSend(peerZone.Config.IPEndPoint, packet, listenData);
+                    _networkEncryption.ReallyRawSend(peerZone.Config.SocketAddress, packet, listenData);
                 }
             }
             finally
@@ -1293,7 +1306,7 @@ namespace SS.Core.Modules
             /// </summary>
             public int Id { get; init; }
 
-            private IPEndPoint _ipEndPoint;
+            private readonly IPEndPoint _ipEndPoint;
 
             /// <summary>
             /// Each peer zone is uniquely identified by its IP + port combination.
@@ -1304,13 +1317,16 @@ namespace SS.Core.Modules
                 init
                 {
                     _ipEndPoint = value ?? throw new ArgumentNullException(nameof(value));
-                    IPAddressBytes = _ipEndPoint.Address.GetAddressBytes();
+                    SocketAddress = _ipEndPoint.Serialize();
+                    _ipAddressBytes = _ipEndPoint.Address.GetAddressBytes();
                     Port = (ushort)_ipEndPoint.Port;
                 }
             }
 
-            private byte[] IPAddressBytes { get; init; }
-            public ReadOnlySpan<byte> IPAddress => IPAddressBytes;
+            public readonly SocketAddress SocketAddress;
+
+            private readonly byte[] _ipAddressBytes;
+            public ReadOnlySpan<byte> IPAddress => _ipAddressBytes;
 
             public ushort Port { get; init; }
 

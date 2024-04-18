@@ -635,41 +635,38 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetworkEncryption.ReallyRawSend(IPEndPoint remoteEndPoint, ReadOnlySpan<byte> data, ListenData ld)
+        void INetworkEncryption.ReallyRawSend(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
         {
-            if (remoteEndPoint == null)
-                throw new ArgumentNullException(nameof(remoteEndPoint));
+            ArgumentNullException.ThrowIfNull(remoteAddress);
+            ArgumentNullException.ThrowIfNull(ld);
 
-            if (data.Length < 1)
-                throw new ArgumentOutOfRangeException(nameof(data), "There needs to be at least 1 byte to send.");
-
-            if (ld == null)
-                throw new ArgumentNullException(nameof(ld));
+			if (data.Length < 1)
+				throw new ArgumentOutOfRangeException(nameof(data), "There needs to be at least 1 byte to send.");
 
 #if CFG_DUMP_RAW_PACKETS
-            DumpPk($"SENDRAW: {data.Length} bytes", data);
+			DumpPk($"SENDRAW: {data.Length} bytes", data);
 #endif
 
-            try
-            {
-                ld.GameSocket.SendTo(data, SocketFlags.None, remoteEndPoint);
-            }
-            catch (SocketException ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteEndPoint} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
-                return;
-            }
+			try
+			{
+				ld.GameSocket.SendTo(data, SocketFlags.None, remoteAddress);
+			}
+			catch (SocketException ex)
+			{
+				_logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {remoteAddress} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+				return;
+			}
+			catch (Exception ex)
+			{
+				_logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {remoteAddress} with game socket {ld.GameSocket.LocalEndPoint}. {ex}");
+				return;
+			}
 
-            Interlocked.Add(ref _globalStats.bytesent, (ulong)data.Length);
-            Interlocked.Increment(ref _globalStats.pktsent);
-        }
+			Interlocked.Add(ref _globalStats.bytesent, (ulong)data.Length);
+			Interlocked.Increment(ref _globalStats.pktsent);
+		}
 
-        Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld)
+		Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string iEncryptName, ListenData ld)
         {
 			ArgumentNullException.ThrowIfNull(remoteEndpoint);
 			ArgumentNullException.ThrowIfNull(ld);
@@ -755,11 +752,11 @@ namespace SS.Core.Modules
             return player;
         }
 
-        #endregion
+		#endregion
 
-        #region INetwork Members
+		#region INetwork Members
 
-        void INetwork.SendToOne(Player player, ReadOnlySpan<byte> data, NetSendFlags flags)
+		void INetwork.SendToOne(Player player, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             SendToOne(player, data, flags);
         }
@@ -1711,7 +1708,7 @@ namespace SS.Core.Modules
                     // this might be a new connection. make sure it's really a connection init packet
                     if (isConnectionInitPacket)
                     {
-                        ProcessConnectionInit(receivedAddress, _receiveBuffer, bytesReceived, ld);
+                        ProcessConnectionInit(receivedAddress, data, ld);
                     }
 #if CFG_LOG_STUPID_STUFF
                     else if (bytesReceived > 1)
@@ -1740,7 +1737,7 @@ namespace SS.Core.Modules
                         // if the player is in PlayerState.Connected, it means that
                         // the connection init response got dropped on the
                         // way to the client. we have to resend it.
-                        ProcessConnectionInit(receivedAddress, _receiveBuffer, bytesReceived, ld);
+                        ProcessConnectionInit(receivedAddress, data, ld);
                     }
                     else
                     {
@@ -1803,18 +1800,15 @@ namespace SS.Core.Modules
                         && ((data[1] == 0x01) || (data[1] == 0x11));
                 }
 
-                bool ProcessConnectionInit(SocketAddress remoteAddress, byte[] buffer, int len, ListenData ld)
+                bool ProcessConnectionInit(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
                 {
-                    // TODO: Investigate not allocating IPEndPoint until the last possible moment (when we need to know IP and port). Also, remember that ConnectionInit also includes Peer data.
-                    IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
-
 					_connectionInitLock.EnterReadLock();
 
                     try
                     {
                         foreach (ConnectionInitHandler handler in _connectionInitHandlers)
                         {
-                            if (handler(remoteEndpoint, buffer, len, ld))
+                            if (handler(remoteAddress, data, ld))
                                 return true;
                         }
                     }
@@ -1823,7 +1817,7 @@ namespace SS.Core.Modules
                         _connectionInitLock.ExitReadLock();
                     }
 
-                    _logManager.LogM(LogLevel.Info, nameof(Network), $"Got a connection init packet from {remoteEndpoint}, but no handler processed it.  Please verify that an encryption module is loaded or the {nameof(EncryptionNull)} module if no encryption is desired.");
+                    _logManager.LogM(LogLevel.Info, nameof(Network), $"Got a connection init packet from {remoteAddress}, but no handler processed it.  Please verify that an encryption module is loaded or the {nameof(EncryptionNull)} module if no encryption is desired.");
                     return false;
                 }
             }

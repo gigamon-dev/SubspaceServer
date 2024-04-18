@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>SS.Utilities</AssemblyName>
     <RootNamespace>SS.Utilities</RootNamespace>
+    <VersionPrefix>2.0.0</VersionPrefix>
+    <VersionSuffix>preview-1</VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup>

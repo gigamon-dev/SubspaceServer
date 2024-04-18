@@ -52,12 +52,12 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool Callback_ConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        private bool Callback_ConnectionInit(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
         {
-            if (len != ConnectionInitPacket.Length)
+            if (data.Length != ConnectionInitPacket.Length)
                 return false;
 
-            ref ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(buffer);
+            ref readonly ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(data);
 
             // make sure the packet fits
             if (packet.T1 != 0x00 || packet.T2 != 0x01 || packet.Zero != 0x00)
@@ -80,20 +80,21 @@ namespace SS.Core.Modules
                     return false; // unknown type
             }
 
-            // get connection (null means no encryption)
-            Player p = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
+			// get connection (null means no encryption)
+			IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
+			Player player = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
 
-            if (p == null)
+            if (player is null)
             {
                 // no slots left?
                 Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07};
-                _networkEncryption.ReallyRawSend(remoteEndpoint, disconnect, ld);
+                _networkEncryption.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }
 
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
             ConnectionInitResponsePacket response = new(packet.Key);
-            _networkEncryption.ReallyRawSend(remoteEndpoint, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
+            _networkEncryption.ReallyRawSend(remoteAddress, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
 
             return true;
         }

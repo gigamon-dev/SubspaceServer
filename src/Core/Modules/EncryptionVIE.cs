@@ -137,12 +137,12 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool ProcessConnectionInit(IPEndPoint remoteEndpoint, byte[] buffer, int len, ListenData ld)
+        private bool ProcessConnectionInit(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
         {
-            if (len != ConnectionInitPacket.Length)
+            if (data.Length != ConnectionInitPacket.Length)
                 return false;
 
-            ref ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(buffer);
+            ref readonly ConnectionInitPacket packet = ref MemoryMarshal.AsRef<ConnectionInitPacket>(data);
 
             if (packet.T1 != 0x00 || packet.T2 != 0x01 || packet.Zero != 0x00)
                 return false;
@@ -162,17 +162,18 @@ namespace SS.Core.Modules
                     return false; // unknown type
             }
 
-            Player p = _networkEncryption.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
+            IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
+            Player player = _networkEncryption.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
 
-            if (p == null)
+            if (player is null)
             {
                 // no slots left?
                 Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
-                _networkEncryption.ReallyRawSend(remoteEndpoint, disconnect, ld);
+                _networkEncryption.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }
 
-            if (!p.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData pd))
                 return false; // should not happen, sanity
 
             int key = -packet.Key;
@@ -182,7 +183,7 @@ namespace SS.Core.Modules
 
             // send the response
             ConnectionInitResponsePacket response = new(key);
-            _networkEncryption.ReallyRawSend(remoteEndpoint, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
+            _networkEncryption.ReallyRawSend(remoteAddress, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
 
             return true;
         }
