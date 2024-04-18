@@ -13,8 +13,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.26.0" />
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.3">
+    <PackageReference Include="Google.Protobuf" Version="3.26.1" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.4">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.0" />
