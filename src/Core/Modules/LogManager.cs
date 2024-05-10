@@ -9,10 +9,10 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides logging functionality.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides logging functionality.
+	/// </summary>
+	[CoreModuleInfo]
     public sealed class LogManager : IModule, IModuleLoaderAware, ILogManager, IStringBuilderPoolProvider, IDisposable
     {
         private ComponentBroker _broker;
@@ -135,8 +135,8 @@ namespace SS.Core.Modules
         void ILogManager.Log(LogLevel level, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(' ');
+			Append(sb, level);
+			sb.Append(' ');
             handler.CopyToAndClear(sb);
 
             try
@@ -163,8 +163,8 @@ namespace SS.Core.Modules
         void ILogManager.Log(LogLevel level, ReadOnlySpan<char> message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(' ');
+			Append(sb, level);
+			sb.Append(' ');
             sb.Append(message);
 
             try
@@ -186,8 +186,8 @@ namespace SS.Core.Modules
         void ILogManager.Log(LogLevel level, string message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(' ');
+			Append(sb, level);
+			sb.Append(' ');
             sb.Append(message);
 
             try
@@ -209,7 +209,7 @@ namespace SS.Core.Modules
         void ILogManager.Log(LogLevel level, StringBuilder message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
+            Append(sb, level);
             sb.Append(' ');
             sb.Append(message);
 
@@ -231,12 +231,10 @@ namespace SS.Core.Modules
 
         void ILogManager.LogM(LogLevel level, string module, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
-            StringBuilder sb = _stringBuilderPool.Get(); 
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> ");
-            handler.CopyToAndClear(sb);
+            StringBuilder sb = _stringBuilderPool.Get();
+			Append(sb, level, module);
+			sb.Append(' ');
+			handler.CopyToAndClear(sb);
 
             try
             {
@@ -263,11 +261,9 @@ namespace SS.Core.Modules
         void ILogManager.LogM(LogLevel level, string module, ReadOnlySpan<char> message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> ");
-            sb.Append(message);
+			Append(sb, level, module);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -289,11 +285,9 @@ namespace SS.Core.Modules
         void ILogManager.LogM(LogLevel level, string module, string message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> ");
-            sb.Append(message);
+			Append(sb, level, module);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -315,11 +309,9 @@ namespace SS.Core.Modules
         void ILogManager.LogM(LogLevel level, string module, StringBuilder message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> ");
-            sb.Append(message);
+			Append(sb, level, module);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -341,13 +333,9 @@ namespace SS.Core.Modules
         void ILogManager.LogA(LogLevel level, string module, Arena arena, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} ");
-            handler.CopyToAndClear(sb);
+			Append(sb, level, module, arena);
+			sb.Append(' ');
+			handler.CopyToAndClear(sb);
 
             try
             {
@@ -375,13 +363,9 @@ namespace SS.Core.Modules
         void ILogManager.LogA(LogLevel level, string module, Arena arena, ReadOnlySpan<char> message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} ");
-            sb.Append(message);
+			Append(sb, level, module, arena);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -404,13 +388,9 @@ namespace SS.Core.Modules
         void ILogManager.LogA(LogLevel level, string module, Arena arena, string message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} ");
-            sb.Append(message);
+			Append(sb, level, module, arena);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -433,12 +413,8 @@ namespace SS.Core.Modules
         void ILogManager.LogA(LogLevel level, string module, Arena arena, StringBuilder message)
         {
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} ");
+            Append(sb, level, module, arena);
+            sb.Append(' ');
             sb.Append(message);
 
             try
@@ -461,18 +437,10 @@ namespace SS.Core.Modules
 
         void ILogManager.LogP(LogLevel level, string module, Player player, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
-            Arena arena = player?.Arena;
-
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} [");
-            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
-            sb.Append("] ");
-            handler.CopyToAndClear(sb);
+            Append(sb, level, module, player);
+			sb.Append(' ');
+			handler.CopyToAndClear(sb);
 
             try
             {
@@ -480,7 +448,7 @@ namespace SS.Core.Modules
                 {
                     Level = level,
                     Module = module,
-                    Arena = arena,
+                    Arena = player?.Arena,
                     PlayerName = player?.Name,
                     PlayerId = player?.Id,
                     LogText = sb,
@@ -501,18 +469,10 @@ namespace SS.Core.Modules
 
         void ILogManager.LogP(LogLevel level, string module, Player player, ReadOnlySpan<char> message)
         {
-            Arena arena = player?.Arena;
-
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} [");
-            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
-            sb.Append("] ");
-            sb.Append(message);
+			Append(sb, level, module, player);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -520,7 +480,7 @@ namespace SS.Core.Modules
                 {
                     Level = level,
                     Module = module,
-                    Arena = arena,
+                    Arena = player?.Arena,
                     PlayerName = player?.Name,
                     PlayerId = player?.Id,
                     LogText = sb,
@@ -536,18 +496,10 @@ namespace SS.Core.Modules
 
         void ILogManager.LogP(LogLevel level, string module, Player player, string message)
         {
-            Arena arena = player?.Arena;
-
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} [");
-            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
-            sb.Append("] ");
-            sb.Append(message);
+			Append(sb, level, module, player);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -555,7 +507,7 @@ namespace SS.Core.Modules
                 {
                     Level = level,
                     Module = module,
-                    Arena = arena,
+                    Arena = player?.Arena,
                     PlayerName = player?.Name,
                     PlayerId = player?.Id,
                     LogText = sb,
@@ -571,18 +523,10 @@ namespace SS.Core.Modules
 
         void ILogManager.LogP(LogLevel level, string module, Player player, StringBuilder message)
         {
-            Arena arena = player?.Arena;
-
             StringBuilder sb = _stringBuilderPool.Get();
-            sb.Append(level.ToChar());
-            sb.Append(" <");
-            sb.Append(module);
-            sb.Append("> {");
-            sb.Append(arena?.Name ?? "(no arena)");
-            sb.Append("} [");
-            sb.Append(player?.Name ?? ((player is not null) ? "pid=" + player.Id : null) ?? "(null player)");
-            sb.Append("] ");
-            sb.Append(message);
+			Append(sb, level, module, player);
+			sb.Append(' ');
+			sb.Append(message);
 
             try
             {
@@ -590,7 +534,7 @@ namespace SS.Core.Modules
                 {
                     Level = level,
                     Module = module,
-                    Arena = arena,
+                    Arena = player?.Arena,
                     PlayerName = player?.Name,
                     PlayerId = player?.Id,
                     LogText = sb,
@@ -641,9 +585,57 @@ namespace SS.Core.Modules
 
         ObjectPool<StringBuilder> IStringBuilderPoolProvider.StringBuilderPool => _objectPoolManager.StringBuilderPool;
 
-        #endregion
+		#endregion
 
-        private void QueueOrWriteLog(ref LogEntry logEntry)
+		private static void Append(StringBuilder sb, LogLevel level)
+        {
+            ArgumentNullException.ThrowIfNull(sb);
+
+            sb.Append(level.ToChar());
+        }
+
+        private static void Append(StringBuilder sb, LogLevel level, string module)
+        {
+			ArgumentNullException.ThrowIfNull(sb);
+
+			Append(sb, level);
+			sb.Append(' ');
+			sb.Append($"<{module}>");
+		}
+
+        private static void Append(StringBuilder sb, LogLevel level, string module, Arena arena)
+        {
+			ArgumentNullException.ThrowIfNull(sb);
+
+			Append(sb, level, module);
+			sb.Append(" {");
+			sb.Append(arena?.Name ?? "(no arena)");
+            sb.Append('}');
+		}
+
+        private static void Append(StringBuilder sb, LogLevel level, string module, Player player)
+        {
+			ArgumentNullException.ThrowIfNull(sb);
+
+			Append(sb, level, module, player.Arena);
+            sb.Append(" [");
+
+			if (player is not null)
+			{
+				if (player.Name is not null)
+					sb.Append(player.Name);
+				else
+					sb.Append($"pid={player.Id}");
+			}
+			else
+			{
+				sb.Append("(null player)");
+			}
+
+            sb.Append(']');
+		}
+
+		private void QueueOrWriteLog(ref LogEntry logEntry)
         {
             bool doAsync;
 
