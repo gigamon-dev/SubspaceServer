@@ -60,6 +60,15 @@ namespace SS.Core.Modules
         private uint _continuumChecksum;
         private uint _codeChecksum;
 
+        private readonly Action<Player> _authDone;
+        private readonly Action<Player> _playerSyncDone;
+
+        public Core()
+        {
+            _authDone = AuthDone;
+            _playerSyncDone = PlayerSyncDone;
+		}
+
         #region Module Members
 
         internal bool Load(
@@ -355,7 +364,7 @@ namespace SS.Core.Modules
 
                     case PlayerState.NeedGlobalSync:
                         if (_persistExecutor != null)
-                            _persistExecutor.GetPlayer(player, null, PlayerSyncDone);
+                            _persistExecutor.GetPlayer(player, null, _playerSyncDone);
                         else
                             PlayerSyncDone(player);
 
@@ -407,7 +416,7 @@ namespace SS.Core.Modules
 
                         // sync scores
                         if (_persistExecutor != null)
-                            _persistExecutor.GetPlayer(player, player.Arena, PlayerSyncDone);
+                            _persistExecutor.GetPlayer(player, player.Arena, _playerSyncDone);
                         else
                             PlayerSyncDone(player);
 
@@ -446,7 +455,7 @@ namespace SS.Core.Modules
 
                     case PlayerState.DoArenaSync2:
                         if (_persistExecutor != null && playerData.HasDoneArenaSync)
-                            _persistExecutor.PutPlayer(player, player.Arena, PlayerSyncDone);
+                            _persistExecutor.PutPlayer(player, player.Arena, _playerSyncDone);
                         else
                             PlayerSyncDone(player);
 
@@ -458,7 +467,7 @@ namespace SS.Core.Modules
                             FirePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
                         if (_persistExecutor != null && playerData.HasDoneGlobalSync)
-                            _persistExecutor.PutPlayer(player, null, PlayerSyncDone);
+                            _persistExecutor.PutPlayer(player, null, _playerSyncDone);
                         else
                             PlayerSyncDone(player);
 
@@ -534,7 +543,7 @@ namespace SS.Core.Modules
                 }
 
                 playerData.AuthRequest = _authRequestPool.Get();
-                playerData.AuthRequest.SetRequestInfo(player, data.AsSpan(0, len), AuthDone);
+                playerData.AuthRequest.SetRequestInfo(player, data.AsSpan(0, len), _authDone);
                 
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
@@ -676,7 +685,7 @@ namespace SS.Core.Modules
             }
 
             playerData.AuthRequest = _authRequestPool.Get();
-            playerData.AuthRequest.SetRequestInfo(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref loginPacket, 1)), AuthDone);
+            playerData.AuthRequest.SetRequestInfo(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref loginPacket, 1)), _authDone);
 
             // Set the player's status.
             _playerData.WriteLock();
@@ -776,7 +785,7 @@ namespace SS.Core.Modules
             // Ensure this is done on the mainloop thread (just in case an authentication module calls it from a different thread).
             if (!_mainloop.IsMainloop)
             {
-                _mainloop.QueueMainWorkItem(AuthDone, player);
+                _mainloop.QueueMainWorkItem(_authDone, player);
                 return;
             }
 

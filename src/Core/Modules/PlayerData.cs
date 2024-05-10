@@ -52,9 +52,19 @@ namespace SS.Core.Modules
         private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
         private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = 256 };
 
-        #region Module Members
+        // Cached delegates
+        private readonly Action<Player> _mainloopWork_FireNewPlayerCallback;
+        private readonly Action<Player> _mainloopWork_CompleteFreePlayer;
 
-        public bool Load(
+		public PlayerData()
+        {
+            _mainloopWork_FireNewPlayerCallback = MainloopWork_FireNewPlayerCallback;
+            _mainloopWork_CompleteFreePlayer = MainloopWork_CompleteFreePlayer;
+		}
+
+		#region Module Members
+
+		public bool Load(
             ComponentBroker broker, 
             ILogManager logManager,
             IMainloop mainloop)
@@ -155,17 +165,17 @@ namespace SS.Core.Modules
                 WriteUnlock();
             }
 
-            _mainloop.QueueMainWorkItem(MainloopWork_FireNewPlayerCallback, player);
+            _mainloop.QueueMainWorkItem(_mainloopWork_FireNewPlayerCallback, player);
 
             return player;
-
-            void MainloopWork_FireNewPlayerCallback(Player player)
-            {
-                NewPlayerCallback.Fire(Broker, player, true);
-            }
         }
 
-        void IPlayerData.FreePlayer(Player player)
+		private void MainloopWork_FireNewPlayerCallback(Player player)
+		{
+			NewPlayerCallback.Fire(Broker, player, true);
+		}
+
+		void IPlayerData.FreePlayer(Player player)
         {
             if (player is null)
                 return;
@@ -183,50 +193,50 @@ namespace SS.Core.Modules
                     return;
 
                 // Queue the player to be freed.
-                _mainloop.QueueMainWorkItem(MainloopWork_CompleteFreePlayer, player);
+                _mainloop.QueueMainWorkItem(_mainloopWork_CompleteFreePlayer, player);
             }
             finally
             {
                 WriteUnlock();
             }
-
-            void MainloopWork_CompleteFreePlayer(Player player)
-            {
-                // First, execute callbacks.
-                // This allows other modules to perform cleanup, including their extra player data.
-                NewPlayerCallback.Fire(Broker, player, false);
-
-                // Next, do the "freeing".
-                WriteLock();
-
-                try
-                {
-                    if (!_playersBeingFreed.Remove(player))
-                        return;
-
-                    // Remove the extra player data.
-                    foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
-                    {
-                        if (player.TryRemoveExtraData(keyId, out object data))
-                        {
-                            info.Return(data);
-                        }
-                    }
-
-                    // Reset the player's data back to their initial values.
-                    player.Initialize();
-
-                    // Add the player to the queue, "freeing" it to be reused after a configured amount of time.
-                    _freePlayersQueue.Enqueue(new FreePlayerInfo(player));
-                }
-                finally
-                {
-                    WriteUnlock();
-                }
-            }
         }
 
-        void IPlayerData.KickPlayer(Player player)
+		private void MainloopWork_CompleteFreePlayer(Player player)
+		{
+			// First, execute callbacks.
+			// This allows other modules to perform cleanup, including their extra player data.
+			NewPlayerCallback.Fire(Broker, player, false);
+
+			// Next, do the "freeing".
+			WriteLock();
+
+			try
+			{
+				if (!_playersBeingFreed.Remove(player))
+					return;
+
+				// Remove the extra player data.
+				foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
+				{
+					if (player.TryRemoveExtraData(keyId, out object data))
+					{
+						info.Return(data);
+					}
+				}
+
+				// Reset the player's data back to their initial values.
+				player.Initialize();
+
+				// Add the player to the queue, "freeing" it to be reused after a configured amount of time.
+				_freePlayersQueue.Enqueue(new FreePlayerInfo(player));
+			}
+			finally
+			{
+				WriteUnlock();
+			}
+		}
+
+		void IPlayerData.KickPlayer(Player player)
         {
             if (player is null)
                 return;

@@ -39,6 +39,15 @@ namespace SS.Core.Modules
 
         private readonly NonTransientObjectPool<LvzData> _lvzDataObjectPool = new(new LvzDataPooledObjectPolicy());
 
+        private readonly Action<Arena> _threadPoolWork_InitializeArena;
+        private readonly LvzReader.ObjectDataReadDelegate<ArenaData> _objectDataRead;
+
+        public LvzObjects()
+        {
+            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
+            _objectDataRead = ObjectDataRead;
+		}
+
         #region Module members
 
         public bool Load(
@@ -865,7 +874,7 @@ namespace SS.Core.Modules
                 // NOTE: LVZ files are loaded on ArenaAction.PreCreate so that LVZ functionality will be ready to use on ArenaAction.Create.
 
                 _arenaManager.HoldArena(arena);
-                if (!_mainloop.QueueThreadPoolWorkItem(ThreadPoolWork_ArenaActionWork, arena))
+                if (!_mainloop.QueueThreadPoolWorkItem(_threadPoolWork_InitializeArena, arena))
                 {
                     _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error queueing up arena action work.");
                     _arenaManager.UnholdArena(arena);
@@ -880,44 +889,44 @@ namespace SS.Core.Modules
 
                 ad.List.Clear();
             }
-
-            void ThreadPoolWork_ArenaActionWork(Arena arena)
-            {
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                    return;
-
-                foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
-                {
-                    try
-                    {
-                        LvzReader.ReadObjects(fileInfo.Filename, ObjectDataRead);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
-                    }
-                }
-
-                _arenaManager.UnholdArena(arena);
-
-                void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan)
-                {
-                    lock (ad.Lock)
-                    {
-                        foreach (ref readonly ObjectData objectData in objectDataSpan)
-                        {
-                            LvzData lvzData = _lvzDataObjectPool.Get();
-                            lvzData.Off = true;
-                            lvzData.Current = lvzData.Default = objectData;
-
-                            ad.List.Add(lvzData);
-                        }
-                    }
-                }
-            }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+		private void ThreadPoolWork_InitializeArena(Arena arena)
+		{
+			if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+				return;
+
+			foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
+			{
+				try
+				{
+					LvzReader.ReadObjects(fileInfo.Filename, _objectDataRead, ad);
+				}
+				catch (Exception ex)
+				{
+					_logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
+				}
+			}
+
+			_arenaManager.UnholdArena(arena);
+		}
+
+		private void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan, ArenaData ad)
+		{
+			lock (ad.Lock)
+			{
+				foreach (ref readonly ObjectData objectData in objectDataSpan)
+				{
+					LvzData lvzData = _lvzDataObjectPool.Get();
+					lvzData.Off = true;
+					lvzData.Current = lvzData.Default = objectData;
+
+					ad.List.Add(lvzData);
+				}
+			}
+		}
+
+		private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {

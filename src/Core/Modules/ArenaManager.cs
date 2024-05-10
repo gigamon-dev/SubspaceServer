@@ -84,10 +84,19 @@ namespace SS.Core.Modules
         private readonly Trie _knownArenaNames = new(false);
         private readonly ReadOnlyTrie _readOnlyKnownArenaNames;
 
+        // cached delegates
+        private readonly Action<Arena> _loadArenaConfig;
+        private readonly ConfigChangedDelegate<Arena> _arenaConfChanged;
+        private readonly Action<Arena> _arenaSyncDone;
+
         public ArenaManager()
         {
             _readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
-        }
+
+            _loadArenaConfig = LoadArenaConfig;
+            _arenaConfChanged = ArenaConfChanged;
+			_arenaSyncDone = ArenaSyncDone;
+		}
 
         #region Module members
 
@@ -1037,7 +1046,7 @@ namespace SS.Core.Modules
                                     // Note: ASSS does it right here on the mainloop thread.
                                     // This operation will most likely do blocking I/O (unless the file was previously opened, e.g. default arena's config).
                                     // However, any type of blocking I/O on the mainloop thread should be avoided. Therefore, doing it on a worker thread.
-                                    arenaData.IsLoadingConfig = _mainloop.QueueThreadPoolWorkItem(LoadArenaConfig, arena);
+                                    arenaData.IsLoadingConfig = _mainloop.QueueThreadPoolWorkItem(_loadArenaConfig, arena);
                                 }
 
                                 continue;
@@ -1060,7 +1069,7 @@ namespace SS.Core.Modules
                             if (_persistExecutor is not null)
                             {
                                 arena.Status = ArenaState.WaitSync1;
-                                _persistExecutor.GetArena(arena, ArenaSyncDone);
+                                _persistExecutor.GetArena(arena, _arenaSyncDone);
                             }
                             else
                             {
@@ -1092,7 +1101,7 @@ namespace SS.Core.Modules
                                 if (_persistExecutor is not null)
                                 {
                                     arena.Status = ArenaState.WaitSync2;
-                                    _persistExecutor.PutArena(arena, ArenaSyncDone);
+                                    _persistExecutor.PutArena(arena, _arenaSyncDone);
                                 }
                                 else
                                 {
@@ -1189,62 +1198,6 @@ namespace SS.Core.Modules
 
             return true;
 
-            void LoadArenaConfig(Arena arena)
-            {
-                if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
-                {
-                    return;
-                }
-
-                ReadLock();
-                try
-                {
-                    if (!arenaData.IsLoadingConfig)
-                        return;
-                }
-                finally
-                {
-                    ReadUnlock();
-                }
-
-                ConfigHandle configHandle = _configManager.OpenConfigFile(arena.BaseName, null, ArenaConfChanged, arena);
-
-                //if (configHandle is null)
-                //{
-                //    // TODO: handle the case where a config file couldn't be opened. This is extremely serious. It means that even the default arena config couldn't be opened.
-                //}
-
-                WriteLock();
-                try
-                {
-                    arena.Cfg = configHandle;
-                    arenaData.IsLoadingConfig = false;
-                }
-                finally
-                {
-                    WriteUnlock();
-                }
-
-                void ArenaConfChanged(Arena arena)
-                {
-                    if (arena is null)
-                        return;
-
-                    ReadLock();
-                    try
-                    {
-                        // only running arenas should receive confchanged events
-                        if (arena.Status == ArenaState.Running)
-                        {
-                            FireArenaActionCallback(arena, ArenaAction.ConfChanged);
-                        }
-                    }
-                    finally
-                    {
-                        ReadUnlock();
-                    }
-                }
-            }
 
             [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, typeof(string),
             Description = "This is a list of modules that you want to take effect in this" +
@@ -1262,45 +1215,102 @@ namespace SS.Core.Modules
                     _moduleManager.AttachModule(moduleToAttach, arena);
                 }
             }
-
-            /// <summary>
-            /// This is called when the persistent data retrieval or saving has completed.
-            /// </summary>
-            /// <param name="arena"></param>
-            void ArenaSyncDone(Arena arena)
-            {
-                WriteLock();
-
-                try
-                {
-                    if (arena.Status == ArenaState.WaitSync1)
-                    {
-                        // persistent data has been retrieved from the database
-                        arena.Status = ArenaState.Running;
-                    }
-                    else if (arena.Status == ArenaState.WaitSync2)
-                    {
-                        // persistent data has been saved to the database
-                        arena.Status = ArenaState.DoDestroy1;
-                    }
-                    else
-                    {
-                        _logManager.LogA(LogLevel.Warn, nameof(ArenaManager), arena, $"ArenaSyncDone called from the wrong state ({arena.Status}).");
-                    }
-                }
-                finally
-                {
-                    WriteUnlock();
-                }
-            }
-
-            void FireArenaActionCallback(Arena arena, ArenaAction action)
-            {
-                ArenaActionCallback.Fire(arena ?? Broker, arena, action);
-            }
         }
 
-        private bool MainloopTimer_ReapArenas()
+		private void LoadArenaConfig(Arena arena)
+		{
+			if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+			{
+				return;
+			}
+
+			ReadLock();
+			try
+			{
+				if (!arenaData.IsLoadingConfig)
+					return;
+			}
+			finally
+			{
+				ReadUnlock();
+			}
+
+			ConfigHandle configHandle = _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
+
+			//if (configHandle is null)
+			//{
+			//    // TODO: handle the case where a config file couldn't be opened. This is extremely serious. It means that even the default arena config couldn't be opened.
+			//}
+
+			WriteLock();
+			try
+			{
+				arena.Cfg = configHandle;
+				arenaData.IsLoadingConfig = false;
+			}
+			finally
+			{
+				WriteUnlock();
+			}
+		}
+
+		private void ArenaConfChanged(Arena arena)
+		{
+			if (arena is null)
+				return;
+
+			ReadLock();
+			try
+			{
+				// only running arenas should receive confchanged events
+				if (arena.Status == ArenaState.Running)
+				{
+					FireArenaActionCallback(arena, ArenaAction.ConfChanged);
+				}
+			}
+			finally
+			{
+				ReadUnlock();
+			}
+		}
+
+		/// <summary>
+		/// This is called when the persistent data retrieval or saving has completed.
+		/// </summary>
+		/// <param name="arena"></param>
+		private void ArenaSyncDone(Arena arena)
+		{
+			WriteLock();
+
+			try
+			{
+				if (arena.Status == ArenaState.WaitSync1)
+				{
+					// persistent data has been retrieved from the database
+					arena.Status = ArenaState.Running;
+				}
+				else if (arena.Status == ArenaState.WaitSync2)
+				{
+					// persistent data has been saved to the database
+					arena.Status = ArenaState.DoDestroy1;
+				}
+				else
+				{
+					_logManager.LogA(LogLevel.Warn, nameof(ArenaManager), arena, $"ArenaSyncDone called from the wrong state ({arena.Status}).");
+				}
+			}
+			finally
+			{
+				WriteUnlock();
+			}
+		}
+
+		private void FireArenaActionCallback(Arena arena, ArenaAction action)
+		{
+			ArenaActionCallback.Fire(arena ?? Broker, arena, action);
+		}
+
+		private bool MainloopTimer_ReapArenas()
         {
             ReadLock();
             try

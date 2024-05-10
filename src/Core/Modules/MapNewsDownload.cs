@@ -52,6 +52,13 @@ namespace SS.Core.Modules
         /// </summary>
         private NewsManager _newsManager;
 
+        private readonly Action<Arena> _threadPoolWork_InitializeArena;
+
+        public MapNewsDownload()
+        {
+            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
+        }
+
         #region Module Members
 
         [ConfigHelp("General", "NewsFile", ConfigScope.Global, typeof(string), DefaultValue = "news.txt",
@@ -181,7 +188,7 @@ namespace SS.Core.Modules
             {
                 // note: asss does this in reverse order, but i think it is a race condition
                 _arenaManager.HoldArena(arena);
-                _mainloop.QueueThreadPoolWorkItem(ArenaActionWork, arena);
+                _mainloop.QueueThreadPoolWorkItem(_threadPoolWork_InitializeArena, arena);
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -190,60 +197,60 @@ namespace SS.Core.Modules
 
                 downloadList.Clear();
             }
-
-            void ArenaActionWork(Arena arena)
-            {
-                if (arena == null)
-                    return;
-
-                try
-                {
-                    if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
-                        return;
-
-                    downloadList.Clear();
-
-                    MapDownloadData data = null;
-
-                    string filename = _mapData.GetMapFilename(arena, null);
-                    if (!string.IsNullOrEmpty(filename))
-                    {
-                        data = CompressMap(filename, true);
-                    }
-
-                    if (data == null)
-                    {
-                        _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
-                        data = new MapDownloadData();
-                        data.checksum = 0x5643ef8a;
-                        data.uncmplen = 4;
-                        data.cmplen = (uint)_emergencyMap.Length;
-                        data.cmpmap = _emergencyMap;
-                        data.filename = "tinymap.lvl";
-                    }
-
-                    downloadList.Add(data);
-
-                    // now look for lvzs
-                    foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
-                    {
-                        data = CompressMap(lvzInfo.Filename, false);
-
-                        if (data != null)
-                        {
-                            data.optional = lvzInfo.IsOptional;
-                            downloadList.Add(data);
-                        }
-                    }
-                }
-                finally
-                {
-                    _arenaManager.UnholdArena(arena);
-                }
-            }
         }
 
-        private MapDownloadData CompressMap(string filename, bool docomp)
+		private void ThreadPoolWork_InitializeArena(Arena arena)
+		{
+			if (arena == null)
+				return;
+
+			try
+			{
+				if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+					return;
+
+				downloadList.Clear();
+
+				MapDownloadData data = null;
+
+				string filename = _mapData.GetMapFilename(arena, null);
+				if (!string.IsNullOrEmpty(filename))
+				{
+					data = CompressMap(filename, true);
+				}
+
+				if (data == null)
+				{
+					_logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
+					data = new MapDownloadData();
+					data.checksum = 0x5643ef8a;
+					data.uncmplen = 4;
+					data.cmplen = (uint)_emergencyMap.Length;
+					data.cmpmap = _emergencyMap;
+					data.filename = "tinymap.lvl";
+				}
+
+				downloadList.Add(data);
+
+				// now look for lvzs
+				foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
+				{
+					data = CompressMap(lvzInfo.Filename, false);
+
+					if (data != null)
+					{
+						data.optional = lvzInfo.IsOptional;
+						downloadList.Add(data);
+					}
+				}
+			}
+			finally
+			{
+				_arenaManager.UnholdArena(arena);
+			}
+		}
+
+		private MapDownloadData CompressMap(string filename, bool docomp)
         { 
             if (string.IsNullOrWhiteSpace(filename))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(filename));

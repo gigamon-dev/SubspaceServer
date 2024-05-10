@@ -17,19 +17,22 @@ namespace SS.Core.Map.Lvz
         /// Delegate for handling when <see cref="ObjectData"/> is read.
         /// </summary>
         /// <param name="objectDataSpan">The data read.</param>
-        public delegate void ObjectDataReadDelegate(ReadOnlySpan<ObjectData> objectDataSpan);
+        /// <param name="state">The state / context.</param>
+        public delegate void ObjectDataReadDelegate<TState>(ReadOnlySpan<ObjectData> objectDataSpan, TState state);
 
         /// <summary>
         /// Reads the object data from a LVZ file.
         /// </summary>
         /// <param name="path">The path of the LVZ file.</param>
         /// <param name="objectDataReadCallback">A callback that will be called when the object data is read.</param>
+        /// <param name="state">State information to call the <paramref name="objectDataReadCallback"/> with.</param>
         /// <exception cref="ArgumentException"><paramref name="path"/> was null or white-space.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="objectDataReadCallback"/> was null.</exception>
         /// <exception cref="Exception">There was an error reading the lvz file.</exception>
-        public static void ReadObjects(
+        public static void ReadObjects<TState>(
             string path,
-            ObjectDataReadDelegate objectDataReadCallback)
+            ObjectDataReadDelegate<TState> objectDataReadCallback,
+            TState state)
         {
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
@@ -124,7 +127,7 @@ namespace SS.Core.Map.Lvz
                                 throw new Exception($"Malformed lvz file. Object section specified {objectCount} objects which is {objectDataLength} bytes, but there were only {remainingBytes.Length} bytes.");
 
                             Span<ObjectData> objectDataSpan = MemoryMarshal.Cast<byte, ObjectData>(remainingBytes[..(int)objectDataLength]);
-                            objectDataReadCallback(objectDataSpan);
+                            objectDataReadCallback(objectDataSpan, state);
                         }
                     }
                     finally

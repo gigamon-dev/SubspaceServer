@@ -206,9 +206,17 @@ namespace SS.Core.Modules
 		//private readonly byte[] _receiveBuffer = GC.AllocateArray<byte>(length: 512*(2+reliableThreadCount), pinned: true);
 		//private readonly ConcurrentBag<Memory<byte>> _sendBufferPool = 
 
+		// Cached delegates
+		private readonly Action<BigPacketWork> _mainloopWork_CallBigPacketHandlers;
+		private readonly Action<SubspaceBuffer> _mainloopWork_CallPacketHandlers;
+
 		public Network()
-        {
-            _oohandlers = new CorePacketHandler[20];
+		{
+			// Allocate callback delegates once rather than each time they're used.
+			_mainloopWork_CallBigPacketHandlers = MainloopWork_CallBigPacketHandlers;
+			_mainloopWork_CallPacketHandlers = MainloopWork_CallPacketHandlers;
+
+			_oohandlers = new CorePacketHandler[20];
 
             _oohandlers[0]  = null;                      // 0x00 - nothing
             _oohandlers[1]  = null;                      // 0x01 - key initiation
@@ -1391,7 +1399,7 @@ namespace SS.Core.Modules
                     // Process it on the mainloop thread.
                     // Ownership of the BigReceive object is transferred to the workitem. The workitem is responsible for disposing it.
                     _mainloop.QueueMainWorkItem(
-                        MainloopWork_CallBigPacketHandlers,
+                        _mainloopWork_CallBigPacketHandlers,
                         new BigPacketWork()
                         {
                             ConnData = conn,
@@ -1409,25 +1417,25 @@ namespace SS.Core.Modules
                     conn.BigRecv = null;
                 }
             }
-
-            void MainloopWork_CallBigPacketHandlers(BigPacketWork work)
-            {
-                try
-                {
-                    if (work.ConnData is null || work.BigReceive is null || work.BigReceive.Buffer is null || work.BigReceive.Size < 1)
-                        return;
-
-                    CallPacketHandlers(work.ConnData, work.BigReceive.Buffer, work.BigReceive.Size, work.BigReceive.Flags);
-                }
-                finally
-                {
-                    // return the buffer to its pool
-                    work.BigReceive?.Dispose();
-                }
-            }
         }
 
-        private void CorePacket_SizedData(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
+		private void MainloopWork_CallBigPacketHandlers(BigPacketWork work)
+		{
+			try
+			{
+				if (work.ConnData is null || work.BigReceive is null || work.BigReceive.Buffer is null || work.BigReceive.Size < 1)
+					return;
+
+				CallPacketHandlers(work.ConnData, work.BigReceive.Buffer, work.BigReceive.Size, work.BigReceive.Flags);
+			}
+			finally
+			{
+				// return the buffer to its pool
+				work.BigReceive?.Dispose();
+			}
+		}
+
+		private void CorePacket_SizedData(ReadOnlySpan<byte> data, ConnData conn, NetReceiveFlags flags)
         {
             if (conn is null)
                 return;
@@ -2925,7 +2933,7 @@ namespace SS.Core.Modules
                 data.CopyTo(buffer.Bytes);
                 buffer.NumBytes = data.Length;
 
-                _mainloop.QueueMainWorkItem(MainloopWork_CallPacketHandlers, buffer); // The workitem disposes the buffer.
+                _mainloop.QueueMainWorkItem(_mainloopWork_CallPacketHandlers, buffer); // The workitem disposes the buffer.
             }
             else
             {
@@ -2935,27 +2943,29 @@ namespace SS.Core.Modules
                     _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Unknown packet type {t1}.");
             }
 
-            void MainloopWork_CallPacketHandlers(SubspaceBuffer buffer)
-            {
-                if (buffer is null)
-                    return;
-
-                try
-                {
-                    ConnData conn = buffer.Conn;
-                    if (conn is null)
-                        return;
-
-                    CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes, buffer.ReceiveFlags);
-                }
-                finally
-                {
-                    buffer.Dispose();
-                }
-            }
+            
         }
 
-        private void CallPacketHandlers(ConnData conn, byte[] bytes, int len, NetReceiveFlags flags)
+		private void MainloopWork_CallPacketHandlers(SubspaceBuffer buffer)
+		{
+			if (buffer is null)
+				return;
+
+			try
+			{
+				ConnData conn = buffer.Conn;
+				if (conn is null)
+					return;
+
+				CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes, buffer.ReceiveFlags);
+			}
+			finally
+			{
+				buffer.Dispose();
+			}
+		}
+
+		private void CallPacketHandlers(ConnData conn, byte[] bytes, int len, NetReceiveFlags flags)
         {
             if (conn == null)
                 throw new ArgumentNullException(nameof(conn));
@@ -3416,32 +3426,32 @@ namespace SS.Core.Modules
                     Success = success,
                 });
 
-            static void MainloopWork_InvokeReliableCallback(InvokeReliableCallbackWork work)
-            {
-                while (work.CallbackInvoker != null)
-                {
-                    IReliableCallbackInvoker next = work.CallbackInvoker.Next;
+			static void MainloopWork_InvokeReliableCallback(InvokeReliableCallbackWork work)
+			{
+				while (work.CallbackInvoker != null)
+				{
+					IReliableCallbackInvoker next = work.CallbackInvoker.Next;
 
-                    using (work.CallbackInvoker)
-                    {
-                        if (work.Player != null)
-                        {
-                            work.CallbackInvoker.Invoke(work.Player, work.Success);
-                        }
-                    }
+					using (work.CallbackInvoker)
+					{
+						if (work.Player != null)
+						{
+							work.CallbackInvoker.Invoke(work.Player, work.Success);
+						}
+					}
 
-                    work.CallbackInvoker = next;
-                }
-            }
-        }
+					work.CallbackInvoker = next;
+				}
+			}
+		}
 
-        /// <summary>
-        /// Logic to run at the end of sized receive.
-        /// </summary>
-        /// <remarks>Call with <see cref="ConnData.bigmtx"/> locked.</remarks>
-        /// <param name="player"></param>
-        /// <param name="success"></param>
-        private void EndSized(Player player, bool success)
+		/// <summary>
+		/// Logic to run at the end of sized receive.
+		/// </summary>
+		/// <remarks>Call with <see cref="ConnData.bigmtx"/> locked.</remarks>
+		/// <param name="player"></param>
+		/// <param name="success"></param>
+		private void EndSized(Player player, bool success)
         {
             if (player == null)
                 return;

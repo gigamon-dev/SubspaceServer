@@ -47,9 +47,16 @@ namespace SS.Core.Modules
 
         private static int _maxRecordLength;
 
-        #region Module memebers
+        private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
 
-        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
+        public Persist()
+        {
+            _mainloopWorkItem_ExecuteCallbacksAndDispose = MainloopWorkItem_ExecuteCallbacksAndDispose;
+		}
+
+		#region Module memebers
+
+		[ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
             Description = "The interval at which all persistent data is synced to the database.")]
         [ConfigHelp("Persist", "MaxRecordLength", ConfigScope.Global, typeof(int), DefaultValue = "4096",
             Description = "The maximum # of bytes to store per record.")]
@@ -427,7 +434,7 @@ namespace SS.Core.Modules
                         break;
                 }
 
-                if (!_mainloop.QueueMainWorkItem(MainloopWorkItem_ExecuteCallbacksAndDispose, workItem)
+                if (!_mainloop.QueueMainWorkItem(_mainloopWorkItem_ExecuteCallbacksAndDispose, workItem)
                     && workItem.Command == PersistCommand.PutAll)
                 {
                     // Couldn't queue a mainloop workitem. This will happen when the server is shutting down.

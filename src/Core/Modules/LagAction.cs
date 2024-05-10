@@ -40,9 +40,16 @@ namespace SS.Core.Modules
         private CancellationTokenSource _cancellationTokenSource;
         private CancellationToken _cancellationToken;
 
-        #region Module members
+        private readonly Action<Player> _mainloopWorkItem_checkPlayer;
 
-        [ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300", 
+        public LagAction()
+        {
+            _mainloopWorkItem_checkPlayer = MainloopWorkItem_CheckPlayer;
+		}
+
+		#region Module members
+
+		[ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300", 
             Description = "How often to check each player for out-of-bounds lag values (in ticks).")]
         public bool Load(
             ComponentBroker broker,
@@ -230,7 +237,7 @@ namespace SS.Core.Modules
 
                     // TODO: Review threading logic and maybe move the logic onto this worker thread if it's safe. For now, using the mainloop thread to do it.
                     // Queue the actual lag check to be done by the mainloop thread.
-                    _mainloop.QueueMainWorkItem(MainloopWorkItem_CheckPlayer, toCheck);
+                    _mainloop.QueueMainWorkItem(_mainloopWorkItem_checkPlayer, toCheck);
                 }
 
                 cancellationWaitHandle.WaitOne(playerCount > 0 ? _checkInterval / playerCount : _checkInterval);
