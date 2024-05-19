@@ -27,6 +27,7 @@ namespace SS.Core.Modules
         private IChat _chat;
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
+        private ILogManager _logManager;
         private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<IHelp> _iHelpToken;
         private InterfaceRegistrationToken<IConfigHelp> _iConfigHelpToken;
@@ -94,11 +95,13 @@ namespace SS.Core.Modules
             IChat chat,
             ICommandManager commandManager,
             IConfigManager configManager,
+            ILogManager logManager,
             IObjectPoolManager objectPoolManager)
         {
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
             PluginAssemblyLoadedCallback.Register(broker, Callback_PluginAssemblyLoaded);
@@ -595,13 +598,17 @@ namespace SS.Core.Modules
 
                     RefreshKnownSectionsAndKeys();
                 }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Warn, nameof(Help), $"Error processing ConfigHelpAttributes. {ex}");
+                }
                 finally
                 {
                     _rwLock.ExitWriteLock();
                 }
             }
 
-
+            
             void Load(Assembly assembly)
             {
                 if (assembly is null)
@@ -613,54 +620,72 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                var assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>();
-                if (assemblyProductAttribute is null
-                    || assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    return;
-                }
+                    var assemblyProductAttribute = assembly.GetCustomAttribute<AssemblyProductAttribute>();
+                    if (assemblyProductAttribute is null
+                        || assemblyProductAttribute.Product.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
 
-                foreach (Type type in assembly.GetTypes())
+                    int count = 0;
+					foreach (Type type in assembly.GetTypes())
+                    {
+                        foreach (var constructorInfo in type.GetConstructors())
+                        {
+                            foreach (var attribute in constructorInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                            {
+                                Add(attribute, assembly, type);
+                                count++;
+							}
+                        }
+
+                        foreach (var methodInfo in type.GetRuntimeMethods())
+                        {
+                            foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                            {
+                                Add(attribute, assembly, type);
+								count++;
+							}
+                        }
+
+                        foreach (var fieldInfo in type.GetRuntimeFields())
+                        {
+                            foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                            {
+                                Add(attribute, assembly, type);
+								count++;
+							}
+                        }
+
+                        foreach (var propertyInfo in type.GetRuntimeProperties())
+                        {
+                            foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                            {
+                                Add(attribute, assembly, type);
+								count++;
+							}
+                        }
+
+                        foreach (var eventInfo in type.GetRuntimeEvents())
+                        {
+                            foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                            {
+                                Add(attribute, assembly, type);
+								count++;
+							}
+                        }
+                    }
+
+                    if (count > 0)
+                    {
+                        _logManager.LogM(LogLevel.Info, nameof(Help), $"Read {count} {(count == 1 ? "attribute" : "attributes")} from assembly '{assembly}'.");
+                    }
+				}
+                catch (Exception ex)
                 {
-                    foreach (var constructorInfo in type.GetConstructors())
-                    {
-                        foreach (var attribute in constructorInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                        {
-                            Add(attribute, assembly, type);
-                        }
-                    }
-
-                    foreach (var methodInfo in type.GetRuntimeMethods())
-                    {
-                        foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                        {
-                            Add(attribute, assembly, type);
-                        }
-                    }
-
-                    foreach (var fieldInfo in type.GetRuntimeFields())
-                    {
-                        foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                        {
-                            Add(attribute, assembly, type);
-                        }
-                    }
-
-                    foreach (var propertyInfo in type.GetRuntimeProperties())
-                    {
-                        foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                        {
-                            Add(attribute, assembly, type);
-                        }
-                    }
-
-                    foreach (var eventInfo in type.GetRuntimeEvents())
-                    {
-                        foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                        {
-                            Add(attribute, assembly, type);
-                        }
-                    }
+                    _logManager.LogM(LogLevel.Warn, nameof(Help), $"Unable to read attributes from assembly '{assembly}'. {ex.Message}");
                 }
 
 
