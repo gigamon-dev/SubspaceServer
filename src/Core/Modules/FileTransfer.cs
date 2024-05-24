@@ -209,7 +209,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UploadFile(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_UploadFile(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -229,7 +229,7 @@ namespace SS.Core.Modules
             {
                 ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
                 ud.FileName = ud.Stream.Name;
-                ud.Stream.Write(new Span<byte>(data, 17, length - 17));
+				ud.Stream.Write(data[17..length]);
                 success = true;
             }
             catch (Exception ex)

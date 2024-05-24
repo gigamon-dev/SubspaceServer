@@ -330,12 +330,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UpdateRequest(Player player, byte[] pkt, int len, NetReceiveFlags flags)
+        private void Packet_UpdateRequest(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
-                return;
-
-            if (pkt == null)
                 return;
 
             if (len != 1)
@@ -361,15 +358,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_MapNewsRequest(Player player, byte[] pkt, int len, NetReceiveFlags flags)
+        private void Packet_MapNewsRequest(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
 
-            if (pkt == null)
-                return;
-
-            if (pkt[0] == (byte)C2SPacketType.MapRequest)
+            if (data[0] == (byte)C2SPacketType.MapRequest)
             {
                 if (len != 1 && len != 3)
                 {
@@ -384,7 +378,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                ushort lvznum = (len == 3) ? (ushort)(pkt[1] | pkt[2] << 8) : (ushort)0;
+                ushort lvznum = (len == 3) ? (ushort)(data[1] | data[2] << 8) : (ushort)0;
                 bool wantOpt = player.Flags.WantAllLvz;
 
                 MapDownloadData mdd = GetMap(arena, lvznum, wantOpt);
@@ -417,7 +411,7 @@ namespace SS.Core.Modules
                     }
                 }
             }
-            else if (pkt[0] == (byte)C2SPacketType.NewsRequest)
+            else if (data[0] == (byte)C2SPacketType.NewsRequest)
             {
                 if (len != 1)
                 {

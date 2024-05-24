@@ -67,14 +67,26 @@ namespace SS.Core.ComponentInterfaces
         //Sized = 0x08, // sized has its own delegate, so don't need to include this here
     }
 
-    /// <summary>
-    /// Delegate for a handler to an incoming regular packet.
-    /// </summary>
-    /// <param name="player">The player that sent the packet.</param>
-    /// <param name="data">The buffer containing the packet data that was received.</param>
-    /// <param name="length">Number of bytes in the data.</param>
-    /// <param name="flags">Flags indicating how the data was received.</param>
-    public delegate void PacketDelegate(Player player, byte[] data, int length, NetReceiveFlags flags);
+	/// <summary>
+	/// Delegate for a handler to an incoming regular packet.
+	/// </summary>
+	/// <param name="player">The player that sent the packet.</param>
+	/// <param name="data">
+	/// The buffer containing the packet data that was received.
+	/// <para>
+	/// The buffer is guaranteed to be at least <see cref="Constants.MaxPacket"/>, 
+    /// which can be larger than the <paramref name="length"/> of bytes received.
+	/// This means a handler can use <see cref="System.Runtime.InteropServices.MemoryMarshal.AsRef{T}(Span{byte})"/>
+	/// with a structure larger than the <paramref name="length"/> of bytes received.
+	/// Doing so allows variable length data to be processed with a struct that contains all fields, including the optional ones.
+	/// It is up to the handler to know which fields are available based on the <paramref name="length"/>.
+	/// For example, packets with Continuum-only fields added at the end, 
+	/// or position packets where the extra position data at the end is optional.
+	/// </para>
+	/// </param>
+	/// <param name="length">Number of bytes in <paramref name="data"/> that were received.</param>
+	/// <param name="flags">Flags indicating how the data was received.</param>
+	public delegate void PacketDelegate(Player player, Span<byte> data, int length, NetReceiveFlags flags);
 
     /// <summary>
     /// Delegate for a handler to an incoming sized packet (file transfer).

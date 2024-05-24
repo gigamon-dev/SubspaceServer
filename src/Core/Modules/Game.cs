@@ -966,9 +966,9 @@ namespace SS.Core.Modules
             _net.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
-        private void Packet_Position(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_Position(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
-            ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(new Span<byte>(data, 0, C2S_PositionPacket.LengthWithExtra));
+			ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data[..C2S_PositionPacket.LengthWithExtra]);
             HandlePositionPacket(player, ref pos, len, false);
         }
 
@@ -1484,12 +1484,9 @@ namespace SS.Core.Modules
             pd.LastRegionSet = newRegions;
         }
 
-        private void Packet_SpecRequest(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_SpecRequest(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
-                return;
-
-            if (data == null)
                 return;
 
             if (len != C2S_SpecRequest.Length)
@@ -1504,7 +1501,7 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
                 return;
 
-            ref C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data.AsSpan(0, C2S_SpecRequest.Length));
+            ref C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data[..C2S_SpecRequest.Length]);
             int targetPlayerId = packet.PlayerId;
 
             lock (_specmtx)
@@ -1520,12 +1517,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetShip(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_SetShip(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
-                return;
-
-            if (data == null)
                 return;
 
             if (len != 2)
@@ -1615,7 +1609,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetFreq(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_SetFreq(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -1630,7 +1624,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                ref C2S_SetFreq packet = ref MemoryMarshal.AsRef<C2S_SetFreq>(data.AsSpan(0, C2S_SetFreq.Length));
+                ref C2S_SetFreq packet = ref MemoryMarshal.AsRef<C2S_SetFreq>(data[..C2S_SetFreq.Length]);
                 FreqChangeRequest(player, packet.Freq);
             }
         }
@@ -1871,12 +1865,9 @@ namespace SS.Core.Modules
             Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
         [ConfigHelp("Prize", "TeamkillPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
-        private void Packet_Die(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_Die(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
-                return;
-
-            if (data == null)
                 return;
 
             if (len != C2S_Die.Length)
@@ -1895,7 +1886,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
                 return;
 
-            ref C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data.AsSpan(0, C2S_Die.Length));
+            ref C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data[..C2S_Die.Length]);
             short bounty = packet.Bounty;
 
             Player killer = _playerData.PidToPlayer(packet.Killer);
@@ -2073,12 +2064,9 @@ namespace SS.Core.Modules
             _chatNetwork?.SendToArena(killer.Arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
-        private void Packet_Green(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_Green(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
-                return;
-
-            if (data == null)
                 return;
 
             if (len != GreenPacket.C2SLength)
@@ -2107,7 +2095,7 @@ namespace SS.Core.Modules
             {
                 g.PlayerId = (short)player.Id;
                 g.Type = (byte)S2CPacketType.Green; // HACK: reuse the buffer that it came in on
-                _net.SendToArena(arena, player, new ReadOnlySpan<byte>(data, 0, GreenPacket.S2CLength), NetSendFlags.Unreliable);
+                _net.SendToArena(arena, player, data[..GreenPacket.S2CLength], NetSendFlags.Unreliable);
                 //g.Type = C2SPacketType.Green; // asss sets it back, i dont think this is necessary though
             }
 
@@ -2167,9 +2155,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_AttachTo(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_AttachTo(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
-            if (player == null || data == null)
+            if (player == null)
                 return;
 
             if (len != C2S_AttachTo.Length)
@@ -2185,7 +2173,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            ref C2S_AttachTo packet = ref MemoryMarshal.AsRef<C2S_AttachTo>(data.AsSpan(0, C2S_AttachTo.Length));
+            ref C2S_AttachTo packet = ref MemoryMarshal.AsRef<C2S_AttachTo>(data[..C2S_AttachTo.Length]);
             short pid2 = packet.PlayerId;
 
             Player to = null;
@@ -2209,9 +2197,9 @@ namespace SS.Core.Modules
             Attach(player, to);
         }
 
-        private void Packet_TurretKickoff(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_TurretKickoff(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
-            if (player == null || data == null)
+            if (player == null)
                 return;
 
             if (player.Status != PlayerState.Playing)

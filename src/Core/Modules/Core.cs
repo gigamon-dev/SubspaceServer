@@ -493,7 +493,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Login(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_Login(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -543,7 +543,7 @@ namespace SS.Core.Modules
                 }
 
                 playerData.AuthRequest = _authRequestPool.Get();
-                playerData.AuthRequest.SetRequestInfo(player, data.AsSpan(0, len), _authDone);
+                playerData.AuthRequest.SetRequestInfo(player, data[..len], _authDone);
                 
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 

@@ -435,7 +435,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_RegData(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_RegData(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
@@ -459,7 +459,7 @@ namespace SS.Core.Modules
                     Span<byte> packetBytes = stackalloc byte[S2B_UserDemographics.Length];
                     ref S2B_UserDemographics packet = ref MemoryMarshal.AsRef<S2B_UserDemographics>(packetBytes);
                     packet = new(player.Id);
-                    int packetLength = packet.SetData(data.AsSpan(1, length - 1));
+                    int packetLength = packet.SetData(data[1..length]);
 
                     _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
 

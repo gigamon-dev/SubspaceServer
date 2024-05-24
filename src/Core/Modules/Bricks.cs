@@ -312,7 +312,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Brick(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_Brick(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             Arena arena = player.Arena;
 

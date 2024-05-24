@@ -212,7 +212,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Banner(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_Banner(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             if (length != C2S_Banner.Length)
             {

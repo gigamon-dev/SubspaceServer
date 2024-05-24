@@ -66,7 +66,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void Packet_SettingChange(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_SettingChange(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))
             {
@@ -80,21 +80,21 @@ namespace SS.Core.Modules
 
             string comment = $"Set by {player.Name} with ?quickfix on {DateTime.UtcNow}";
             bool permanent = true;
-            Span<byte> dataSpan = data.AsSpan(1, length - 1);
-            while (!dataSpan.IsEmpty)
+            data = data[1..length];
+            while (!data.IsEmpty)
             {
-                int nullIndex = dataSpan.IndexOf((byte)0);
+                int nullIndex = data.IndexOf((byte)0);
                 if (nullIndex == -1 || nullIndex == 0)
                     break;
 
-                ReadOnlySpan<byte> strBytes = dataSpan[..nullIndex];
+                ReadOnlySpan<byte> strBytes = data[..nullIndex];
                 if (!ProcessOneChange(player, strBytes, ref permanent))
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(Quickfix), player, "Badly formatted setting change.");
                     return;
                 }
 
-                dataSpan = dataSpan[(nullIndex + 1)..];
+				data = data[(nullIndex + 1)..];
             }
 
             bool ProcessOneChange(Player player, ReadOnlySpan<byte> strBytes, ref bool permanent)

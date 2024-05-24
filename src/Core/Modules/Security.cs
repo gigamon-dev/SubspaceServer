@@ -536,12 +536,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SecurityResponse(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_SecurityResponse(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             if (player == null)
-                return;
-
-            if (data == null)
                 return;
 
             if (length < 0 || length < C2S_Security.Length)
@@ -574,7 +571,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(new Span<byte>(data, 0, length));
+            ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(data[..length]);
 
             lock (_lockObj)
             {

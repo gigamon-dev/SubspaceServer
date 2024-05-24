@@ -765,12 +765,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Chat(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_Chat(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player is null)
-                return;
-
-            if (data is null)
                 return;
 
 			// Ideally we would check for len > ChatPacket.MaxLength (255 bytes), but Continuum seems to have a bug.
@@ -790,11 +787,11 @@ namespace SS.Core.Modules
             if (arena is null || player.Status != PlayerState.Playing)
                 return;
 
-            Span<byte> dataSpan = data.AsSpan(0, len);
-            ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(dataSpan);
+            data = data[..len];
+            ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
 
             // Determine which bytes are part of the message.
-            Span<byte> messageBytes = ChatPacket.GetMessageBytes(dataSpan);
+            Span<byte> messageBytes = ChatPacket.GetMessageBytes(data);
 
             // Decode the bytes.
             Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetMaxCharCount(messageBytes.Length)];

@@ -449,7 +449,7 @@ namespace SS.Replay
 
         #endregion
 
-        private void Packet_Position(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_Position(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             Debug.Assert(_mainloop.IsMainloop);
 

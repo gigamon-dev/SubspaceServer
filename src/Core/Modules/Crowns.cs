@@ -199,7 +199,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_CrownExpired(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_CrownExpired(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             if (length != 1)
             {

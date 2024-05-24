@@ -713,7 +713,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Rebroadcast(Player player, byte[] data, int length, NetReceiveFlags flags)
+        private void Packet_Rebroadcast(Player player, Span<byte> data, int length, NetReceiveFlags flags)
         {
             Arena arena = player.Arena;
             if (arena is null)
@@ -734,7 +734,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> packet = data.AsSpan(0, length);
+            Span<byte> packet = data[..length];
             int toPlayerId = BinaryPrimitives.ReadInt16LittleEndian(packet.Slice(1, 2));
             S2CPacketType type = (S2CPacketType)packet[3];
 

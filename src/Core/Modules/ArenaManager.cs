@@ -795,12 +795,9 @@ namespace SS.Core.Modules
 
         [ConfigHelp("Chat", "ForceFilter", ConfigScope.Global, typeof(bool), DefaultValue = "0",
             Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
-        private void Packet_GotoArena(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_GotoArena(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
             if (player is null)
-                return;
-
-            if (data is null)
                 return;
 
             if (len != C2S_GoArena.LengthVIE && len != C2S_GoArena.LengthContinuum)
@@ -938,7 +935,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_LeaveArena(Player player, byte[] data, int len, NetReceiveFlags flags)
+        private void Packet_LeaveArena(Player player, Span<byte> data, int len, NetReceiveFlags flags)
         {
 #if !CFG_RELAX_LENGTH_CHECKS
             if (len != 1)
