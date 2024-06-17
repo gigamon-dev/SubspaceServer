@@ -4,13 +4,13 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct PresizedHeader
+    public struct SizedHeader
     {
         public static readonly int Length;
 
-        static PresizedHeader()
+        static SizedHeader()
         {
-            Length = Marshal.SizeOf<PresizedHeader>();
+            Length = Marshal.SizeOf<SizedHeader>();
         }
 
         public byte T1;

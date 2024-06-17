@@ -1443,13 +1443,13 @@ namespace SS.Core.Modules
             if (data.Length < 7)
                 return;
 
-            ref readonly PresizedHeader header = ref MemoryMarshal.AsRef<PresizedHeader>(data);
+            ref readonly SizedHeader header = ref MemoryMarshal.AsRef<SizedHeader>(data);
             int size = header.Size;
-            data = data[PresizedHeader.Length..];
+            data = data[SizedHeader.Length..];
 
             lock (conn.bigmtx)
             {
-                // only handle presized packets for player connections, not client connections
+                // only handle sized packets for player connections, not client connections
                 if (conn.p is null)
                     return;
 
@@ -1473,7 +1473,7 @@ namespace SS.Core.Modules
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Length mismatch in sized packet.");
                     EndSized(conn.p, false);
                 }
-                else if ((conn.sizedrecv.offset + data.Length - PresizedHeader.Length) > size)
+                else if ((conn.sizedrecv.offset + data.Length) > size)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.p, "Sized packet overflow.");
                     EndSized(conn.p, false);
@@ -1510,8 +1510,8 @@ namespace SS.Core.Modules
                     conn.sizedsends.RemoveFirst();
                 }
 
-                ReadOnlySpan<byte> cancelPresizedAckSpan = stackalloc byte[2] { 0x00, 0x0C };
-                SendOrBufferPacket(conn, cancelPresizedAckSpan, NetSendFlags.Reliable);
+                ReadOnlySpan<byte> cancelSizedAckSpan = stackalloc byte[2] { 0x00, 0x0C };
+                SendOrBufferPacket(conn, cancelSizedAckSpan, NetSendFlags.Reliable);
             }
         }
 
@@ -2696,7 +2696,7 @@ namespace SS.Core.Modules
                         ClearOutgoingQueue(conn.outlist[i]);
                     }
 
-                    // and presized outgoing
+                    // and sized outgoing
                     foreach (ISizedSendData sd in conn.sizedsends)
                     {
                         sd.RequestData(0, Span<byte>.Empty);
@@ -4615,6 +4615,8 @@ namespace SS.Core.Modules
 #endif                
                 // can't fit into a grouped packet, send immediately
                 _network.SendRaw(conn, data);
+
+				Interlocked.Increment(ref _network._globalStats.GroupedStats[0]);
             }
         }
 
