@@ -134,7 +134,65 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IFileTransfer.RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg)
+		bool IFileTransfer.SendFile(Player player, Stream stream, ReadOnlySpan<char> filename)
+        {
+            if (player is null)
+            {
+                stream?.Dispose();
+                return false;
+            }
+
+			if (stream is null)
+				return false;
+
+			int fileLength;
+
+			try
+			{
+                long length = stream.Length - stream.Position;
+
+				if (length > (int.MaxValue - 17))
+				{
+                    stream.Dispose();
+					_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). File is too large.");
+					return false;
+				}
+
+				fileLength = (int)length;
+			}
+			catch (Exception ex)
+			{
+				stream.Dispose();
+				_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error accessing stream. {ex.Message}");
+				return false;
+			}
+
+			DownloadDataContext context = s_downloadDataContextPool.Get();
+
+			try
+			{
+				context.Set(player, stream, filename, null);
+			}
+			catch (Exception ex)
+			{
+				s_downloadDataContextPool.Return(context);
+				stream.Dispose();
+				_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error initializing sized send. {ex.Message}");
+				return false;
+			}
+
+			if (!_network.SendSized(player, fileLength + 17, GetSizedSendData, context))
+			{
+				s_downloadDataContextPool.Return(context);
+				stream.Dispose();
+				_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error queuing up a sized send.");
+				return false;
+			}
+
+			return true;
+		}
+
+		bool IFileTransfer.RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg)
         {
             if (player is null)
                 return false;
@@ -166,11 +224,8 @@ namespace SS.Core.Modules
 
         void IFileTransfer.SetWorkingDirectory(Player player, string path)
         {
-            if (player is null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+			ArgumentNullException.ThrowIfNull(player);
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
@@ -180,10 +235,9 @@ namespace SS.Core.Modules
 
         string IFileTransfer.GetWorkingDirectory(Player player)
         {
-            if (player is null)
-                throw new ArgumentNullException(nameof(player));
+			ArgumentNullException.ThrowIfNull(player);
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+			if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return null;
 
             return ud.WorkingDirectory;
@@ -298,11 +352,8 @@ namespace SS.Core.Modules
 
         private void GetSizedSendData(DownloadDataContext context, int offset, Span<byte> dataSpan)
         {
-            if (context is null)
-                throw new ArgumentNullException(nameof(context));
-
-            if (offset < 0)
-                throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be less than zero.");
+			ArgumentNullException.ThrowIfNull(context);
+            ArgumentOutOfRangeException.ThrowIfLessThan(offset, 0);
 
             if (dataSpan.IsEmpty)
             {

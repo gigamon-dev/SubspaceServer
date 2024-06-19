@@ -157,20 +157,18 @@ namespace SS.Core.Modules
             }
 
             ConfigHandle arenaConfigHandle = player.Arena?.Cfg;
-            if (arenaConfigHandle == null)
-                return;
-
-            // TODO: setting on whether to use the system's temp folder (Path.GetTempFileName()) or use our own tmp folder
-            string path = Path.Combine("tmp", $"server-{Guid.NewGuid():N}.set");
-            bool hasData = false;
-
-            // TODO: Use a worker thread to do the file I/O, including the call to _fileTransfer.SendFile.
-            bool isCreated = false;
-            try
+            if (arenaConfigHandle is null)
             {
-                using FileStream fs = File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                isCreated = true;
-                using StreamWriter writer = new(fs, StringUtils.DefaultEncoding);
+                _chat.SendMessage(player, "You must be in an arena to view or change settings.");
+                return;
+            }
+
+            bool hasData = false;
+			MemoryStream stream = new(); // TODO: Use Microsoft.IO.RecyclableMemoryStream instead
+
+			try
+            {
+                using StreamWriter writer = new(stream, StringUtils.DefaultEncoding, leaveOpen: true);
 
                 _configHelp.Lock();
 
@@ -199,45 +197,29 @@ namespace SS.Core.Modules
                 }
 
                 writer.Flush();
-                hasData = fs.Position > 0;
+                hasData = stream.Position > 0;
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to create temporary server.set file '{path}'. {ex.Message}");
-                
-                if (isCreated)
-                {
-                    DeleteTempFile(path);
-                }
+                _logManager.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to server.set file. {ex.Message}");
+                stream.Dispose();
                 return;
             }
 
-            if (hasData)
-            {
-                _chat.SendMessage(player, "Sending settings...");
+            if (!hasData)
+			{
+				_chat.SendMessage(player, "No settings matched your query.");
+                stream.Dispose();
+                return;
+			}
+			
+			stream.Position = 0;
 
-                if (!_fileTransfer.SendFile(player, path, "server.set", true))
-                {
-                    _logManager.LogP(LogLevel.Warn, nameof(Quickfix), player, $"Failed to send server.set file '{path}'.");
-                    DeleteTempFile(path);
-                }
-            }
-            else
-            {
-                _chat.SendMessage(player, "No settings matched your query.");
-                DeleteTempFile(path);
-            }
+			_chat.SendMessage(player, "Sending settings...");
 
-            void DeleteTempFile(string path)
+			if (!_fileTransfer.SendFile(player, stream, "server.set"))
             {
-                try
-                {
-                    File.Delete(path);
-                }
-                catch (Exception ex)
-                {
-                    _logManager.LogM(LogLevel.Warn, nameof(Quickfix), $"Failed to delete temporary server.set file '{path}'. {ex.Message}");
-                }
+                _logManager.LogP(LogLevel.Warn, nameof(Quickfix), player, $"Failed to send server.set file.");
             }
         }
 
