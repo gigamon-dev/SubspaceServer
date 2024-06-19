@@ -39,8 +39,8 @@ To build the server,
 - [Microsoft.Data.Sqlite](https://www.nuget.org/packages/Microsoft.Data.Sqlite) - for an embedded database that persists player and arena data
 - [Microsoft.Extensions.ObjectPool](https://www.nuget.org/packages/Microsoft.Extensions.ObjectPool) - object pooling to reduce allocations and the need to garbage collect
 - [Microsoft.IO.RecyclableMemoryStream](https://www.nuget.org/packages/Microsoft.IO.RecyclableMemoryStream) - for an improved MemoryStream with regards to performance and garbage collection
-- [Npgsql](https://www.nuget.org/packages/Npgsql) - for connecting to a PostgreSQL database (optional)
-- [SixLabors.ImageSharp](https://www.nuget.org/packages/SixLabors.ImageSharp) - for creating images of maps
+- [Npgsql](https://www.nuget.org/packages/Npgsql) - for connecting to a PostgreSQL database (optional matchmaking functionality)
+- [SkiaSharp](https://www.nuget.org/packages/SkiaSharp) - for creating images of maps
 - [System.IO.Hashing](https://www.nuget.org/packages/System.IO.Hashing) - for a CRC-32 implementation compatible with zlib's
 
 ## License

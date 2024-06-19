@@ -455,11 +455,8 @@ namespace SS.Core.Modules
 
         void IMapData.SaveImage(Arena arena, string path)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("A path is required.", nameof(path));
+			ArgumentNullException.ThrowIfNull(arena);
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 throw new Exception("missing lvl data");
@@ -476,9 +473,29 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+		void IMapData.SaveImage(Arena arena, Stream stream, ReadOnlySpan<char> imageFormat)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+			ArgumentNullException.ThrowIfNull(stream);
 
-        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
+			if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+				throw new Exception("missing lvl data");
+
+			ad.Lock.EnterReadLock();
+
+			try
+			{
+				ad.Lvl.SaveImage(stream, imageFormat);
+			}
+			finally
+			{
+				ad.Lock.ExitReadLock();
+			}
+		}
+
+		#endregion
+
+		private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;

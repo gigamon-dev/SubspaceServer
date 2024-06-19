@@ -1,8 +1,9 @@
-﻿using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+﻿using SkiaSharp;
+using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 
@@ -180,38 +181,114 @@ namespace SS.Core.Map
             IsTileDataLoaded = true;
         }
 
-        /// <summary>
-        /// Creates an image of the map, saving it to a specified <paramref name="path"/>.
-        /// The image format is automatically determined based on the filename extension.
-        /// </summary>
-        /// <param name="path"></param>
-        /// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
-        /// <exception cref="NotSupportedException">No encoder available for the provided <paramref name="path"/>.</exception>
-        public void SaveImage(string path)
+        // Note: It seems SkiaSharp only supports encoding to jpg, png, and webp even though it has many other image formats defined.
+        private static readonly Trie<SKEncodedImageFormat> _extensionToImageFormatTrie = new(false)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("A path is required.", nameof(path));
+			//{ ".bmp", SKEncodedImageFormat.Bmp },
+			//{ "bmp", SKEncodedImageFormat.Bmp },
+			//{ ".gif", SKEncodedImageFormat.Gif },
+			//{ "gif", SKEncodedImageFormat.Gif },
+			//{ ".ico", SKEncodedImageFormat.Ico},
+			//{ "ico", SKEncodedImageFormat.Ico},
+			{ ".jpg", SKEncodedImageFormat.Jpeg },
+			{ "jpg", SKEncodedImageFormat.Jpeg },
+			{ ".jpeg", SKEncodedImageFormat.Jpeg },
+			{ "jpeg", SKEncodedImageFormat.Jpeg },
+			{ ".png", SKEncodedImageFormat.Png },
+			{ "png", SKEncodedImageFormat.Png },
+			{ ".webp", SKEncodedImageFormat.Webp },
+			{ "webp", SKEncodedImageFormat.Webp },
+			//{ ".heif", SKEncodedImageFormat.Heif },
+			//{ "heif", SKEncodedImageFormat.Heif },
+		};
 
-            using Image<Rgb24> image = new(1024, 1024, Color.Black);
+		/// <summary>
+		/// Creates an image of the map, saving it to a specified <paramref name="path"/>.
+		/// </summary>
+		/// <param name="path">The path to save the file to. The image format is automatically determined based on the filename extension.</param>
+		/// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
+		/// <exception cref="ArgumentException">The <paramref name="path"/> file extension specifies an unsupported image format.</exception>
+		/// <exception cref="Exception">Error encoding image.</exception>
+		public void SaveImage(string path)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-            foreach (KeyValuePair<MapCoordinate, MapTile> kvp in _tileLookup)
-            {
-                Color color = kvp.Value switch
-                {
-                    { IsDoor: true } => Color.Blue,
-                    { IsSafe: true } => Color.LightGreen,
-                    { IsTurfFlag: true } => Color.Yellow,
-                    { IsGoal: true } => Color.Red,
-                    { IsWormhole: true } => Color.Purple,
-                    { IsFlyOver: true } => Color.DarkGray,
-                    { IsFlyUnder: true } => Color.DarkGray,
-                    _ => Color.White
-                };
+            string extension = Path.GetExtension(path);
+            if (!_extensionToImageFormatTrie.TryGetValue(extension, out SKEncodedImageFormat format))
+                throw new ArgumentException("Unsupported image format.", nameof(path));
 
-                image[kvp.Key.X, kvp.Key.Y] = color;
-            }
+            using SKBitmap bitmap = CreateBitmap();
 
-            image.Save(path);
-        }
-    }
+			bool success = false;
+
+			using (FileStream fs = new(path, FileMode.CreateNew))
+			{
+				success = bitmap.Encode(fs, format, 100);
+			}
+
+			if (!success)
+			{
+				try
+				{
+					File.Delete(path);
+				}
+				catch
+				{
+				}
+
+                throw new Exception($"Error encoding as {format}.");
+			}
+		}
+
+		/// <summary>
+		/// Creates an image of the map, saving it to a specified <paramref name="path"/>.
+		/// </summary>
+		/// <param name="imageFormat">The format to save the image as.</param>
+		/// <exception cref="ArgumentException">The <paramref name="imageFormat"/> is white-space.</exception>
+		/// <exception cref="ArgumentException">Unsupported image format for the provided <paramref name="imageFormat"/>.</exception>
+		/// <exception cref="Exception">Error encoding image.</exception>
+		public void SaveImage(Stream stream, ReadOnlySpan<char> imageFormat)
+        {
+            ArgumentNullException.ThrowIfNull(stream);
+
+            if (imageFormat.IsWhiteSpace())
+                throw new ArgumentException("Cannot be whitespace.", nameof(imageFormat));
+
+			if (!_extensionToImageFormatTrie.TryGetValue(imageFormat, out SKEncodedImageFormat format))
+				throw new ArgumentException("Unsupported image format.", nameof(imageFormat));
+
+            using SKBitmap bitmap = CreateBitmap();
+
+            if (!bitmap.Encode(stream, format, 100))
+				throw new Exception($"Error encoding as {format}.");
+		}
+
+		private SKBitmap CreateBitmap()
+        {
+			SKImageInfo info = new(1024, 1024);
+			SKBitmap bitmap = new(info);
+
+			using SKCanvas canvas = new(bitmap);
+			canvas.Clear(SKColors.Black);
+
+			foreach (KeyValuePair<MapCoordinate, MapTile> kvp in _tileLookup)
+			{
+				SKColor color = kvp.Value switch
+				{
+					{ IsDoor: true } => SKColors.Blue,
+					{ IsSafe: true } => SKColors.LightGreen,
+					{ IsTurfFlag: true } => SKColors.Yellow,
+					{ IsGoal: true } => SKColors.Red,
+					{ IsWormhole: true } => SKColors.Purple,
+					{ IsFlyOver: true } => SKColors.DarkGray,
+					{ IsFlyUnder: true } => SKColors.DarkGray,
+					_ => SKColors.White
+				};
+
+				canvas.DrawPoint(kvp.Key.X, kvp.Key.Y, color);
+			}
+
+            return bitmap;
+		}
+	}
 }
