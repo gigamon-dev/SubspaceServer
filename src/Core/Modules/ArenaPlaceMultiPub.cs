@@ -4,6 +4,7 @@ using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 
 namespace SS.Core.Modules
 {
@@ -27,7 +28,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IArenaPlace> _iArenaPlaceToken;
 
         private const int InitialArenaNameListCapacity = 8;
-        private readonly ObjectPool<List<string>> _stringListPool = new DefaultObjectPool<List<string>>(new StringListPooledObjectPolicy());
+        private readonly ObjectPool<List<string>> _stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = InitialArenaNameListCapacity });
         private readonly List<string> _pubNames = new(InitialArenaNameListCapacity);
         private readonly object _lock = new();
 
@@ -192,26 +193,5 @@ namespace SS.Core.Modules
                 }
             }
         }
-
-        #region Helper types
-
-        private class StringListPooledObjectPolicy : IPooledObjectPolicy<List<string>>
-        {
-            public List<string> Create()
-            {
-                return new List<string>(InitialArenaNameListCapacity);
-            }
-
-            public bool Return(List<string> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        #endregion
     }
 }

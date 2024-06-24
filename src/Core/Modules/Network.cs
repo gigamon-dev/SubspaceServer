@@ -274,7 +274,7 @@ namespace SS.Core.Modules
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
             _bigReceivePool = objectPoolManager.GetPool<BigReceive>();
             _reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliableCallbackInvoker>();
-            _bufferNodePool = new(new SubspaceBufferLinkedListNodePooledObjectPolicy());
+            _bufferNodePool = new NonTransientObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>());
             _objectPoolManager.TryAddTracked(_bufferNodePool);
 
             if (!InitializeSockets())
@@ -3949,31 +3949,6 @@ namespace SS.Core.Modules
                 }
 
                 base.Clear();
-            }
-        }
-
-        /// <summary>
-        /// Policy for pooling of <see cref="LinkedListNode{SubspaceBuffer}"/> objects.
-        /// </summary>
-        private class SubspaceBufferLinkedListNodePooledObjectPolicy : PooledObjectPolicy<LinkedListNode<SubspaceBuffer>>
-        {
-            public override LinkedListNode<SubspaceBuffer> Create()
-            {
-                return new LinkedListNode<SubspaceBuffer>(null);
-            }
-
-            public override bool Return(LinkedListNode<SubspaceBuffer> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                Debug.Assert(obj.List is null);
-
-                if (obj.List is not null)
-                    return false;
-
-                obj.Value = null;
-                return true;
             }
         }
 

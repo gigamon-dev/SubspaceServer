@@ -1,21 +1,21 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Utilities;
-using System.Diagnostics;
+using SS.Utilities.ObjectPool;
 
 namespace SS.Matchmaking
 {
-    /// <summary>
-    /// Provides calculations to track multiple time ranges such that it tells how much additional time is added for each added time range, 
-    /// taking into consideration the existing ranges.
-    /// </summary>
-    /// <remarks>
-    /// The main goal of this is to assist in tracking EMP bomb shutdown times, especially in the scenario where they may overlap.
-    /// This way, when calculating damage for the EMP shutdown times, no time period is counted more than once.
-    /// </remarks>
-    public class TickRangeCalculator
+	/// <summary>
+	/// Provides calculations to track multiple time ranges such that it tells how much additional time is added for each added time range, 
+	/// taking into consideration the existing ranges.
+	/// </summary>
+	/// <remarks>
+	/// The main goal of this is to assist in tracking EMP bomb shutdown times, especially in the scenario where they may overlap.
+	/// This way, when calculating damage for the EMP shutdown times, no time period is counted more than once.
+	/// </remarks>
+	public class TickRangeCalculator
     {
         private static readonly ObjectPool<LinkedListNode<TickRange>> s_tickRangeLinkedListNodePool = 
-            new DefaultObjectPool<LinkedListNode<TickRange>>(new TickRangeLinkedListNodePooledObjectPolicy(), 128);
+            new DefaultObjectPool<LinkedListNode<TickRange>>(new LinkedListNodePooledObjectPolicy<TickRange>(), 128);
 
         /// <summary>
         /// Used ranges. Sorted by start time. Ranges never overlap, they are expanded and combined as ranges are added.
@@ -137,27 +137,6 @@ namespace SS.Matchmaking
         #region Helper types
 
         private record struct TickRange(ServerTick Start, ServerTick End);
-
-        private class TickRangeLinkedListNodePooledObjectPolicy : IPooledObjectPolicy<LinkedListNode<TickRange>>
-        {
-            public LinkedListNode<TickRange> Create()
-            {
-                return new LinkedListNode<TickRange>(default);
-            }
-
-            public bool Return(LinkedListNode<TickRange> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                Debug.Assert(obj.List is null);
-                if (obj.List is not null)
-                    return false;
-
-                obj.ValueRef = default;
-                return true;
-            }
-        }
 
         #endregion
     }

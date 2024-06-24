@@ -105,7 +105,23 @@ namespace SS.Core
         /// </summary>
         public const int ChunkSize = 480;
 
-        #endregion
+		#endregion
+
+		/// <summary>
+		/// The expected upper limit on the # of players.
+		/// </summary>
+		/// <remarks>
+		/// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
+		/// </remarks>
+		public const int TargetPlayerCount = 512;
+
+		/// <summary>
+		/// The expected upper limit on the # of arenas.
+		/// </summary>
+		/// <remarks>
+		/// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
+		/// </remarks>
+		public const int TargetArenaCount = 64;
 
         public const int RandMax = 0x7fff;
 

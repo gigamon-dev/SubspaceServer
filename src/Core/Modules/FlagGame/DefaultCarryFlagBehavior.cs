@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 
@@ -16,8 +17,8 @@ namespace SS.Core.Modules.FlagGame
         private readonly IMapData _mapData;
         private readonly IPrng _prng;
 
-        private static readonly DefaultObjectPool<HashSet<MapCoordinate>> _mapCoordinateHashSetPool = new(new MapCoordinateHashSetPooledObjectPolicy());
-        private static readonly DefaultObjectPool<List<MapCoordinate>> _mapCoordinateListPool = new(new MapCoordinateListPooledObjectPolicy());
+        private static readonly DefaultObjectPool<HashSet<MapCoordinate>> _mapCoordinateHashSetPool = new(new HashSetPooledObjectPolicy<MapCoordinate>() { InitialCapacity = 256 });
+        private static readonly DefaultObjectPool<List<MapCoordinate>> _mapCoordinateListPool = new(new ListPooledObjectPolicy<MapCoordinate>() { InitialCapacity = 256 });
 
         public DefaultCarryFlagBehavior(
             ICarryFlagGame carryFlagGame,
@@ -491,45 +492,5 @@ namespace SS.Core.Modules.FlagGame
                     return value;
             }
         }
-
-        #region Helper types
-
-        private class MapCoordinateHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<MapCoordinate>>
-        {
-            public override HashSet<MapCoordinate> Create()
-            {
-                return new HashSet<MapCoordinate>();
-            }
-
-            public override bool Return(HashSet<MapCoordinate> obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Clear();
-
-                return true;
-            }
-        }
-
-        private class MapCoordinateListPooledObjectPolicy : PooledObjectPolicy<List<MapCoordinate>>
-        {
-            public override List<MapCoordinate> Create()
-            {
-                return new List<MapCoordinate>();
-            }
-
-            public override bool Return(List<MapCoordinate> obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Clear();
-
-                return true;
-            }
-        }
-
-        #endregion
     }
 }

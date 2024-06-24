@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -40,7 +41,7 @@ namespace SS.Core.Modules
         private Thread _chatThread;
         private readonly Trie<ChatMessageHandler> _handlerTrie = new(false);
 
-        private static readonly NonTransientObjectPool<LinkedListNode<OutBuffer>> _outBufferLinkedListNodePool = new(new OutBufferLinkedListNodePooledObjectPolicy());
+        private static readonly NonTransientObjectPool<LinkedListNode<OutBuffer>> _outBufferLinkedListNodePool = new(new LinkedListNodePooledObjectPolicy<OutBuffer>());
 
         #region Module members
 
@@ -1087,23 +1088,6 @@ namespace SS.Core.Modules
             /// The current position in <see cref="Data"/> to send.
             /// </summary>
             public int Position { get; set; }
-        }
-
-        private class OutBufferLinkedListNodePooledObjectPolicy : IPooledObjectPolicy<LinkedListNode<OutBuffer>>
-        {
-            public LinkedListNode<OutBuffer> Create()
-            {
-                return new LinkedListNode<OutBuffer>(default);
-            }
-
-            public bool Return(LinkedListNode<OutBuffer> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Value = default;
-                return true;
-            }
         }
 
         private enum ReadResult

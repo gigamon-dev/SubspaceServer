@@ -1,8 +1,8 @@
-﻿using Microsoft.Extensions.ObjectPool;
-using SS.Core.ComponentCallbacks;
+﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,10 +14,10 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
+	/// </summary>
+	[CoreModuleInfo]
     public sealed class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
     {
         private ComponentBroker _broker;
@@ -88,7 +88,7 @@ namespace SS.Core.Modules
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-            _dlKey = _arenaManager.AllocateArenaData(new MapDownloadDataListPooledObjectPolicy());
+            _dlKey = _arenaManager.AllocateArenaData(new ListPooledObjectPolicy<MapDownloadData>() { InitialCapacity = S2C_MapFilename.MaxFiles });
 
             _net.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
             _net.AddPacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
@@ -726,25 +726,6 @@ namespace SS.Core.Modules
 		/// <param name="Checksum">CRC32 of the file.</param>
 		/// <param name="Data">Compressed bytes of the file, includes the packet header.</param>
 		private record MapDownloadData(string FileName, bool IsOptional, uint Checksum, ReadOnlyMemory<byte> Data);
-
-		private class MapDownloadDataListPooledObjectPolicy : PooledObjectPolicy<List<MapDownloadData>>
-        {
-            public int InitialCapacity { get; set; } = S2C_MapFilename.MaxFiles;
-
-            public override List<MapDownloadData> Create()
-            {
-                return new List<MapDownloadData>(InitialCapacity);
-            }
-
-            public override bool Return(List<MapDownloadData> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
 
         #endregion
     }

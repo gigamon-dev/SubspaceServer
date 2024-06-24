@@ -2,6 +2,7 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Configuration;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -52,7 +53,7 @@ namespace SS.Core.Modules
         // Lock that synchronizes access.  Many can read at the same time.  Only one can write or modify the collections and objects within them at a given time.
         private readonly ReaderWriterLockSlim _rwLock = new();
 
-        private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new DocumentInfoListPooledObjectPolicy());
+        private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new ListPooledObjectPolicy<DocumentInfo>() { InitialCapacity = 32 });
 
         #region Module members
 
@@ -792,23 +793,6 @@ namespace SS.Core.Modules
                         handle.NotifyConfigChanged();
                     }
                 }
-            }
-        }
-
-        private class DocumentInfoListPooledObjectPolicy : PooledObjectPolicy<List<DocumentInfo>>
-        {
-            public override List<DocumentInfo> Create()
-            {
-                return new List<DocumentInfo>();
-            }
-
-            public override bool Return(List<DocumentInfo> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
             }
         }
 

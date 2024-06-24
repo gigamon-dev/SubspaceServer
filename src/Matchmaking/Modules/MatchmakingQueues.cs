@@ -8,6 +8,7 @@ using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System.Buffers;
 using System.Text;
 
@@ -65,8 +66,8 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<string, TimeSpan> _pendingPlayerHoldDurations = new(StringComparer.OrdinalIgnoreCase); // TODO: better if this was in the database, it could potentially grow large
 
         private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new UsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
-        private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new IMatchmakingQueueListPooledObjectPolicy());
-        private readonly ObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new DefaultObjectPool<List<PlayerOrGroup>>(new PlayerOrGroupListPooledObjectPolicy());
+        private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
+        private readonly ObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new DefaultObjectPool<List<PlayerOrGroup>>(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
 
         private const string NextCommandName = "next";
         private const string CancelCommandName = "cancelnext";
@@ -1793,40 +1794,6 @@ namespace SS.Matchmaking.Modules
                     return false;
 
                 obj.Reset();
-                return true;
-            }
-        }
-
-        private class IMatchmakingQueueListPooledObjectPolicy : IPooledObjectPolicy<List<IMatchmakingQueue>>
-        {
-            public List<IMatchmakingQueue> Create()
-            {
-                return new List<IMatchmakingQueue>();
-            }
-
-            public bool Return(List<IMatchmakingQueue> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class PlayerOrGroupListPooledObjectPolicy : IPooledObjectPolicy<List<PlayerOrGroup>>
-        {
-            public List<PlayerOrGroup> Create()
-            {
-                return new List<PlayerOrGroup>();
-            }
-
-            public bool Return(List<PlayerOrGroup> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
                 return true;
             }
         }

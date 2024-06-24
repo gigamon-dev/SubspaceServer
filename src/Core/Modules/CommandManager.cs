@@ -2,6 +2,7 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -28,7 +29,7 @@ namespace SS.Core.Modules
 
         private IChat _chat;
 
-        private readonly ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new CommandSummaryListPooledObjectPolicy());
+        private readonly ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new ListPooledObjectPolicy<CommandSummary>() { InitialCapacity = 256 });
 
         private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
         private readonly Trie<LinkedList<CommandData>> _cmdLookup = new(false);
@@ -852,23 +853,6 @@ namespace SS.Core.Modules
             public bool CanArena { get; set; }
             public bool CanPriv { get; set; }
             public bool CanRemotePriv { get; set; }
-        }
-
-        private class CommandSummaryListPooledObjectPolicy : PooledObjectPolicy<List<CommandSummary>>
-        {
-            public override List<CommandSummary> Create()
-            {
-                return new List<CommandSummary>();
-            }
-
-            public override bool Return(List<CommandSummary> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
         }
 
         private class CommandSummaryComparer : IComparer<CommandSummary>

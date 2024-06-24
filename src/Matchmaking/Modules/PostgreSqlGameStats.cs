@@ -4,6 +4,7 @@ using NpgsqlTypes;
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Interfaces;
+using SS.Utilities.ObjectPool;
 using System.Buffers;
 
 namespace SS.Matchmaking.Modules
@@ -19,7 +20,7 @@ namespace SS.Matchmaking.Modules
         private InterfaceRegistrationToken<IGameStatsRepository> _iGameStatsRepositoryToken;
         
         private NpgsqlDataSource _dataSource;
-        private readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new StringListPooledObjectPolicy());
+        private readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount });
 
         #region Module members
 
@@ -164,27 +165,6 @@ namespace SS.Matchmaking.Modules
                 }
 
                 return null;
-            }
-        }
-
-        #endregion
-
-        #region Object pooling types
-
-        private class StringListPooledObjectPolicy : IPooledObjectPolicy<List<string>>
-        {
-            public List<string> Create()
-            {
-                return new List<string>();
-            }
-
-            public bool Return(List<string> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
             }
         }
 

@@ -4,6 +4,7 @@ using SS.Core.Configuration;
 using SS.Core.Map;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -60,8 +61,8 @@ namespace SS.Core.Modules
         private readonly Trie<CommandGroup> _commandGroups = new(false);
 
         private readonly ObjectPool<ArenaListItem> _arenaListItemPool = new NonTransientObjectPool<ArenaListItem>(new ArenaListItemPooledObjectPolicy());
-        private readonly ObjectPool<List<ArenaListItem>> _arenaListItemListPool = new DefaultObjectPool<List<ArenaListItem>>(new ArenaListItemListPooledObjectPolicy());
-        private readonly ObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new DefaultObjectPool<List<PingHistogramBucket>>(new PingHistogramBucketListObjectPolicy());
+        private readonly ObjectPool<List<ArenaListItem>> _arenaListItemListPool = new DefaultObjectPool<List<ArenaListItem>>(new ListPooledObjectPolicy<ArenaListItem>() { InitialCapacity = Constants.TargetArenaCount });
+        private readonly ObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new DefaultObjectPool<List<PingHistogramBucket>>(new ListPooledObjectPolicy<PingHistogramBucket>() { InitialCapacity = 32 });
 
         public PlayerCommand()
         {
@@ -4031,40 +4032,6 @@ namespace SS.Core.Modules
             }
 
             public bool Return(ArenaListItem obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class ArenaListItemListPooledObjectPolicy : IPooledObjectPolicy<List<ArenaListItem>>
-        {
-            public List<ArenaListItem> Create()
-            {
-                return new List<ArenaListItem>();
-            }
-
-            public bool Return(List<ArenaListItem> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class PingHistogramBucketListObjectPolicy : IPooledObjectPolicy<List<PingHistogramBucket>>
-        {
-            public List<PingHistogramBucket> Create()
-            {
-                return new List<PingHistogramBucket>();
-            }
-
-            public bool Return(List<PingHistogramBucket> obj)
             {
                 if (obj is null)
                     return false;

@@ -10,6 +10,7 @@ using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -3212,8 +3213,8 @@ namespace SS.Matchmaking.Modules
 
         private class TeamVersusMatchmakingQueue : IMatchmakingQueue
         {
-            private static readonly NonTransientObjectPool<LinkedListNode<QueuedPlayerOrGroup>> s_nodePool = new(new QueuedPlayerOrGroupLinkedListNodePooledObjectPolicy());
-            private static readonly DefaultObjectPool<List<LinkedListNode<QueuedPlayerOrGroup>>> s_listPool = new(new QueuedPlayerOrGroupLinkedListNodeListPooledObjectPolicy());
+            private static readonly NonTransientObjectPool<LinkedListNode<QueuedPlayerOrGroup>> s_nodePool = new(new LinkedListNodePooledObjectPolicy<QueuedPlayerOrGroup>());
+            private static readonly DefaultObjectPool<List<LinkedListNode<QueuedPlayerOrGroup>>> s_listPool = new(new ListPooledObjectPolicy<LinkedListNode<QueuedPlayerOrGroup>>() { InitialCapacity = Constants.TargetPlayerCount });
 
             private readonly LinkedList<QueuedPlayerOrGroup> _queue = new();
 
@@ -3576,47 +3577,6 @@ namespace SS.Matchmaking.Modules
                     s_listPool.Return(pendingSolo);
                 }
             }
-
-            #region Object pooling types
-
-            private class QueuedPlayerOrGroupLinkedListNodePooledObjectPolicy : PooledObjectPolicy<LinkedListNode<QueuedPlayerOrGroup>>
-            {
-                public override LinkedListNode<QueuedPlayerOrGroup> Create()
-                {
-                    return new LinkedListNode<QueuedPlayerOrGroup>(default);
-                }
-
-                public override bool Return(LinkedListNode<QueuedPlayerOrGroup> obj)
-                {
-                    if (obj is null)
-                        return false;
-
-                    if (obj.List is not null)
-                        return false;
-
-                    obj.ValueRef = default;
-                    return true;
-                }
-            }
-
-            private class QueuedPlayerOrGroupLinkedListNodeListPooledObjectPolicy : PooledObjectPolicy<List<LinkedListNode<QueuedPlayerOrGroup>>>
-            {
-                public override List<LinkedListNode<QueuedPlayerOrGroup>> Create()
-                {
-                    return new List<LinkedListNode<QueuedPlayerOrGroup>>();
-                }
-
-                public override bool Return(List<LinkedListNode<QueuedPlayerOrGroup>> obj)
-                {
-                    if (obj is null)
-                        return false;
-
-                    obj.Clear();
-                    return true;
-                }
-            }
-
-            #endregion
         }
 
         private static class CommandNames

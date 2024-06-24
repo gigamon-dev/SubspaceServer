@@ -9,6 +9,7 @@ using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
 using SS.Utilities.Json;
+using SS.Utilities.ObjectPool;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -40,13 +41,12 @@ namespace SS.Matchmaking.Modules
         static TeamVersusStats()
         {
             var provider = new DefaultObjectPoolProvider();
-            s_damageInfoLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<DamageInfo>>(new DamageInfoLinkedListNodePooledObjectPolicy());
-            s_weaponUseLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<WeaponUse>>(new WeaponUseLinkedListNodePooledObjectPolicy());
+            s_damageInfoLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<DamageInfo>>(new LinkedListNodePooledObjectPolicy<DamageInfo>());
+            s_weaponUseLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<WeaponUse>>(new LinkedListNodePooledObjectPolicy<WeaponUse>());
             s_tickRangeCalculatorPool = provider.Create(new TickRangeCalcualtorPooledObjectPolicy());
-            s_damageDictionaryPool = provider.Create(new DamageDictionaryPooledObjectPolicy());
-            s_damageListPool = provider.Create(new DamageListPooledObjectPolicy());
-            s_ratingChangeDictionaryPool = provider.Create(new RatingChangeDictionaryPooledObjectPolicy());
-
+            s_damageDictionaryPool = provider.Create(new DictionaryPooledObjectPolicy<PlayerTeamSlot, int>() { InitialCapacity = Constants.TargetPlayerCount });
+            s_damageListPool = provider.Create(new ListPooledObjectPolicy<(string PlayerName, int Damage)>() { InitialCapacity = Constants.TargetPlayerCount });
+            s_ratingChangeDictionaryPool = provider.Create(new DictionaryPooledObjectPolicy<string, float>() { InitialCapacity = Constants.TargetPlayerCount, EqualityComparer = StringComparer.OrdinalIgnoreCase});
 		}
 
         #endregion
@@ -3398,48 +3398,6 @@ namespace SS.Matchmaking.Modules
 
         #region Pooled object policies
 
-        private class DamageInfoLinkedListNodePooledObjectPolicy : IPooledObjectPolicy<LinkedListNode<DamageInfo>>
-        {
-            public LinkedListNode<DamageInfo> Create()
-            {
-                return new LinkedListNode<DamageInfo>(default);
-            }
-
-            public bool Return(LinkedListNode<DamageInfo> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                Debug.Assert(obj.List is null);
-                if (obj.List is not null)
-                    return false;
-
-                obj.ValueRef = default;
-                return true;
-            }
-        }
-
-        private class WeaponUseLinkedListNodePooledObjectPolicy : IPooledObjectPolicy<LinkedListNode<WeaponUse>>
-        {
-            public LinkedListNode<WeaponUse> Create()
-            {
-                return new LinkedListNode<WeaponUse>(default);
-            }
-
-            public bool Return(LinkedListNode<WeaponUse> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                Debug.Assert(obj.List is null);
-                if (obj.List is not null)
-                    return false;
-
-                obj.ValueRef = default;
-                return true;
-            }
-        }
-
         private class TickRangeCalcualtorPooledObjectPolicy : IPooledObjectPolicy<TickRangeCalculator>
         {
             public TickRangeCalculator Create()
@@ -3456,57 +3414,6 @@ namespace SS.Matchmaking.Modules
                 return true;
             }
         }
-
-        private class DamageDictionaryPooledObjectPolicy : IPooledObjectPolicy<Dictionary<PlayerTeamSlot, int>>
-        {
-            public Dictionary<PlayerTeamSlot, int> Create()
-            {
-                return new Dictionary<PlayerTeamSlot, int>();
-            }
-
-            public bool Return(Dictionary<PlayerTeamSlot, int> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class DamageListPooledObjectPolicy : IPooledObjectPolicy<List<(string PlayerName, int Damage)>>
-        {
-            public List<(string PlayerName, int Damage)> Create()
-            {
-                return new List<(string PlayerName, int Damage)>();
-            }
-
-            public bool Return(List<(string PlayerName, int Damage)> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-		private class RatingChangeDictionaryPooledObjectPolicy : IPooledObjectPolicy<Dictionary<string, float>>
-		{
-			public Dictionary<string, float> Create()
-			{
-                return new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
-			}
-
-			public bool Return(Dictionary<string, float> obj)
-			{
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-			}
-		}
 
 		#endregion
 	}

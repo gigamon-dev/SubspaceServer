@@ -5,6 +5,7 @@ using SS.Core.Map;
 using SS.Packets;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -67,6 +68,7 @@ namespace SS.Core.Modules
         /// Pool of <see cref="List{T}"/>s for <see cref="BrickLocation"/>.
         /// </summary>
         private ObjectPool<List<BrickLocation>> _brickLocationListPool;
+
         /// <summary>
         /// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
         /// </summary>
@@ -96,8 +98,8 @@ namespace SS.Core.Modules
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             DefaultObjectPoolProvider provider = new();
-            _brickLocationListPool = provider.Create(new BrickLocationListPooledObjectPolicy());
-            _brickDataListPool = provider.Create(new BrickDataListPooledObjectPolicy());
+            _brickLocationListPool = provider.Create(new ListPooledObjectPolicy<BrickLocation>() { InitialCapacity = 8 });
+            _brickDataListPool = provider.Create(new ListPooledObjectPolicy<BrickData>() { InitialCapacity = 8 });
 
             _adKey = _arenaManager.AllocateArenaData<ArenaBrickData>();
 
@@ -632,44 +634,6 @@ namespace SS.Core.Modules
         {
             Vertical,
             Horizontal,
-        }
-
-        private class BrickLocationListPooledObjectPolicy : PooledObjectPolicy<List<BrickLocation>>
-        {
-            public int InitialCapacity { get; set; } = 8;
-
-            public override List<BrickLocation> Create()
-            {
-                return new List<BrickLocation>(InitialCapacity);
-            }
-
-            public override bool Return(List<BrickLocation> obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class BrickDataListPooledObjectPolicy : PooledObjectPolicy<List<BrickData>>
-        {
-            public int InitialCapacity { get; set; } = 8;
-
-            public override List<BrickData> Create()
-            {
-                return new List<BrickData>(InitialCapacity);
-            }
-
-            public override bool Return(List<BrickData> obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
         }
 
         #endregion

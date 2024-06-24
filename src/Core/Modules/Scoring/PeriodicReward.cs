@@ -3,6 +3,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -27,8 +28,8 @@ namespace SS.Core.Modules.Scoring
         private ArenaDataKey<ArenaData> _adKey;
 
         private readonly NonTransientObjectPool<TeamData> _teamDataPool = new(new FreqDataPooledObjectPolicy());
-        private readonly DefaultObjectPool<Dictionary<short, IPeriodicRewardPoints.ITeamData>> _freqTeamDataDictionaryPool = new(new FreqTeamDataDictionaryPooledObjectPolicy());
-        private readonly DefaultObjectPool<Dictionary<short, short>> _freqPointsDictionaryPool = new(new FreqPointsDictionaryPooledObjectPolicy());
+        private readonly DefaultObjectPool<Dictionary<short, IPeriodicRewardPoints.ITeamData>> _freqTeamDataDictionaryPool = new(new DictionaryPooledObjectPolicy<short, IPeriodicRewardPoints.ITeamData>() { InitialCapacity = Constants.TargetPlayerCount });
+        private readonly DefaultObjectPool<Dictionary<short, short>> _freqPointsDictionaryPool = new(new DictionaryPooledObjectPolicy<short, short>() { InitialCapacity = Constants.TargetPlayerCount });
 
         #region Module members
 
@@ -451,40 +452,6 @@ namespace SS.Core.Modules.Scoring
 
                 obj.Players.Clear();
                 obj.FlagCount = 0;
-                return true;
-            }
-        }
-
-        private class FreqPointsDictionaryPooledObjectPolicy : PooledObjectPolicy<Dictionary<short, short>>
-        {
-            public override Dictionary<short, short> Create()
-            {
-                return new();
-            }
-
-            public override bool Return(Dictionary<short, short> obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class FreqTeamDataDictionaryPooledObjectPolicy : PooledObjectPolicy<Dictionary<short, IPeriodicRewardPoints.ITeamData>>
-        {
-            public override Dictionary<short, IPeriodicRewardPoints.ITeamData> Create()
-            {
-                return new();
-            }
-
-            public override bool Return(Dictionary<short, IPeriodicRewardPoints.ITeamData> obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Clear();
                 return true;
             }
         }

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -31,9 +32,9 @@ namespace SS.Core.Modules
             _iObjectPoolManagerToken = broker.RegisterInterface<IObjectPoolManager>(this);
 
             _provider = new DefaultObjectPoolProvider();
-            _playerHashSetPool = _provider.Create(new PlayerHashSetPooledObjectPolicy());
-            _arenaHashSetPool = _provider.Create(new ArenaHashSetPooledObjectPolicy());
-            _nameHashSetPool = _provider.Create(new NameHashSetPooledObjectPolicy());
+            _playerHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<Player>() { InitialCapacity = Constants.TargetPlayerCount });
+            _arenaHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<Arena>() { InitialCapacity = Constants.TargetArenaCount });
+            _nameHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount, EqualityComparer = StringComparer.OrdinalIgnoreCase });
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
             _crc32Pool = _provider.Create(new Crc32PooledObjectPolicy());
 
@@ -78,63 +79,6 @@ namespace SS.Core.Modules
         #endregion
 
         #region PooledObjectPolicy classes
-
-        private class PlayerHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<Player>>
-        {
-            public int InitialCapacity { get; set; } = 256;
-
-            public override HashSet<Player> Create()
-            {
-                return new HashSet<Player>(InitialCapacity);
-            }
-
-            public override bool Return(HashSet<Player> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class ArenaHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<Arena>>
-        {
-            public int InitialCapacity { get; set; } = 32;
-
-            public override HashSet<Arena> Create()
-            {
-                return new HashSet<Arena>(InitialCapacity);
-            }
-
-            public override bool Return(HashSet<Arena> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
-
-        private class NameHashSetPooledObjectPolicy : PooledObjectPolicy<HashSet<string>>
-        {
-            public int InitialCapacity { get; set; } = 256;
-
-            public override HashSet<string> Create()
-            {
-                return new HashSet<string>(InitialCapacity, StringComparer.OrdinalIgnoreCase);
-            }
-
-            public override bool Return(HashSet<string> obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
-            }
-        }
 
 		private class Crc32PooledObjectPolicy : PooledObjectPolicy<Crc32>
 		{
