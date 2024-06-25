@@ -496,7 +496,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class UploadDataContext : IPooledExtraData, IDisposable
+        private class UploadDataContext : IResettable, IDisposable
         {
             public FileStream Stream;
 
@@ -565,7 +565,7 @@ namespace SS.Core.Modules
                 UploadedInvoker = null;
             }
 
-            public void Reset()
+			public bool TryReset()
             {
                 if (UploadedInvoker is not null)
                 {
@@ -574,11 +574,13 @@ namespace SS.Core.Modules
                 }
 
                 Cleanup(false);
+
+                return true;
             }
 
             public void Dispose()
             {
-                Reset();
+                TryReset();
             }
         }
 

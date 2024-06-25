@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentAdvisors;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
@@ -173,7 +174,7 @@ namespace SS.Core.Modules.Enforcers
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
 
@@ -185,22 +186,24 @@ namespace SS.Core.Modules.Enforcers
 
             #endregion
 
-            void IPooledExtraData.Reset()
+            public bool TryReset()
             {
                 AdvisorToken = null;
                 ShipChangeInterval = TimeSpan.Zero;
                 AntiwarpNonFlagger = false;
                 AntiwarpFlagger = false;
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public DateTime? LastChange = null;
 
-            void IPooledExtraData.Reset()
+            public bool TryReset()
             {
                 LastChange = null;
+                return true;
             }
         }
 

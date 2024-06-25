@@ -3143,7 +3143,7 @@ namespace SS.Matchmaking.Modules
             YesCritical = 0x03,
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The player's stats of the match in progress that the player is a current slot holder in.
@@ -3222,11 +3222,12 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 MemberStats = null;
                 IsWatchingDamage = false;
                 ClearWeaponUseLog();
+                return true;
             }
         }
 

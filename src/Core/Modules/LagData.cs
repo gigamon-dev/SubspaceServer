@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
@@ -304,7 +305,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class PlayerLagStats : IPooledExtraData
+        private class PlayerLagStats : IResettable
         {
             private PingStats PositionPacketPing = new();
             private PingStats ReliablePing = new();
@@ -341,6 +342,12 @@ namespace SS.Core.Modules
                     TimeSync.Reset();
                     ReliableLagData = default;
                 }
+            }
+
+            bool IResettable.TryReset()
+            {
+                Reset();
+                return true;
             }
 
             public void UpdatePositionStats(int ms, int? clientS2CPing, uint serverWeaponCount)

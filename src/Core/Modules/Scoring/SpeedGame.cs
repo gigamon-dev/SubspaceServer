@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
@@ -558,7 +559,7 @@ namespace SS.Core.Modules.Scoring
             Running,
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public Settings Settings;
             public GameState GameState = GameState.Stopped;
@@ -566,12 +567,13 @@ namespace SS.Core.Modules.Scoring
 
             public readonly List<Player> Rank = new();
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 Settings = default;
                 GameState = GameState.Stopped;
                 StartAfter = null;
                 Rank.Clear();
+                return true;
             }
         }
 

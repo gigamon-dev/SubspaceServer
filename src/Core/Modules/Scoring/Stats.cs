@@ -1,4 +1,5 @@
 ﻿using Google.Protobuf;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -1300,7 +1301,7 @@ namespace SS.Core.Modules.Scoring
             All = 3,
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public readonly Dictionary<PersistInterval, SortedDictionary<int, BaseStatInfo>> CurrentArenaStats = new()
             {
@@ -1318,8 +1319,8 @@ namespace SS.Core.Modules.Scoring
 
             public readonly object Lock = new();
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 lock (Lock)
                 {
                     foreach (var dictionary in CurrentArenaStats.Values)
@@ -1332,6 +1333,8 @@ namespace SS.Core.Modules.Scoring
                         dictionary.Clear();
                     }
                 }
+
+                return true;
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
@@ -263,13 +264,14 @@ namespace SS.Core.Modules
             All,
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public SeeWhat SeeWhat;
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 SeeWhat = SeeWhat.None;
+                return true;
             }
         }
 

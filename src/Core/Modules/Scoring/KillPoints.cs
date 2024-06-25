@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentAdvisors;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
@@ -168,7 +169,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             // settings
             public int FixedKillReward;
@@ -180,7 +181,7 @@ namespace SS.Core.Modules.Scoring
 
             public AdvisorRegistrationToken<IKillAdvisor> KillAdvisorRegistrationToken;
 
-            public void Reset()
+            public bool TryReset()
             {
                 FixedKillReward = 0;
                 FlagMinimumBounty = 0;
@@ -188,6 +189,7 @@ namespace SS.Core.Modules.Scoring
                 PointsPerCarriedFlag = 0;
                 PointsPerTeamFlag = 0;
                 TeamKillPoints = false;
+                return true;
             }
         }
 

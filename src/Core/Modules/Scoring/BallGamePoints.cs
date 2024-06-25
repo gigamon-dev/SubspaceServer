@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentAdvisors;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
@@ -649,7 +650,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IBallsAdvisor> BallsAdvisorToken;
 
@@ -667,7 +668,7 @@ namespace SS.Core.Modules.Scoring
             // state
             public readonly int[] TeamScores = new int[MaxTeams];
 
-            public void Reset()
+            public bool TryReset()
             {
                 BallsAdvisorToken = null;
                 Mode = SoccerMode.All;
@@ -680,6 +681,7 @@ namespace SS.Core.Modules.Scoring
                 IsFrequencyShipTypes = false;
                 IsCustomGame = false;
                 Array.Clear(TeamScores);
+                return true;
             }
         }
 

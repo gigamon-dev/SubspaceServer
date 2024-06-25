@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentInterfaces;
 using SS.Packets;
 using SS.Utilities.Binary;
 using System;
@@ -188,7 +189,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private sealed class EncData : IPooledExtraData, IDisposable
+        private sealed class EncData : IResettable, IDisposable
         {
             private enum EncDataStatus
             {
@@ -343,8 +344,8 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void Reset()
-            {
+			public void Reset()
+			{
                 _rwLock.EnterWriteLock();
 
                 try
@@ -358,6 +359,12 @@ namespace SS.Core.Modules
                     _rwLock.ExitWriteLock();
                 }
             }
+
+            bool IResettable.TryReset()
+            {
+                Reset();
+				return true;
+			}
 
             public void Dispose()
             {

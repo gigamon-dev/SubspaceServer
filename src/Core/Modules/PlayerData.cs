@@ -50,7 +50,7 @@ namespace SS.Core.Modules
 
         // for managing per player data
         private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
-        private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = 256 };
+        private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = Constants.TargetPlayerCount };
 
         // Cached delegates
         private readonly Action<Player> _mainloopWork_FireNewPlayerCallback;
@@ -395,7 +395,7 @@ namespace SS.Core.Modules
         PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
-            if (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
+            if (typeof(T).IsAssignableTo(typeof(IResettable)))
                 return new PlayerDataKey<T>(AllocatePlayerData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider)));
             else
                 return new PlayerDataKey<T>(AllocatePlayerData(() => new NonPooledExtraDataFactory<T>()));
@@ -403,19 +403,17 @@ namespace SS.Core.Modules
 
         PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
         {
-            if (policy is null)
-                throw new ArgumentNullException(nameof(policy));
+			ArgumentNullException.ThrowIfNull(policy);
 
-            // It's the policy's job to clear/reset an object when it's returned to the pool.
-            return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
+			// It's the policy's job to clear/reset an object when it's returned to the pool.
+			return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
         private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
-            if (createExtraDataFactoryFunc is null)
-                throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
+			ArgumentNullException.ThrowIfNull(createExtraDataFactoryFunc);
 
-            WriteLock();
+			WriteLock();
 
             try
             {

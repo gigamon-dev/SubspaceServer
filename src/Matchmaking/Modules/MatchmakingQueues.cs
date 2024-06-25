@@ -1561,7 +1561,7 @@ namespace SS.Matchmaking.Modules
             Playing,
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The timestamp that the player will be held in 'Playing' state due to being penalized (e.g. for leaving a game wihout a sub).
@@ -1650,12 +1650,18 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            public void Reset()
-            {
+			public void Reset()
+			{
                 lock (_lock)
                 {
                     _playHoldExpireTimestamp = null;
                 }
+            }
+
+            bool IResettable.TryReset()
+            {
+                Reset();
+                return true;
             }
         }
 

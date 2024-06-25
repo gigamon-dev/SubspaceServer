@@ -748,14 +748,14 @@ In certain scenarios, it makes sense that an object itself keeps track of the po
 ### ObjectPoolManager
 
 Rather than having to create your own pools, the `IObjectPoolManager` interface of the `ObjectPoolManager` module provides access to pools for certain types that may be useful.
-- StringBuilderPool: A pool of StringBuilder objects.
-- PlayerSetPool: A pool of HashSet<Player> objects. Useful whenever you need to keep track of a set of `Player` objects.
+- StringBuilderPool: A pool of `StringBuilder` objects.
+- PlayerSetPool: A pool of `HashSet<Player>` objects. Useful whenever you need to keep track of a set of `Player` objects.
 
 ### Object Pooling of Per-Player Data and Per-Arena Data
-The per-player data and per-arena data APIs support object pooling too. This can be done in two ways: by implementing the `IPooledExtraData` interface OR by using special overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods. Each way has its own pros and cons.
+The per-player data and per-arena data APIs support object pooling too. This can be done in two ways: by implementing the `Microsoft.Extensions.ObjectPool.IResettable` interface OR by using the `IPooledObjectPolicy<T>` overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods.
 
-#### `IPooledExtraData`
-If the class being used for per-player data or per-arena data implements the `SS.Core.IPooledExtraData` interface, the server is able to use a pool for those objects. The `IPooledExtraData` interface just contains a `Reset` method, which is meant to reset the object back to its original state as if it had just been constructed. The idea being, if you're able to reset an object, it can be reused. This approach means the type is aware that it may be used in a pool and is providing the `Reset` functionality itself.
+#### `IResettable`
+If the class being used for per-player data or per-arena data implements the `Microsoft.Extensions.ObjectPool.IResettable` interface, the server is able to use a pool for those objects. The `IResettable` interface just contains a `TryReset` method, which is meant to reset the object back to its original state as if it had just been constructed. The idea being, if you're able to reset an object, it can be reused. This approach means the type is aware that it may be used in a pool and is providing the `Reset` functionality itself.
 
-#### `IPooledObjectPolicy\<T\>` method overloads of `AllocatePlayerData` and `AllocateArenaData`
-There are overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods which allow passing in an `IPooledObjectPolicy\<T\>`. This interface is the one from Microsoft.Extensions.ObjectPool. With a custom policy, you are able to define how an object is created and what to do when an object is being returned to the pool (such as resetting an object's state so that it's ok to be reused).
+#### `IPooledObjectPolicy<T>` method overloads of `AllocatePlayerData` and `AllocateArenaData`
+There are overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods which allow passing in an `IPooledObjectPolicy<T>`. This interface is the one from Microsoft.Extensions.ObjectPool. With a custom policy, you are able to define how an object is created and what to do when an object is being returned to the pool (such as resetting an object's state so that it can be reused).

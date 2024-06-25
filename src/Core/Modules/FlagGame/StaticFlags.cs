@@ -1,4 +1,5 @@
 ﻿using Google.Protobuf;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Persist.Protobuf;
@@ -595,7 +596,7 @@ namespace SS.Core.Modules.FlagGame
             public DateTime LastSendTimestamp;
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
             public InterfaceRegistrationToken<IStaticFlagGame> StaticFlagGameRegistrationToken;
@@ -604,13 +605,14 @@ namespace SS.Core.Modules.FlagGame
             public readonly TimeSpan SendFlagUpdateCooldown = TimeSpan.FromMilliseconds(500); // TODO: make this configurable?
             public FlagData[] Flags = null;
 
-            public void Reset()
+            public bool TryReset()
             {
                 FlagGameRegistrationToken = null;
                 StaticFlagGameRegistrationToken = null;
                 IsPersistEnabled = false;
                 //SendFlagUpdateCooldown
                 Flags = null;
+                return true;
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
@@ -298,17 +299,18 @@ namespace SS.Core.Modules
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public HashSet<Player> PlayersWatching = new();
             public int CallbackWatchCount;
 
             public int WatchCount => PlayersWatching.Count + CallbackWatchCount;
 
-            void IPooledExtraData.Reset()
-            {
+			public bool TryReset()
+			{
                 PlayersWatching.Clear();
                 CallbackWatchCount = 0;
+                return true;
             }
         }
     }

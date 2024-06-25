@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets.Game;
@@ -585,12 +586,12 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public ExtendedLvl Lvl = null;
             public readonly ReaderWriterLockSlim Lock = new();
 
-            public void Reset()
+            public bool TryReset()
             {
                 Lock.EnterWriteLock();
 
@@ -602,6 +603,8 @@ namespace SS.Core.Modules
                 {
                     Lock.ExitWriteLock();
                 }
+
+                return true;
             }
         }
 

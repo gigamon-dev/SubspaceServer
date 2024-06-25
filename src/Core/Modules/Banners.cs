@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentAdvisors;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets;
@@ -371,7 +372,7 @@ namespace SS.Core.Modules
             PendingClear,
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// Timestamp that the player last set their banner in the current session.
@@ -393,14 +394,16 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 lock (Lock)
                 {
                     LastSetByPlayer = null;
                     Banner = default;
                     Status = BannerStatus.NoBanner;
                 }
+
+                return true;
             }
         }
 

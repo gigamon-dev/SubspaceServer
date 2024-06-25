@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
@@ -739,7 +740,7 @@ namespace SS.Core.Modules.Scoring
             Running,
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public Settings Settings;
             public InterfaceRegistrationToken<ICrownsBehavior> ICrownsBehaviorRegistrationToken;
@@ -747,27 +748,29 @@ namespace SS.Core.Modules.Scoring
             public DateTime? StartAfter;
             public int InitialPlayerCount;
 
-            public void Reset()
+            public bool TryReset()
             {
                 Settings = default;
                 ICrownsBehaviorRegistrationToken = null;
                 GameState = GameState.Stopped;
                 StartAfter = null;
                 InitialPlayerCount = 0;
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public DateTime? ExpireTimestamp;
             public int Deaths;
             public int CrownKills;
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 ExpireTimestamp = null;
                 Deaths = 0;
                 CrownKills = 0;
+                return true;
             }
         }
 

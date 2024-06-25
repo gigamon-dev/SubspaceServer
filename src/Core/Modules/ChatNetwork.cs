@@ -962,7 +962,7 @@ namespace SS.Core.Modules
         /// The <see cref="ChatThread(object)"/> is the only thread that accesses the data members.
         /// Except for <see cref="OutList"/>, which has <see cref="OutLock"/> to synchronize access.
         /// </remarks>
-        private class ClientData : IPooledExtraData
+        private class ClientData : IResettable
         {
             /// <summary>
             /// The socket that we accepted a connection for.
@@ -1026,10 +1026,10 @@ namespace SS.Core.Modules
             public ulong BytesSent;
             public ulong BytesReceived;
 
-            #endregion
+			#endregion
 
-            public void Reset()
-            {
+			public void Reset()
+			{
                 if (Socket is not null)
                 {
                     Socket.Close();
@@ -1063,6 +1063,12 @@ namespace SS.Core.Modules
 
                 BytesSent = BytesReceived = 0;
             }
+
+            bool IResettable.TryReset()
+            {
+                Reset();
+				return true;
+			}
         }
 
         private struct OutBuffer

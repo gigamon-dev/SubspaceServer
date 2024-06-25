@@ -365,15 +365,16 @@ namespace SS.Core.Modules.Scoring
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public Settings Settings;
             public bool TimerRunning;
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 Settings = default;
                 TimerRunning = false;
+                return true;
             }
         }
 

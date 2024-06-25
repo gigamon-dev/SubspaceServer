@@ -879,16 +879,17 @@ namespace SS.Core.Modules
             }
         }
 
-        public class ArenaData : IPooledExtraData
+        public class ArenaData : IResettable
         {
             /// <summary>
             /// For shared intervals.
             /// </summary>
             public string ArenaGroup { get; set; }
 
-            public void Reset()
+            public bool TryReset()
             {
                 ArenaGroup = null;
+                return true;
             }
         }
 

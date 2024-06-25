@@ -943,7 +943,7 @@ namespace SS.Core.Modules.FlagGame
             public short Freq { get; set; }
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
             public InterfaceRegistrationToken<ICarryFlagGame> CarryFlagGameRegistrationToken;
@@ -955,7 +955,7 @@ namespace SS.Core.Modules.FlagGame
             public GameState GameState = GameState.Stopped;
             public DateTime StartTimestamp;
 
-            public void Reset()
+            public bool TryReset()
             {
                 FlagGameRegistrationToken = null;
                 CarryFlagGameRegistrationToken = null;
@@ -964,6 +964,7 @@ namespace SS.Core.Modules.FlagGame
                 Flags.Clear();
                 GameState = GameState.Stopped;
                 StartTimestamp = default;
+                return true;
             }
         }
 

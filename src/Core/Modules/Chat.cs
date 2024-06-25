@@ -1624,7 +1624,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             /// <summary>
             /// The arena's chat mask.
@@ -1633,7 +1633,7 @@ namespace SS.Core.Modules
 
             public readonly ReaderWriterLockSlim Lock = new();
 
-            public void Reset()
+            public bool TryReset()
             {
                 Lock.EnterWriteLock();
 
@@ -1645,10 +1645,12 @@ namespace SS.Core.Modules
                 {
                     Lock.ExitWriteLock();
                 }
+
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The player's chat mask.
@@ -1675,13 +1677,19 @@ namespace SS.Core.Modules
 
             public void Reset()
             {
-                lock (Lock)
-                {
-                    Mask.Clear();
-                    Expires = null;
-                    MessageCount = 0;
-                    LastCheck = DateTime.UtcNow;
-                }
+				lock (Lock)
+				{
+					Mask.Clear();
+					Expires = null;
+					MessageCount = 0;
+					LastCheck = DateTime.UtcNow;
+				}
+			}
+
+			bool IResettable.TryReset()
+			{
+                Reset();
+                return true;
             }
         }
 

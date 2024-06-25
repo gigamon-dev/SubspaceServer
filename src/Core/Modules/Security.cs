@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
@@ -681,7 +682,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Per arena data
         /// </summary>
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             /// <summary>
             /// Shared checksums
@@ -694,17 +695,18 @@ namespace SS.Core.Modules
             /// </summary>
             public S2C_Security? OverridePacket;
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 MapChecksum = 0;
                 OverridePacket = null;
+                return true;
             }
         }
 
         /// <summary>
         /// Per player data
         /// </summary>
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// Whether a security request was sent and is still pending (hasn't been fulfilled with a valid response yet).
@@ -722,11 +724,12 @@ namespace SS.Core.Modules
             /// </summary>
             public uint SettingsChecksum;
 
-            public void Reset()
+            public bool TryReset()
             {
                 Sent = false;
                 Cancelled = false;
                 SettingsChecksum = 0;
+                return true;
             }
         }
 

@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -2504,7 +2505,7 @@ namespace SS.Core.Modules
             Kick = 4,
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public C2S_PositionPacket pos = new();
 
@@ -2599,8 +2600,8 @@ namespace SS.Core.Modules
             /// </summary>
             public ServerTick? LastBomb;
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 pos = new();
                 speccing = null;
                 S2CWeaponSent = 0;
@@ -2617,10 +2618,11 @@ namespace SS.Core.Modules
                 LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
                 PlayerPostitionPacket_LastShip = null;
                 LastBomb = null;
+                return true;
             }
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             /// <summary>
             /// Client setting to multiply kill points if the killer was carrying a flag.
@@ -2663,7 +2665,7 @@ namespace SS.Core.Modules
             public int cfg_EnterDelay;
             public readonly int[] wpnRange = new int[WeaponCount];
 
-            public void Reset()
+            public bool TryReset()
             {
                 FlaggerKillMultiplier = 0;
                 SpecSeeExtra = false;
@@ -2683,6 +2685,7 @@ namespace SS.Core.Modules
                 cfg_AntiwarpRange = 0;
                 cfg_EnterDelay = 0;
                 Array.Clear(wpnRange);
+                return true;
             }
         }
 

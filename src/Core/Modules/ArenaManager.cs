@@ -61,7 +61,7 @@ namespace SS.Core.Modules
 
         // for managing per arena data
         private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
-        private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = 32 };
+        private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = Constants.TargetArenaCount };
 
         // population
         private int _playersTotal;
@@ -495,7 +495,7 @@ namespace SS.Core.Modules
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>()
         {
             // Only use of a pool of T objects if there's a way for the objects to be [re]initialized.
-            if (typeof(T).IsAssignableTo(typeof(IPooledExtraData)))
+            if (typeof(T).IsAssignableTo(typeof(IResettable)))
                 return new ArenaDataKey<T>(AllocateArenaData(() => new DefaultPooledExtraDataFactory<T>(_poolProvider)));
             else
                 return new ArenaDataKey<T>(AllocateArenaData(() => new NonPooledExtraDataFactory<T>()));
@@ -503,11 +503,10 @@ namespace SS.Core.Modules
 
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>(IPooledObjectPolicy<T> policy)
         {
-            if (policy is null)
-                throw new ArgumentNullException(nameof(policy));
+			ArgumentNullException.ThrowIfNull(policy);
 
-            // It's the policy's job to clear/reset an object when it's returned to the pool.
-            return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
+			// It's the policy's job to clear/reset an object when it's returned to the pool.
+			return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
         bool IArenaManager.FreeArenaData<T>(ref ArenaDataKey<T> key)
@@ -1730,10 +1729,9 @@ namespace SS.Core.Modules
 
         private int AllocateArenaData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
-            if (createExtraDataFactoryFunc is null)
-                throw new ArgumentNullException(nameof(createExtraDataFactoryFunc));
+			ArgumentNullException.ThrowIfNull(createExtraDataFactoryFunc);
 
-            WriteLock();
+			WriteLock();
 
             try
             {

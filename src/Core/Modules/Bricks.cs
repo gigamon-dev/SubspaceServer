@@ -558,7 +558,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        public class ArenaBrickData : IPooledExtraData
+        public class ArenaBrickData : IResettable
         {
             /// <summary>
             /// Whether bricks should snap to the edges of other bricks
@@ -606,7 +606,7 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-            public void Reset()
+            public bool TryReset()
             {
                 lock (Lock)
                 {
@@ -619,6 +619,8 @@ namespace SS.Core.Modules
                     LastTime = 0;
                     Bricks.Clear();
                 }
+
+                return true;
             }
         }
 

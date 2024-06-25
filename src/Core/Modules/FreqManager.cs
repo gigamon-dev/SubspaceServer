@@ -1087,30 +1087,33 @@ namespace SS.Core.Modules
             }
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public readonly List<Freq> Freqs = new();
             public Config Config;
 
             public readonly object Lock = new(); // TODO: I think everything should be done serially on the arena level, ASSS has some strange locking using the PlayerData lock and a module level lock.
 
-            public void Reset()
+            public bool TryReset()
             {
                 lock (Lock)
                 {
                     Freqs.Clear();
                     Config = default;
                 }
+
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public Freq Freq;
 
-            public void Reset()
+            public bool TryReset()
             {
                 Freq = null;
+                return true;
             }
         }
 

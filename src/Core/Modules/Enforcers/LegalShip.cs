@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentAdvisors;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
@@ -157,7 +158,7 @@ namespace SS.Core.Modules.Enforcers
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
             
@@ -171,10 +172,11 @@ namespace SS.Core.Modules.Enforcers
                 FreqMasks.Clear();
             }
 
-            void IPooledExtraData.Reset()
+            public bool TryReset()
             {
                 AdvisorToken = null;
                 ClearSettings();
+                return true;
             }
         }
 

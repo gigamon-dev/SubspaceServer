@@ -1055,7 +1055,7 @@ namespace SS.Core.Modules
             public ObjectData Current;
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public readonly List<LvzData> List = new();
 
@@ -1078,7 +1078,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void Reset()
+            public bool TryReset()
             {
                 lock (Lock)
                 {
@@ -1086,16 +1086,19 @@ namespace SS.Core.Modules
                     ToggleDifferences = 0;
                     ExtraDifferences = 0;
                 }
+
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public BroadcastAuthorization Permission = BroadcastAuthorization.None;
 
-            public void Reset()
+            public bool TryReset()
             {
                 Permission = BroadcastAuthorization.None;
+                return true;
             }
         }
 

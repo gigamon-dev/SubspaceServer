@@ -4,44 +4,6 @@ using System;
 namespace SS.Core
 {
     /// <summary>
-    /// Interface that allows "extra data" (per-player extra data or per-arena extra data) to be pooled.
-    /// </summary>
-    public interface IPooledExtraData
-    {
-        /// <summary>
-        /// Resets the extra data object back to its original starting state.
-        /// </summary>
-        /// <remarks>
-        /// This is called when the object is returned to its pool.
-        /// Implementors should perform any needed cleanup and reset all of the object's data members
-        /// to a state equivalent to as if the object were just constructed.
-        /// </remarks>
-        void Reset();
-    }
-
-    /// <summary>
-    /// A <see cref="PooledObjectPolicy{T}"/> that handles resetting of objects when <see cref="IPooledExtraData"/> is implemented.
-    /// </summary>
-    /// <typeparam name="T">The type of extra data object.</typeparam>
-    internal class DefaultPooledExtraDataPooledObjectPolicy<T> : PooledObjectPolicy<T> where T : class, new()
-    {
-        public override T Create()
-        {
-            return new T();
-        }
-
-        public override bool Return(T obj)
-        {
-            if (obj is IPooledExtraData pooledExtraData)
-            {
-                pooledExtraData.Reset();
-            }
-
-            return true;
-        }
-    }
-
-    /// <summary>
     /// Abstract class for a factory that provides "extra data" objects.
     /// </summary>
     internal abstract class ExtraDataFactory : IDisposable
@@ -118,13 +80,10 @@ namespace SS.Core
         /// <exception cref="ArgumentNullException"><paramref name="policy"/> was null.</exception>
         protected PooledExtraDataFactory(DefaultObjectPoolProvider provider, IPooledObjectPolicy<T> policy)
         {
-            if (provider is null)
-                throw new ArgumentNullException(nameof(provider));
+			ArgumentNullException.ThrowIfNull(provider);
+			ArgumentNullException.ThrowIfNull(policy);
 
-            if (policy is null)
-                throw new ArgumentNullException(nameof(policy));
-
-            Pool = provider.Create(policy);
+			Pool = provider.Create(policy);
         }
 
         public override object Get()
@@ -142,8 +101,7 @@ namespace SS.Core
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing
-                && Pool is IDisposable disposable)
+            if (disposing && Pool is IDisposable disposable)
             {
                 // Note: The DefaultObjectPoolProvider creates a DisposableObjectPool<T> when T implements IDisposable.
                 // This will dispose the pool and the objects it contains.
@@ -157,24 +115,18 @@ namespace SS.Core
     /// </summary>
     /// <remarks>Using the <see cref="DefaultPooledExtraDataPooledObjectPolicy{T}"/> means <typeparamref name="T"/> needs to have a default constructor.</remarks>
     /// <typeparam name="T">The type of extra data object.</typeparam>
-    internal class DefaultPooledExtraDataFactory<T> : PooledExtraDataFactory<T> where T : class, new()
+    internal class DefaultPooledExtraDataFactory<T>(DefaultObjectPoolProvider provider) 
+        : PooledExtraDataFactory<T>(provider, new DefaultPooledObjectPolicy<T>()) where T : class, new()
     {
-        public DefaultPooledExtraDataFactory(DefaultObjectPoolProvider provider)
-            : base(provider, new DefaultPooledExtraDataPooledObjectPolicy<T>())
-        {
-        }
-    }
+	}
 
-    /// <summary>
-    /// Factory for providing "extra data" objects that are pooled using a specified <see cref="IPooledObjectPolicy{T}"/>.
-    /// </summary>
-    /// <remarks>Using a policy means <typeparamref name="T"/> does not need to have default constructor, the policy constructs the objects.</remarks>
-    /// <typeparam name="T">The type of extra data object.</typeparam>
-    internal class CustomPooledExtraDataFactory<T> : PooledExtraDataFactory<T> where T : class
+	/// <summary>
+	/// Factory for providing "extra data" objects that are pooled using a specified <see cref="IPooledObjectPolicy{T}"/>.
+	/// </summary>
+	/// <remarks>Using a policy means <typeparamref name="T"/> does not need to have default constructor, the policy constructs the objects.</remarks>
+	/// <typeparam name="T">The type of extra data object.</typeparam>
+	internal class CustomPooledExtraDataFactory<T>(DefaultObjectPoolProvider provider, IPooledObjectPolicy<T> policy) 
+        : PooledExtraDataFactory<T>(provider, policy) where T : class
     {
-        public CustomPooledExtraDataFactory(DefaultObjectPoolProvider provider, IPooledObjectPolicy<T> policy)
-            : base(provider, policy)
-        {
-        }
-    }
+	}
 }

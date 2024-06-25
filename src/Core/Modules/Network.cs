@@ -3576,7 +3576,7 @@ namespace SS.Core.Modules
         ///     </item>
         /// </list>
         /// </remarks>
-        private sealed class ConnData : IPooledExtraData, IDisposable
+        private sealed class ConnData : IResettable, IDisposable
         {
             /// <summary>
             /// The player this connection is for, or <see langword="null"/> for a client connection.
@@ -3807,7 +3807,7 @@ namespace SS.Core.Modules
                 UnsentRelOutList.Clear();
             }
 
-            public void Reset()
+			public bool TryReset()
             {
                 p = null;
                 cc = null;
@@ -3875,6 +3875,8 @@ namespace SS.Core.Modules
                         }
                     }
                 }
+
+                return true;
             }
 
             public void Dispose()

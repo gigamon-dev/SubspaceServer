@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
@@ -1008,7 +1009,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             public S2C_ClientSettings Settings;
             public OverrideData OverrideData;
@@ -1019,15 +1020,16 @@ namespace SS.Core.Modules
             /// </summary>
             public ushort[] pwps = new ushort[32];
 
-            public void Reset()
+            public bool TryReset()
             {
                 Settings = default;
                 OverrideData = default;
                 Array.Clear(pwps);
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             public S2C_ClientSettings Settings;
             public OverrideData OverrideData;
@@ -1037,7 +1039,13 @@ namespace SS.Core.Modules
                 Settings = default;
                 OverrideData = default;
             }
-        }
+
+			bool IResettable.TryReset()
+            {
+                Reset();
+                return true;
+            }
+		}
 
         private struct OverrideData
         {

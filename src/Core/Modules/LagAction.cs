@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Threading;
@@ -422,7 +423,7 @@ namespace SS.Core.Modules
             public double NoFlags;
         }
 
-        private class ArenaLagLimits : IPooledExtraData
+        private class ArenaLagLimits : IResettable
         {
             /// <summary>
             /// Limits for average ping.
@@ -456,8 +457,8 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 lock (Lock)
                 {
                     Ping = default;
@@ -467,10 +468,12 @@ namespace SS.Core.Modules
                     SpikeForceSpec = default;
                     SpecFreq = default;
                 }
+
+                return true;
             }
         }
 
-        private class PlayerData : IPooledExtraData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// When the last lag check was performed.
@@ -487,13 +490,15 @@ namespace SS.Core.Modules
             /// </summary>
             public readonly object Lock = new();
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 lock (Lock)
                 {
                     LastCheck = DateTime.MinValue;
                     IsChecking = false;
                 }
+
+                return true;
             }
         }
     }

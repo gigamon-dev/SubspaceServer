@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using System;
@@ -290,7 +291,7 @@ namespace SS.Core.Modules.Scoring
             OwnAllDropped = 1,
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             // settings
             public FlagMode FlagMode;
@@ -301,13 +302,14 @@ namespace SS.Core.Modules.Scoring
             // state
             public bool IsMusicPlaying = false;
 
-            public void Reset()
+            public bool TryReset()
             {
                 FlagMode = FlagMode.None;
                 FlagRewardRatio = 0;
                 SplitPoints = false;
                 IsVictoryMusicEnabled = false;
                 IsMusicPlaying = false;
+                return true;
             }
         }
     }

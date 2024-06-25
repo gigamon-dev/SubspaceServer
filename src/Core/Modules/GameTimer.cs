@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
@@ -420,7 +421,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        public class ArenaData : IPooledExtraData
+        public class ArenaData : IResettable
         {
             /// <summary>
             /// Duration for timed games (Misc:TimedGame setting). Otherwise, <see cref="TimeSpan.Zero"/>.
@@ -536,7 +537,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            public void Reset()
+            public bool TryReset()
             {
                 GameLength = TimeSpan.Zero;
                 IsEnabled = false;
@@ -544,6 +545,7 @@ namespace SS.Core.Modules
                 PausedRemaining = null;
                 WarningAt.Clear();
                 NextWarningIndex = -1;
+                return true;
             }
         }
 

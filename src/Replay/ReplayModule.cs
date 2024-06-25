@@ -1,4 +1,5 @@
-﻿using SS.Core;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -2405,7 +2406,7 @@ namespace SS.Replay
             }
         }
 
-        private sealed class ArenaData : IPooledExtraData, IDisposable
+        private sealed class ArenaData : IResettable, IDisposable
         {
             public Settings Settings;
 
@@ -2481,8 +2482,8 @@ namespace SS.Replay
             /// </summary>
             public readonly object Lock = new();
 
-            public void Reset()
-            {
+			public bool TryReset()
+			{
                 lock (Lock)
                 {
                     Settings = default;
@@ -2500,6 +2501,8 @@ namespace SS.Replay
 
                     RecorderQueue = null;
                 }
+
+                return true;
             }
 
             #region IDisposable

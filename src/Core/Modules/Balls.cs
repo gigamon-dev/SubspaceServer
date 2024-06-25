@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentAdvisors;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
@@ -1342,7 +1343,7 @@ namespace SS.Core.Modules
             public ServerTick KillerValidPickupTime;
         }
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             /// <summary>
             /// The # of balls currently in play. 0 if the arena has no ball game.
@@ -1391,7 +1392,7 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-            public void Reset()
+            public bool TryReset()
             {
                 lock (Lock)
                 {
@@ -1405,6 +1406,8 @@ namespace SS.Core.Modules
                     Settings = default;
                     BallCountOverridden = false;
                 }
+
+                return true;
             }
         }
 

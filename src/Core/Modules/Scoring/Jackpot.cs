@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentCallbacks;
+﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
@@ -204,7 +205,7 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private class ArenaData : IPooledExtraData
+        private class ArenaData : IResettable
         {
             // setting
             public double BountyRatio;
@@ -214,13 +215,15 @@ namespace SS.Core.Modules.Scoring
 
             public readonly object Lock = new();
 
-            public void Reset()
+            public bool TryReset()
             {
                 lock (Lock)
                 {
                     BountyRatio = 0;
                     Jackpot = 0;
                 }
+
+                return true;
             }
         }
     }

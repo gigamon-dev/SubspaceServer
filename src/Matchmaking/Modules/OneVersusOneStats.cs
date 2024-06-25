@@ -560,7 +560,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The stats for the player's current match.
@@ -582,7 +582,16 @@ namespace SS.Matchmaking.Modules
             /// Whether damage is being watched for the player via IWatchDamage.
             /// </summary>
             public bool IsWatchingDamage = false;
-        }
+
+			public bool TryReset()
+			{
+                CurrentMatchStats = null;
+                CurrentPlayerStats = null;
+                WinStreak = 0;
+                IsWatchingDamage = false;
+                return true;
+			}
+		}
 
         private readonly record struct MatchIdentifier(Arena Arena, int BoxId); // immutable, value equality
 
