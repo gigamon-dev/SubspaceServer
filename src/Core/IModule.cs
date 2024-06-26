@@ -20,7 +20,7 @@ namespace SS.Core
     /// <see cref="ModuleManager"/> (the normal case).
     /// </item>
     /// <item>
-    /// It needs to have an method named "Load".
+    /// It needs to have a method named "Load".
     /// <para>
     /// The method must be an instance method, and it need not be public.
     /// </para>
