@@ -40,7 +40,7 @@ namespace SS.Matchmaking.Modules
         private PlayerDataKey<PlayerData> _pdKey;
 
         private readonly HashSet<PlayerGroup> _groups = new(128);
-        private readonly DefaultObjectPool<PlayerGroup> _playerGroupPool = new(new PlayerGroupPooledObjectPolicy(), Constants.TargetPlayerCount);
+        private readonly DefaultObjectPool<PlayerGroup> _playerGroupPool = new(new DefaultPooledObjectPolicy<PlayerGroup>(), Constants.TargetPlayerCount);
 
         private const string GroupCommandName = "group";
 
@@ -65,7 +65,7 @@ namespace SS.Matchmaking.Modules
 
             _help = broker.GetInterface<IHelp>();
 
-            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
 
@@ -872,7 +872,7 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private class PlayerGroup : IPlayerGroup
+        private class PlayerGroup : IPlayerGroup, IResettable
         {
             public Player Leader;
             public readonly List<Player> Members = new(10); // ordered such that if the leader leaves, the first player will become leader
@@ -921,15 +921,17 @@ namespace SS.Matchmaking.Modules
                 return PendingMembers.Remove(player);
             }
 
-            public void Reset()
-            {
-                Leader = null;
-                Members.Clear();
-                PendingMembers.Clear();
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				Leader = null;
+				Members.Clear();
+				PendingMembers.Clear();
 
-        private class PlayerData
+                return true;
+			}
+		}
+
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The player's current group. <see langword="null"/> when not in a group.
@@ -940,43 +942,14 @@ namespace SS.Matchmaking.Modules
             /// Groups that the player has a pending invite to.
             /// </summary>
             public readonly HashSet<PlayerGroup> PendingGroups = new();
-        }
 
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new PlayerData();
-            }
+			bool IResettable.TryReset()
+			{
+				Group = null;
+				PendingGroups.Clear();
 
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Group = null;
-                obj.PendingGroups.Clear();
-
-                return true;
-            }
-        }
-
-        private class PlayerGroupPooledObjectPolicy : IPooledObjectPolicy<PlayerGroup>
-        {
-            public PlayerGroup Create()
-            {
-                return new PlayerGroup();
-            }
-
-            public bool Return(PlayerGroup obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
-
-                return true;
-            }
-        }
+				return true;
+			}
+		}
     }
 }

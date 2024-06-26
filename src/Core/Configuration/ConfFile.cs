@@ -14,12 +14,7 @@ namespace SS.Core.Configuration
     /// </summary>
     public class ConfFile
     {
-        private static readonly ObjectPool<StringBuilder> s_stringBuilderPool;
-
-        static ConfFile()
-        {
-            s_stringBuilderPool = new DefaultObjectPoolProvider().CreateStringBuilderPool(1024, 1024 * 8);
-        }
+        private static readonly ObjectPool<StringBuilder> s_stringBuilderPool = new DefaultObjectPoolProvider().CreateStringBuilderPool(1024, 1024 * 8);
 
         /// <summary>
         /// Constructor for a brand new conf file, not on disk.

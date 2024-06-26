@@ -35,8 +35,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IGroupManager> _iGroupManagerToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
-        private static readonly PlayerDataPooledObjectPolicy _playerDataPooledObjectPolicy = new();
-        private readonly DefaultObjectPool<PlayerData> _playerDataPool = new(_playerDataPooledObjectPolicy);
+        private readonly DefaultObjectPool<PlayerData> _playerDataPool = new(new DefaultPooledObjectPolicy<PlayerData>(), Constants.TargetPlayerCount);
 
 		private ConfigHandle _groupDefConfHandle;
         private ConfigHandle _staffConfHandle;
@@ -65,7 +64,7 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
-            _pdkey = _playerData.AllocatePlayerData(_playerDataPooledObjectPolicy); // separate pool from ours, but it's ok
+            _pdkey = _playerData.AllocatePlayerData(_playerDataPool);
 
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
@@ -391,7 +390,7 @@ namespace SS.Core.Modules
             Temp,
         }
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The player's current group.
@@ -402,25 +401,14 @@ namespace SS.Core.Modules
             /// The source of the <see cref="Group"/>.
             /// </summary>
             public GroupSource Source;
-        }
 
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new PlayerData();
-            }
-
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Group = Group_Default;
-                obj.Source = GroupSource.Default;
-                return true;
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				Group = Group_Default;
+				Source = GroupSource.Default;
+				return true;
+			}
+		}
 
         #endregion
     }

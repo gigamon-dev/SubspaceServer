@@ -9,7 +9,7 @@ namespace SS.Utilities.ObjectPool
 	/// A policy for pooling <see cref="HashSet{T}"/> instances.
 	/// </summary>
 	/// <typeparam name="T">The type of elements in the hash set.</typeparam>
-	public class HashSetPooledObjectPolicy<T> : PooledObjectPolicy<HashSet<T>>
+	public class HashSetPooledObjectPolicy<T> : IPooledObjectPolicy<HashSet<T>>
 	{
 		/// <summary>
 		/// Gets or sets the initial capacity of pooled <see cref="HashSet{T}"/> instances.
@@ -23,14 +23,14 @@ namespace SS.Utilities.ObjectPool
 		/// <value>Defaults to <c>null</c>, which means use the default <see cref="IEqualityComparer{T}"/> for the hash set type.</value>
 		public IEqualityComparer<T>? EqualityComparer { get; init; } = null;
 
-		public override HashSet<T> Create()
+		public HashSet<T> Create()
 		{
 			return InitialCapacity < 0
 				? new HashSet<T>(EqualityComparer)
 				: new HashSet<T>(InitialCapacity, EqualityComparer);
 		}
 
-		public override bool Return(HashSet<T> obj)
+		public bool Return(HashSet<T> obj)
 		{
 			if (obj is null)
 				return false;

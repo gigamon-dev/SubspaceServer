@@ -3,7 +3,6 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets.Game;
-using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,11 +10,11 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules.FlagGame
 {
-    /// <summary>
-    /// Module that manages flag games where flags can be carried.
-    /// E.g. jackpot zone, running zone, warzone ctf.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that manages flag games where flags can be carried.
+	/// E.g. jackpot zone, running zone, warzone ctf.
+	/// </summary>
+	[CoreModuleInfo]
     public class CarryFlags : IModule, ICarryFlagGame
     {
         public const int MaxFlags = 256; // continuum supports 303
@@ -32,7 +31,7 @@ namespace SS.Core.Modules.FlagGame
         // optional dependencies
         private IChatNetwork _chatNetwork;
 
-        private static readonly DefaultObjectPool<FlagInfo> _flagInfoPool = new(new FlagInfoPooledObjectPolicy(), Constants.TargetArenaCount * MaxFlags);
+        private readonly DefaultObjectPool<FlagInfo> _flagInfoPool = new(new DefaultPooledObjectPolicy<FlagInfo>(), Constants.TargetArenaCount * MaxFlags);
 
         private ArenaDataKey<ArenaData> _adKey;
 
@@ -935,13 +934,22 @@ namespace SS.Core.Modules.FlagGame
             Running,
         }
 
-        private class FlagInfo : IFlagInfo
+        private class FlagInfo : IFlagInfo, IResettable
         {
-            public FlagState State { get; set; }
-            public Player Carrier { get; set; }
-            public MapCoordinate? Location { get; set; }
-            public short Freq { get; set; }
-        }
+            public FlagState State { get; set; } = FlagState.None;
+            public Player Carrier { get; set; } = null;
+            public MapCoordinate? Location { get; set; } = null;
+            public short Freq { get; set; } = -1;
+
+			bool IResettable.TryReset()
+			{
+				State = FlagState.None;
+				Carrier = null;
+				Location = null;
+				Freq = -1;
+				return true;
+			}
+		}
 
         private class ArenaData : IResettable
         {
@@ -964,33 +972,6 @@ namespace SS.Core.Modules.FlagGame
                 Flags.Clear();
                 GameState = GameState.Stopped;
                 StartTimestamp = default;
-                return true;
-            }
-        }
-
-        private class FlagInfoPooledObjectPolicy : PooledObjectPolicy<FlagInfo>
-        {
-            public override FlagInfo Create()
-            {
-                return new FlagInfo()
-                {
-                    State = FlagState.None,
-                    Carrier = null,
-                    Location = null,
-                    Freq = -1,
-                };
-            }
-
-            public override bool Return(FlagInfo obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.State = FlagState.None;
-                obj.Carrier = null;
-                obj.Location = null;
-                obj.Freq = -1;
-
                 return true;
             }
         }

@@ -45,9 +45,10 @@ namespace SS.Core.Modules
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private static int _maxRecordLength;
+        private const int DefaultMaxRecordLength = 4096;
+        private static int _maxRecordLength = DefaultMaxRecordLength;
 
-        private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
+		private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
 
         public Persist()
         {
@@ -95,7 +96,7 @@ namespace SS.Core.Modules
             if (_syncTimeSpan < TimeSpan.FromSeconds(10))
                 _syncTimeSpan = TimeSpan.FromSeconds(10);
 
-            _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", 4096);
+            _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", DefaultMaxRecordLength);
 
             _workerThread = new Thread(PeristWorkerThread);
             _workerThread.Name = nameof(Persist);

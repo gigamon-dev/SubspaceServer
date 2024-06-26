@@ -163,21 +163,16 @@ namespace SS.Core.Modules
             public bool UseHitLimit { get; init; }
         }
 
-        private class BandwidthLimiterPooledObjectPolicy : PooledObjectPolicy<DefaultBandwidthLimiter>
+        private class BandwidthLimiterPooledObjectPolicy(Settings config) : IPooledObjectPolicy<DefaultBandwidthLimiter>
         {
-            private readonly Settings _config;
+            private readonly Settings _config = config ?? throw new ArgumentNullException(nameof(config));
 
-            public BandwidthLimiterPooledObjectPolicy(Settings config)
-            {
-                _config = config ?? throw new ArgumentNullException(nameof(config));
-            }
-
-            public override DefaultBandwidthLimiter Create()
+			public DefaultBandwidthLimiter Create()
             {
                 return new DefaultBandwidthLimiter(_config);
             }
 
-            public override bool Return(DefaultBandwidthLimiter obj)
+            public bool Return(DefaultBandwidthLimiter obj)
             {
                 if (obj == null)
                     return false;

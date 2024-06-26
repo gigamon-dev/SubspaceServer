@@ -37,7 +37,7 @@ namespace SS.Core.Modules
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private readonly DefaultObjectPool<LvzData> _lvzDataObjectPool = new(new LvzDataPooledObjectPolicy(), Constants.TargetArenaCount * ushort.MaxValue);
+        private readonly DefaultObjectPool<LvzData> _lvzDataObjectPool = new(new DefaultPooledObjectPolicy<LvzData>(), Constants.TargetArenaCount * ushort.MaxValue);
 
         private readonly Action<Arena> _threadPoolWork_InitializeArena;
         private readonly LvzReader.ObjectDataReadDelegate<ArenaData> _objectDataRead;
@@ -1047,13 +1047,21 @@ namespace SS.Core.Modules
             Any,
         }
 
-        public class LvzData
+        public class LvzData : IResettable
         {
-            public bool Off;
+            public bool Off = true;
 
-            public ObjectData Default;
-            public ObjectData Current;
-        }
+            public ObjectData Default = default;
+            public ObjectData Current = default;
+
+			bool IResettable.TryReset()
+			{
+				Off = true;
+				Default = default;
+				Current = default;
+				return true;
+			}
+		}
 
         private class ArenaData : IResettable
         {
@@ -1098,31 +1106,6 @@ namespace SS.Core.Modules
             public bool TryReset()
             {
                 Permission = BroadcastAuthorization.None;
-                return true;
-            }
-        }
-
-        public class LvzDataPooledObjectPolicy : PooledObjectPolicy<LvzData>
-        {
-            public override LvzData Create()
-            {
-                return new LvzData()
-                {
-                    Off = true,
-                    Default = default,
-                    Current = default,
-                };
-            }
-
-            public override bool Return(LvzData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Off = true;
-                obj.Default = default;
-                obj.Current = default;
-
                 return true;
             }
         }

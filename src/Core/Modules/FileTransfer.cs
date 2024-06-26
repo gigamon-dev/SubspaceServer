@@ -22,7 +22,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private InterfaceRegistrationToken<IFileTransfer> _iFileTransferToken;
 
-        private static readonly DefaultObjectPool<DownloadDataContext> s_downloadDataContextPool = new(new DownloadDataContextPooledObjectPolicy(), Constants.TargetPlayerCount);
+        private static readonly DefaultObjectPool<DownloadDataContext> s_downloadDataContextPool = new(new DefaultPooledObjectPolicy<DownloadDataContext>(), Constants.TargetPlayerCount);
 
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
@@ -426,7 +426,7 @@ namespace SS.Core.Modules
             while (dataSpan.Length > 0);
         }
 
-        private class DownloadDataContext
+        private class DownloadDataContext : IResettable
         {
             // 0x10 followed by the filename (16 bytes, null terminator required)
             private readonly byte[] _header = new byte[17] { (byte)S2CPacketType.IncomingFile, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -463,38 +463,22 @@ namespace SS.Core.Modules
                 return charCount;
             }
 
-            public void Reset()
-            {
-                Player = null;
+			bool IResettable.TryReset()
+			{
+				Player = null;
 
-                if (Stream is not null)
-                {
-                    Stream.Dispose();
-                    Stream = null;
-                }
+				if (Stream is not null)
+				{
+					Stream.Dispose();
+					Stream = null;
+				}
 
-                _header.AsSpan(1).Clear();
+				_header.AsSpan(1).Clear();
 
-                DeletePath = null;
-            }
-        }
-
-        private class DownloadDataContextPooledObjectPolicy : IPooledObjectPolicy<DownloadDataContext>
-        {
-            public DownloadDataContext Create()
-            {
-                return new DownloadDataContext();
-            }
-
-            public bool Return(DownloadDataContext obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
-                return true;
-            }
-        }
+				DeletePath = null;
+				return true;
+			}
+		}
 
         private class UploadDataContext : IResettable, IDisposable
         {

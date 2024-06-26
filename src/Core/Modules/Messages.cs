@@ -45,7 +45,7 @@ namespace SS.Core.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
 
-            _adKey = _arenaManager.AllocateArenaData(new ArenaDataPooledObjectPolicy());
+            _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -188,32 +188,20 @@ namespace SS.Core.Modules
             public int Interval { get; }
         }
 
-        private class ArenaData
+        private class ArenaData : IResettable
         {
             public string GreetMessage;
-            public List<PeriodicMessage> PeriodicMessageList = new(10);
+            public readonly List<PeriodicMessage> PeriodicMessageList = new(10);
             public int MinuteCount;
-        }
 
-        private class ArenaDataPooledObjectPolicy : PooledObjectPolicy<ArenaData>
-        {
-            public override ArenaData Create()
-            {
-                return new ArenaData();
-            }
-
-            public override bool Return(ArenaData ad)
-            {
-                if (ad == null)
-                    return false;
-
-                ad.GreetMessage = null;
-                ad.PeriodicMessageList.Clear();
-                ad.MinuteCount = 0;
-
+			public bool TryReset()
+			{
+				GreetMessage = null;
+				PeriodicMessageList.Clear();
+				MinuteCount = 0;
                 return true;
-            }
-        }
+			}
+		}
 
         #endregion
     }

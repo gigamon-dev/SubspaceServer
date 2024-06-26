@@ -136,7 +136,7 @@ namespace SS.Utilities
     {
         private static readonly DefaultObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new(new TrieNodePooledObjectPolicy(true), int.MaxValue);
         private static readonly DefaultObjectPool<TrieNode> s_caseInsensitiveTrieNodePool = new(new TrieNodePooledObjectPolicy(false), int.MaxValue);
-        private static readonly DefaultObjectPool<EnumeratorNode> s_enumeratorNodePool = new(new EnumeratorNodePooledObjectPolicy(), int.MaxValue);
+        private static readonly DefaultObjectPool<EnumeratorNode> s_enumeratorNodePool = new(new DefaultPooledObjectPolicy<EnumeratorNode>(), int.MaxValue);
 
         private readonly ObjectPool<TrieNode> _trieNodePool;
         private readonly TrieNode _root;
@@ -475,29 +475,18 @@ namespace SS.Utilities
             }
         }
 
-        private class EnumeratorNode
+        private class EnumeratorNode : IResettable
         {
             public Dictionary<char, TrieNode>.Enumerator Enumerator;
             public EnumeratorNode? Previous;
-        }
 
-        private class EnumeratorNodePooledObjectPolicy : IPooledObjectPolicy<EnumeratorNode>
-        {
-            public Trie<TValue>.EnumeratorNode Create()
-            {
-                return new EnumeratorNode();
-            }
-
-            public bool Return(Trie<TValue>.EnumeratorNode obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Enumerator = default;
-                obj.Previous = null;
-                return true;
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				Enumerator = default;
+				Previous = null;
+				return true;
+			}
+		}
 
         public struct KeyEnumerator : IEnumerator<ReadOnlyMemory<char>>
         {

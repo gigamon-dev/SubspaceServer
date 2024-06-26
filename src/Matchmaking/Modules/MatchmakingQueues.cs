@@ -65,7 +65,7 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private readonly Dictionary<string, TimeSpan> _pendingPlayerHoldDurations = new(StringComparer.OrdinalIgnoreCase); // TODO: better if this was in the database, it could potentially grow large
 
-        private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new UsageDataPooledObjectPolicy(), Constants.TargetPlayerCount); // only for groups TODO: add a way to use the same pool as per-player data
+        private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new DefaultPooledObjectPolicy<UsageData>(), Constants.TargetPlayerCount * 2);
         private readonly DefaultObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
         private readonly DefaultObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
 
@@ -101,7 +101,7 @@ namespace SS.Matchmaking.Modules
             _persist = broker.GetInterface<IPersist>();
 
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
-            _puKey = _playerData.AllocatePlayerData(new UsageDataPooledObjectPolicy());
+            _puKey = _playerData.AllocatePlayerData(_usageDataPool);
 
             if (_persist is not null)
             {
@@ -1667,10 +1667,10 @@ namespace SS.Matchmaking.Modules
 
         private readonly record struct QueuedInfo(IMatchmakingQueue Queue, DateTime Timestamp);
 
-        private class UsageData
+        private class UsageData : IResettable
         {
-            public QueueState State { get; private set; }
-            public bool AutoRequeue = false;
+            public QueueState State { get; private set; } = QueueState.None;
+			public bool AutoRequeue = false;
             public bool IsPlayingAsSub = false;
 
             // TODO: Maybe better to use LinkedList<QueuedInfo> but then have to deal with pooling of LinkedListNode<QueuedInfo> objects.
@@ -1777,32 +1777,16 @@ namespace SS.Matchmaking.Modules
                 PreviousQueued.Clear();
             }
 
-            public void Reset()
-            {
-                State = QueueState.None;
-                AutoRequeue = false;
-                IsPlayingAsSub = false;
-                Queued.Clear();
-                PreviousQueued.Clear();
-            }
-        }
-
-        private class UsageDataPooledObjectPolicy : IPooledObjectPolicy<UsageData>
-        {
-            public UsageData Create()
-            {
-                return new UsageData();
-            }
-
-            public bool Return(UsageData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
+			bool IResettable.TryReset()
+			{
+				State = QueueState.None;
+				AutoRequeue = false;
+				IsPlayingAsSub = false;
+				Queued.Clear();
+				PreviousQueued.Clear();
                 return true;
-            }
-        }
+			}
+		}
 
         #endregion
     }

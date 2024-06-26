@@ -409,7 +409,15 @@ namespace SS.Core.Modules
 			return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
-        private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+		PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(ObjectPool<T> pool) where T : class
+        {
+			ArgumentNullException.ThrowIfNull(pool);
+
+			// It's the policy's job to clear/reset an object when it's returned to the pool.
+			return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(pool)));
+		}
+
+		private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
 			ArgumentNullException.ThrowIfNull(createExtraDataFactoryFunc);
 

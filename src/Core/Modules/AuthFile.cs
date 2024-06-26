@@ -103,7 +103,7 @@ namespace SS.Core.Modules
 
             _allowUnknown = configManager.GetInt(_pwdFile, "General", "AllowUnknown", 1) != 0;
 
-            _pdKey = playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+            _pdKey = playerData.AllocatePlayerData<PlayerData>();
 
             commandManager.AddCommand("passwd", Command_passwd);
             commandManager.AddCommand("local_password", Command_passwd);
@@ -512,7 +512,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             private char[] _passwordHashChars = null;
             private int _passwordHashLength = 0;
@@ -534,33 +534,18 @@ namespace SS.Core.Modules
                 _passwordHashLength = value.Length;
             }
 
-            public void Reset()
-            {
-                if (_passwordHashChars is not null)
-                {
-                    ArrayPool<char>.Shared.Return(_passwordHashChars, true);
-                    _passwordHashChars = null;
-                    _passwordHashLength = 0;
-                }
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				if (_passwordHashChars is not null)
+				{
+					ArrayPool<char>.Shared.Return(_passwordHashChars, true);
+					_passwordHashChars = null;
+				}
 
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new();
-            }
-
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
+				_passwordHashLength = 0;
                 return true;
-            }
-        }
+			}
+		}
 
         private enum HashEncoding
         {

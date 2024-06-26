@@ -99,7 +99,7 @@ namespace SS.Matchmaking.Modules
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Register(broker, Callback_MatchmakingQueueChanged);
 
-            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
             return true;
@@ -1039,7 +1039,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// Identifies the match the player is in. <see langword="null"/> if not in a match.
@@ -1057,27 +1057,16 @@ namespace SS.Matchmaking.Modules
             /// Entered meaning the player has sent a position packet (definitely past map/lvz downloads).
             /// </summary>
             public bool HasEnteredArena = false;
-        }
 
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new PlayerData();
-            }
+			bool IResettable.TryReset()
+			{
+				MatchIdentifier = null;
+				LastShip = null;
+				HasEnteredArena = false;
 
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.MatchIdentifier = null;
-                obj.LastShip = null;
-                obj.HasEnteredArena = false;
-
-                return true;
-            }
-        }
+				return true;
+			}
+		}
 
         private record MatchIdentifier(int ArenaNumber, int BoxId); // immutable, value equality
     }

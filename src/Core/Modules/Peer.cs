@@ -64,8 +64,8 @@ namespace SS.Core.Modules
 
         private readonly Dictionary<SocketAddress, PeerZone> _peerDictionary = [];
 
-        private readonly DefaultObjectPool<PeerArena> _peerArenaPool = new(new PeerArenaPooledObjectPolicy(), Constants.TargetArenaCount);
-        private readonly DefaultObjectPool<PeerArenaName> _peerArenaNamePool = new(new PeerArenaNamePooledObjectPolicy(), Constants.TargetArenaCount);
+        private readonly DefaultObjectPool<PeerArena> _peerArenaPool = new(new DefaultPooledObjectPolicy<PeerArena>(), Constants.TargetArenaCount);
+        private readonly DefaultObjectPool<PeerArenaName> _peerArenaNamePool = new(new DefaultPooledObjectPolicy<PeerArenaName>(), Constants.TargetArenaCount);
 
         public Peer()
         {
@@ -98,7 +98,7 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _redirect = redirect ?? throw new ArgumentNullException(nameof(redirect));
 
-            _arenaDataKey = _arenaManager.AllocateArenaData(new ArenaDataPooledObjectPolicy());
+            _arenaDataKey = _arenaManager.AllocateArenaData<ArenaData>();
             _networkEncryption.AppendConnectionInitHandler(ConnectionInitHandler);
             _iPeerToken = broker.RegisterInterface<IPeer>(this);
 
@@ -1363,7 +1363,7 @@ namespace SS.Core.Modules
             public readonly Trie RelayArenas = new(false);
         }
 
-        private class PeerArenaName : IPeerArenaName
+        private class PeerArenaName : IPeerArenaName, IResettable
         {
             #region Remote
 
@@ -1400,31 +1400,14 @@ namespace SS.Core.Modules
                 IsCaseChange = LocalName.Equals(RemoteName, StringComparison.OrdinalIgnoreCase) && !LocalName.Equals(RemoteName, StringComparison.Ordinal);
             }
 
-            public void Reset()
-            {
-                SetNames("", "");
-            }
-        }
-
-        private class PeerArenaNamePooledObjectPolicy : IPooledObjectPolicy<PeerArenaName>
-        {
-            public PeerArenaName Create()
-            {
-                return new PeerArenaName();
-            }
-
-            public bool Return(PeerArenaName obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Reset();
-
+			bool IResettable.TryReset()
+			{
+				SetNames("", "");
                 return true;
-            }
-        }
+			}
+		}
 
-        private class PeerArena : IPeerArena
+        private class PeerArena : IPeerArena, IResettable
         {
             public uint Id { get; set; }
 
@@ -1442,54 +1425,31 @@ namespace SS.Core.Modules
             public readonly Trie Players = new(false);
 
             int IPeerArena.PlayerCount => Players.Count;
-        }
 
-        private class PeerArenaPooledObjectPolicy : IPooledObjectPolicy<PeerArena>
-        {
-            public PeerArena Create()
-            {
-                return new PeerArena();
-            }
+			bool IResettable.TryReset()
+			{
+				Id = 0;
+				LocalId = 0;
+				Name = null; // this should have already been cleared and object returned to the pool
+				IsConfigured = false;
+				IsRelay = false;
+				LastUpdate = default;
+				Players.Clear();
 
-            public bool Return(PeerArena obj)
-            {
-                if (obj == null)
-                    return false;
+				return true;
+			}
+		}
 
-                obj.Id = 0;
-                obj.LocalId = 0;
-                obj.Name = null; // this should have already been cleared and object returned to the pool
-                obj.IsConfigured = false;
-                obj.IsRelay = false;
-                obj.LastUpdate = default;
-                obj.Players.Clear();
-
-                return true;
-            }
-        }
-
-        private class ArenaData
+        private class ArenaData : IResettable
         {
             public uint Id { get; set; } = 0;
-        }
 
-        private class ArenaDataPooledObjectPolicy : IPooledObjectPolicy<ArenaData>
-        {
-            public ArenaData Create()
-            {
-                return new ArenaData();
-            }
-
-            public bool Return(ArenaData obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Id = 0;
-
-                return true;
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				Id = 0;
+				return true;
+			}
+		}
 
         #endregion
     }

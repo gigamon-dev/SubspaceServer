@@ -80,14 +80,14 @@ namespace SS.Core.Modules
 
         #region PooledObjectPolicy classes
 
-		private class Crc32PooledObjectPolicy : PooledObjectPolicy<Crc32>
+		private class Crc32PooledObjectPolicy : IPooledObjectPolicy<Crc32>
 		{
-			public override Crc32 Create()
+			public Crc32 Create()
 			{
                 return new Crc32();
 			}
 
-			public override bool Return(Crc32 obj)
+			public bool Return(Crc32 obj)
 			{
                 if (obj is null)
                     return false;

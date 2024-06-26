@@ -60,7 +60,7 @@ namespace SS.Core.Modules
         private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
         private readonly Trie<CommandGroup> _commandGroups = new(false);
 
-        private readonly DefaultObjectPool<ArenaListItem> _arenaListItemPool = new(new ArenaListItemPooledObjectPolicy(), Constants.TargetArenaCount * 4);
+        private readonly DefaultObjectPool<ArenaListItem> _arenaListItemPool = new(new DefaultPooledObjectPolicy<ArenaListItem>(), Constants.TargetArenaCount * 4);
         private readonly DefaultObjectPool<List<ArenaListItem>> _arenaListItemListPool = new(new ListPooledObjectPolicy<ArenaListItem>() { InitialCapacity = Constants.TargetArenaCount });
         private readonly DefaultObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new(new ListPooledObjectPolicy<PingHistogramBucket>() { InitialCapacity = 32 });
 
@@ -3953,7 +3953,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private class ArenaListItem
+        private class ArenaListItem : IResettable
         {
             private readonly char[] _arenaNameChars = new char[Constants.MaxArenaNameLength];
             private int _length = 0;
@@ -3994,14 +3994,15 @@ namespace SS.Core.Modules
             /// </summary>
             public bool IsCurrent { get; set; }
 
-            public void Clear()
-            {
-                ArenaName = "";
-                IsRemote = false;
-                PlayerCount = 0;
-                IsCurrent = false;
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				ArenaName = "";
+				IsRemote = false;
+				PlayerCount = 0;
+				IsCurrent = false;
+                return true;
+			}
+		}
 
         private class ArenaListItemComparer : IComparer<ArenaListItem>
         {
@@ -4021,23 +4022,6 @@ namespace SS.Core.Modules
 
                 // Arena name asc
                 return MemoryExtensions.CompareTo(x.ArenaName, y.ArenaName, StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        private class ArenaListItemPooledObjectPolicy : IPooledObjectPolicy<ArenaListItem>
-        {
-            public ArenaListItem Create()
-            {
-                return new ArenaListItem();
-            }
-
-            public bool Return(ArenaListItem obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Clear();
-                return true;
             }
         }
     }

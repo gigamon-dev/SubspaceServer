@@ -9,14 +9,14 @@ namespace SS.Utilities.ObjectPool
 	/// <summary>
 	/// A policy for pooling of <see cref="LinkedListNode{T}"/> instances.
 	/// </summary>
-	public class LinkedListNodePooledObjectPolicy<T> : PooledObjectPolicy<LinkedListNode<T>>
+	public class LinkedListNodePooledObjectPolicy<T> : IPooledObjectPolicy<LinkedListNode<T>>
 	{
-		public override LinkedListNode<T> Create()
+		public LinkedListNode<T> Create()
 		{
 			return new LinkedListNode<T>(default!);
 		}
 
-		public override bool Return(LinkedListNode<T> obj)
+		public bool Return(LinkedListNode<T> obj)
 		{
 			if (obj is null)
 				return false;

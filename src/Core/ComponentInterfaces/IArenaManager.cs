@@ -84,9 +84,9 @@ namespace SS.Core.ComponentInterfaces
 
 		/// <summary>
 		/// Allocates a slot for per-arena data.
-		/// This creates a new instance of <typeparamref name="T"/> in each <see cref="Arena"/> object.
 		/// </summary>
 		/// <remarks>
+		/// This adds an instance of <typeparamref name="T"/> in each <see cref="Arena"/> object that can be accessed using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.
 		/// <para>
 		/// If <typeparamref name="T"/> implements <see cref="IResettable"/>, an object pool is used.
 		/// </para>
@@ -98,27 +98,39 @@ namespace SS.Core.ComponentInterfaces
 		/// <returns>A key that can be used to access the data using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.</returns>
 		ArenaDataKey<T> AllocateArenaData<T>() where T : class, new();
 
-        /// <summary>
-        /// Allocates a slot for per-arena data.
-        /// This creates a new instance of <typeparamref name="T"/> in each <see cref="Arena"/> object.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// If <typeparamref name="T"/> implements <see cref="System.IDisposable"/>, objects will get disposed when they are discarded.
-        /// </para>
-        /// </remarks>
-        /// <typeparam name="T">The type to store in the slot.</typeparam>
-        /// <param name="policy">The policy to use for object pooling.</param>
-        /// <returns>A key that can be used to access the data using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.</returns>
-        /// <exception cref="ArgumentNullException">The <paramref name="policy"/> was <see langword="null"/>.</exception>
-        ArenaDataKey<T> AllocateArenaData<T>(IPooledObjectPolicy<T> policy) where T : class;
+		/// <summary>
+		/// Allocates a slot for per-arena data.
+		/// </summary>
+		/// <remarks>
+		/// This adds an instance of <typeparamref name="T"/> in each <see cref="Arena"/> object that can be accessed using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.
+		/// <para>
+		/// If <typeparamref name="T"/> implements <see cref="IDisposable"/>, objects will get disposed when they are discarded.
+		/// </para>
+		/// </remarks>
+		/// <typeparam name="T">The type to store in the slot.</typeparam>
+		/// <param name="policy">The policy to use for object pooling.</param>
+		/// <returns>A key that can be used to access the data using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.</returns>
+		/// <exception cref="ArgumentNullException">The <paramref name="policy"/> was <see langword="null"/>.</exception>
+		ArenaDataKey<T> AllocateArenaData<T>(IPooledObjectPolicy<T> policy) where T : class;
 
-        /// <summary>
-        /// Frees a per-arena data slot.
-        /// </summary>
-        /// <param name="key">The key from <see cref="AllocateArenaData{T}"/>.</param>
-        /// <returns><see langword="true"/> if the slot for given <paramref name="key"/> was freed. <see langword="false"/> if the <paramref name="key"/> was invalid.</returns>
-        bool FreeArenaData<T>(ref ArenaDataKey<T> key);
+		/// <summary>
+		/// Allocates a slot for per-arena data using an existing object pool.
+		/// </summary>
+		/// <remarks>
+		/// This adds an instance of <typeparamref name="T"/> in each <see cref="Arena"/> object that can be accessed using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.
+		/// </remarks>
+		/// <typeparam name="T">The type to store in the slot.</typeparam>
+		/// <param name="pool">The object pool to use.</param>
+		/// <returns>A key that can be used to access the data using <see cref="Arena.TryGetExtraData{T}(ArenaDataKey{T}, out T)"/>.</returns>
+		/// <exception cref="ArgumentNullException">The <paramref name="pool"/> was <see langword="null"/>.</exception>
+		ArenaDataKey<T> AllocateArenaData<T>(ObjectPool<T> pool) where T : class;
+
+		/// <summary>
+		/// Frees a per-arena data slot.
+		/// </summary>
+		/// <param name="key">The key from <see cref="AllocateArenaData{T}"/>.</param>
+		/// <returns><see langword="true"/> if the slot for given <paramref name="key"/> was freed. <see langword="false"/> if the <paramref name="key"/> was invalid.</returns>
+		bool FreeArenaData<T>(ref ArenaDataKey<T> key);
 
         /// <summary>
         /// Puts a "hold" on an arena, preventing it from proceeding to the

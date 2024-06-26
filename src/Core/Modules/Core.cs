@@ -47,7 +47,7 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
-        private readonly DefaultObjectPool<AuthRequest> _authRequestPool = new(new AuthRequestPooledObjectPolicy(), Constants.TargetPlayerCount);
+        private readonly DefaultObjectPool<AuthRequest> _authRequestPool = new(new DefaultPooledObjectPolicy<AuthRequest>(), Constants.TargetPlayerCount);
 
         private PlayerDataKey<PlayerData> _pdkey;
 
@@ -106,7 +106,7 @@ namespace SS.Core.Modules
             _continuumChecksum = GetChecksum(ContinuumExeFile);
             _codeChecksum = GetUInt32(ContinuumChecksumFile, 4);
 
-            _pdkey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+            _pdkey = _playerData.AllocatePlayerData<PlayerData>();
 
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
 
@@ -1108,7 +1108,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             public AuthRequest AuthRequest;
             public Player ReplacedBy;
@@ -1116,30 +1116,19 @@ namespace SS.Core.Modules
             public bool HasDoneGlobalSync; // global sync
             public bool HasDoneArenaSync; // arena sync
             public bool HasDoneGlobalCallbacks; // global callbacks
-        }
 
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new PlayerData();
-            }
+			bool IResettable.TryReset()
+			{
+				AuthRequest = null;
+				ReplacedBy = null;
+				HasDoneGlobalSync = false;
+				HasDoneArenaSync = false;
+				HasDoneGlobalCallbacks = false;
+				return true;
+			}
+		}
 
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.AuthRequest = null;
-                obj.ReplacedBy = null;
-                obj.HasDoneGlobalSync = false;
-                obj.HasDoneArenaSync = false;
-                obj.HasDoneGlobalCallbacks = false;
-                return true;
-            }
-        }
-
-        private class AuthRequest : IAuthRequest
+        private class AuthRequest : IAuthRequest, IResettable
         {
             private readonly byte[] _loginBytes = new byte[512];
             private int _loginLength = 0;
@@ -1205,24 +1194,13 @@ namespace SS.Core.Modules
                 _doneCallback = null;
                 _result.Reset();
             }
-        }
 
-        private class AuthRequestPooledObjectPolicy : IPooledObjectPolicy<AuthRequest>
-        {
-            public AuthRequest Create()
-            {
-                return new AuthRequest();
-            }
-
-            public bool Return(AuthRequest obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
+			bool IResettable.TryReset()
+			{
+                Reset();
                 return true;
-            }
-        }
+			}
+		}
 
         private class AuthResult : IAuthResult
         {

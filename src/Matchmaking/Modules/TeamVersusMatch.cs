@@ -129,7 +129,7 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new();
 
-        private readonly DefaultObjectPool<ArenaData> _arenaDataObjectPool = new(new ArenaDataPooledObjectPolicy(), Constants.TargetArenaCount);
+        private readonly DefaultObjectPool<ArenaData> _arenaDataObjectPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
         private readonly DefaultObjectPool<TeamLineup> _teamLineupObjectPool = new(new TeamLineupPooledObjectPolicy(), Constants.TargetPlayerCount);
 
         #region Module members
@@ -181,7 +181,7 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -3066,7 +3066,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             /// <summary>
             /// The slot the player is assigned.
@@ -3111,28 +3111,20 @@ namespace SS.Matchmaking.Modules
             /// Whether extra position data is being watched for the player via <see cref="IGame.AddExtraPositionDataWatch(Player)"/>.
             /// </summary>
             public bool IsWatchingExtraPositionData = false;
-        }
 
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new PlayerData();
-            }
-
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.AssignedSlot = null;
-                obj.NextShip = null;
-                obj.HasEnteredArena = false;
-                obj.IsReturning = false;
+			bool IResettable.TryReset()
+			{
+				AssignedSlot = null;
+                SubSlot = null;
+				NextShip = null;
+				HasEnteredArena = false;
+				IsReturning = false;
+                IsInitialConnect = false;
+                IsWatchingExtraPositionData = false;
 
                 return true;
-            }
-        }
+			}
+		}
 
         private readonly struct ShipSettings
         {
@@ -3163,29 +3155,19 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// Data for each arena that has a team versus match type
         /// </summary>
-        private class ArenaData
+        private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> IFreqManagerEnforcerAdvisorToken;
             public ShipSettings[] ShipSettings = new ShipSettings[8];
-        }
 
-        private class ArenaDataPooledObjectPolicy : IPooledObjectPolicy<ArenaData>
-        {
-            public ArenaData Create()
-            {
-                return new ArenaData();
-            }
+			bool IResettable.TryReset()
+			{
+				IFreqManagerEnforcerAdvisorToken = null;
+                Array.Clear(ShipSettings);
 
-            public bool Return(ArenaData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.IFreqManagerEnforcerAdvisorToken = null;
-
-                return true;
-            }
-        }
+				return true;
+			}
+		}
 
         /// <summary>
         /// A type that wraps either a <see cref="Core.Player"/> or <see cref="IPlayerGroup"/>.
@@ -3605,14 +3587,14 @@ namespace SS.Matchmaking.Modules
             LeftArena,
         }
 
-        private class TeamLineupPooledObjectPolicy : PooledObjectPolicy<TeamLineup>
+        private class TeamLineupPooledObjectPolicy : IPooledObjectPolicy<TeamLineup>
         {
-            public override TeamLineup Create()
+            public TeamLineup Create()
             {
                 return new TeamLineup();
             }
 
-            public override bool Return(TeamLineup obj)
+            public bool Return(TeamLineup obj)
             {
                 if (obj is null)
                     return false;

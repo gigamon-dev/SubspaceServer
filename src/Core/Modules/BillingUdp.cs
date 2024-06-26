@@ -102,7 +102,7 @@ namespace SS.Core.Modules
             _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
             _billingFallback = broker.GetInterface<IBillingFallback>();
 
-            _pdKey = _playerData.AllocatePlayerData(new PlayerDataPooledObjectPolicy());
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             _network.AddPacket(C2SPacketType.RegData, Packet_RegData);
 
@@ -1723,7 +1723,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private class PlayerData
+        private class PlayerData : IResettable
         {
             public uint BillingUserId;
             public TimeSpan Usage;
@@ -1734,36 +1734,19 @@ namespace SS.Core.Modules
             public PlayerScore? LoadedScore;
             public PlayerScore? SavedScore;
 
-            public void Reset()
-            {
-                BillingUserId = 0;
-                Usage = TimeSpan.Zero;
-                IsKnownToBiller = false;
-                HasDemographics = false;
-                AuthRequest = null;
-                FirstLogin = null;
-                LoadedScore = null;
-                SavedScore = null;
-            }
-        }
-
-        private class PlayerDataPooledObjectPolicy : IPooledObjectPolicy<PlayerData>
-        {
-            public PlayerData Create()
-            {
-                return new PlayerData();
-            }
-
-            public bool Return(PlayerData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
-
+			bool IResettable.TryReset()
+			{
+				BillingUserId = 0;
+				Usage = TimeSpan.Zero;
+				IsKnownToBiller = false;
+				HasDemographics = false;
+				AuthRequest = null;
+				FirstLogin = null;
+				LoadedScore = null;
+				SavedScore = null;
                 return true;
-            }
-        }
+			}
+		}
 
         private enum BillingState
         {

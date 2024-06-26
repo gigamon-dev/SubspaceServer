@@ -124,9 +124,9 @@ namespace SS.Core.Modules
             _network = broker.GetInterface<INetwork>();
             _chatNetwork = broker.GetInterface<IChatNetwork>();
 
-            _spawnkey = _playerData.AllocatePlayerData(new SpawnLocPooledObjectPolicy());
+            _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
 
-            _adkey = ((IArenaManager)this).AllocateArenaData(new ArenaDataPooledObjectPolicy());
+            _adkey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
 
             _network?.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
             _network?.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
@@ -509,7 +509,14 @@ namespace SS.Core.Modules
 			return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
-        bool IArenaManager.FreeArenaData<T>(ref ArenaDataKey<T> key)
+		ArenaDataKey<T> IArenaManager.AllocateArenaData<T>(ObjectPool<T> pool) where T : class
+        {
+            ArgumentNullException.ThrowIfNull(pool);
+
+			return new ArenaDataKey<T>(AllocateArenaData(() => new CustomPooledExtraDataFactory<T>(pool)));
+		}
+
+		bool IArenaManager.FreeArenaData<T>(ref ArenaDataKey<T> key)
         {
             if (key.Id == 0)
             {
@@ -1808,41 +1815,24 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        private class SpawnLoc
+        private class SpawnLoc(short x, short y) : IResettable
         {
-            public short X;
-            public short Y;
+            public short X = x;
+            public short Y = y;
 
             public SpawnLoc() : this(0, 0)
             {
             }
 
-            public SpawnLoc(short x, short y)
-            {
-                X = x;
-                Y = y;
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				X = 0;
+				Y = 0;
+				return true;
+			}
+		}
 
-        private class SpawnLocPooledObjectPolicy : IPooledObjectPolicy<SpawnLoc>
-        {
-            public SpawnLoc Create()
-            {
-                return new SpawnLoc();
-            }
-
-            public bool Return(SpawnLoc obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.X = 0;
-                obj.Y = 0;
-                return true;
-            }
-        }
-
-        private class ArenaData
+        private class ArenaData : IResettable
         {
             /// <summary>
             /// Whether the arena's config file is being loaded on a worker thread.
@@ -1860,27 +1850,16 @@ namespace SS.Core.Modules
             public bool Resurrect = false;
 
             public bool Reap = false;
-        }
 
-        private class ArenaDataPooledObjectPolicy : IPooledObjectPolicy<ArenaData>
-        {
-            public ArenaData Create()
-            {
-                return new ArenaData();
-            }
-
-            public bool Return(ArenaData obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.IsLoadingConfig = false;
-                obj.Holds = 0;
-                obj.Resurrect = false;
-                obj.Reap = false;
-                return true;
-            }
-        }
+			bool IResettable.TryReset()
+			{
+				IsLoadingConfig = false;
+				Holds = 0;
+				Resurrect = false;
+				Reap = false;
+				return true;
+			}
+		}
 
         #endregion
     }

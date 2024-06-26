@@ -9,7 +9,7 @@ namespace SS.Utilities.ObjectPool
 	/// A policy for pooling <see cref="List{T}"/> instances.
 	/// </summary>
 	/// <typeparam name="T">The type of elements in the list.</typeparam>
-	public class ListPooledObjectPolicy<T> : PooledObjectPolicy<List<T>>
+	public class ListPooledObjectPolicy<T> : IPooledObjectPolicy<List<T>>
 	{
 		/// <summary>
 		/// Gets or sets the initial capacity of pooled <see cref="List{T}"/> instances.
@@ -24,14 +24,14 @@ namespace SS.Utilities.ObjectPool
 		/// <value>Defaults to <c>-1</c>, which means do not enforce a limit on capacity.</value>
 		public int MaximumRetainedCapacity { get; init; } = -1;
 
-		public override List<T> Create()
+		public List<T> Create()
 		{
 			return InitialCapacity < 0
 				? new List<T>()
 				: new List<T>(InitialCapacity);
 		}
 
-		public override bool Return(List<T> obj)
+		public bool Return(List<T> obj)
 		{
 			if (obj is null)
 				return false;

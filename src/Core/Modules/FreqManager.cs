@@ -31,7 +31,7 @@ namespace SS.Core.Modules
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private readonly ObjectPool<Freq> _freqPool = new DefaultObjectPool<Freq>(new FreqPooledObjectPolicy(), 16);
+        private readonly DefaultObjectPool<Freq> _freqPool = new(new DefaultPooledObjectPolicy<Freq>(), Constants.TargetPlayerCount);
 
         #region Module members
 
@@ -572,6 +572,10 @@ namespace SS.Core.Modules
                 }
                 else if (action == ArenaAction.Destroy)
                 {
+                    foreach (Freq freq in ad.Freqs)
+                    {
+						_freqPool.Return(freq);
+					}
                     ad.Freqs.Clear();
                 }
             }
@@ -1117,7 +1121,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private class Freq
+        private class Freq : IResettable
         {
             public readonly HashSet<Player> Players = new();
             public short FreqNum { get; private set; }
@@ -1146,25 +1150,13 @@ namespace SS.Core.Modules
                 IsRemembered = false;
                 IsBalancedAgainst = false;
             }
-        }
 
-        private class FreqPooledObjectPolicy : PooledObjectPolicy<Freq>
-        {
-            public override Freq Create()
-            {
-                return new Freq();
-            }
-
-            public override bool Return(Freq freq)
-            {
-                if (freq == null)
-                    return false;
-
-                freq.Reset();
-
+			bool IResettable.TryReset()
+			{
+                Reset();
                 return true;
-            }
-        }
+			}
+		}
 
         #endregion
     }

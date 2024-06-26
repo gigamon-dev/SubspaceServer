@@ -25,7 +25,7 @@ namespace SS.Matchmaking.Modules
 
         private PlayerDataKey<PlayerData> _pdKey;
         private readonly Dictionary<MatchIdentifier, MatchStats> _matchStats = new();
-        private readonly DefaultObjectPool<MatchStats> _matchStatsObjectPool = new(new MatchStatsPooledObjectPolicy(), Constants.TargetPlayerCount);
+        private readonly DefaultObjectPool<MatchStats> _matchStatsObjectPool = new(new DefaultPooledObjectPolicy<MatchStats>(), Constants.TargetPlayerCount);
 
         #region Module members
 
@@ -434,7 +434,7 @@ namespace SS.Matchmaking.Modules
 
         #region Helper types
 
-        private class MatchStats
+        private class MatchStats : IResettable
         {
             public readonly PlayerStats PlayerStats1 = new();
             public readonly PlayerStats PlayerStats2 = new();
@@ -467,15 +467,17 @@ namespace SS.Matchmaking.Modules
                 EndTimestamp = DateTime.UtcNow;
             }
 
-            public void Reset()
-            {
-                PlayerStats1.Reset();
-                PlayerStats2.Reset();
+			bool IResettable.TryReset()
+			{
+				PlayerStats1.Reset();
+				PlayerStats2.Reset();
 
-                StartTimestamp = null;
-                EndTimestamp = null;
-            }
-        }
+				StartTimestamp = null;
+				EndTimestamp = null;
+
+                return true;
+			}
+		}
 
         private class PlayerStats
         {
@@ -594,23 +596,6 @@ namespace SS.Matchmaking.Modules
 		}
 
         private readonly record struct MatchIdentifier(Arena Arena, int BoxId); // immutable, value equality
-
-        private class MatchStatsPooledObjectPolicy : IPooledObjectPolicy<MatchStats>
-        {
-            public MatchStats Create()
-            {
-                return new MatchStats();
-            }
-
-            public bool Return(MatchStats obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Reset();
-                return true;
-            }
-        }
 
         #endregion
     }

@@ -41,7 +41,17 @@ namespace SS.Core.Modules
         private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new();
         private readonly object _serverTimerLock = new();
 
-        private static readonly ObjectPool<Job> s_jobPool = new DefaultObjectPoolProvider().Create(new JobPooledObjectPolicy()); // TODO: how many objects should it retain?
+        private static readonly ObjectPool<Job> s_jobPool;
+
+        static Mainloop()
+        {
+			// Use DefaultObjectPoolProvider so that it will create a DisposableObjectPool.
+			DefaultObjectPoolProvider provider = new()
+            {
+                MaximumRetained = 65536 // a number it should never reach
+            };
+            s_jobPool = provider.Create<Job>();
+		}
 
         public Mainloop()
         {
@@ -1087,8 +1097,8 @@ namespace SS.Core.Modules
             }
         }
 
-        private sealed class Job : IDisposable
-        {
+        private sealed class Job : IResettable, IDisposable
+		{
             private SendOrPostCallback _callback;
             private object _state;
             private readonly AutoResetEvent _autoResetEvent = new(false);
@@ -1098,11 +1108,6 @@ namespace SS.Core.Modules
                 _callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 _state = state;
                 _autoResetEvent.Reset();
-            }
-
-            public void Reset()
-            {
-                Set(null, null);
             }
 
             public void Execute()
@@ -1116,31 +1121,20 @@ namespace SS.Core.Modules
                 _autoResetEvent.WaitOne();
             }
 
-            #region IDisposable
+			bool IResettable.TryReset()
+			{
+				Set(null, null);
+				return true;
+			}
 
-            public void Dispose()
+			#region IDisposable
+
+			public void Dispose()
             {
                 _autoResetEvent.Dispose();
             }
 
-            #endregion
-        }
-
-        private class JobPooledObjectPolicy : IPooledObjectPolicy<Job>
-        {
-            public Job Create()
-            {
-                return new Job();
-            }
-
-            public bool Return(Job obj)
-            {
-                if (obj is null)
-                    return false;
-
-                obj.Reset();
-                return true;
-            }
-        }
+			#endregion
+		}
     }
 }
