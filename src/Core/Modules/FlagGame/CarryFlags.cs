@@ -32,7 +32,7 @@ namespace SS.Core.Modules.FlagGame
         // optional dependencies
         private IChatNetwork _chatNetwork;
 
-        private static readonly NonTransientObjectPool<FlagInfo> _flagInfoPool = new(new FlagInfoPooledObjectPolicy());
+        private static readonly DefaultObjectPool<FlagInfo> _flagInfoPool = new(new FlagInfoPooledObjectPolicy(), Constants.TargetArenaCount * MaxFlags);
 
         private ArenaDataKey<ArenaData> _adKey;
 

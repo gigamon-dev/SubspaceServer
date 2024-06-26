@@ -41,8 +41,8 @@ namespace SS.Matchmaking.Modules
         static TeamVersusStats()
         {
             var provider = new DefaultObjectPoolProvider();
-            s_damageInfoLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<DamageInfo>>(new LinkedListNodePooledObjectPolicy<DamageInfo>());
-            s_weaponUseLinkedListNodePool = new NonTransientObjectPool<LinkedListNode<WeaponUse>>(new LinkedListNodePooledObjectPolicy<WeaponUse>());
+            s_damageInfoLinkedListNodePool = new DefaultObjectPool<LinkedListNode<DamageInfo>>(new LinkedListNodePooledObjectPolicy<DamageInfo>(), Constants.TargetPlayerCount * 256);
+            s_weaponUseLinkedListNodePool = new DefaultObjectPool<LinkedListNode<WeaponUse>>(new LinkedListNodePooledObjectPolicy<WeaponUse>(), Constants.TargetPlayerCount * 256);
             s_tickRangeCalculatorPool = provider.Create(new TickRangeCalcualtorPooledObjectPolicy());
             s_damageDictionaryPool = provider.Create(new DictionaryPooledObjectPolicy<PlayerTeamSlot, int>() { InitialCapacity = Constants.TargetPlayerCount });
             s_damageListPool = provider.Create(new ListPooledObjectPolicy<(string PlayerName, int Damage)>() { InitialCapacity = Constants.TargetPlayerCount });

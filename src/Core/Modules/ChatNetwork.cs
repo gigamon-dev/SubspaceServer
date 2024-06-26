@@ -41,7 +41,7 @@ namespace SS.Core.Modules
         private Thread _chatThread;
         private readonly Trie<ChatMessageHandler> _handlerTrie = new(false);
 
-        private static readonly NonTransientObjectPool<LinkedListNode<OutBuffer>> _outBufferLinkedListNodePool = new(new LinkedListNodePooledObjectPolicy<OutBuffer>());
+        private static readonly DefaultObjectPool<LinkedListNode<OutBuffer>> s_outBufferLinkedListNodePool = new(new LinkedListNodePooledObjectPolicy<OutBuffer>(), Constants.TargetPlayerCount * 64);
 
         #region Module members
 
@@ -271,7 +271,7 @@ namespace SS.Core.Modules
             buffer[byteCount++] = (byte)'\n';
 
             // Get and populate a node.
-            LinkedListNode<OutBuffer> node = _outBufferLinkedListNodePool.Get();
+            LinkedListNode<OutBuffer> node = s_outBufferLinkedListNodePool.Get();
             node.Value = new OutBuffer(buffer, byteCount);
 
             // Add the node to the outgoing list.
@@ -783,7 +783,7 @@ namespace SS.Core.Modules
                 {
                     // The buffer has been completely sent.
                     ArrayPool<byte>.Shared.Return(buffer.Data, true);
-                    _outBufferLinkedListNodePool.Return(node);
+                    s_outBufferLinkedListNodePool.Return(node);
                 }
 
                 return WriteResult.Ok;
@@ -1057,7 +1057,7 @@ namespace SS.Core.Modules
                     {
                         OutList.Remove(node);
                         ArrayPool<byte>.Shared.Return(node.ValueRef.Data, true);
-                        _outBufferLinkedListNodePool.Return(node);
+                        s_outBufferLinkedListNodePool.Return(node);
                     }
                 }
 

@@ -35,10 +35,10 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IGroupManager> _iGroupManagerToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
-        private readonly PlayerDataPooledObjectPolicy _playerDataPooledObjectPolicy = new();
-        private readonly ObjectPool<PlayerData> _playerDataPool;
+        private static readonly PlayerDataPooledObjectPolicy _playerDataPooledObjectPolicy = new();
+        private readonly DefaultObjectPool<PlayerData> _playerDataPool = new(_playerDataPooledObjectPolicy);
 
-        private ConfigHandle _groupDefConfHandle;
+		private ConfigHandle _groupDefConfHandle;
         private ConfigHandle _staffConfHandle;
 
         private const string Group_Default = "default";
@@ -49,11 +49,6 @@ namespace SS.Core.Modules
             { Group_Default, Group_Default },
             { Group_None, Group_None }
         };
-
-        public CapabilityManager()
-        {
-            _playerDataPool = new DefaultObjectPool<PlayerData>(_playerDataPooledObjectPolicy);
-        }
 
         #region IModule Members
 

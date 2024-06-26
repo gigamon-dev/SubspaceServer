@@ -65,9 +65,9 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private readonly Dictionary<string, TimeSpan> _pendingPlayerHoldDurations = new(StringComparer.OrdinalIgnoreCase); // TODO: better if this was in the database, it could potentially grow large
 
-        private readonly ObjectPool<UsageData> _usageDataPool = new NonTransientObjectPool<UsageData>(new UsageDataPooledObjectPolicy()); // only for groups TODO: add a way to use the same pool as per-player data
-        private readonly ObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new DefaultObjectPool<List<IMatchmakingQueue>>(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
-        private readonly ObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new DefaultObjectPool<List<PlayerOrGroup>>(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
+        private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new UsageDataPooledObjectPolicy(), Constants.TargetPlayerCount); // only for groups TODO: add a way to use the same pool as per-player data
+        private readonly DefaultObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
+        private readonly DefaultObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
 
         private const string NextCommandName = "next";
         private const string CancelCommandName = "cancelnext";

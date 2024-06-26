@@ -67,16 +67,16 @@ namespace SS.Core.Modules
         /// <summary>
         /// Pool of <see cref="List{T}"/>s for <see cref="BrickLocation"/>.
         /// </summary>
-        private ObjectPool<List<BrickLocation>> _brickLocationListPool;
+        private readonly DefaultObjectPool<List<BrickLocation>> _brickLocationListPool = new(new ListPooledObjectPolicy<BrickLocation>() { InitialCapacity = 8 });
 
-        /// <summary>
-        /// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
-        /// </summary>
-        private ObjectPool<List<BrickData>> _brickDataListPool;
+		/// <summary>
+		/// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
+		/// </summary>
+		private readonly DefaultObjectPool<List<BrickData>> _brickDataListPool = new(new ListPooledObjectPolicy<BrickData>() { InitialCapacity = 8 });
 
-        #region Module methods
+		#region Module methods
 
-        public bool Load(
+		public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
             IConfigManager configManager,
@@ -96,10 +96,6 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-
-            DefaultObjectPoolProvider provider = new();
-            _brickLocationListPool = provider.Create(new ListPooledObjectPolicy<BrickLocation>() { InitialCapacity = 8 });
-            _brickDataListPool = provider.Create(new ListPooledObjectPolicy<BrickData>() { InitialCapacity = 8 });
 
             _adKey = _arenaManager.AllocateArenaData<ArenaBrickData>();
 

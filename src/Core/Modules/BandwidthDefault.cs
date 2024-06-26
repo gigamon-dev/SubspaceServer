@@ -47,7 +47,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
 
         private Settings _settings;
-        private NonTransientObjectPool<DefaultBandwidthLimiter> _bandwidthLimiterPool;
+        private ObjectPool<DefaultBandwidthLimiter> _bandwidthLimiterPool;
 
         #region IModule Members
 
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
                 }
             };
 
-            _bandwidthLimiterPool = new(new BandwidthLimiterPooledObjectPolicy(_settings));
+            _bandwidthLimiterPool = new DefaultObjectPool<DefaultBandwidthLimiter>(new BandwidthLimiterPooledObjectPolicy(_settings), Constants.TargetPlayerCount);
 
             _iBandwidthLimiterProviderToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this);
             return true;

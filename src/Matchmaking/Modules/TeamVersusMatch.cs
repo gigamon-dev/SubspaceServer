@@ -129,8 +129,8 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new();
 
-        private readonly ObjectPool<ArenaData> _arenaDataObjectPool = new NonTransientObjectPool<ArenaData>(new ArenaDataPooledObjectPolicy());
-        private readonly ObjectPool<TeamLineup> _teamLineupObjectPool = new DefaultObjectPool<TeamLineup>(new TeamLineupPooledObjectPolicy());
+        private readonly DefaultObjectPool<ArenaData> _arenaDataObjectPool = new(new ArenaDataPooledObjectPolicy(), Constants.TargetArenaCount);
+        private readonly DefaultObjectPool<TeamLineup> _teamLineupObjectPool = new(new TeamLineupPooledObjectPolicy(), Constants.TargetPlayerCount);
 
         #region Module members
 
@@ -3213,7 +3213,7 @@ namespace SS.Matchmaking.Modules
 
         private class TeamVersusMatchmakingQueue : IMatchmakingQueue
         {
-            private static readonly NonTransientObjectPool<LinkedListNode<QueuedPlayerOrGroup>> s_nodePool = new(new LinkedListNodePooledObjectPolicy<QueuedPlayerOrGroup>());
+            private static readonly DefaultObjectPool<LinkedListNode<QueuedPlayerOrGroup>> s_nodePool = new(new LinkedListNodePooledObjectPolicy<QueuedPlayerOrGroup>(), Constants.TargetPlayerCount);
             private static readonly DefaultObjectPool<List<LinkedListNode<QueuedPlayerOrGroup>>> s_listPool = new(new ListPooledObjectPolicy<LinkedListNode<QueuedPlayerOrGroup>>() { InitialCapacity = Constants.TargetPlayerCount });
 
             private readonly LinkedList<QueuedPlayerOrGroup> _queue = new();

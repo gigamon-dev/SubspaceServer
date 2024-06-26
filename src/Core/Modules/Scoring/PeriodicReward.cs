@@ -2,7 +2,6 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
-using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
@@ -10,10 +9,10 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules.Scoring
 {
-    /// <summary>
-    /// Module for rewarding players periodically for flag games.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module for rewarding players periodically for flag games.
+	/// </summary>
+	[CoreModuleInfo]
     public class PeriodicReward : IModule, IPeriodicReward, IPeriodicRewardPoints
     {
         private IAllPlayerStats _allPlayerStats;
@@ -27,7 +26,7 @@ namespace SS.Core.Modules.Scoring
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private readonly NonTransientObjectPool<TeamData> _teamDataPool = new(new FreqDataPooledObjectPolicy());
+        private readonly DefaultObjectPool<TeamData> _teamDataPool = new(new DefaultPooledObjectPolicy<TeamData>(), Constants.TargetPlayerCount);
         private readonly DefaultObjectPool<Dictionary<short, IPeriodicRewardPoints.ITeamData>> _freqTeamDataDictionaryPool = new(new DictionaryPooledObjectPolicy<short, IPeriodicRewardPoints.ITeamData>() { InitialCapacity = Constants.TargetPlayerCount });
         private readonly DefaultObjectPool<Dictionary<short, short>> _freqPointsDictionaryPool = new(new DictionaryPooledObjectPolicy<short, short>() { InitialCapacity = Constants.TargetPlayerCount });
 
@@ -429,33 +428,22 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private class TeamData : IPeriodicRewardPoints.ITeamData
+        private class TeamData : IPeriodicRewardPoints.ITeamData, IResettable
         {
-            public readonly HashSet<Player> Players = new();
-            public int FlagCount;
+            public readonly HashSet<Player> Players = new(64);
+            public int FlagCount = 0;
 
             IReadOnlySet<Player> IPeriodicRewardPoints.ITeamData.Players => Players;
 
             int IPeriodicRewardPoints.ITeamData.FlagCount => FlagCount;
-        }
 
-        private class FreqDataPooledObjectPolicy : PooledObjectPolicy<TeamData>
-        {
-            public override TeamData Create()
-            {
-                return new TeamData();
-            }
-
-            public override bool Return(TeamData obj)
-            {
-                if (obj == null)
-                    return false;
-
-                obj.Players.Clear();
-                obj.FlagCount = 0;
+			public bool TryReset()
+			{
+				Players.Clear();
+				FlagCount = 0;
                 return true;
-            }
-        }
+			}
+		}
 
         #endregion
     }

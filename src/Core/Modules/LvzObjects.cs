@@ -37,7 +37,7 @@ namespace SS.Core.Modules
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private readonly NonTransientObjectPool<LvzData> _lvzDataObjectPool = new(new LvzDataPooledObjectPolicy());
+        private readonly DefaultObjectPool<LvzData> _lvzDataObjectPool = new(new LvzDataPooledObjectPolicy(), Constants.TargetArenaCount * ushort.MaxValue);
 
         private readonly Action<Arena> _threadPoolWork_InitializeArena;
         private readonly LvzReader.ObjectDataReadDelegate<ArenaData> _objectDataRead;

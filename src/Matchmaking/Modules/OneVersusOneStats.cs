@@ -25,7 +25,7 @@ namespace SS.Matchmaking.Modules
 
         private PlayerDataKey<PlayerData> _pdKey;
         private readonly Dictionary<MatchIdentifier, MatchStats> _matchStats = new();
-        private readonly ObjectPool<MatchStats> _matchStatsObjectPool = new NonTransientObjectPool<MatchStats>(new MatchStatsPooledObjectPolicy());
+        private readonly DefaultObjectPool<MatchStats> _matchStatsObjectPool = new(new MatchStatsPooledObjectPolicy(), Constants.TargetPlayerCount);
 
         #region Module members
 

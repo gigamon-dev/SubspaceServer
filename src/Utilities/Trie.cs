@@ -134,9 +134,9 @@ namespace SS.Utilities
     /// </remarks>
     public class Trie<TValue> : IEnumerable<(ReadOnlyMemory<char> Key, TValue? Value)>, IReadOnlyTrie<TValue>
     {
-        private static readonly ObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(true));
-        private static readonly ObjectPool<TrieNode> s_caseInsensitiveTrieNodePool = new NonTransientObjectPool<TrieNode>(new TrieNodePooledObjectPolicy(false));
-        private static readonly ObjectPool<EnumeratorNode> s_enumeratorNodePool = new NonTransientObjectPool<EnumeratorNode>(new EnumeratorNodePooledObjectPolicy());
+        private static readonly DefaultObjectPool<TrieNode> s_caseSensitiveTrieNodePool = new(new TrieNodePooledObjectPolicy(true), int.MaxValue);
+        private static readonly DefaultObjectPool<TrieNode> s_caseInsensitiveTrieNodePool = new(new TrieNodePooledObjectPolicy(false), int.MaxValue);
+        private static readonly DefaultObjectPool<EnumeratorNode> s_enumeratorNodePool = new(new EnumeratorNodePooledObjectPolicy(), int.MaxValue);
 
         private readonly ObjectPool<TrieNode> _trieNodePool;
         private readonly TrieNode _root;

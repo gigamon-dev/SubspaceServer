@@ -47,7 +47,7 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IAuth> _iAuthToken;
 
-        private readonly ObjectPool<AuthRequest> _authRequestPool = new NonTransientObjectPool<AuthRequest>(new AuthRequestPooledObjectPolicy());
+        private readonly DefaultObjectPool<AuthRequest> _authRequestPool = new(new AuthRequestPooledObjectPolicy(), Constants.TargetPlayerCount);
 
         private PlayerDataKey<PlayerData> _pdkey;
 

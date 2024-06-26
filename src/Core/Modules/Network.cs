@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -59,7 +60,7 @@ namespace SS.Core.Modules
         private Pool<SubspaceBuffer> _bufferPool;
         private Pool<BigReceive> _bigReceivePool;
         private Pool<ReliableCallbackInvoker> _reliableCallbackInvokerPool;
-        private NonTransientObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
+        private ObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
 
         /// <summary>
         /// Config settings.
@@ -274,8 +275,7 @@ namespace SS.Core.Modules
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
             _bigReceivePool = objectPoolManager.GetPool<BigReceive>();
             _reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliableCallbackInvoker>();
-            _bufferNodePool = new NonTransientObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>());
-            _objectPoolManager.TryAddTracked(_bufferNodePool);
+            _bufferNodePool = new DefaultObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>(), 65536);
 
             if (!InitializeSockets())
                 return false;
@@ -597,8 +597,6 @@ namespace SS.Core.Modules
 
             _clientSocket.Close();
             _clientSocket = null;
-
-            _objectPoolManager.TryRemoveTracked(_bufferNodePool);
 
             _playerData.FreePlayerData(ref _connKey);
 

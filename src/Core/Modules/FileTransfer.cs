@@ -22,7 +22,7 @@ namespace SS.Core.Modules
         private IPlayerData _playerData;
         private InterfaceRegistrationToken<IFileTransfer> _iFileTransferToken;
 
-        private static readonly ObjectPool<DownloadDataContext> s_downloadDataContextPool = ObjectPool.Create(new DownloadDataContextPooledObjectPolicy());
+        private static readonly DefaultObjectPool<DownloadDataContext> s_downloadDataContextPool = new(new DownloadDataContextPooledObjectPolicy(), Constants.TargetPlayerCount);
 
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
@@ -566,7 +566,7 @@ namespace SS.Core.Modules
             }
 
 			public bool TryReset()
-            {
+			{
                 if (UploadedInvoker is not null)
                 {
                     // We do not want to invoke callbacks when we call Cleanup(...).

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Text;
@@ -19,7 +18,7 @@ namespace SS.Core.Modules
         private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<ILogManager> _iLogManagerToken;
 
-        private NonTransientObjectPool<StringBuilder> _stringBuilderPool;
+        private DefaultObjectPool<StringBuilder> _stringBuilderPool;
         private readonly BlockingCollection<LogEntry> _logQueue = new(4096);
         private Thread _loggingThread;
 
@@ -33,14 +32,19 @@ namespace SS.Core.Modules
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-            _stringBuilderPool = new NonTransientObjectPool<StringBuilder>(
+			// IObjectPoolManager provides a pool of StringBuilder objects, but those are meant for
+            // scenarios where a single thread synchronously rents, uses, and then returns the object.
+            // We need StringBuilder objects that will be passed through a producer-consumer queue,
+            // such that the objects are asynchronously processed. We have one or more threads producing,
+            // and a dedicated thread that consumes. Therefore, this uses its own separate pool.
+			_stringBuilderPool = new DefaultObjectPool<StringBuilder>(
                 new StringBuilderPooledObjectPolicy()
                 {
                     InitialCapacity = 1024,
                     MaximumRetainedCapacity = 4096,
-                }
-            );
-            _objectPoolManager.TryAddTracked(_stringBuilderPool);
+                },
+				32768 // an arbitrarily large retention limit that it ordinarily should never get to
+			);
 
             _iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
@@ -78,8 +82,6 @@ namespace SS.Core.Modules
             {
                 _rwLock.ExitWriteLock();
             }
-
-            _objectPoolManager.TryRemoveTracked(_stringBuilderPool);
 
             return true;
         }

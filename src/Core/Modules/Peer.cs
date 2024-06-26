@@ -64,8 +64,8 @@ namespace SS.Core.Modules
 
         private readonly Dictionary<SocketAddress, PeerZone> _peerDictionary = [];
 
-        private readonly ObjectPool<PeerArena> _peerArenaPool = new NonTransientObjectPool<PeerArena>(new PeerArenaPooledObjectPolicy());
-        private readonly ObjectPool<PeerArenaName> _peerArenaNamePool = new NonTransientObjectPool<PeerArenaName>(new PeerArenaNamePooledObjectPolicy());
+        private readonly DefaultObjectPool<PeerArena> _peerArenaPool = new(new PeerArenaPooledObjectPolicy(), Constants.TargetArenaCount);
+        private readonly DefaultObjectPool<PeerArenaName> _peerArenaNamePool = new(new PeerArenaNamePooledObjectPolicy(), Constants.TargetArenaCount);
 
         public Peer()
         {
@@ -591,7 +591,7 @@ namespace SS.Core.Modules
         {
             DateTime now = DateTime.UtcNow;
 
-            _rwLock.EnterWriteLock();
+            _rwLock.EnterUpgradeableReadLock();
             try
             {
                 foreach (PeerZone peerZone in _peers)
@@ -601,8 +601,17 @@ namespace SS.Core.Modules
                         PeerArena peerArena = peerZone.Arenas[i];
                         if ((now - peerArena.LastUpdate) > StaleArenaTimeout)
                         {
-                            peerZone.Arenas.RemoveAt(i);
-                            peerZone.ArenaLookup.Remove(peerArena.Name.RemoteName, out _);
+                            _rwLock.EnterWriteLock();
+                            try
+                            {
+								peerZone.Arenas.RemoveAt(i);
+								peerZone.ArenaLookup.Remove(peerArena.Name.RemoteName, out _);
+							}
+                            finally
+                            {
+                                _rwLock.ExitWriteLock();
+                            }
+                            
                             CleanupPeerArena(peerArena);
                         }
                     }
@@ -610,7 +619,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _rwLock.ExitWriteLock();
+                _rwLock.ExitUpgradeableReadLock();
             }
 
             return true;

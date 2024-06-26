@@ -40,7 +40,7 @@ namespace SS.Matchmaking.Modules
         private PlayerDataKey<PlayerData> _pdKey;
 
         private readonly HashSet<PlayerGroup> _groups = new(128);
-        private readonly ObjectPool<PlayerGroup> _playerGroupPool = new NonTransientObjectPool<PlayerGroup>(new PlayerGroupPooledObjectPolicy());
+        private readonly DefaultObjectPool<PlayerGroup> _playerGroupPool = new(new PlayerGroupPooledObjectPolicy(), Constants.TargetPlayerCount);
 
         private const string GroupCommandName = "group";
 

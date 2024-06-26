@@ -60,9 +60,9 @@ namespace SS.Core.Modules
         private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
         private readonly Trie<CommandGroup> _commandGroups = new(false);
 
-        private readonly ObjectPool<ArenaListItem> _arenaListItemPool = new NonTransientObjectPool<ArenaListItem>(new ArenaListItemPooledObjectPolicy());
-        private readonly ObjectPool<List<ArenaListItem>> _arenaListItemListPool = new DefaultObjectPool<List<ArenaListItem>>(new ListPooledObjectPolicy<ArenaListItem>() { InitialCapacity = Constants.TargetArenaCount });
-        private readonly ObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new DefaultObjectPool<List<PingHistogramBucket>>(new ListPooledObjectPolicy<PingHistogramBucket>() { InitialCapacity = 32 });
+        private readonly DefaultObjectPool<ArenaListItem> _arenaListItemPool = new(new ArenaListItemPooledObjectPolicy(), Constants.TargetArenaCount * 4);
+        private readonly DefaultObjectPool<List<ArenaListItem>> _arenaListItemListPool = new(new ListPooledObjectPolicy<ArenaListItem>() { InitialCapacity = Constants.TargetArenaCount });
+        private readonly DefaultObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new(new ListPooledObjectPolicy<PingHistogramBucket>() { InitialCapacity = 32 });
 
         public PlayerCommand()
         {
