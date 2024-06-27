@@ -5,7 +5,6 @@ using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.IO.Hashing;
@@ -303,15 +302,29 @@ namespace SS.Core.Modules
 
 							// Create the map data packet and copy the compressed data into it.
 							mapData = new byte[17 + compressedStream.Length];
-							int bytesRead = compressedStream.Read(mapData.AsSpan(17));
-							Debug.Assert(bytesRead == compressedStream.Length);
+                            Span<byte> dataSpan = mapData.AsSpan(17);
+                            while (dataSpan.Length > 0)
+                            {
+                                int bytesRead = compressedStream.Read(dataSpan);
+                                if (bytesRead == 0)
+                                    return null; // end of stream when we expected more data
+
+                                dataSpan = dataSpan[bytesRead..];
+                            }
 						}
 						else
 						{
 							// Create the map data packet and copy the uncompressed data into it.
 							mapData = new byte[17 + inputStream.Length];
-							int bytesRead = inputStream.Read(mapData.AsSpan(17));
-							Debug.Assert(bytesRead == inputStream.Length);
+							Span<byte> dataSpan = mapData.AsSpan(17);
+							while (dataSpan.Length > 0)
+							{
+								int bytesRead = inputStream.Read(dataSpan);
+								if (bytesRead == 0)
+									return null; // end of stream when we expected more data
+
+								dataSpan = dataSpan[bytesRead..];
+							}
 						}
 					}
 
@@ -570,9 +583,9 @@ namespace SS.Core.Modules
                 try
                 {
                     uint checksum;
-                    byte[] compressedData;
+                    byte[] fileData;
 
-                    try
+					try
                     {
                         FileStream newsStream = null;
                         int tries = 0;
@@ -629,16 +642,30 @@ namespace SS.Core.Modules
 
                             // compress using zlib
                             using MemoryStream compressedStream = new();
-                            using (ZLibStream zlibStream = new(
-                                compressedStream,
-                                CompressionLevel.Optimal,
-                                false))
+                            using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
                             {
                                 newsStream.CopyTo(zlibStream);
                             }
 
-                            compressedData = compressedStream.ToArray();
-                        }
+                            compressedStream.Position = 0;
+
+							fileData = new byte[17 + compressedStream.Length]; // 17 is the size of the header
+							fileData[0] = (byte)S2CPacketType.IncomingFile;
+							// intentionally leaving 16 bytes of 0 for the name
+							Span<byte> dataSpan = fileData.AsSpan(17);
+                            while (dataSpan.Length > 0)
+                            {
+                                int bytesRead = compressedStream.Read(dataSpan);
+                                if (bytesRead == 0)
+                                {
+                                    // end of stream when we expected more data
+                                    _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error loading '{_newsFilename}'. Unable to read all data.");
+									return; 
+								}
+
+								dataSpan = dataSpan[bytesRead..];
+							}
+						}
                         finally
                         {
                             newsStream.Dispose();
@@ -649,12 +676,6 @@ namespace SS.Core.Modules
                         _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error loading '{_newsFilename}'. {ex.Message}");
                         return;
                     }
-
-                    // prepare the file packet
-                    byte[] fileData = new byte[17 + compressedData.Length]; // 17 is the size of the header
-                    fileData[0] = (byte)S2CPacketType.IncomingFile;
-                    // intentionally leaving 16 bytes of 0 for the name
-                    Array.Copy(compressedData, 0, fileData, 17, compressedData.Length);
 
                     // update the data members
                     _rwLock.EnterWriteLock();
@@ -669,7 +690,7 @@ namespace SS.Core.Modules
                         _rwLock.ExitWriteLock();
                     }
 
-                    _parent._logManager.LogM(LogLevel.Info, nameof(MapNewsDownload), $"Loaded news.txt (checksum {checksum:X}), compressed as {compressedData.Length} bytes.");
+                    _parent._logManager.LogM(LogLevel.Info, nameof(MapNewsDownload), $"Loaded news.txt (checksum {checksum:X}).");
                 }
                 finally
                 {
