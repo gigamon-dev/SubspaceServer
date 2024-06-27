@@ -3,6 +3,7 @@ using SS.Utilities;
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -146,17 +147,21 @@ namespace SS.Core.Modules
             else
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
-
-                // TODO: call this on a worker thread
-                if (!_fileTransfer.SendFile(
-                    player,
-                    relativePath,
-                    Path.GetFileName(fullPath.AsSpan()),
-                    false))
-                {
-                    _chat.SendMessage(player, $"Error sending '{relativePath}'.");
-                }
+                Send(player, relativePath);
             }
+
+
+			// The command handler can't be made async since it has ReadOnlySpan<char> parameters.
+            // So, using a local function that is async void.
+			async void Send(Player player, string path)
+            {
+                // Use a worker thread to queue the file to be sent since we don't want to do file I/O on the mainloop thread.
+                // Note: Using ConfigureAwait since sending a chat message does not have to be done on the mainloop thread.
+				if (!await Task.Run(() => _fileTransfer.SendFile(player, path, Path.GetFileName(path.AsSpan()), false)).ConfigureAwait(false))
+				{
+                    _chat.SendMessage(player, $"Error sending '{path}'.");
+				}
+			}
         }
 
         [CommandHelp(
