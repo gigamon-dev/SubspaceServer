@@ -9,15 +9,12 @@ namespace SS.Core.ComponentInterfaces
     {
         /// <summary>
         /// Locks the global arena lock.
-        /// There is a lock protecting the arena list, which you need to hold
-        /// whenever you access ArenaList. 
-        /// Call this before you start, and Unlock() when you're done.
         /// </summary>
+        /// <remarks><see cref="Unlock"/> must be called when done.</remarks>
         void Lock();
 
         /// <summary>
         /// Unlocks the global arena lock.
-        /// Use this whenever you used Lock()
         /// </summary>
         void Unlock();
 

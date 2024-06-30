@@ -6,9 +6,26 @@ namespace SS.Core.ComponentInterfaces
 {
     public interface IPlayerData : IComponentInterface
     {
+        /// <summary>
+        /// Locks the global player lock for reading.
+        /// </summary>
+        /// <remarks><see cref="Unlock"/> must be called when done.</remarks>
         void Lock();
+
+        /// <summary>
+        /// Unlocks the global player lock for reading.
+        /// </summary>
         void Unlock();
+
+        /// <summary>
+        /// Locks the global player lock for writing.
+        /// </summary>
+        /// <remarks><see cref="WriteUnlock"/> must be called when done.</remarks>
         void WriteLock();
+
+        /// <summary>
+        /// Unlocks the global player lock for writing.
+        /// </summary>
         void WriteUnlock();
 
         /// <summary>

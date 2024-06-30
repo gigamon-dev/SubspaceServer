@@ -30,14 +30,14 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly ReaderWriterLockSlim _arenaLock = new(LockRecursionPolicy.SupportsRecursion);
 
-        private readonly Dictionary<string, Arena> _arenaDictionary = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Arena> _arenaDictionary = new(Constants.TargetArenaCount, StringComparer.OrdinalIgnoreCase);
         private readonly Trie<Arena> _arenaTrie = new(false);
 
         /// <summary>
         /// Key = module Type
         /// Value = list of arenas that have the module attached
         /// </summary>
-        private readonly Dictionary<Type, List<Arena>> _attachedModules = new();
+        private readonly Dictionary<Type, List<Arena>> _attachedModules = new(64);
 
         internal ComponentBroker Broker;
 
@@ -60,7 +60,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IArenaManagerInternal> _iArenaManagerInternalToken;
 
         // for managing per arena data
-        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
+        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(64);
         private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = Constants.TargetArenaCount };
 
         // population
@@ -73,12 +73,12 @@ namespace SS.Core.Modules
         /// <summary>
         /// Per player data key (<see cref="SpawnLoc"/>) 
         /// </summary>
-        private PlayerDataKey<SpawnLoc> _spawnkey;
+        private PlayerDataKey<SpawnLoc> _spawnKey;
 
         /// <summary>
         /// Per arena data key (<see cref="ArenaData"/>) 
         /// </summary>
-        private ArenaDataKey<ArenaData> _adkey;
+        private ArenaDataKey<ArenaData> _adKey;
 
         private FileSystemWatcher _knownArenaWatcher;
         private readonly Trie _knownArenaNames = new(false);
@@ -124,9 +124,8 @@ namespace SS.Core.Modules
             _network = broker.GetInterface<INetwork>();
             _chatNetwork = broker.GetInterface<IChatNetwork>();
 
-            _spawnkey = _playerData.AllocatePlayerData<SpawnLoc>();
-
-            _adkey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
+            _spawnKey = _playerData.AllocatePlayerData<SpawnLoc>();
+            _adKey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
 
             _network?.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
             _network?.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
@@ -222,9 +221,9 @@ namespace SS.Core.Modules
             _mainloopTimer.ClearTimer(MainloopTimer_ReapArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_DoArenaMaintenance, null);
 
-            _playerData.FreePlayerData(ref _spawnkey);
+            _playerData.FreePlayerData(ref _spawnKey);
 
-            ((IArenaManager)this).FreeArenaData(ref _adkey);
+            ((IArenaManager)this).FreeArenaData(ref _adKey);
 
             _arenaDictionary.Clear();
             _arenaTrie.Clear();
@@ -314,7 +313,7 @@ namespace SS.Core.Modules
                 // arena to close and then get resurrected
                 arena.Status = ArenaState.Closing;
 
-                if (arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                if (arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                     arenaData.Resurrect = true;
 
                 return true;
@@ -568,7 +567,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                             return;
 
                         arenaData.Holds++;
@@ -595,7 +594,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                             return;
 
                         if (arenaData.Holds > 0)
@@ -757,7 +756,7 @@ namespace SS.Core.Modules
                 span[0] = (byte)S2CPacketType.EnteringArena;
                 _network.SendToOne(player, span, NetSendFlags.Reliable);
 
-                if (player.TryGetExtraData(_spawnkey, out SpawnLoc spawnLoc))
+                if (player.TryGetExtraData(_spawnKey, out SpawnLoc spawnLoc))
                 {
                     if ((spawnLoc.X > 0) && (spawnLoc.Y > 0) && (spawnLoc.X < 1024) && (spawnLoc.Y < 1024))
                     {
@@ -1015,7 +1014,7 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                         continue;
 
                     ArenaState status = arena.Status;
@@ -1222,7 +1221,7 @@ namespace SS.Core.Modules
 
 		private void LoadArenaConfig(Arena arena)
 		{
-			if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+			if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
 			{
 				return;
 			}
@@ -1323,7 +1322,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Arena arena in _arenaDictionary.Values)
                     {
-                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                             continue;
 
                         arenaData.Reap = arena.Status == ArenaState.Running || arena.Status == ArenaState.Closing;
@@ -1332,14 +1331,14 @@ namespace SS.Core.Modules
                     foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena is not null
-                            && player.Arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                            && player.Arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                         {
                             arenaData.Reap = false;
                         }
 
                         if (player.NewArena is not null
                             && player.Arena != player.NewArena
-                            && player.NewArena.TryGetExtraData(_adkey, out arenaData))
+                            && player.NewArena.TryGetExtraData(_adKey, out arenaData))
                         {
                             if (player.NewArena.Status == ArenaState.Closing)
                             {
@@ -1354,7 +1353,7 @@ namespace SS.Core.Modules
 
                     foreach (Arena arena in _arenaDictionary.Values)
                     {
-                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                             continue;
 
                         if (arenaData.Reap && (arena.Status == ArenaState.Closing || !arena.KeepAlive))
@@ -1562,7 +1561,7 @@ namespace SS.Core.Modules
                     {
                         // arena is on it's way out
                         // this isn't a problem, just make sure that it will come back
-                        if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                             return;
 
                         arenaData.Resurrect = true;
@@ -1586,7 +1585,7 @@ namespace SS.Core.Modules
                 player.Packet.AcceptAudio = voices ? (byte)1 : (byte)0;
                 player.Flags.ObscenityFilter = obscene;
 
-                if (player.TryGetExtraData(_spawnkey, out SpawnLoc spawnLoc))
+                if (player.TryGetExtraData(_spawnKey, out SpawnLoc spawnLoc))
                 {
                     spawnLoc.X = (short)spawnX;
                     spawnLoc.Y = (short)spawnY;

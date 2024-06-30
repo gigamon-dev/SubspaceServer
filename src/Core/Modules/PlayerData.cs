@@ -34,22 +34,23 @@ namespace SS.Core.Modules
         /// Dictionary of active players.
         /// </summary>
         /// <remarks>Key =  PlayerId</remarks>
-        private readonly Dictionary<int, Player> _playerDictionary = new(256);
+        private readonly Dictionary<int, Player> _playerDictionary = new(Constants.TargetPlayerCount);
 
         /// <summary>
         /// Players queued to be freed that are in a state where they've been removed from the <see cref="_playerDictionary"/>, but are not yet in the <see cref="_freePlayersQueue"/>.
         /// Player objects in this collection still have their extra data.
         /// </summary>
-        private readonly HashSet<Player> _playersBeingFreed = new(256);
+        private readonly HashSet<Player> _playersBeingFreed = new(Constants.TargetPlayerCount);
 
         /// <summary>
         /// Queue of unused player objects and when each becomes available again.
-        /// This is used to keep track of the PlayerIds (and associated <see cref="Player"/> object) can be reused and when.
+        /// This is used to keep track when of the PlayerIds, and associated <see cref="Player"/> object, can be reused.
+        /// Player objects in this collection have had their extra data removed.
         /// </summary>
-        private readonly Queue<FreePlayerInfo> _freePlayersQueue = new(256);
+        private readonly Queue<FreePlayerInfo> _freePlayersQueue = new(Constants.TargetPlayerCount);
 
-        // for managing per player data
-        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new();
+        // For managing per player data
+        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(64);
         private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = Constants.TargetPlayerCount };
 
         // Cached delegates
@@ -91,9 +92,6 @@ namespace SS.Core.Modules
 
         #region Locks
 
-        /// <summary>
-        /// Locks global player data for reading
-        /// </summary>
         public void Lock()
         {
             _rwLock.EnterReadLock();
@@ -104,9 +102,6 @@ namespace SS.Core.Modules
             _rwLock.ExitReadLock();
         }
 
-        /// <summary>
-        /// Locks global player data for writing
-        /// </summary>
         public void WriteLock()
         {
             _rwLock.EnterWriteLock();
@@ -132,17 +127,17 @@ namespace SS.Core.Modules
                 if (_freePlayersQueue.TryPeek(out FreePlayerInfo free)
                     && DateTime.UtcNow > free.AvailableTimestamp)
                 {
-                    // reuse an existing player object that is now available
+                    // Reuse an existing player object that is now available
                     free = _freePlayersQueue.Dequeue();
                     player = free.Player;
                 }
                 else
                 {
-                    // no available player objects, create a new one
+                    // No available player objects, create a new one
                     player = new Player(_nextPlayerId++, this);
                 }
 
-                // set player info
+                // Set player info
                 player.Status = PlayerState.Uninitialized;
                 player.Type = clientType;
                 player.Arena = null;
@@ -152,7 +147,7 @@ namespace SS.Core.Modules
                 player.ConnectTime = DateTime.UtcNow;
                 player.ConnectAs = null;
 
-                // initialize the player's per player data
+                // Initialize the player's per player data
                 foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                 {
                     player.SetExtraData(keyId, factory.Get());
@@ -216,11 +211,11 @@ namespace SS.Core.Modules
 					return;
 
 				// Remove the extra player data.
-				foreach ((int keyId, ExtraDataFactory info) in _extraDataRegistrations)
+				foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
 				{
 					if (player.TryRemoveExtraData(keyId, out object data))
 					{
-						info.Return(data);
+						factory.Return(data);
 					}
 				}
 
@@ -245,7 +240,7 @@ namespace SS.Core.Modules
 
             try
             {
-                // this will set state to PlayerState.LeavingArena, if it was anywhere above PlayerState.LoggedIn
+                // This will set state to PlayerState.LeavingArena, if it was anywhere above PlayerState.LoggedIn
                 if (player.Arena is not null)
                 {
                     IArenaManagerInternal aman = Broker.GetInterface<IArenaManagerInternal>();
@@ -262,7 +257,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                // set this special flag so that the player will be set to leave
+                // Set this special flag so that the player will be set to leave
                 // the zone when the PlayerState.LeavingArena-initiated actions are completed
                 player.WhenLoggedIn = PlayerState.LeavingZone;
             }
@@ -321,13 +316,10 @@ namespace SS.Core.Modules
 
         void IPlayerData.TargetToSet(ITarget target, HashSet<Player> set, Predicate<Player> predicate)
         {
-            if (target is null)
-                throw new ArgumentNullException(nameof(target));
+			ArgumentNullException.ThrowIfNull(target);
+			ArgumentNullException.ThrowIfNull(set);
 
-            if (set is null)
-                throw new ArgumentNullException(nameof(set));
-
-            switch (target.Type)
+			switch (target.Type)
             {
                 case TargetType.Player:
                     if (target.TryGetPlayerTarget(out Player targetPlayer) && (predicate is null || predicate(targetPlayer)))
@@ -431,7 +423,7 @@ namespace SS.Core.Modules
 
                 int keyId;
 
-                // find next available
+                // Find the next available extra data key.
                 for (keyId = 1; keyId <= _extraDataRegistrations.Keys.Count; keyId++)
                 {
                     if (_extraDataRegistrations.Keys[keyId-1] != keyId)
@@ -512,25 +504,19 @@ namespace SS.Core.Modules
 
         #region Helper Types
 
-        private readonly struct FreePlayerInfo
-        {
+        private readonly struct FreePlayerInfo(Player player)
+		{
             /// <summary>
             /// The time the associated player object (predominantly its Id) will be available.
             /// </summary>
-            public readonly DateTime AvailableTimestamp;
+            public readonly DateTime AvailableTimestamp = DateTime.UtcNow + PlayerReuseDelay;
 
             /// <summary>
             /// The player object
             /// </summary>
-            public readonly Player Player;
+            public readonly Player Player = player;
+		}
 
-            public FreePlayerInfo(Player player)
-            {
-                AvailableTimestamp = DateTime.UtcNow + PlayerReuseDelay;
-                Player = player;
-            }
-        }
-
-        #endregion
-    }
+		#endregion
+	}
 }
