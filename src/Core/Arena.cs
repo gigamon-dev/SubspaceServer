@@ -243,7 +243,7 @@ namespace SS.Core
         /// <summary>
         /// Used to store Per Arena Data.
         /// </summary>
-        private readonly ConcurrentDictionary<int, object> _extraData = new();
+        private readonly ConcurrentDictionary<int, object> _extraData = new(-1, Constants.TargetArenaExtraDataCount);
 
         /// <summary>
         /// Attempts to get extra data with the specified key.

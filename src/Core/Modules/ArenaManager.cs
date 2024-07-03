@@ -60,7 +60,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IArenaManagerInternal> _iArenaManagerInternalToken;
 
         // for managing per arena data
-        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(64);
+        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(Constants.TargetArenaExtraDataCount);
         private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = Constants.TargetArenaCount };
 
         // population

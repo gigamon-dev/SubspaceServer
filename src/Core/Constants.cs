@@ -107,6 +107,8 @@ namespace SS.Core
 
 		#endregion
 
+		#region Target Item Counts
+
 		/// <summary>
 		/// The expected upper limit on the # of players.
 		/// </summary>
@@ -122,6 +124,24 @@ namespace SS.Core
 		/// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
 		/// </remarks>
 		public const int TargetArenaCount = 64;
+
+		/// <summary>
+		/// The expected upper limit on the # of per-player data registrations.
+		/// </summary>
+		/// <remarks>
+		/// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
+		/// </remarks>
+		public const int TargetPlayerExtraDataCount = 64;
+
+		/// <summary>
+		/// The expected upper limit on the # of per-arena data registrations.
+		/// </summary>
+		/// <remarks>
+		/// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
+		/// </remarks>
+		public const int TargetArenaExtraDataCount = 64;
+
+        #endregion
 
         public const int RandMax = 0x7fff;
 

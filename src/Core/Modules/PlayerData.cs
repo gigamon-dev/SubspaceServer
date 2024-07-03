@@ -50,7 +50,7 @@ namespace SS.Core.Modules
         private readonly Queue<FreePlayerInfo> _freePlayersQueue = new(Constants.TargetPlayerCount);
 
         // For managing per player data
-        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(64);
+        private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(Constants.TargetPlayerExtraDataCount);
         private readonly DefaultObjectPoolProvider _poolProvider = new() { MaximumRetained = Constants.TargetPlayerCount };
 
         // Cached delegates

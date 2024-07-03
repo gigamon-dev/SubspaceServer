@@ -705,7 +705,7 @@ namespace SS.Core
         /// <remarks>
         /// Using ConcurrentDictionary to allow multiple readers and 1 writer (the PlayerData module).
         /// </remarks>
-        private readonly ConcurrentDictionary<int, object> _extraData = new();
+        private readonly ConcurrentDictionary<int, object> _extraData = new(-1, Constants.TargetPlayerExtraDataCount);
 
         /// <summary>
         /// Attempts to get extra data with the specified key.
