@@ -147,20 +147,33 @@ namespace SS.Core.Modules
             else
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
-                Send(player, relativePath);
+                Send(player.Name, relativePath);
             }
 
-
-			// The command handler can't be made async since it has ReadOnlySpan<char> parameters.
-            // So, using a local function that is async void.
-			async void Send(Player player, string path)
+			void Send(string playerName, string path)
             {
                 // Use a worker thread to queue the file to be sent since we don't want to do file I/O on the mainloop thread.
-                // Note: Using ConfigureAwait since sending a chat message does not have to be done on the mainloop thread.
-				if (!await Task.Run(() => _fileTransfer.SendFile(player, path, Path.GetFileName(path.AsSpan()), false)).ConfigureAwait(false))
-				{
-                    _chat.SendMessage(player, $"Error sending '{path}'.");
-				}
+                // Purposely passing the player's name instead of the Player object since the Player object's state could change (e.g. player disconnects).
+                _ = Task.Run(() =>
+                {
+                    _playerData.Lock();
+
+                    try
+                    {
+                        Player player = _playerData.FindPlayer(playerName);
+                        if (player is null)
+                            return;
+
+                        if (!_fileTransfer.SendFile(player, path, Path.GetFileName(path.AsSpan()), false))
+                        {
+							_chat.SendMessage(player, $"Error sending '{path}'.");
+						}
+					}
+                    finally
+                    {
+                        _playerData.Unlock();
+                    }
+                });
 			}
         }
 
