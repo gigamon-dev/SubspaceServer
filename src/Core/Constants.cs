@@ -55,9 +55,9 @@ namespace SS.Core
         public static readonly IReadOnlyCollection<string> LvzSearchPaths = new ReadOnlyCollection<string>(
             new string[] {
                 "arenas/{1}/{0}",
-                ":maps/{0}",
-                ":{0}",
-                ":arenas/(default)/{0}",
+                "maps/{0}",
+                "{0}",
+                "arenas/(default)/{0}",
             });
 
         #endregion
