@@ -10,6 +10,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
@@ -49,7 +50,6 @@ namespace SS.Core.Modules
         private ILagCollect _lagCollect;
         private ILogManager _logManager;
         private IMainloop _mainloop;
-        private IMainloopTimer _mainloopTimer;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPrng _prng;
@@ -61,11 +61,13 @@ namespace SS.Core.Modules
         private Pool<BigReceive> _bigReceivePool;
         private Pool<ReliableCallbackInvoker> _reliableCallbackInvokerPool;
         private ObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
+		private readonly DefaultObjectPool<LinkedListNode<ISizedSendData>> _sizedSendDataNodePool = new(new LinkedListNodePooledObjectPolicy<ISizedSendData>(), Constants.TargetPlayerCount);
+		private readonly DefaultObjectPool<LinkedListNode<ConnData>> _connDataNodePool = new(new LinkedListNodePooledObjectPolicy<ConnData>(), Constants.TargetPlayerCount);
 
-        /// <summary>
-        /// Config settings.
-        /// </summary>
-        private readonly Config _config = new();
+		/// <summary>
+		/// Config settings.
+		/// </summary>
+		private readonly Config _config = new();
 
         /// <summary>
         /// Data used to respond to pings.
@@ -154,8 +156,35 @@ namespace SS.Core.Modules
         /// </remarks>
         private readonly MessagePassingQueue<ConnData> _relqueue = new();
 
-        // Used for stopping the SendThread and ReceiveThread.
-        private readonly CancellationTokenSource _stopCancellationTokenSource = new();
+		#region Sized Send members
+
+		/// <summary>
+		/// For synchronizing <see cref="_sizedSendConnections"/> and <see cref="_sizedSendQueue"/>.
+		/// </summary>
+		private readonly object _sizedSendLock = new();
+
+		/// <summary>
+		/// The connections with a sized send in progress.
+		/// </summary>
+		/// <remarks>
+		/// The LinkedListNode reference is to be able to quickly tell if the connection is in the <see cref="_sizedSendQueue"/> without having to iterate over the queue.
+		/// </remarks>
+		private readonly Dictionary<ConnData, LinkedListNode<ConnData>> _sizedSendConnections = new();
+
+		/// <summary>
+		/// Queue containing connections to process.
+		/// </summary>
+		private readonly LinkedList<ConnData> _sizedSendQueue = new();
+
+		/// <summary>
+		/// An event that is signaled when work has been added to the <see cref="_sizedSendQueue"/>.
+		/// </summary>
+		private readonly AutoResetEvent _sizedSendEvent = new(false);
+
+		#endregion
+
+		// Used to stop the SendThread, ReceiveThread, and SizedSendThread.
+		private readonly CancellationTokenSource _stopCancellationTokenSource = new();
         private CancellationToken _stopToken;
 
         private readonly List<Thread> _threadList = new();
@@ -210,12 +239,14 @@ namespace SS.Core.Modules
 		// Cached delegates
 		private readonly Action<BigPacketWork> _mainloopWork_CallBigPacketHandlers;
 		private readonly Action<SubspaceBuffer> _mainloopWork_CallPacketHandlers;
+        private readonly ReliableDelegate _sizedSendChunkCompleted;
 
 		public Network()
 		{
 			// Allocate callback delegates once rather than each time they're used.
 			_mainloopWork_CallBigPacketHandlers = MainloopWork_CallBigPacketHandlers;
 			_mainloopWork_CallPacketHandlers = MainloopWork_CallPacketHandlers;
+            _sizedSendChunkCompleted = SizedSendChunkCompleted;
 
 			_oohandlers = new CorePacketHandler[20];
 
@@ -252,7 +283,6 @@ namespace SS.Core.Modules
             ILagCollect lagCollect,
             ILogManager logManager,
             IMainloop mainloop,
-            IMainloopTimer mainloopTimer,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IPrng prng)
@@ -263,7 +293,6 @@ namespace SS.Core.Modules
             _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
@@ -275,24 +304,20 @@ namespace SS.Core.Modules
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
             _bigReceivePool = objectPoolManager.GetPool<BigReceive>();
             _reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliableCallbackInvoker>();
-            _bufferNodePool = new DefaultObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>(), 65536);
+			_bufferNodePool = new DefaultObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>(), Constants.TargetPlayerCount * _config.MaxOutlistSize);
 
-            if (!InitializeSockets())
+			if (!InitializeSockets())
                 return false;
 
             _stopToken = _stopCancellationTokenSource.Token;
 
-            // receive thread
-            Thread thread = new(ReceiveThread);
-            thread.Name = $"{nameof(Network)}-recv";
-            thread.Start();
+			// receive thread
+			Thread thread = new(ReceiveThread) { Name = $"{nameof(Network)}-recv" };
+			thread.Start();
             _threadList.Add(thread);
 
             // send thread
-            thread = new Thread(SendThread)
-            {
-                Name = $"{nameof(Network)}-send"
-            };
+            thread = new Thread(SendThread) { Name = $"{nameof(Network)}-send" };
             thread.Start();
             _threadList.Add(thread);
 
@@ -300,17 +325,16 @@ namespace SS.Core.Modules
             int reliableThreadCount = _configManager.GetInt(_configManager.Global, "Net", "ReliableThreads", 1);
             for (int i = 0; i < reliableThreadCount; i++)
             {
-                thread = new Thread(RelThread)
-                {
-                    Name = $"{nameof(Network)}-rel-" + i
-                };
+                thread = new Thread(RelThread) { Name = $"{nameof(Network)}-rel-" + i };
                 thread.Start();
                 _reliableThreads.Add(thread);
                 _threadList.Add(thread);
             }
 
-            // queue more data thread (sends sized data)
-            _mainloopTimer.SetTimer(MainloopTimer_QueueSizedData, 200, 110, null); // TODO: maybe change it to be in its own thread?
+			// sized send thread
+			thread = new(SizedSendThread) { Name = $"{nameof(Network)}-sized-send" };
+			thread.Start();
+            _threadList.Add(thread);
 
             _iNetworkToken = broker.RegisterInterface<INetwork>(this);
             _iNetworkClientToken = broker.RegisterInterface<INetworkClient>(this);
@@ -560,8 +584,6 @@ namespace SS.Core.Modules
 
             if (broker.UnregisterInterface(ref _iNetworkEncryptionToken) != 0)
                 return false;
-
-            _mainloopTimer.ClearTimer(MainloopTimer_QueueSizedData, null);
 
             // stop threads
             _stopCancellationTokenSource.Cancel();
@@ -827,7 +849,7 @@ namespace SS.Core.Modules
         void INetwork.SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback)
         {
             ReliableCallbackInvoker invoker = _reliableCallbackInvokerPool.Get();
-            invoker.SetCallback(callback);
+            invoker.SetCallback(callback, ReliableCallbackExecutionOption.Mainloop);
             SendWithCallback(player, data, invoker);
         }
 
@@ -839,7 +861,7 @@ namespace SS.Core.Modules
         void INetwork.SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
         {
             ReliableCallbackInvoker<TState> invoker = _objectPoolManager.GetPool<ReliableCallbackInvoker<TState>>().Get();
-            invoker.SetCallback(callback, clos);
+            invoker.SetCallback(callback, clos, ReliableCallbackExecutionOption.Mainloop);
             SendWithCallback(player, data, invoker);
         }
 
@@ -873,15 +895,14 @@ namespace SS.Core.Modules
 
         bool INetwork.SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestCallback, T clos)
         {
-            if (player == null)
-            {
+            if (player is null)
                 return false;
-            }
 
             if (len <= 0)
-            {
                 return false;
-            }
+
+            if (requestCallback is null)
+                return false;
 
             if (!IsOurs(player))
             {
@@ -889,17 +910,59 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
-                return false;
+			if (!player.TryGetExtraData(_connKey, out ConnData conn))
+				return false;
 
-            SizedSendData<T> sd = new(requestCallback, clos, len, 0);
+			_playerData.Lock();
 
-            lock (conn.olmtx)
+            try
             {
-                conn.sizedsends.AddLast(sd);
+                if (player.Status >= PlayerState.TimeWait)
+                {
+                    // The player is being disconnected. Do not allow a sized send to be started.
+                    return false;
+                }
+
+				// Add the sized send while continuing to hold the global player data lock (so that the status can't be changed while we're adding).
+				SizedSendData<T> sizedSendData = SizedSendData<T>.Pool.Get();
+				sizedSendData.Initialize(requestCallback, clos, len);
+
+				LinkedListNode<ISizedSendData> node = _sizedSendDataNodePool.Get();
+				node.Value = sizedSendData;
+
+				lock (conn.SizedSendLock)
+				{
+					conn.SizedSends.AddLast(node);
+				}
+			}
+            finally
+            {
+                _playerData.Unlock();
             }
 
-            return true;
+            // Add the connection to the sized send queue to be processed.
+            bool queued = false;
+
+            lock (_sizedSendLock)
+            {
+                if (!_sizedSendConnections.TryGetValue(conn, out LinkedListNode<ConnData> connNode))
+                {
+                    connNode = _connDataNodePool.Get();
+                    connNode.Value = conn;
+
+                    _sizedSendConnections.Add(conn, connNode);
+                    _sizedSendQueue.AddLast(connNode);
+
+                    queued = true;
+                }
+            }
+
+            if (queued)
+            {
+                _sizedSendEvent.Set();
+            }
+
+			return true;
         }
 
         void INetwork.AddPacket(C2SPacketType packetType, PacketDelegate func)
@@ -1259,8 +1322,8 @@ namespace SS.Core.Modules
 
                     if (b.CallbackInvoker != null)
                     {
-                        QueueReliableCallback(b.CallbackInvoker, conn.p, true);
-                        b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
+                        ExecuteReliableCallback(b.CallbackInvoker, conn.p, true);
+                        b.CallbackInvoker = null;
                     }
 
                     if (b.Tries == 1)
@@ -1496,20 +1559,50 @@ namespace SS.Core.Modules
             if (data.Length != 2)
                 return;
 
-            // the client has requested a cancel for the sized transfer
-            lock (conn.olmtx)
+            bool cancelled = false;
+
+            // The client has requested to cancel the sized transfer.
+            // Find the first sized send that is not already cancelled and cancel it.
+            lock (conn.SizedSendLock)
             {
-                // cancel current sized transfer
-                LinkedListNode<ISizedSendData> node = conn.sizedsends.First;
-                if (node is not null)
+                LinkedListNode<ISizedSendData> node = conn.SizedSends.First;
+                while (node is not null)
                 {
-                    ISizedSendData sd = node.Value;
-                    sd?.RequestData(0, Span<byte>.Empty); // notify transfer complete
-                    conn.sizedsends.RemoveFirst();
+                    LinkedListNode<ISizedSendData> next = node.Next;
+
+                    ISizedSendData ssd = node.Value;
+                    if (!ssd.IsCancellationRequested)
+                    {
+                        ssd.Cancel(true);
+                        cancelled = true;
+						break;
+                    }
+
+                    node = node.Next;
+				}
+            }
+
+            if (cancelled)
+            {
+                // Make sure the connection is in the queue to be processed.
+                bool queued = false;
+
+                lock (_sizedSendLock)
+                {
+                    if (_sizedSendConnections.TryGetValue(conn, out LinkedListNode<ConnData> node))
+                    {
+                        if (node.List is null)
+                        {
+                            _sizedSendQueue.AddLast(node);
+                            queued = true;
+                        }
+					}
                 }
 
-                ReadOnlySpan<byte> cancelSizedAckSpan = stackalloc byte[2] { 0x00, 0x0C };
-                SendOrBufferPacket(conn, cancelSizedAckSpan, NetSendFlags.Reliable);
+                if (queued)
+                {
+                    _sizedSendEvent.Set();
+                }
             }
         }
 
@@ -1586,6 +1679,7 @@ namespace SS.Core.Modules
         {
             _stopCancellationTokenSource.Dispose();
             _clientConnectionsLock.Dispose();
+            _sizedSendEvent.Dispose();
         }
 
         #endregion
@@ -2472,7 +2566,12 @@ namespace SS.Core.Modules
                         outlistlen += conn.UnsentRelOutList.Count;
                     }
 
-                    LinkedListNode<SubspaceBuffer> nextNode;
+					//if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
+					//{
+					//	_logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Send iteration");
+					//}
+
+					LinkedListNode<SubspaceBuffer> nextNode;
                     for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
                     {
                         nextNode = node.Next;
@@ -2519,8 +2618,13 @@ namespace SS.Core.Modules
                             checkBytes,
                             (BandwidthPriority)pri))
                         {
-                            // try dropping it, if we can
-                            if ((buf.SendFlags & NetSendFlags.Droppable) != 0)
+							//if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
+							//{
+							//	_logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Send hit bandwidth limit");
+							//}
+
+							// try dropping it, if we can
+							if ((buf.SendFlags & NetSendFlags.Droppable) != 0)
                             {
                                 Debug.Assert(pri < (int)BandwidthPriority.Reliable);
                                 outlist.Remove(node);
@@ -2544,6 +2648,11 @@ namespace SS.Core.Modules
 
                         buf.LastRetry = DateTime.UtcNow;
                         buf.Tries++;
+
+                        //if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
+                        //{
+                        //    _logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Sending reliable data ({buf.NumBytes} bytes)");
+                        //}
 
                         // this sends it or adds it to a pending grouped packet
                         packetGrouper.Send(buf, conn);
@@ -2593,27 +2702,20 @@ namespace SS.Core.Modules
             // call with player status locked
             void ProcessLagouts(Player player, DateTime now, List<Player> toKick, List<Player> toFree)
             {
-                if (player == null)
-                    throw new ArgumentNullException(nameof(player));
+				ArgumentNullException.ThrowIfNull(player);
+				ArgumentNullException.ThrowIfNull(toKick);
+				ArgumentNullException.ThrowIfNull(toFree);
 
-                if (toKick == null)
-                    throw new ArgumentNullException(nameof(toKick));
-
-                if (toFree == null)
-                    throw new ArgumentNullException(nameof(toFree));
-
-                if (!player.TryGetExtraData(_connKey, out ConnData conn))
+				if (!player.TryGetExtraData(_connKey, out ConnData conn))
                     return;
 
-                // this is used for lagouts and also for timewait
                 TimeSpan diff = now - conn.lastPkt;
 
-                // process lagouts
+                // Process lagouts
                 if (player.WhenLoggedIn == PlayerState.Uninitialized // acts as flag to prevent dups
                     && player.Status < PlayerState.LeavingZone // don't kick them if they're already on the way out
                     && (diff > _config.DropTimeout || conn.HitMaxRetries || conn.HitMaxOutlist)) // these three are our kicking conditions, for now
                 {
-                    // manually create an unreliable chat packet because we won't have time to send it properly
                     string reason;
                     if (conn.HitMaxRetries)
                         reason = "too many reliable retries";
@@ -2622,32 +2724,93 @@ namespace SS.Core.Modules
                     else
                         reason = "no data";
 
-                    string message = "You have been disconnected because of lag (" + reason + ").\0"; // it looks like asss sends a null terminated string
-
-                    using SubspaceBuffer buf = _bufferPool.Get();
-                    buf.Bytes[0] = (byte)S2CPacketType.Chat;
-                    buf.Bytes[1] = (byte)ChatMessageType.SysopWarning;
-                    buf.Bytes[2] = 0x00;
-                    buf.Bytes[3] = 0x00;
-                    buf.Bytes[4] = 0x00;
-                    buf.NumBytes = 5 + StringUtils.DefaultEncoding.GetBytes(message, 0, message.Length, buf.Bytes, 5);
-
-                    lock (conn.olmtx)
+					// Send a disconnect chat message.
+					// This is sent unreliably since there's no guarantee everything in the outgoing reliable queue will get sent before the player's connection is disconnected.
+					const string disconnectMessageBegin = "You have been disconnected because of lag (";
+					const string disconnectMessageEnd = ").";
+                    Span<char> message = stackalloc char[disconnectMessageBegin.Length + reason.Length + disconnectMessageEnd.Length];
+                    if (message.TryWrite($"{disconnectMessageBegin}{reason}{disconnectMessageEnd}", out int charsWritten))
                     {
-                        SendRaw(conn, buf.Bytes.AsSpan(0, buf.NumBytes));
-                    }
+                        message = message[..charsWritten];
+
+						Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(message)];
+						ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
+						chatPacket.Type = (byte)S2CPacketType.Chat;
+						chatPacket.ChatType = (byte)ChatMessageType.SysopWarning;
+						chatPacket.Sound = (byte)ChatSound.None;
+						chatPacket.PlayerId = -1;
+						int length = ChatPacket.SetMessage(chatBytes, message);
+
+                        lock (conn.olmtx)
+                        {
+                            SendRaw(conn, chatBytes[..length]);
+                        }
+					}
 
                     _logManager.LogM(LogLevel.Info, nameof(Network), $"[{player.Name}] [pid={player.Id}] Player kicked for {reason}.");
 
                     toKick.Add(player);
                 }
 
-                // process timewait state
-                // status is locked (shared) in here
+                // Process disconnects (timewait state)
                 if (player.Status == PlayerState.TimeWait)
                 {
-                    // finally, send disconnection packet
-                    Span<byte> disconnectSpan = stackalloc byte[] { 0x00, 0x07 };
+                    bool hasSizedSend;
+					bool cancelledSizeSend = false;
+
+					lock (conn.SizedSendLock)
+                    {
+						LinkedListNode<ISizedSendData> node = conn.SizedSends.First;
+						hasSizedSend = node is not null;
+
+						// Make sure that all sized sends are cancelled.
+						while (node is not null)
+						{
+							LinkedListNode<ISizedSendData> next = node.Next;
+
+							ISizedSendData ssd = node.Value;
+							if (!ssd.IsCancellationRequested)
+							{
+								ssd.Cancel(false);
+								cancelledSizeSend = true;
+							}
+
+							node = node.Next;
+						}
+                    }
+
+					if (cancelledSizeSend)
+					{
+                        // Make sure the connection is in the sized send queue to be processed.
+                        bool queued = false;
+
+						lock (_sizedSendLock)
+						{
+							if (_sizedSendConnections.TryGetValue(conn, out LinkedListNode<ConnData> connNode))
+							{
+								if (connNode.List is null)
+								{
+									_sizedSendQueue.AddLast(connNode);
+                                    queued = true;
+								}
+							}
+						}
+
+                        if (queued)
+                        {
+                            _sizedSendEvent.Set();
+                        }
+					}
+
+                    if (hasSizedSend)
+                    {
+						// Wait for the SizedSendThread to process the sized send(s).
+                        // On a later iteration the sized sends will be gone.
+						return;
+                    }
+
+					// finally, send disconnection packet
+					Span<byte> disconnectSpan = [0x00, 0x07];
                     SendRaw(conn, disconnectSpan);
 
                     // clear all our buffers
@@ -2677,10 +2840,7 @@ namespace SS.Core.Modules
 
             void ClearBuffers(Player player)
             {
-                if (player == null)
-                    return;
-
-                if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                if (player is null || !player.TryGetExtraData(_connKey, out ConnData conn))
                     return;
 
                 lock (conn.olmtx)
@@ -2693,18 +2853,19 @@ namespace SS.Core.Modules
                     {
                         ClearOutgoingQueue(conn.outlist[i]);
                     }
-
-                    // and sized outgoing
-                    foreach (ISizedSendData sd in conn.sizedsends)
-                    {
-                        sd.RequestData(0, Span<byte>.Empty);
-                    }
-
-                    conn.sizedsends.Clear();
                 }
 
-                // now clear out the connection's incoming rel buffer
-                lock (conn.relmtx)
+				// There should be no sized sends when this method is called.
+				// The SizedSendThread should have already cleaned it up, since we waited.
+#if DEBUG
+				lock (conn.SizedSendLock)
+				{
+					Debug.Assert(conn.SizedSends.Count == 0);
+				}
+#endif
+
+				// now clear out the connection's incoming rel buffer
+				lock (conn.relmtx)
                 {
                     for (int i = 0; i < conn.relbuf.Length; i++)
                     {
@@ -2729,8 +2890,8 @@ namespace SS.Core.Modules
                         SubspaceBuffer b = node.Value;
                         if (b.CallbackInvoker != null)
                         {
-                            QueueReliableCallback(b.CallbackInvoker, player, false);
-                            b.CallbackInvoker = null; // the workitem is now responsible for disposing the callback invoker
+                            ExecuteReliableCallback(b.CallbackInvoker, player, false);
+                            b.CallbackInvoker = null;
                         }
 
                         outlist.Remove(node);
@@ -2791,104 +2952,357 @@ namespace SS.Core.Modules
             }
         }
 
-        #endregion
+		#endregion
 
-        #region Members for MainloopTimer_QueueSizedData
+		/// <summary>
+		/// This thread manages sized sends.
+		/// It queues data to be sent for sized sends in progress.
+		/// Also, it cleans up sized sends that have been cancelled.
+		/// </summary>
+		private void SizedSendThread()
+		{
+			WaitHandle[] waitHandles = [_sizedSendEvent, _stopToken.WaitHandle];
 
-        private byte[] _queueDataBuffer = null;
-        private readonly byte[] _queueDataHeader = new byte[6] { 0x00, 0x0A, 0, 0, 0, 0 }; // size of a presized data packet header
-
-        #endregion
-
-        /// <summary>
-        /// Attempts to queue up sized send data for each UDP player.
-        /// <para>
-        /// For each player, it will check if there is sized send work that can be processed (work exists and is not past sized queue limits).
-        /// If so, it will retrieve data from the sized send callback (can be partial data), 
-        /// break the data into sized send packets (0x0A), 
-        /// and add those packets to player's outgoing reliable queue.
-        /// </para>
-        /// <para>Sized packets are sent reliably so that the other end can reconstruct the data properly.</para>
-        /// </summary>
-        /// <returns>True, meaning it wants the timer to call it again.</returns>
-        private bool MainloopTimer_QueueSizedData()
-        {
-            int requestAtOnce = _config.PresizedQueuePackets * Constants.ChunkSize;
-
-            byte[] buffer = _queueDataBuffer;
-            if (buffer == null || buffer.Length < requestAtOnce + _queueDataHeader.Length)
-                buffer = _queueDataBuffer = new byte[requestAtOnce + _queueDataHeader.Length];
-
-            Span<byte> sizedLengthSpan = new(_queueDataHeader, 2, 4);
-            _playerData.Lock();
-
-            try
+            while (!_stopToken.IsCancellationRequested)
             {
-                foreach (Player p in _playerData.Players)
+                switch (WaitHandle.WaitAny(waitHandles))
                 {
-                    if (!IsOurs(p) || p.Status >= PlayerState.TimeWait)
-                        continue;
+                    case 0:
+                        ProcessSizedSendQueue();
+                        break;
 
-                    if (!p.TryGetExtraData(_connKey, out ConnData conn))
-                        continue;
+                    case 1:
+                        // We've been told to stop.
+                        return;
+                }
+            }
 
-                    if (Monitor.TryEnter(conn.olmtx) == false)
-                        continue;
 
-                    if (conn.sizedsends.First != null
-                        && conn.outlist[(int)BandwidthPriority.Reliable].Count + conn.UnsentRelOutList.Count < _config.PresizedQueueThreshold)
+            void ProcessSizedSendQueue()
+			{
+				// Process until there are no items left in the queue or we're told to stop.
+				while (!_stopToken.IsCancellationRequested)
+				{
+                    ConnData conn;
+
+					// Try to dequeue.
+					lock (_sizedSendLock)
+					{
+						LinkedListNode<ConnData> node = _sizedSendQueue.First;
+						if (node is null)
+						{
+							// No work to do.
+							break;
+						}
+
+						conn = node.Value;
+						_sizedSendQueue.Remove(node);
+						
+                        // Keep in mind that the node is still in _sizedSendConnections.
+                        // We'll deal with that later, when the connection has no more sized sends.
+					}
+
+					if (ProcessSizedSends(conn))
                     {
-                        ISizedSendData sd = conn.sizedsends.First.Value;
+                        // At least one sized packet was buffered to be sent
 
-                        // unlock while we get the data
-                        Monitor.Exit(conn.olmtx);
+                        // TODO: Try to send the sized data (in the reliable outgoing queue) immediately rather than wait for the SendThread to pick it up.
+                        // This doesn't guarantee the queued sized data will immediately sent (e.g. bandwidth limits), but it is given a chance.
+                        //Player player = conn.p;
+                        //if (player is not null)
+                        //{
+                        //    _playerData.Lock();
+                        //    try
+                        //    {
+                        //        if (player.Status >= PlayerState.Connected && player.Status < PlayerState.TimeWait)
+                        //        {
+                        //            if (Monitor.TryEnter(conn.olmtx))
+                        //            {
+                        //                try
+                        //                {
+                        //                    //SendOutgoing(connData, BandwidthPriority.Reliable);
+                        //                }
+                        //                finally
+                        //                {
+                        //                    Monitor.Exit(conn.olmtx);
+                        //                }
+                        //            }
+                        //        }
+                        //    }
+                        //    finally
+                        //    {
+                        //        _playerData.Unlock();
+                        //    }
+                        //}
+					}
+				}
+			}
 
-                        // prepare the header (already has type bytes set, only need to set the length field)
-                        BinaryPrimitives.WriteInt32LittleEndian(sizedLengthSpan, sd.TotalLength);
 
-                        // get needed bytes
-                        int needed = requestAtOnce;
-                        if (sd.TotalLength - sd.Offset < needed)
-                            needed = sd.TotalLength - sd.Offset;
+			bool ProcessSizedSends(ConnData conn)
+            {
+                ArgumentNullException.ThrowIfNull(conn);
 
-                        sd.RequestData(sd.Offset, new Span<byte>(buffer, 6, needed)); // skipping the first 6 bytes for the header
-                        sd.Offset += needed;
+				// Note on thread synchronization:
+				//
+				// In ISizedSendData, only the cancellation flags (IsCancellationRequested and IsCancellationRequestedByConnection) are changed by other threads.
+                // Everything else in ISizedSendData is solely accessed by this thread.
+				// Therefore, ConnData.SizedSendLock is held when accesing the ConnData.SizedSend collection or an ISizedSendData object's cancellation flag.
+				//
+				// The global player data read lock is taken to access the Player.Status and held to prevent the status from changing while processing.
 
-                        // now lock while we buffer it
-                        Monitor.Enter(conn.olmtx);
+				Player player = conn.p;
+                bool queuedData = false;
 
-                        // break the data into sized send (0x0A) packets and queue them up
-                        int bufferIndex = 0;
-                        while (needed > Constants.ChunkSize)
+                while (true)
+                {
+                    LinkedListNode<ISizedSendData> sizedSendNode;
+                    ISizedSendData sizedSend;
+                    bool cancelled;
+
+					lock (conn.SizedSendLock)
+					{
+						sizedSendNode = conn.SizedSends.First;
+						if (sizedSendNode is null)
+						{
+                            // Nothing left to process.
+                            break;
+						}
+
+						sizedSend = sizedSendNode.Value;
+                        cancelled = sizedSend.IsCancellationRequested;
+					}
+
+                    if (!cancelled && player is not null)
+                    {
+                        // Check if the player's connection is being disconnected.
+                        _playerData.Lock();
+
+                        try
                         {
-                            Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6); // write the header in front of the data
-                            SendOrBufferPacket(conn, new ReadOnlySpan<byte>(buffer, bufferIndex, Constants.ChunkSize + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
-                            bufferIndex += Constants.ChunkSize;
-                            needed -= Constants.ChunkSize;
+                            if (player.Status == PlayerState.TimeWait)
+                                cancelled = true;
                         }
-
-                        Array.Copy(_queueDataHeader, 0, buffer, bufferIndex, 6); // write the header in front of the data
-                        SendOrBufferPacket(conn, new ReadOnlySpan<byte>(buffer, bufferIndex, needed + 6), NetSendFlags.PriorityN1 | NetSendFlags.Reliable);
-
-                        // check if we need more
-                        if (sd.Offset >= sd.TotalLength)
+                        finally
                         {
-                            // notify sender that this is the end
-                            sd.RequestData(sd.Offset, Span<byte>.Empty);
-                            conn.sizedsends.RemoveFirst();
+                            _playerData.Unlock();
                         }
                     }
 
-                    Monitor.Exit(conn.olmtx);
+					if (!cancelled)
+                    {
+                        // Check if there is room for queuing data.
+                        if (conn.SizedSendQueuedCount >= _config.PresizedQueueThreshold)
+                            break;
+
+						//
+						// Request data
+						//
+
+						// Determine how much data to request.
+						int requestAtOnce = _config.PresizedQueuePackets * Constants.ChunkSize;
+						int needed = int.Min(requestAtOnce, sizedSend.Remaining);
+
+						if (needed > 0)
+						{
+							// Prepare the header.
+							Span<byte> headerSpan = [0x00, 0x0A, 0, 0, 0, 0];
+							BinaryPrimitives.WriteInt32LittleEndian(headerSpan[2..], sizedSend.TotalLength);
+
+							// Get a buffer to store the data in.
+							int lengthWithHeader = headerSpan.Length + needed;
+							byte[] buffer = ArrayPool<byte>.Shared.Rent(lengthWithHeader);
+							try
+							{
+								// Get the data
+								// This is purposely outside of any locks since requesting data may include file I/O which can block,
+								// and we don't want to block player status changes (global player data lock)
+								// or the SendThread from sending data (ConnData.olmtx).
+								Span<byte> bufferSpan = buffer.AsSpan(0, lengthWithHeader);
+                                sizedSend.RequestData(bufferSpan[headerSpan.Length..]);
+
+								if (player is not null)
+								{
+									_playerData.Lock();
+								}
+
+								try
+								{
+									lock (conn.SizedSendLock)
+									{
+										// Now that we reaquired the lock, the sized send should still be the current one since only this thread removes items.
+										Debug.Assert(sizedSend == conn.SizedSends.First?.Value);
+
+                                        // Cancel out if the sized send was cancelled while we were requesting data OR if the player's connection is being disconnected.
+                                        cancelled = sizedSend.IsCancellationRequested || player.Status == PlayerState.TimeWait;
+
+										if (!cancelled)
+										{
+											//
+											// Queue data
+											//
+
+											lock (conn.olmtx)
+											{
+												// Break the data into sized send (0x0A) packets and queue them up.
+												while (bufferSpan.Length > headerSpan.Length)
+												{
+													Span<byte> packetSpan = bufferSpan[..int.Min(bufferSpan.Length, headerSpan.Length + Constants.ChunkSize)];
+
+													//_logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"{DateTime.Now:O} Queuing sized data ({packetSpan.Length - headerSpan.Length} bytes)");
+
+													// Write the header in front of the data.
+													headerSpan.CopyTo(packetSpan);
+
+													// We want to get a callback when we receive an ACK back.
+													ReliableCallbackInvoker reliableInvoker = _reliableCallbackInvokerPool.Get();
+													reliableInvoker.SetCallback(_sizedSendChunkCompleted, ReliableCallbackExecutionOption.Synchronous);
+
+													Interlocked.Increment(ref conn.SizedSendQueuedCount);
+													SendOrBufferPacket(conn, packetSpan, NetSendFlags.PriorityN1 | NetSendFlags.Reliable, reliableInvoker);
+													queuedData = true;
+
+													bufferSpan = bufferSpan[(packetSpan.Length - headerSpan.Length)..];
+												}
+											}
+										}
+									}
+								}
+								finally
+								{
+									if (player is not null)
+									{
+										_playerData.Unlock();
+									}
+								}
+							}
+							finally
+							{
+								ArrayPool<byte>.Shared.Return(buffer);
+							}
+						}
+					}
+
+                    if (cancelled || sizedSend.Remaining <= 0)
+                    {
+                        // The sized send is complete, either because it was cancelled or all the data was queued.
+
+                        // Notify the sender that the transfer is complete, allowing it to perform cleanup.
+                        // This is purposely done without holding onto any locks since the call may include blocking I/O.
+                        sizedSend.RequestData([]);
+
+                        bool sendCancellationAck = false;
+
+                        lock (conn.SizedSendLock)
+                        {
+                            sendCancellationAck = cancelled && sizedSend.IsCancellationRequestedByConnection;
+
+                            // Remove the sized send.
+                            conn.SizedSends.Remove(sizedSendNode);
+                            _sizedSendDataNodePool.Return(sizedSendNode);
+
+							if (conn.SizedSends.Count == 0)
+							{
+								// No more sized sends for the connection.
+								LinkedListNode<ConnData> node;
+
+                                // This is purposely done while continuing to hold the ConnData.SizedSendLock,
+                                // so that there will be no conflict if a sized send is being simultaneously added.
+								lock (_sizedSendLock)
+								{
+                                    if (_sizedSendConnections.Remove(conn, out node))
+                                    {
+                                        if (node.List is not null)
+                                        {
+                                            _sizedSendQueue.Remove(node);
+                                        }
+                                    }
+								}
+
+								if (node is not null)
+								{
+									_connDataNodePool.Return(node);
+								}
+							}
+						}
+
+                        if (sendCancellationAck)
+                        {
+                            // The sized send was cancelled because it was requested by the connection (0x00 0x0B).
+                            // This means we are supposed to respond with a sized cancellation ACK (0x00 0x0C),
+
+                            if (player is not null)
+                            {
+                                _playerData.Lock();
+                            }
+
+                            try
+                            {
+								// Send the sized cancellation ACK packet.
+								ReadOnlySpan<byte> cancelSizedAckSpan = [0x00, 0x0C];
+
+                                if (player is not null && player.Status == PlayerState.TimeWait)
+                                {
+                                    // The connection is being disconnected.
+                                    // We can only send it unreliably since the SendThread does not process outgoing queues for connections in this state.
+                                    SendRaw(conn, cancelSizedAckSpan);
+                                }
+                                else
+                                {
+									lock (conn.olmtx)
+                                    {
+                                        SendOrBufferPacket(conn, cancelSizedAckSpan, NetSendFlags.Reliable);
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                if (player is not null)
+                                {
+                                    _playerData.Unlock();
+                                }
+                            }
+                        }
+                    }
+                }
+
+				return queuedData;
+			}
+        }
+
+		private void SizedSendChunkCompleted(Player player, bool success)
+        {
+            if (player is null || !player.TryGetExtraData(_connKey, out ConnData connData))
+                return;
+
+            //_logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"{DateTime.Now:O} Sized Send Chunk Ack (Success = {success})");
+
+			Interlocked.Decrement(ref connData.SizedSendQueuedCount);
+
+			if (!success)
+				return;
+
+            // Make sure the connection is queued to be processed by the SizedSendThread.
+			bool queued = false;
+
+            lock (_sizedSendLock)
+            {
+                if (!_sizedSendConnections.TryGetValue(connData, out LinkedListNode<ConnData> node))
+                    return;
+
+                if (node.List is null)
+                {
+                    // Not already queued, queue it.
+                    _sizedSendQueue.AddLast(node);
+                    queued = true;
                 }
             }
-            finally
-            {
-                _playerData.Unlock();
-            }
 
-            return true;
-        }
+            if (queued)
+            {
+                _sizedSendEvent.Set();
+            }
+		}
 
         /// <summary>
         /// Processes a buffer (1 or more packets) received from a known connection.
@@ -2940,8 +3354,6 @@ namespace SS.Core.Modules
                 else
                     _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Unknown packet type {t1}.");
             }
-
-            
         }
 
 		private void MainloopWork_CallPacketHandlers(SubspaceBuffer buffer)
@@ -3407,38 +3819,64 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void QueueReliableCallback(IReliableCallbackInvoker callbackInvoker, Player player, bool success)
+        private void ExecuteReliableCallback(IReliableCallbackInvoker callbackInvoker, Player player, bool success)
         {
-            if (callbackInvoker == null)
-                throw new ArgumentNullException(nameof(callbackInvoker));
+			ArgumentNullException.ThrowIfNull(callbackInvoker);
+			ArgumentNullException.ThrowIfNull(player);
 
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
+            do
+            {
+                IReliableCallbackInvoker next = callbackInvoker.Next;
 
-            _mainloop.QueueMainWorkItem(
-                MainloopWork_InvokeReliableCallback,
-                new InvokeReliableCallbackWork()
+				switch (callbackInvoker.ExecutionOption)
                 {
-                    CallbackInvoker = callbackInvoker,
-                    Player = player,
-                    Success = success,
-                });
+                    case ReliableCallbackExecutionOption.Synchronous:
+                        InvokeReliableCallback(
+                            new InvokeReliableCallbackWork()
+                            {
+                                CallbackInvoker = callbackInvoker,
+                                Player = player,
+                                Success = success,
+                            });
+                        break;
 
-			static void MainloopWork_InvokeReliableCallback(InvokeReliableCallbackWork work)
+                    case ReliableCallbackExecutionOption.ThreadPool:
+                        _mainloop.QueueThreadPoolWorkItem(
+                            InvokeReliableCallback,
+                            new InvokeReliableCallbackWork()
+                            {
+                                CallbackInvoker = callbackInvoker,
+                                Player = player,
+                                Success = success,
+                            });
+                        break;
+
+                    case ReliableCallbackExecutionOption.Mainloop:
+                    default:
+                        _mainloop.QueueMainWorkItem(
+                            InvokeReliableCallback,
+                            new InvokeReliableCallbackWork()
+                            {
+                                CallbackInvoker = callbackInvoker,
+                                Player = player,
+                                Success = success,
+                            });
+                        break;
+                }
+
+                callbackInvoker = next;
+			}
+            while (callbackInvoker is not null);
+
+
+			static void InvokeReliableCallback(InvokeReliableCallbackWork work)
 			{
-				while (work.CallbackInvoker != null)
+				using (work.CallbackInvoker)
 				{
-					IReliableCallbackInvoker next = work.CallbackInvoker.Next;
-
-					using (work.CallbackInvoker)
+					if (work.Player is not null)
 					{
-						if (work.Player != null)
-						{
-							work.CallbackInvoker.Invoke(work.Player, work.Success);
-						}
+						work.CallbackInvoker.Invoke(work.Player, work.Success);
 					}
-
-					work.CallbackInvoker = next;
 				}
 			}
 		}
@@ -3705,9 +4143,19 @@ namespace SS.Core.Modules
             public BigReceive BigRecv;
 
             /// <summary>
-            /// For sending sized packets, synchronized with <see cref="olmtx"/>.
+            /// The # of sized send packets that have been queued and not yet ACK'd.
             /// </summary>
-            public readonly LinkedList<ISizedSendData> sizedsends = new();
+            public int SizedSendQueuedCount = 0;
+
+            /// <summary>
+            /// For synchronizing <see cref="SizedSends"/>.
+            /// </summary>
+			public readonly object SizedSendLock = new();
+
+			/// <summary>
+			/// Queue of pending sized sends for the connection. Synchronized with <see cref="SizedSendLock"/>.
+			/// </summary>
+			public readonly LinkedList<ISizedSendData> SizedSends = new();
 
             /// <summary>
             /// bandwidth limiting
@@ -3734,7 +4182,7 @@ namespace SS.Core.Modules
             public readonly SubspaceBuffer[] relbuf;
 
             /// <summary>
-            /// mutex for <see cref="outlist"/>
+            /// mutex for <see cref="outlist"/> and <see cref="UnsentRelOutList"/>
             /// </summary>
             public readonly object olmtx = new();
 
@@ -3795,18 +4243,26 @@ namespace SS.Core.Modules
                 avgrtt = 200; // an initial guess
                 rttdev = 100;
                 lastPkt = DateTime.UtcNow;
-                sizedsends.Clear();
 
-                for (int x = 0; x < outlist.Length; x++)
+                lock (SizedSendLock)
                 {
-                    outlist[x].Clear();
+                    SizedSendQueuedCount = 0;
+                    SizedSends.Clear();
                 }
 
-                UnsentRelOutList.Clear();
+                lock (olmtx)
+                {
+                    for (int x = 0; x < outlist.Length; x++)
+                    {
+                        outlist[x].Clear();
+                    }
+
+                    UnsentRelOutList.Clear();
+                }
             }
 
 			public bool TryReset()
-            {
+			{
                 p = null;
                 cc = null;
                 RemoteAddress = null;
@@ -3844,10 +4300,14 @@ namespace SS.Core.Modules
 
                 BandwidthLimiter = null;
 
+				lock (SizedSendLock)
+                {
+					SizedSendQueuedCount = 0;
+					SizedSends.Clear();
+				}
+
                 lock (olmtx)
                 {
-                    sizedsends.Clear();
-
                     for (int i = 0; i < outlist.Length; i++)
                     {
                         foreach (SubspaceBuffer buffer in outlist[i])
@@ -3879,14 +4339,7 @@ namespace SS.Core.Modules
 
             public void Dispose()
             {
-                if (BigRecv != null)
-                {
-                    // make sure any rented arrays are returned to their pool
-                    BigRecv.Dispose();
-                    BigRecv = null;
-                }
-
-                // TODO: return SubspaceBuffer and LinkedListNode<SubspaceBuffer> objects from outlist, UnsentRelOutList, and relbuf to their pools.
+                TryReset();
             }
         }
 
@@ -3953,6 +4406,27 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
+        /// Enum that represents how a reliable callback is to be invoked.
+        /// </summary>
+        private enum ReliableCallbackExecutionOption
+        {
+            /// <summary>
+            /// The callback is to be executed asynchronously on the mainloop thread.
+            /// </summary>
+            Mainloop = 0,
+
+            /// <summary>
+            /// The callback is to be executed synchronously on the thread that is processing the callback.
+            /// </summary>
+            Synchronous,
+
+            /// <summary>
+            /// The callback is to be executed asynchronously on a thread from the thread pool.
+            /// </summary>
+            ThreadPool,
+        }
+
+        /// <summary>
         /// Interface for an object that represents a callback for when a request to send reliable data has completed (sucessfully or not).
         /// </summary>
         /// <remarks>
@@ -3967,6 +4441,11 @@ namespace SS.Core.Modules
             /// <param name="player">The player.</param>
             /// <param name="success">True if the reliable packet was sucessfully sent and acknowledged. False if it was cancelled.</param>
             void Invoke(Player player, bool success);
+
+            /// <summary>
+            /// Option that indicates how the callback should be invoked.
+            /// </summary>
+            ReliableCallbackExecutionOption ExecutionOption { get; }
 
             /// <summary>
             /// The next reliable callback to invoke in a chain forming linked list.
@@ -3986,9 +4465,13 @@ namespace SS.Core.Modules
         {
             private ReliableDelegate _callback;
 
-            public void SetCallback(ReliableDelegate callback)
+            public void SetCallback(ReliableDelegate callback, ReliableCallbackExecutionOption executionOption)
             {
-                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                if (!Enum.IsDefined(executionOption))
+                    throw new InvalidEnumArgumentException(nameof(executionOption), (int)executionOption, typeof(ReliableCallbackExecutionOption));
+
+				_callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                ExecutionOption = executionOption;
             }
 
             #region IReliableDelegateInvoker Members
@@ -3998,11 +4481,9 @@ namespace SS.Core.Modules
                 _callback?.Invoke(player, success);
             }
 
-            public IReliableCallbackInvoker Next
-            {
-                get;
-                set;
-            }
+            public ReliableCallbackExecutionOption ExecutionOption { get; private set; } = ReliableCallbackExecutionOption.Mainloop;
+
+            public IReliableCallbackInvoker Next { get; set; }
 
             #endregion
 
@@ -4011,6 +4492,7 @@ namespace SS.Core.Modules
                 if (isDisposing)
                 {
                     _callback = null;
+                    ExecutionOption = ReliableCallbackExecutionOption.Mainloop;
                     Next = null;
                 }
 
@@ -4027,11 +4509,15 @@ namespace SS.Core.Modules
             private ReliableDelegate<T> _callback;
             private T _clos;
 
-            public void SetCallback(ReliableDelegate<T> callback, T clos)
+            public void SetCallback(ReliableDelegate<T> callback, T clos, ReliableCallbackExecutionOption executionOption)
             {
-                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+				if (!Enum.IsDefined(executionOption))
+					throw new InvalidEnumArgumentException(nameof(executionOption), (int)executionOption, typeof(ReliableCallbackExecutionOption));
+
+				_callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 _clos = clos;
-            }
+				ExecutionOption = executionOption;
+			}
 
             #region IReliableDelegateInvoker Members
 
@@ -4040,11 +4526,9 @@ namespace SS.Core.Modules
                 _callback?.Invoke(player, success, _clos);
             }
 
-            public IReliableCallbackInvoker Next
-            {
-                get;
-                set;
-            }
+			public ReliableCallbackExecutionOption ExecutionOption { get; private set; } = ReliableCallbackExecutionOption.Mainloop;
+
+			public IReliableCallbackInvoker Next { get; set; }
 
             #endregion
 
@@ -4054,7 +4538,8 @@ namespace SS.Core.Modules
                 {
                     _callback = null;
                     _clos = default;
-                    Next = null;
+					ExecutionOption = ReliableCallbackExecutionOption.Mainloop;
+					Next = null;
                 }
 
                 base.Dispose(isDisposing);
@@ -4066,76 +4551,123 @@ namespace SS.Core.Modules
         /// </summary>
         private interface ISizedSendData
         {
-            /// <summary>
-            /// Requests the sender to provide data.
-            /// </summary>
-            /// <param name="offset">The position of the data to retrieve.</param>
-            /// <param name="dataSpan">The buffer to fill.</param>
-            void RequestData(int offset, Span<byte> dataSpan);
+			/// <summary>
+			/// Total # of bytes of data to send.
+			/// </summary>
+			int TotalLength { get; }
 
-            /// <summary>
-            /// Total # of bytes of the data to send.
-            /// </summary>
-            int TotalLength
-            {
-                get;
-            }
+			/// <summary>
+			/// The # of bytes remaining to send.
+			/// </summary>
+			int Remaining { get; }
 
-            /// <summary>
-            /// The current position within the data.
-            /// </summary>
-            int Offset
-            {
-                get;
-                set;
-            }
+			/// <summary>
+			/// Requests the sender to provide data.
+			/// </summary>
+			/// <param name="dataSpan">The buffer to fill. An empty buffer indicates that the send is finishd (completed or cancelled).</param>
+			void RequestData(Span<byte> dataSpan);
+
+			bool IsCancellationRequested { get; }
+
+            bool IsCancellationRequestedByConnection { get; }
+
+            void Cancel(bool isRequestedByConnection);
+
+			/// <summary>
+			/// Returns the <see cref="ISizedSendData"/> object to its pool to be reused.
+			/// </summary>
+			void Return();
         }
 
-        /// <summary>
-        /// Manages sending sized data (0x00 0x0A).
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        private class SizedSendData<T> : ISizedSendData
+		/// <summary>
+		/// Helper that assists in the retrieval of data for a sized send (0x00 0x0A).
+		/// </summary>
+		/// <remarks>
+		/// This class wraps calling the delegate provided to retrieve data and keeps track of the current position.
+        /// It also provides a mechanism to request that the sized send be cancelled.
+		/// </remarks>
+		/// <typeparam name="TState">The type of state to pass to the delegate when requesting data.</typeparam>
+		/// <param name="requestDataCallback">The delegate for requesting data.</param>
+		/// <param name="state">The state to pass when calling the <paramref name="requestDataCallback"/>.</param>
+		/// <param name="totalLength">The total # of bytes to be sent.</param>
+		private class SizedSendData<TState> : ISizedSendData, IResettable
         {
-            private readonly GetSizedSendDataDelegate<T> _requestDataCallback;
-            private readonly T _clos;
-            private readonly int _totalLength;
+            public static readonly ObjectPool<SizedSendData<TState>> Pool = new DefaultObjectPool<SizedSendData<TState>>(new DefaultPooledObjectPolicy<SizedSendData<TState>>(), 256);
+
+            private GetSizedSendDataDelegate<TState> _requestDataCallback;
+            private TState _state;
+            private int _totalLength;
             private int _offset;
+            private bool _isCancellationRequested;
+            private bool _isCancellationRequestedByConnection;
 
-            public SizedSendData(GetSizedSendDataDelegate<T> requestDataCallback, T clos, int totalLength, int offset)
-            {
-                _requestDataCallback = requestDataCallback ?? throw new ArgumentNullException(nameof(requestDataCallback));
-                _clos = clos;
+			public void Initialize(GetSizedSendDataDelegate<TState> requestDataCallback, TState state, int totalLength)
+			{
+                if (_requestDataCallback is not null)
+                    throw new InvalidOperationException("Already initialized. It needs to be reset before reusing.");
+
+				_requestDataCallback = requestDataCallback ?? throw new ArgumentNullException(nameof(requestDataCallback));
+                _state = state;
                 _totalLength = totalLength;
-                _offset = offset;
+                _offset = 0;
+			}
+
+			#region ISizedSendData
+
+			int ISizedSendData.TotalLength => _totalLength;
+
+			int ISizedSendData.Remaining => _totalLength - _offset;
+
+			void ISizedSendData.RequestData(Span<byte> dataSpan)
+			{
+                Debug.Assert(dataSpan.Length <= ((ISizedSendData)this).Remaining);
+
+				_requestDataCallback(_state, _offset, dataSpan);
+				_offset += dataSpan.Length;
+			}
+
+            bool ISizedSendData.IsCancellationRequested => _isCancellationRequested;
+
+			bool ISizedSendData.IsCancellationRequestedByConnection => _isCancellationRequestedByConnection;
+
+			void ISizedSendData.Cancel(bool isRequestedByConnection)
+			{
+				_isCancellationRequested = true;
+				_isCancellationRequestedByConnection = isRequestedByConnection;
+			}
+
+			void ISizedSendData.Return()
+            {
+                Pool.Return(this);
             }
 
-            void ISizedSendData.RequestData(int offset, Span<byte> dataSpan)
-            {
-                _requestDataCallback(_clos, offset, dataSpan);
-            }
+			#endregion
 
-            int ISizedSendData.TotalLength
-            {
-                get { return _totalLength; }
-            }
+			#region IResettable
 
-            int ISizedSendData.Offset
-            {
-                get { return _offset; }
-                set { _offset = value; }
-            }
+			public bool TryReset()
+			{
+                _requestDataCallback = null;
+				_state = default;
+				_totalLength = 0;
+				_offset = 0;
+                _isCancellationRequested = false;
+                _isCancellationRequestedByConnection = false;
+				return true;
+			}
+
+            #endregion
         }
 
-        /// <summary>
-        /// Helper for receiving of 'Big' data streams of the 'Core' protocol, which is the subspace protocol's transport layer.
-        /// "Big" data streams consist of zero or more 0x00 0x08 packets followed by a single 0x00 0x09 packet indicating the end.
-        /// These packets are sent reliably and therefore are processed in order, effectively being a stream.
-        /// </summary>
-        /// <remarks>
-        /// This class is similar to a <see cref="System.IO.MemoryStream"/>. Though not a stream, and it rents arrays using <see cref="ArrayPool{byte}"/>.
-        /// </remarks>
-        private class BigReceive : PooledObject
+		/// <summary>
+		/// Helper for receiving of 'Big' data streams of the 'Core' protocol, which is the subspace protocol's transport layer.
+		/// "Big" data streams consist of zero or more 0x00 0x08 packets followed by a single 0x00 0x09 packet indicating the end.
+		/// These packets are sent reliably and therefore are processed in order, effectively being a stream.
+		/// </summary>
+		/// <remarks>
+		/// This class is similar to a <see cref="System.IO.MemoryStream"/>. Though not a stream, and it rents arrays using <see cref="ArrayPool{byte}"/>.
+		/// </remarks>
+		private class BigReceive : PooledObject
         {
             public NetReceiveFlags Flags = NetReceiveFlags.None;
             public byte[] Buffer { get; private set; } = null;
@@ -4289,17 +4821,16 @@ namespace SS.Core.Modules
 
             public void Load(IConfigManager configManager)
             {
-                if (configManager is null)
-                    throw new ArgumentNullException(nameof(configManager));
+				ArgumentNullException.ThrowIfNull(configManager);
 
-                DropTimeout = TimeSpan.FromMilliseconds(configManager.GetInt(configManager.Global, "Net", "DropTimeout", 3000) * 10);
+				DropTimeout = TimeSpan.FromMilliseconds(configManager.GetInt(configManager.Global, "Net", "DropTimeout", 3000) * 10);
                 MaxOutlistSize = configManager.GetInt(configManager.Global, "Net", "MaxOutlistSize", 500);
                 SimplePingPopulationMode = configManager.GetEnum(configManager.Global, "Net", "SimplePingPopulationMode", PingPopulationMode.Total);
 
                 // (deliberately) undocumented settings
                 MaxRetries = configManager.GetInt(configManager.Global, "Net", "MaxRetries", 15);
-                PresizedQueueThreshold = configManager.GetInt(configManager.Global, "Net", "PresizedQueueThreshold", 5);
-                PresizedQueuePackets = configManager.GetInt(configManager.Global, "Net", "PresizedQueuePackets", 25);
+                PresizedQueueThreshold = int.Clamp(configManager.GetInt(configManager.Global, "Net", "PresizedQueueThreshold", 5), 1, MaxOutlistSize);
+                PresizedQueuePackets = int.Clamp(configManager.GetInt(configManager.Global, "Net", "PresizedQueuePackets", 25), 1, MaxOutlistSize);
                 LimitReliableGroupingSize = configManager.GetInt(configManager.Global, "Net", "LimitReliableGroupingSize", 0) != 0;
                 PerPacketOverhead = configManager.GetInt(configManager.Global, "Net", "PerPacketOverhead", 28);
                 PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * configManager.GetInt(configManager.Global, "Net", "PingDataRefreshTime", 200));
@@ -4592,7 +5123,7 @@ namespace SS.Core.Modules
                 _network.SendRaw(conn, data);
 
 				Interlocked.Increment(ref _network._globalStats.GroupedStats[0]);
-            }
+			}
         }
 
         /// <summary>

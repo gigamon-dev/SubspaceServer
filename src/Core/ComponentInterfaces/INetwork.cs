@@ -104,34 +104,34 @@ namespace SS.Core.ComponentInterfaces
     public delegate void SizedPacketDelegate(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes successfully or unsuccessfully.
+    /// Delegate for a callback when the send of a reliable packet completes.
     /// </summary>
     /// <param name="player">The player the packet was being sent to.</param>
-    /// <param name="success">Whether the packet was sucessfully sent.</param>
+    /// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
     public delegate void ReliableDelegate(Player player, bool success);
 
     /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes successfully or unsuccessfully.
+    /// Delegate for a callback when the send of a reliable packet completes.
     /// The callback includes a parameter for state.
     /// </summary>
     /// <typeparam name="T">The type of state object.</typeparam>
     /// <param name="player">The player the packet was being sent to.</param>
     /// <param name="success">Whether the packet was sucessfully sent.</param>
-    /// <param name="clos">The state object.</param>
-    public delegate void ReliableDelegate<T>(Player player, bool success, T clos);
+    /// <param name="state">The state object.</param>
+    public delegate void ReliableDelegate<T>(Player player, bool success, T state);
 
     /// <summary>
     /// Delegate for retrieving sized send data.
     /// This is used to request the sender to provide data for the transfer.
     /// </summary>
     /// <typeparam name="T">The type of the argument for passing state.</typeparam>
-    /// <param name="clos">The state to pass (provides a way to identify the data to retrieve).</param>
+    /// <param name="state">The state to pass (provides a way to identify the data to retrieve).</param>
     /// <param name="offset">The starting position of the data to retrieve.</param>
     /// <param name="dataSpan">
     /// The buffer to fill with data. 
     /// An empty span indicates the end of a transfer and can be used to perform any necessary cleanup.
     /// </param>
-    public delegate void GetSizedSendDataDelegate<T>(T clos, int offset, Span<byte> dataSpan);
+    public delegate void GetSizedSendDataDelegate<T>(T state, int offset, Span<byte> dataSpan);
 
     public interface IReadOnlyNetStats
     {
@@ -271,43 +271,59 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flags">Flags specifying options for the send.</param>
         void SendToTarget<TData>(ITarget target, ref TData data, NetSendFlags flags) where TData : struct;
 
-        /// <summary>
-        /// Reliably sends data to a player and invokes a callback after the data has been sent.
-        /// </summary>
-        /// <param name="player">The player to send data to.</param>
-        /// <param name="data">The data to send.</param>
-        /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        void SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback);
+		/// <summary>
+		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+		/// </summary>
+		/// <remarks>
+		/// The <paramref name="callback"/> is executed on the mainloop thread.
+		/// </remarks>
+		/// <param name="player">The player to send data to.</param>
+		/// <param name="data">The data to send.</param>
+		/// <param name="callback">The callback to invoke after the data has been sent.</param>
+		void SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback);
 
-        /// <summary>
-        /// Reliably sends data to a player and invokes a callback after the data has been sent.
-        /// </summary>
-        /// <typeparam name="TData">The type of data packet to send.</typeparam>
-        /// <param name="player">The player to send data to.</param>
-        /// <param name="data">The data to send.</param>
-        /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        void SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback) where TData : struct;
+		/// <summary>
+		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+		/// </summary>
+		/// <remarks>
+		/// The <paramref name="callback"/> is executed on the mainloop thread.
+		/// </remarks>
+		/// <typeparam name="TData">The type of data packet to send.</typeparam>
+		/// <param name="player">The player to send data to.</param>
+		/// <param name="data">The data to send.</param>
+		/// <param name="callback">The callback to invoke after the data has been sent.</param>
+		void SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback) where TData : struct;
 
-        /// <summary>
-        /// Reliably sends data to a player and invokes a callback after the data has been sent.
-        /// </summary>
-        /// <typeparam name="TState">The type of argument used in the callback.</typeparam>
-        /// <param name="player">The player to send data to.</param>
-        /// <param name="data">The data to send.</param>
-        /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        /// <param name="clos">The state to send when invoking the callback.</param>
-        void SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos);
+		/// <summary>
+		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+		/// </summary>
+		/// <remarks>
+        /// The <paramref name="callback"/> is executed on the mainloop thread.
+        /// </remarks>
+		/// <typeparam name="TState">The type of argument used in the callback.</typeparam>
+		/// <param name="player">The player to send data to.</param>
+		/// <param name="data">The data to send.</param>
+		/// <param name="callback">The callback to invoke after the data has been sent.</param>
+		/// <param name="state">The state to pass when invoking the callback.</param>
+		void SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState state);
 
-        /// <summary>
-        /// Reliably sends data to a player and invokes a callback after the data has been sent.
-        /// </summary>
-        /// <typeparam name="TData">The type of data packet to send.</typeparam>
-        /// <typeparam name="TState">The type of argument used in the callback.</typeparam>
-        /// <param name="player">The player to send data to.</param>
-        /// <param name="data">The data to send.</param>
-        /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        /// <param name="clos">The state to send when invoking the callback.</param>
-        void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState clos) where TData : struct;
+		/// <summary>
+		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+		/// </summary>
+		/// <remarks>
+		/// The <paramref name="callback"/> is executed on the mainloop thread.
+		/// </remarks>
+		/// <typeparam name="TData">The type of data packet to send.</typeparam>
+		/// <typeparam name="TState">The type of argument used in the callback.</typeparam>
+		/// <param name="player">The player to send data to.</param>
+		/// <param name="data">The data to send.</param>
+		/// <param name="callback">The callback to invoke after the data has been sent.</param>
+		/// <param name="state">The state to pass when invoking the callback.</param>
+		void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state) where TData : struct;
 
         /// <summary>
         /// Queues up a job to send 'sized' data to a player.
