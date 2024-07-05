@@ -2419,264 +2419,6 @@ namespace SS.Core.Modules
                 Thread.Sleep(10); // 1/100 second
             }
 
-            void SendOutgoing(ConnData conn, ref PacketGrouper packetGrouper)
-            {
-                DateTime now = DateTime.UtcNow;
-
-                // use an estimate of the average round-trip time to figure out when to resend a packet
-                uint timeout = Math.Clamp((uint)(conn.avgrtt + (4 * conn.rttdev)), 250, 2000);
-
-                // update the bandwidth limiter's counters
-                conn.BandwidthLimiter.Iter(now);
-
-                int canSend = conn.BandwidthLimiter.GetCanBufferPackets();
-                int retries = 0;
-                int outlistlen = 0;
-
-                packetGrouper.Initialize();
-
-                // process the highest priority first
-                for (int pri = conn.outlist.Length - 1; pri >= 0; pri--)
-                {
-                    LinkedList<SubspaceBuffer> outlist = conn.outlist[pri];
-
-                    if (pri == (int)BandwidthPriority.Reliable)
-                    {
-                        // move packets from UnsentRelOutList to outlist, grouped if possible
-                        while (conn.UnsentRelOutList.Count > 0)
-                        {
-                            if (outlist.Count > 0)
-                            {
-                                // The reliable sending/pending queue has at least one packet,
-                                // Get the first one (lowest sequence number) and use that number to determine if there's room to add more.
-                                ref ReliableHeader min = ref MemoryMarshal.AsRef<ReliableHeader>(outlist.First.Value.Bytes);
-                                if ((conn.s2cn - min.SeqNum) > canSend)
-                                {
-                                    break;
-                                }
-                            }
-
-                            LinkedListNode<SubspaceBuffer> n1 = conn.UnsentRelOutList.First;
-                            SubspaceBuffer b1 = conn.UnsentRelOutList.First.Value;
-#if !DISABLE_GROUPED_SEND
-                            if (b1.NumBytes <= Constants.MaxGroupedPacketItemLength && conn.UnsentRelOutList.Count > 1)
-                            {
-                                // The 1st packet can fit into a grouped packet and there's at least one more packet available, check if it's possible to group them together
-                                SubspaceBuffer b2 = conn.UnsentRelOutList.First.Next.Value;
-
-                                // Note: At the moment I think it is still more beneficial to group as many as possible even if it does go over 255 bytes. However, I've made it configurable.
-                                int maxRelGroupedPacketLength = _config.LimitReliableGroupingSize
-                                    ? Constants.MaxGroupedPacketItemLength // limit reliable packet grouping up to 255 bytes so that the result can still fit into another grouped packet later on
-                                    : Constants.MaxGroupedPacketLength; // (default) group as many as is possible to fit into a fully sized grouped packet
-
-                                if (b2.NumBytes <= Constants.MaxGroupedPacketItemLength // the 2nd packet can fit into a grouped packet too
-                                    && (ReliableHeader.Length + 2 + 1 + b1.NumBytes + 1 + b2.NumBytes) <= maxRelGroupedPacketLength) // can fit together in a reliable packet containing a grouped packet containing both packets
-                                {
-                                    // We know we can group at least the first 2
-                                    SubspaceBuffer groupedBuffer = _bufferPool.Get();
-                                    groupedBuffer.Conn = conn;
-                                    groupedBuffer.SendFlags = b1.SendFlags; // taking the flags from the first packet, though doesn't really matter since we already know it's reliable
-                                    groupedBuffer.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
-                                    groupedBuffer.Tries = 0;
-
-                                    ref ReliableHeader groupedRelHeader = ref MemoryMarshal.AsRef<ReliableHeader>(groupedBuffer.Bytes);
-                                    groupedRelHeader.Initialize(conn.s2cn++);
-
-                                    // Group up as many as possible
-                                    PacketGrouper relGrouper = new(this, groupedBuffer.Bytes.AsSpan(ReliableHeader.Length, maxRelGroupedPacketLength - ReliableHeader.Length));
-                                    LinkedListNode<SubspaceBuffer> node = conn.UnsentRelOutList.First;
-                                    while (node != null)
-                                    {
-                                        LinkedListNode<SubspaceBuffer> next = node.Next;
-                                        SubspaceBuffer toAppend = node.Value;
-
-                                        if (!relGrouper.TryAppend(new ReadOnlySpan<byte>(toAppend.Bytes, 0, toAppend.NumBytes)))
-                                        {
-                                            break;
-                                        }
-
-                                        if (toAppend.CallbackInvoker != null)
-                                        {
-                                            if (groupedBuffer.CallbackInvoker == null)
-                                            {
-                                                groupedBuffer.CallbackInvoker = toAppend.CallbackInvoker;
-                                            }
-                                            else
-                                            {
-                                                IReliableCallbackInvoker invoker = groupedBuffer.CallbackInvoker;
-                                                while (invoker.Next != null)
-                                                    invoker = invoker.Next;
-
-                                                invoker.Next = toAppend.CallbackInvoker;
-                                            }
-
-                                            toAppend.CallbackInvoker = null;
-                                        }
-
-                                        conn.UnsentRelOutList.Remove(node);
-                                        _bufferNodePool.Return(node);
-                                        toAppend.Dispose();
-
-                                        node = next;
-                                    }
-
-                                    Debug.Assert(relGrouper.Count >= 2, $"A minimum of 2 packets should have been grouped, but the count was {relGrouper.Count}.");
-
-                                    groupedBuffer.NumBytes = ReliableHeader.Length + relGrouper.NumBytes;
-
-                                    if (relGrouper.Count > 0)
-                                    {
-                                        Interlocked.Increment(ref _globalStats.RelGroupedStats[Math.Min(relGrouper.Count - 1, _globalStats.RelGroupedStats.Length - 1)]);
-                                    }
-
-                                    LinkedListNode<SubspaceBuffer> groupedNode = _bufferNodePool.Get();
-                                    groupedNode.Value = groupedBuffer;
-                                    outlist.AddLast(groupedNode);
-
-                                    continue;
-                                }
-                            }
-#endif
-                            //
-                            // Couldn't group the packet, just add it as an regular individual reliable packet.
-                            //
-
-                            // Move the data back, so that we can prepend it with the reliable header.
-                            for (int i = b1.NumBytes - 1; i >= 0; i--)
-                            {
-                                b1.Bytes[i + ReliableHeader.Length] = b1.Bytes[i];
-                            }
-
-                            // Write in the reliable header.
-                            ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(b1.Bytes);
-                            header.Initialize(conn.s2cn++);
-
-                            b1.NumBytes += ReliableHeader.Length;
-                            b1.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
-                            b1.Tries = 0;
-
-                            Interlocked.Increment(ref _globalStats.RelGroupedStats[0]);
-
-                            // Move the node from the unsent queue to the sending/pending queue.
-                            conn.UnsentRelOutList.Remove(n1);
-                            outlist.AddLast(n1);
-                        }
-
-                        // include the "unsent" packets in the outgoing count too
-                        outlistlen += conn.UnsentRelOutList.Count;
-                    }
-
-					//if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
-					//{
-					//	_logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Send iteration");
-					//}
-
-					LinkedListNode<SubspaceBuffer> nextNode;
-                    for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
-                    {
-                        nextNode = node.Next;
-
-                        SubspaceBuffer buf = node.Value;
-                        outlistlen++;
-
-                        // check some invariants
-                        ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buf.Bytes);
-
-                        if (rp.T1 == 0x00 && rp.T2 == 0x03)
-                            Debug.Assert(pri == (int)BandwidthPriority.Reliable);
-                        else if (rp.T1 == 0x00 && rp.T2 == 0x04)
-                            Debug.Assert(pri == (int)BandwidthPriority.Ack);
-                        else
-                            Debug.Assert((pri != (int)BandwidthPriority.Reliable) && (pri != (int)BandwidthPriority.Ack));
-
-                        // check if it's time to send this yet (use linearly increasing timeouts)
-                        if ((buf.Tries != 0) && ((now - buf.LastRetry).TotalMilliseconds <= (timeout * buf.Tries)))
-                            continue;
-
-                        // if we've retried too many times, kick the player
-                        if (buf.Tries > _config.MaxRetries)
-                        {
-                            conn.HitMaxRetries = true;
-                            return;
-                        }
-
-                        // At this point, there's only one more check to determine if we're sending this packet now: bandwidth limiting.
-                        int checkBytes = buf.NumBytes;
-                        if (buf.NumBytes > Constants.MaxGroupedPacketItemLength)
-                            checkBytes += _config.PerPacketOverhead; // Can't be grouped, so definitely will be sent in its own datagram
-                        else if (packetGrouper.Count == 0 || !packetGrouper.CheckAppend(buf.NumBytes))
-                            checkBytes += _config.PerPacketOverhead + 2 + 1; // Start of a new grouped packet. So, include an overhead of: IP+UDP header + grouped packet header + grouped packet item header
-                        else
-                            checkBytes += 1; // Will be appended into a grouped packet (though, not the first in it). So, only include the overhead of the grouped packet item header.
-
-                        // Note for the above checkBytes calcuation:
-                        // There is still a chance that at the end, there's only 1 packet remaining to be sent in the packetGrouper.
-                        // In which case, when it gets flushed, it will send the individual packet, not grouped.
-                        // This means we'd have told the bandwidth limiter 3 bytes more than we actually send, but that's negligible.
-
-                        if (!conn.BandwidthLimiter.Check(
-                            checkBytes,
-                            (BandwidthPriority)pri))
-                        {
-							//if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
-							//{
-							//	_logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Send hit bandwidth limit");
-							//}
-
-							// try dropping it, if we can
-							if ((buf.SendFlags & NetSendFlags.Droppable) != 0)
-                            {
-                                Debug.Assert(pri < (int)BandwidthPriority.Reliable);
-                                outlist.Remove(node);
-                                _bufferNodePool.Return(node);
-                                buf.Dispose();
-                                conn.pktdropped++;
-                                outlistlen--;
-                            }
-
-                            // but in either case, skip it
-                            continue;
-                        }
-
-                        if (buf.Tries > 0)
-                        {
-                            // this is a retry, not an initial send. record it for
-                            // lag stats and also reduce bw limit (with clipping)
-                            retries++;
-                            conn.BandwidthLimiter.AdjustForRetry();
-                        }
-
-                        buf.LastRetry = DateTime.UtcNow;
-                        buf.Tries++;
-
-                        //if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
-                        //{
-                        //    _logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Sending reliable data ({buf.NumBytes} bytes)");
-                        //}
-
-                        // this sends it or adds it to a pending grouped packet
-                        packetGrouper.Send(buf, conn);
-
-                        // if we just sent an unreliable packet, free it so we don't send it again
-                        if (pri != (int)BandwidthPriority.Reliable)
-                        {
-                            outlist.Remove(node);
-                            _bufferNodePool.Return(node);
-                            buf.Dispose();
-                            outlistlen--;
-                        }
-                    }
-                }
-
-                // flush the pending grouped packet
-                packetGrouper.Flush(conn);
-
-                conn.retries += (uint)retries;
-
-                if (outlistlen > _config.MaxOutlistSize)
-                    conn.HitMaxOutlist = true;
-            }
-
             void SubmitRelStats(Player player)
             {
                 if (player == null)
@@ -2902,7 +2644,268 @@ namespace SS.Core.Modules
             }
         }
 
-        private void RelThread()
+		private void SendOutgoing(ConnData conn, ref PacketGrouper packetGrouper, BandwidthPriority? priorityFilter = null)
+		{
+			DateTime now = DateTime.UtcNow;
+
+			// use an estimate of the average round-trip time to figure out when to resend a packet
+			uint timeout = Math.Clamp((uint)(conn.avgrtt + (4 * conn.rttdev)), 250, 2000);
+
+			// update the bandwidth limiter's counters
+			conn.BandwidthLimiter.Iter(now);
+
+			int canSend = conn.BandwidthLimiter.GetCanBufferPackets();
+			int retries = 0;
+			int outlistlen = 0;
+
+			packetGrouper.Initialize();
+
+			// process the highest priority first
+			for (int pri = conn.outlist.Length - 1; pri >= 0; pri--)
+			{
+                if (priorityFilter is not null && pri != (int)priorityFilter.Value)
+                    continue;
+
+				LinkedList<SubspaceBuffer> outlist = conn.outlist[pri];
+
+				if (pri == (int)BandwidthPriority.Reliable)
+				{
+					// move packets from UnsentRelOutList to outlist, grouped if possible
+					while (conn.UnsentRelOutList.Count > 0)
+					{
+						if (outlist.Count > 0)
+						{
+							// The reliable sending/pending queue has at least one packet,
+							// Get the first one (lowest sequence number) and use that number to determine if there's room to add more.
+							ref ReliableHeader min = ref MemoryMarshal.AsRef<ReliableHeader>(outlist.First.Value.Bytes);
+							if ((conn.s2cn - min.SeqNum) > canSend)
+							{
+								break;
+							}
+						}
+
+						LinkedListNode<SubspaceBuffer> n1 = conn.UnsentRelOutList.First;
+						SubspaceBuffer b1 = conn.UnsentRelOutList.First.Value;
+#if !DISABLE_GROUPED_SEND
+						if (b1.NumBytes <= Constants.MaxGroupedPacketItemLength && conn.UnsentRelOutList.Count > 1)
+						{
+							// The 1st packet can fit into a grouped packet and there's at least one more packet available, check if it's possible to group them together
+							SubspaceBuffer b2 = conn.UnsentRelOutList.First.Next.Value;
+
+							// Note: At the moment I think it is still more beneficial to group as many as possible even if it does go over 255 bytes. However, I've made it configurable.
+							int maxRelGroupedPacketLength = _config.LimitReliableGroupingSize
+								? Constants.MaxGroupedPacketItemLength // limit reliable packet grouping up to 255 bytes so that the result can still fit into another grouped packet later on
+								: Constants.MaxGroupedPacketLength; // (default) group as many as is possible to fit into a fully sized grouped packet
+
+							if (b2.NumBytes <= Constants.MaxGroupedPacketItemLength // the 2nd packet can fit into a grouped packet too
+								&& (ReliableHeader.Length + 2 + 1 + b1.NumBytes + 1 + b2.NumBytes) <= maxRelGroupedPacketLength) // can fit together in a reliable packet containing a grouped packet containing both packets
+							{
+								// We know we can group at least the first 2
+								SubspaceBuffer groupedBuffer = _bufferPool.Get();
+								groupedBuffer.Conn = conn;
+								groupedBuffer.SendFlags = b1.SendFlags; // taking the flags from the first packet, though doesn't really matter since we already know it's reliable
+								groupedBuffer.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
+								groupedBuffer.Tries = 0;
+
+								ref ReliableHeader groupedRelHeader = ref MemoryMarshal.AsRef<ReliableHeader>(groupedBuffer.Bytes);
+								groupedRelHeader.Initialize(conn.s2cn++);
+
+								// Group up as many as possible
+								PacketGrouper relGrouper = new(this, groupedBuffer.Bytes.AsSpan(ReliableHeader.Length, maxRelGroupedPacketLength - ReliableHeader.Length));
+								LinkedListNode<SubspaceBuffer> node = conn.UnsentRelOutList.First;
+								while (node != null)
+								{
+									LinkedListNode<SubspaceBuffer> next = node.Next;
+									SubspaceBuffer toAppend = node.Value;
+
+									if (!relGrouper.TryAppend(new ReadOnlySpan<byte>(toAppend.Bytes, 0, toAppend.NumBytes)))
+									{
+										break;
+									}
+
+									if (toAppend.CallbackInvoker != null)
+									{
+										if (groupedBuffer.CallbackInvoker == null)
+										{
+											groupedBuffer.CallbackInvoker = toAppend.CallbackInvoker;
+										}
+										else
+										{
+											IReliableCallbackInvoker invoker = groupedBuffer.CallbackInvoker;
+											while (invoker.Next != null)
+												invoker = invoker.Next;
+
+											invoker.Next = toAppend.CallbackInvoker;
+										}
+
+										toAppend.CallbackInvoker = null;
+									}
+
+									conn.UnsentRelOutList.Remove(node);
+									_bufferNodePool.Return(node);
+									toAppend.Dispose();
+
+									node = next;
+								}
+
+								Debug.Assert(relGrouper.Count >= 2, $"A minimum of 2 packets should have been grouped, but the count was {relGrouper.Count}.");
+
+								groupedBuffer.NumBytes = ReliableHeader.Length + relGrouper.NumBytes;
+
+								if (relGrouper.Count > 0)
+								{
+									Interlocked.Increment(ref _globalStats.RelGroupedStats[Math.Min(relGrouper.Count - 1, _globalStats.RelGroupedStats.Length - 1)]);
+								}
+
+								LinkedListNode<SubspaceBuffer> groupedNode = _bufferNodePool.Get();
+								groupedNode.Value = groupedBuffer;
+								outlist.AddLast(groupedNode);
+
+								continue;
+							}
+						}
+#endif
+						//
+						// Couldn't group the packet, just add it as an regular individual reliable packet.
+						//
+
+						// Move the data back, so that we can prepend it with the reliable header.
+						for (int i = b1.NumBytes - 1; i >= 0; i--)
+						{
+							b1.Bytes[i + ReliableHeader.Length] = b1.Bytes[i];
+						}
+
+						// Write in the reliable header.
+						ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(b1.Bytes);
+						header.Initialize(conn.s2cn++);
+
+						b1.NumBytes += ReliableHeader.Length;
+						b1.LastRetry = DateTime.UtcNow.Subtract(new TimeSpan(0, 0, 10));
+						b1.Tries = 0;
+
+						Interlocked.Increment(ref _globalStats.RelGroupedStats[0]);
+
+						// Move the node from the unsent queue to the sending/pending queue.
+						conn.UnsentRelOutList.Remove(n1);
+						outlist.AddLast(n1);
+					}
+
+					// include the "unsent" packets in the outgoing count too
+					outlistlen += conn.UnsentRelOutList.Count;
+				}
+
+                //if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
+                //{
+                //    _logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Send iteration");
+                //}
+
+                LinkedListNode<SubspaceBuffer> nextNode;
+				for (LinkedListNode<SubspaceBuffer> node = outlist.First; node != null; node = nextNode)
+				{
+					nextNode = node.Next;
+
+					SubspaceBuffer buf = node.Value;
+					outlistlen++;
+
+					// check some invariants
+					ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buf.Bytes);
+
+					if (rp.T1 == 0x00 && rp.T2 == 0x03)
+						Debug.Assert(pri == (int)BandwidthPriority.Reliable);
+					else if (rp.T1 == 0x00 && rp.T2 == 0x04)
+						Debug.Assert(pri == (int)BandwidthPriority.Ack);
+					else
+						Debug.Assert((pri != (int)BandwidthPriority.Reliable) && (pri != (int)BandwidthPriority.Ack));
+
+					// check if it's time to send this yet (use linearly increasing timeouts)
+					if ((buf.Tries != 0) && ((now - buf.LastRetry).TotalMilliseconds <= (timeout * buf.Tries)))
+						continue;
+
+					// if we've retried too many times, kick the player
+					if (buf.Tries > _config.MaxRetries)
+					{
+						conn.HitMaxRetries = true;
+						return;
+					}
+
+					// At this point, there's only one more check to determine if we're sending this packet now: bandwidth limiting.
+					int checkBytes = buf.NumBytes;
+					if (buf.NumBytes > Constants.MaxGroupedPacketItemLength)
+						checkBytes += _config.PerPacketOverhead; // Can't be grouped, so definitely will be sent in its own datagram
+					else if (packetGrouper.Count == 0 || !packetGrouper.CheckAppend(buf.NumBytes))
+						checkBytes += _config.PerPacketOverhead + 2 + 1; // Start of a new grouped packet. So, include an overhead of: IP+UDP header + grouped packet header + grouped packet item header
+					else
+						checkBytes += 1; // Will be appended into a grouped packet (though, not the first in it). So, only include the overhead of the grouped packet item header.
+
+					// Note for the above checkBytes calcuation:
+					// There is still a chance that at the end, there's only 1 packet remaining to be sent in the packetGrouper.
+					// In which case, when it gets flushed, it will send the individual packet, not grouped.
+					// This means we'd have told the bandwidth limiter 3 bytes more than we actually send, but that's negligible.
+
+					if (!conn.BandwidthLimiter.Check(
+						checkBytes,
+						(BandwidthPriority)pri))
+					{
+                        //if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
+                        //{
+                        //    _logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Send hit bandwidth limit");
+                        //}
+
+                        // try dropping it, if we can
+                        if ((buf.SendFlags & NetSendFlags.Droppable) != 0)
+						{
+							Debug.Assert(pri < (int)BandwidthPriority.Reliable);
+							outlist.Remove(node);
+							_bufferNodePool.Return(node);
+							buf.Dispose();
+							conn.pktdropped++;
+							outlistlen--;
+						}
+
+						// but in either case, skip it
+						continue;
+					}
+
+					if (buf.Tries > 0)
+					{
+						// this is a retry, not an initial send. record it for
+						// lag stats and also reduce bw limit (with clipping)
+						retries++;
+						conn.BandwidthLimiter.AdjustForRetry();
+					}
+
+					buf.LastRetry = DateTime.UtcNow;
+					buf.Tries++;
+
+                    //if (pri == (int)BandwidthPriority.Reliable && conn.p is not null)
+                    //{
+                    //    _logManager.LogP(LogLevel.Drivel, nameof(Network), conn.p, $"{DateTime.Now:O} Sending reliable data ({buf.NumBytes} bytes)");
+                    //}
+
+                    // this sends it or adds it to a pending grouped packet
+                    packetGrouper.Send(buf, conn);
+
+					// if we just sent an unreliable packet, free it so we don't send it again
+					if (pri != (int)BandwidthPriority.Reliable)
+					{
+						outlist.Remove(node);
+						_bufferNodePool.Return(node);
+						buf.Dispose();
+						outlistlen--;
+					}
+				}
+			}
+
+			// flush the pending grouped packet
+			packetGrouper.Flush(conn);
+
+			conn.retries += (uint)retries;
+
+			if (outlistlen > _config.MaxOutlistSize)
+				conn.HitMaxOutlist = true;
+		}
+
+		private void RelThread()
         {
             while (true)
             {
@@ -2955,10 +2958,31 @@ namespace SS.Core.Modules
 		#endregion
 
 		/// <summary>
-		/// This thread manages sized sends.
-		/// It queues data to be sent for sized sends in progress.
-		/// Also, it cleans up sized sends that have been cancelled.
+		/// Thread that manages sending of sized data to connections.
 		/// </summary>
+		/// <remarks>
+		/// <para>
+		/// In the "Core" protocol (Subspace's transport layer), "sized data" is a mechanism for transferring data that is too large to fit into a single packet.
+		/// The data is transferred in such a way that the receiver knows how much data to expect, hence why it's called "sized data".
+		/// When you see a downloading progress bar in the client, it's using sized data to transfer. For example, when downloading map files (lvl and lvz).
+		/// 
+        /// The concept behind sized data is simple: split the data into chunks so that each chunk fits into a packet, and include the size.
+		/// 
+		/// Sized data packets are always sent within reliable packets to maintain ordering.
+		/// The first 2 bytes in a sized packet are: 0x00 0x0A
+		/// The 0x00 indicates it's a "core" packet, and the 0x0A tells it's a sized data packet.
+		/// The next 4 bytes are the total size of the transfer, followed by the chunk of data.
+		/// </para>
+		/// <para>
+		/// This thread queues data to be sent for sized sends in progress.
+		/// Also, it cleans up sized sends that have been cancelled.
+		/// </para>
+		/// <para>
+		/// Technically, sized data is only sent to player connections. 
+		/// However, this logic does not assume player connections only. 
+		/// It could work for client connections as well, if there was ever a need.
+		/// </para>
+		/// </remarks>
 		private void SizedSendThread()
 		{
 			WaitHandle[] waitHandles = [_sizedSendEvent, _stopToken.WaitHandle];
@@ -3002,38 +3026,14 @@ namespace SS.Core.Modules
                         // We'll deal with that later, when the connection has no more sized sends.
 					}
 
-					if (ProcessSizedSends(conn))
-                    {
-                        // At least one sized packet was buffered to be sent
+					if (ProcessSizedSends(conn) && _config.SizedSendOutgoing)
+					{
+						// At least one sized packet was buffered to be sent.
+						// Try to send the sized data (in the reliable outgoing queue) immediately rather than wait for the SendThread to do it.
+						// This doesn't guarantee the queued sized data will immediately sent (e.g. bandwidth limits), but it is given a chance.
+						SendOutgoingReliable(conn);
 
-                        // TODO: Try to send the sized data (in the reliable outgoing queue) immediately rather than wait for the SendThread to pick it up.
-                        // This doesn't guarantee the queued sized data will immediately sent (e.g. bandwidth limits), but it is given a chance.
-                        //Player player = conn.p;
-                        //if (player is not null)
-                        //{
-                        //    _playerData.Lock();
-                        //    try
-                        //    {
-                        //        if (player.Status >= PlayerState.Connected && player.Status < PlayerState.TimeWait)
-                        //        {
-                        //            if (Monitor.TryEnter(conn.olmtx))
-                        //            {
-                        //                try
-                        //                {
-                        //                    //SendOutgoing(connData, BandwidthPriority.Reliable);
-                        //                }
-                        //                finally
-                        //                {
-                        //                    Monitor.Exit(conn.olmtx);
-                        //                }
-                        //            }
-                        //        }
-                        //    }
-                        //    finally
-                        //    {
-                        //        _playerData.Unlock();
-                        //    }
-                        //}
+                        // TODO: It would be even better if we could signal the SendThread to process it instead, but that would probably require changing SendThread to use a producer-consumer queue.
 					}
 				}
 			}
@@ -3092,7 +3092,7 @@ namespace SS.Core.Modules
 					if (!cancelled)
                     {
                         // Check if there is room for queuing data.
-                        if (conn.SizedSendQueuedCount >= _config.PresizedQueueThreshold)
+                        if (conn.SizedSendQueuedCount >= _config.SizedQueueThreshold)
                             break;
 
 						//
@@ -3100,7 +3100,7 @@ namespace SS.Core.Modules
 						//
 
 						// Determine how much data to request.
-						int requestAtOnce = _config.PresizedQueuePackets * Constants.ChunkSize;
+						int requestAtOnce = _config.SizedQueuePackets * Constants.ChunkSize;
 						int needed = int.Min(requestAtOnce, sizedSend.Remaining);
 
 						if (needed > 0)
@@ -3268,7 +3268,49 @@ namespace SS.Core.Modules
 
 				return queuedData;
 			}
-        }
+
+			void SendOutgoingReliable(ConnData conn)
+			{
+				if (conn is null)
+					return;
+
+				Player player = conn.p;
+
+				if (player is not null)
+				{
+					_playerData.Lock();
+				}
+
+				try
+				{
+					if (player is null
+						|| (player.Status >= PlayerState.Connected && player.Status < PlayerState.TimeWait))
+					{
+						Span<byte> groupedPacketBuffer = stackalloc byte[Constants.MaxGroupedPacketLength];
+						PacketGrouper packetGrouper = new(this, groupedPacketBuffer);
+
+						if (Monitor.TryEnter(conn.olmtx))
+						{
+							try
+							{
+								SendOutgoing(conn, ref packetGrouper, BandwidthPriority.Reliable);
+							}
+							finally
+							{
+								Monitor.Exit(conn.olmtx);
+							}
+						}
+					}
+				}
+				finally
+				{
+					if (player is not null)
+					{
+						_playerData.Unlock();
+					}
+				}
+			}
+		}
 
 		private void SizedSendChunkCompleted(Player player, bool success)
         {
@@ -4786,16 +4828,23 @@ namespace SS.Core.Modules
             /// </summary>
             public bool LimitReliableGroupingSize { get; private set; }
 
-            /// <summary>
-            /// For sized sends (sending files), the threshold to start queuing up more packets.
-            /// </summary>
-            public int PresizedQueueThreshold { get; private set; }
+			/// <summary>
+			/// When sending sized data, the # of queued packets at which an additional batch should not be queued.
+			/// </summary>
+			public int SizedQueueThreshold { get; private set; }
+
+			/// <summary>
+			/// When sending sized data, the maximum # of packets to queue up in a batch.
+			/// </summary>
+			/// <remarks>
+			/// This means, the maximum # of packets that can be queued at the same time is <see cref="SizedQueueThreshold"/> - 1 + <see cref="SizedQueuePackets"/>.
+			/// </remarks>
+			public int SizedQueuePackets { get; private set; }
 
             /// <summary>
-            /// # of additional packets that can be queued up when below the <see cref="PresizedQueueThreshold"/>.
-            /// Note: This means, the maximum # of packets that will be queued up at a given time is <see cref="PresizedQueueThreshold"/> - 1 + <see cref="PresizedQueuePackets"/>.
+            /// When sending sized data, whether to attempt to send outgoing reliable data immediately after queuing sized data.
             /// </summary>
-            public int PresizedQueuePackets { get; private set; }
+            public bool SizedSendOutgoing { get; private set; }
 
             /// <summary>
             /// ip/udp overhead, in bytes per physical packet
@@ -4829,9 +4878,10 @@ namespace SS.Core.Modules
 
                 // (deliberately) undocumented settings
                 MaxRetries = configManager.GetInt(configManager.Global, "Net", "MaxRetries", 15);
-                PresizedQueueThreshold = int.Clamp(configManager.GetInt(configManager.Global, "Net", "PresizedQueueThreshold", 5), 1, MaxOutlistSize);
-                PresizedQueuePackets = int.Clamp(configManager.GetInt(configManager.Global, "Net", "PresizedQueuePackets", 25), 1, MaxOutlistSize);
-                LimitReliableGroupingSize = configManager.GetInt(configManager.Global, "Net", "LimitReliableGroupingSize", 0) != 0;
+                SizedQueueThreshold = int.Clamp(configManager.GetInt(configManager.Global, "Net", "PresizedQueueThreshold", 5), 1, MaxOutlistSize);
+                SizedQueuePackets = int.Clamp(configManager.GetInt(configManager.Global, "Net", "PresizedQueuePackets", 25), 1, MaxOutlistSize);
+                SizedSendOutgoing = configManager.GetInt(configManager.Global, "Net", "SizedSendOutgoing", 0) != 0;
+				LimitReliableGroupingSize = configManager.GetInt(configManager.Global, "Net", "LimitReliableGroupingSize", 0) != 0;
                 PerPacketOverhead = configManager.GetInt(configManager.Global, "Net", "PerPacketOverhead", 28);
                 PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * configManager.GetInt(configManager.Global, "Net", "PingDataRefreshTime", 200));
             }
