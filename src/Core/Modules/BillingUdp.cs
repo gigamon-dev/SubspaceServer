@@ -261,7 +261,7 @@ namespace SS.Core.Modules
                     }
 
 					ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
-                    Span<byte> packetBytes = stackalloc byte[S2B_UserLogin.Length + int.Min(S2B_UserLogin_ClientExtraData.Length, extraBytes.Length)];
+                    Span<byte> packetBytes = stackalloc byte[S2B_UserLogin.Length + S2B_UserLogin_ClientExtraData.Length];
                     ref S2B_UserLogin packet = ref MemoryMarshal.AsRef<S2B_UserLogin>(packetBytes);
                     packet = new(
                         loginPacket.Flags,
@@ -286,7 +286,7 @@ namespace SS.Core.Modules
 						extraBytes.CopyTo(clientExtraData);
                     }
 
-                    _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
+                    _networkClient.SendPacket(_cc, packetBytes[..(S2B_UserLogin.Length + extraBytes.Length)], NetSendFlags.Reliable);
                     playerData.IsKnownToBiller = true;
                     _pendingAuths++;
                 }
