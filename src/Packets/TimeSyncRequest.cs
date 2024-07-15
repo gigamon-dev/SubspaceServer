@@ -4,37 +4,33 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct TimeSyncRequest
-    {
-        public static readonly int Length;
+    public readonly struct TimeSyncRequest(uint time, uint packetsSent, uint packetsReceived)
+	{
+		#region Static members
+
+		public static readonly int Length;
 
         static TimeSyncRequest()
         {
             Length = Marshal.SizeOf<TimeSyncRequest>();
         }
 
-        public byte T1;
-        public byte T2;
-        private uint time;
-        private uint pktsent;
-        private uint pktrecvd;
+        #endregion
 
-        public uint Time
-        {
-            get { return LittleEndianConverter.Convert(time); }
-            set { time = LittleEndianConverter.Convert(value); }
-        }
+        public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x05;
+        private readonly uint time = LittleEndianConverter.Convert(time);
+        private readonly uint packetsSent = LittleEndianConverter.Convert(packetsSent);
+        private readonly uint packetsReceived = LittleEndianConverter.Convert(packetsReceived);
 
-        public uint PktSent
-        {
-            get { return LittleEndianConverter.Convert(pktsent); }
-            set { pktsent = LittleEndianConverter.Convert(value); }
-        }
+		#region Helper properties
 
-        public uint PktRecvd
-        {
-            get { return LittleEndianConverter.Convert(pktrecvd); }
-            set { pktrecvd = LittleEndianConverter.Convert(value); }
-        }
+		public uint Time => LittleEndianConverter.Convert(time);
+
+        public uint PacketsSent => LittleEndianConverter.Convert(packetsSent);
+
+        public uint PacketsReceived => LittleEndianConverter.Convert(packetsReceived);
+
+        #endregion
     }
 }

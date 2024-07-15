@@ -19,7 +19,7 @@ namespace SS.Packets.Billing
 
         public byte Type;
         private int connectionId;
-        private ushort reason;
+        private ushort reason; // TODO: Investigate if this field should be 16 bits or 32 bits. ASSS has 16. The MGB wiki says it's 32. Probably doesn't matter since it's little endian.
 
         #region Helpers
 

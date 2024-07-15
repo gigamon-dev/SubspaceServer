@@ -580,8 +580,9 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: rel ping: {reliablePing.Current} {reliablePing.Average} ({reliablePing.Min}-{reliablePing.Max}) (reliable ping)");
                 _chat.SendMessage(player, $"{prefix}: effective ping: {average} (average of above)");
 
-                _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.s2c * 100d:F2} c2s: {packetloss.c2s * 100d:F2} s2cwpn: {packetloss.s2cwpn * 100:F2}");
-                _chat.SendMessage(player, $"{prefix}: reliable dups: {reliableLag.RelDups * 100d / reliableLag.C2SN:F2}%  reliable resends: {reliableLag.Retries * 100d / reliableLag.S2CN:F2}%");
+                double s2cRelLoss = (reliableLag.Retries == 0) ? 0d : ((reliableLag.Retries - reliableLag.AckDups) * 100d / reliableLag.ReliablePacketsSent);
+                _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.s2c * 100d:F2}  c2s: {packetloss.c2s * 100d:F2}  s2cwpn: {packetloss.s2cwpn * 100:F2}  s2crel: {s2cRelLoss:F2}");
+                _chat.SendMessage(player, $"{prefix}: reliable: dups: {reliableLag.RelDups * 100d / reliableLag.ReliablePacketsReceived:F2}%  resends: {reliableLag.Retries * 100d / reliableLag.ReliablePacketsSent:F2}%");
                 _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal}  s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 
                 PrintCommonBandwidthInfo(player, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
@@ -1917,14 +1918,14 @@ namespace SS.Core.Modules
 
             try
             {
-                NetClientStats stats = new() { BandwidthLimitInfo = sb };
+                NetConnectionStats stats = new() { BandwidthLimitInfo = sb };
 
-                _network.GetClientStats(targetPlayer, ref stats);
+                _network.GetConnectionStats(targetPlayer, ref stats);
 
                 if (includeSensitive)
                 {
-                    _chat.SendMessage(player, $"{prefix}: ip:{stats.IPEndPoint.Address}  port:{stats.IPEndPoint.Port}  " +
-                        $"encName={stats.EncryptionName}  macId={targetPlayer.MacId}  permId={targetPlayer.PermId}");
+                    _chat.SendMessage(player, $"{prefix}: ip={stats.IPEndPoint.Address}  port={stats.IPEndPoint.Port}  " +
+                        $"encName={stats.EncryptorName}  macId={targetPlayer.MacId}  permId={targetPlayer.PermId}");
                 }
 
                 int ignoringwpns = _game != null ? (int)(100f * _game.GetIgnoreWeapons(targetPlayer)) : 0;

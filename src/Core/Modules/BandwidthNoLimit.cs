@@ -1,56 +1,18 @@
 ﻿using SS.Core.ComponentInterfaces;
-using System;
 using System.Text;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module for that provides a bandwidth limiters that do not impose a limit.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module for that provides a bandwidth limiters that do not impose a limit.
+	/// </summary>
+	[CoreModuleInfo]
     public class BandwidthNoLimit : IModule, IBandwidthLimiterProvider
     {
         private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
 
         // This limiter does not keep any state; it is immutable. Therefore, we just use one instance for all.
         private readonly NoLimitBandwidthLimiter _singleton = new();
-
-        /// <summary>
-        /// An <see cref="IBandwidthLimiter"/> that does not enforce any limit.
-        /// </summary>
-        private class NoLimitBandwidthLimiter : IBandwidthLimiter
-        {
-            #region IBandwidthLimiter Members
-
-            public void Iter(DateTime now)
-            {
-            }
-
-            public bool Check(int bytes, BandwidthPriority priority)
-            {
-                return true;
-            }
-
-            public void AdjustForAck()
-            {
-            }
-
-            public void AdjustForRetry()
-            {
-            }
-
-            public int GetCanBufferPackets()
-            {
-                return 30;
-            }
-
-            public void GetInfo(StringBuilder sb)
-            {
-                sb?.Append("(no limit)");
-            }
-
-            #endregion
-        }
 
         #region IModule Members
 
@@ -82,6 +44,43 @@ namespace SS.Core.Modules
             // no-op
         }
 
-        #endregion
-    }
+		#endregion
+
+		/// <summary>
+		/// An <see cref="IBandwidthLimiter"/> that does not enforce any limit.
+		/// </summary>
+		private class NoLimitBandwidthLimiter : IBandwidthLimiter
+		{
+			#region IBandwidthLimiter Members
+
+			public void Iter(long asOf)
+			{
+			}
+
+			public bool Check(int bytes, BandwidthPriority priority)
+			{
+				return true;
+			}
+
+			public void AdjustForAck()
+			{
+			}
+
+			public void AdjustForRetry()
+			{
+			}
+
+			public int GetSendWindowSize()
+			{
+				return 30;
+			}
+
+			public void GetInfo(StringBuilder sb)
+			{
+				sb?.Append("(no limit)");
+			}
+
+			#endregion
+		}
+	}
 }

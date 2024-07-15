@@ -1,10 +1,9 @@
 ﻿using SS.Utilities;
-using System;
 using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct B2S_UserMulticastChannelChatHeader
     {
         #region Static members

@@ -629,7 +629,7 @@ namespace SS.Core.Modules
 
         private bool ConnectionInitHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
         {
-            if (data.Length < 12 || data[0] != 0x00 || data[1] != 0x01 || data[6] != 0x0FF)
+            if (data.Length < PeerPacketHeader.Length || data[0] != 0x00 || data[1] != 0x01 || data[6] != 0x0FF)
             {
                 // Not the peer protocol.
                 return false;

@@ -15,18 +15,18 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module for connecting to a billing server via the UDP billing protocol.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// To use this module the <see cref="EncryptionVIE"/> module must be loaded first.
-    /// </para>
-    /// <para>
-    /// This module is the equivalent of the 'billing_ssc' module in ASSS.
-    /// </para>
-    /// </remarks>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module for connecting to a billing server via the UDP billing protocol.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// To use this module the <see cref="EncryptionVIE"/> module must be loaded first.
+	/// </para>
+	/// <para>
+	/// This module is the equivalent of the 'billing_ssc' module in ASSS.
+	/// </para>
+	/// </remarks>
+	[CoreModuleInfo]
     public class BillingUdp : IModule, IBilling, IAuth, IClientConnectionHandler
     {
         private ComponentBroker _broker;
@@ -368,59 +368,57 @@ namespace SS.Core.Modules
             }
         }
 
-        void IClientConnectionHandler.HandlePacket(byte[] pkt, int len)
+        void IClientConnectionHandler.HandlePacket(Span<byte> data, NetReceiveFlags flags)
         {
-            if (pkt is null || len < 1)
+            if (data.Length < 1)
                 return;
 
             lock (_lockObj)
             {
-                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"HandlePacket(0x{pkt[0]:X2},{len})");
-
                 // Move past WaitLogin on any packet.
                 if (_state == BillingState.WaitLogin)
                     LoggedIn();
 
-                switch ((B2SPacketType)pkt[0])
+                switch ((B2SPacketType)data[0])
                 {
                     case B2SPacketType.UserLogin:
-                        ProcessUserLogin(pkt, len);
+                        ProcessUserLogin(data);
                         break;
 
                     case B2SPacketType.UserPrivateChat:
-                        ProcessUserPrivateChat(pkt, len);
+                        ProcessUserPrivateChat(data);
                         break;
 
                     case B2SPacketType.UserKickout:
-                        ProcessUserKickout(pkt, len);
+                        ProcessUserKickout(data);
                         break;
 
                     case B2SPacketType.UserCommandChat:
-                        ProcessUserCommandChat(pkt, len);
+                        ProcessUserCommandChat(data);
                         break;
 
                     case B2SPacketType.UserChannelChat:
-                        ProcessUserChannelChat(pkt, len);
+                        ProcessUserChannelChat(data);
                         break;
 
                     case B2SPacketType.ScoreReset:
-                        ProcessScoreReset(pkt, len);
+                        ProcessScoreReset(data);
                         break;
 
                     case B2SPacketType.UserPacket:
-                        ProcessUserPacket(pkt, len);
+                        ProcessUserPacket(data);
                         break;
 
                     case B2SPacketType.BillingIdentity:
-                        ProcessBillingIdentity(pkt, len);
+                        ProcessBillingIdentity(data);
                         break;
 
                     case B2SPacketType.UserMulticastChannelChat:
-                        ProcessUserMulticastChannelChat(pkt, len);
+                        ProcessUserMulticastChannelChat(data);
                         break;
 
                     default:
-                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Unsupported packet type {pkt[0]}.");
+                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Unsupported packet type {data[0]}.");
                         break;
                 }
             }
@@ -537,7 +535,7 @@ namespace SS.Core.Modules
                     // Keep alive ping
                     if ((now - _lastEvent).TotalSeconds >= 60)
                     {
-                        ReadOnlySpan<byte> packet = stackalloc byte[1] { (byte)S2BPacketType.Ping };
+                        ReadOnlySpan<byte> packet = [(byte)S2BPacketType.Ping];
                         _networkClient.SendPacket(_cc, packet, NetSendFlags.Reliable);
                         _lastEvent = now;
                     }
@@ -835,11 +833,12 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "status|drop|connect",
+            Args = "status|drop|connect|identity",
             Description = """
                 The subcommand 'status' reports the status of the user database server
-                connection. 'drop' disconnects the connection if it's up, and 'connect'
-                reconnects after dropping or failed login.
+                connection. 'drop' disconnects the connection if it's up. 'connect'
+                reconnects after dropping or failed login. 'identity' prints out the
+                server's identity if the billing server provided one.
                 """)]
         private void Command_userdbadm(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -862,8 +861,39 @@ namespace SS.Core.Modules
                         _chat.SendMessage(player, "User database server connection already active.");
                     }
                 }
+                else if (parameters.Equals("identity", StringComparison.OrdinalIgnoreCase))
+                {
+					if (_identity is not null && _identity.Length > 0)
+					{
+						_chat.SendMessage(player, $"Identity ({_identity.Length} bytes):");
+
+						StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+						try
+						{
+							foreach (byte b in _identity)
+							{
+								if (sb.Length > 0)
+									sb.Append(' ');
+
+								sb.Append($"{b:X2}");
+							}
+
+							_chat.SendWrappedText(player, sb);
+						}
+						finally
+						{
+							_objectPoolManager.StringBuilderPool.Return(sb);
+						}
+					}
+                    else
+                    {
+                        _chat.SendMessage(player, "Identity not found.");
+                    }
+				}
                 else
                 {
+                    // Billing status
                     string status = _state switch
                     {
                         BillingState.NoSocket => "not connected yet",
@@ -876,30 +906,30 @@ namespace SS.Core.Modules
                         _ => "unknown",
                     };
 
-                    _chat.SendMessage(player, $"User database status: {status}  Pending auths: {_pendingAuths}.");
+                    _chat.SendMessage(player, $"User database status: {status}  Pending auths: {_pendingAuths}");
 
-                    if (_identity is not null && _identity.Length > 0)
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
                     {
-                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                        try
+                        // Connection stats
+                        if (_cc is not null)
                         {
-                            sb.Append("Identity: ");
+                            NetConnectionStats stats = new() { BandwidthLimitInfo = sb };
+                            _networkClient.GetConnectionStats(_cc, ref stats);
 
-                            foreach(byte b in _identity)
-                            {
-                                if (sb.Length > 10)
-                                    sb.Append(' ');
-
-                                sb.Append($"{b:X2}");
-                            }
-
-                            _chat.SendMessage(player, sb);
+                            _chat.SendMessage(player, $"IP: {stats.IPEndPoint.Address}  Port: {stats.IPEndPoint.Port}  Encryption: {stats.EncryptorName}");
+                            _chat.SendMessage(player, $"Bytes:  Sent: {stats.BytesSent}  Received: {stats.BytesReceived}");
+                            _chat.SendMessage(player, $"Packets:  Sent: {stats.PacketsSent}  Received: {stats.PacketsReceived}  Dropped: {stats.PacketsDropped}");
+                            _chat.SendMessage(player, $"Reliable Packets: Sent: {stats.ReliablePacketsSent}  Received: {stats.ReliablePacketsReceived}");
+                            _chat.SendMessage(player, $"Reliable: Dups: {stats.RelDups} {stats.RelDups * 100d / stats.ReliablePacketsReceived:F2}%  Resends: {stats.Retries} {stats.Retries * 100d / stats.ReliablePacketsSent:F2}%");
+                            _chat.SendMessage(player, $"Reliable S2B Packetloss: {((stats.Retries == 0) ? 0d : ((stats.Retries - stats.AckDups) * 100d / stats.ReliablePacketsSent)):F2}%");
+                            _chat.SendMessage(player, $"BW limit: {stats.BandwidthLimitInfo}");
                         }
-                        finally
-                        {
-                            _objectPoolManager.StringBuilderPool.Return(sb);
-                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
                     }
                 }
             }
@@ -976,7 +1006,7 @@ namespace SS.Core.Modules
                 {
                     sb.Append("?chat=");
 
-                    ReadOnlySpan<char> chatName = ReadOnlySpan<char>.Empty;
+                    ReadOnlySpan<char> chatName;
                     while ((chatName = line.GetToken(',', out line)).Length > 0)
                     {
                         chatName = chatName.Trim();
@@ -1148,7 +1178,7 @@ namespace SS.Core.Modules
             if (_cc is not null)
             {
                 // Ideally this would be sent reliably, but reliable packets won't get sent after DropConnection.
-                ReadOnlySpan<byte> disconnect = stackalloc byte[1] { (byte)S2BPacketType.ServerDisconnect };
+                ReadOnlySpan<byte> disconnect = [(byte)S2BPacketType.ServerDisconnect];
                 _networkClient.SendPacket(_cc, disconnect, NetSendFlags.PriorityP5);
                 _networkClient.DropConnection(_cc);
                 _cc = null;
@@ -1160,14 +1190,11 @@ namespace SS.Core.Modules
 
         #region B2S packet handlers
 
-        private void ProcessUserLogin(byte[] data, int len)
+        private void ProcessUserLogin(Span<byte> data)
         {
-            if (data is null)
-                return;
-
-            if (len < B2S_UserLogin.LengthWithoutScore)
+            if (data.Length < B2S_UserLogin.LengthWithoutScore)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserLogin)} packet length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserLogin)} packet length ({data.Length}).");
                 return;
             }
 
@@ -1200,9 +1227,10 @@ namespace SS.Core.Modules
                 playerData.BillingUserId = packet.UserId;
 
                 // Note: ASSS has this commented out, but here we provide a config setting.
-                if (_loadPublicPlayerScores && len >= B2S_UserLogin.LengthWithScore)
+                if (_loadPublicPlayerScores && data.Length >= B2S_UserLogin.LengthWithScore)
                 {
-                    playerData.LoadedScore = packet.Score;
+                    ref PlayerScore score = ref MemoryMarshal.AsRef<PlayerScore>(data[B2S_UserLogin.LengthWithoutScore..]);
+                    playerData.LoadedScore = score;
                 }
                 else
                 {
@@ -1269,16 +1297,15 @@ namespace SS.Core.Modules
             _pendingAuths--;
         }
 
-        private void ProcessUserPrivateChat(byte[] pkt, int len)
+        private void ProcessUserPrivateChat(Span<byte> data)
         {
-            if (len < B2S_UserPrivateChat.MinLength || len > B2S_UserPrivateChat.MaxLength)
+            if (data.Length < B2S_UserPrivateChat.MinLength || data.Length > B2S_UserPrivateChat.MaxLength)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserPrivateChat)} - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserPrivateChat)} - length ({data.Length}).");
                 return;
             }
 
-            Span<byte> pktSpan = pkt.AsSpan(0, len);
-            ref B2S_UserPrivateChat packet = ref MemoryMarshal.AsRef<B2S_UserPrivateChat>(pktSpan);
+            ref B2S_UserPrivateChat packet = ref MemoryMarshal.AsRef<B2S_UserPrivateChat>(data);
 
             if (packet.SubType != 2)
             {
@@ -1286,7 +1313,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = B2S_UserPrivateChat.GetTextBytes(pktSpan);
+            Span<byte> textBytes = B2S_UserPrivateChat.GetTextBytes(data);
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
@@ -1403,15 +1430,15 @@ namespace SS.Core.Modules
 			}
 		}
 
-        private void ProcessUserKickout(byte[] pkt, int len)
+        private void ProcessUserKickout(Span<byte> data)
         {
-            if (len < B2S_UserKickout.Length)
+            if (data.Length < B2S_UserKickout.Length)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserKickout)} packet length {len}.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserKickout)} packet length {data.Length}.");
                 return;
             }
 
-            ref B2S_UserKickout packet = ref MemoryMarshal.AsRef<B2S_UserKickout>(pkt);
+            ref B2S_UserKickout packet = ref MemoryMarshal.AsRef<B2S_UserKickout>(data);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is not null)
@@ -1421,16 +1448,15 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessUserCommandChat(byte[] pkt, int len)
+        private void ProcessUserCommandChat(Span<byte> data)
         {
-            if (len < B2S_UserCommandChat.MinLength || len > B2S_UserCommandChat.MaxLength)
+            if (data.Length < B2S_UserCommandChat.MinLength || data.Length > B2S_UserCommandChat.MaxLength)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserCommandChat)} - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserCommandChat)} - length ({data.Length}).");
                 return;
             }
 
-            Span<byte> pktSpan = pkt.AsSpan(0, len);
-			ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(pktSpan);
+			ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(data);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
@@ -1439,7 +1465,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = B2S_UserCommandChat.GetTextBytes(pktSpan);
+            Span<byte> textBytes = B2S_UserCommandChat.GetTextBytes(data);
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
@@ -1466,16 +1492,15 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessUserChannelChat(byte[] pkt, int len)
+        private void ProcessUserChannelChat(Span<byte> data)
         {
-            if (len < B2S_UserChannelChat.MinLength || len > B2S_UserChannelChat.MaxLength)
+            if (data.Length < B2S_UserChannelChat.MinLength || data.Length > B2S_UserChannelChat.MaxLength)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserChannelChat)} - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_UserChannelChat)} - length ({data.Length}).");
                 return;
             }
 
-            Span<byte> pktSpan = pkt.AsSpan(0, len);
-			ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(pktSpan);
+			ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(data);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
@@ -1484,7 +1509,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Span<byte> textBytes = B2S_UserChannelChat.GetTextBytes(pktSpan);
+            Span<byte> textBytes = B2S_UserChannelChat.GetTextBytes(data);
             int index = textBytes.IndexOf((byte)0);
             if (index == -1)
             {
@@ -1521,15 +1546,15 @@ namespace SS.Core.Modules
             Description = "Whether to reset scores when the billing server says it is time to.")]
         [ConfigHelp("Billing", "ScoreResetArenaGroups", ConfigScope.Global, typeof(string), DefaultValue = Constants.ArenaGroup_Public,
             Description = "Which arena group(s) to affect when honoring a billing server score reset request.")]
-        private void ProcessScoreReset(byte[] pkt, int len)
+        private void ProcessScoreReset(Span<byte> data)
         {
-            if (len < B2S_ScoreReset.Length)
+            if (data.Length < B2S_ScoreReset.Length)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_ScoreReset)} - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_ScoreReset)} - length ({data.Length}).");
                 return;
             }
 
-            ref B2S_ScoreReset packet = ref MemoryMarshal.AsRef<B2S_ScoreReset>(pkt);
+            ref B2S_ScoreReset packet = ref MemoryMarshal.AsRef<B2S_ScoreReset>(data);
             if (packet.ScoreId != -packet.ScoreIdNegative)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_ScoreReset)} - ScoreId mismatch ({packet.ScoreId}/{packet.ScoreIdNegative}).");
@@ -1571,21 +1596,20 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessUserPacket(byte[] pkt, int len)
+        private void ProcessUserPacket(Span<byte> data)
         {
-            if (len < B2S_UserPacketHeader.Length)
+            if (data.Length < B2S_UserPacketHeader.Length)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserPacket - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserPacket - length ({data.Length}).");
                 return;
             }
 
-            ReadOnlySpan<byte> pktBytes = new(pkt, 0, len);
-            ref readonly B2S_UserPacketHeader header = ref MemoryMarshal.AsRef<B2S_UserPacketHeader>(pktBytes[..B2S_UserPacketHeader.Length]);
+            ref readonly B2S_UserPacketHeader header = ref MemoryMarshal.AsRef<B2S_UserPacketHeader>(data[..B2S_UserPacketHeader.Length]);
 
-            ReadOnlySpan<byte> dataBytes = pktBytes[B2S_UserPacketHeader.Length..];
+            ReadOnlySpan<byte> dataBytes = data[B2S_UserPacketHeader.Length..];
             if (dataBytes.IsEmpty)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserPacket - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserPacket - length ({data.Length}).");
                 return;
             }
 
@@ -1614,74 +1638,73 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ProcessBillingIdentity(byte[] pkt, int len)
+        private void ProcessBillingIdentity(Span<byte> data)
         {
-            if (len < 1)
+            if (data.Length < 1)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S BillingIdentity - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S BillingIdentity - length ({data.Length}).");
                 return;
             }
 
-            ReadOnlySpan<byte> pktBytes = new(pkt, 1, len - 1);
-            _identity = pktBytes.IsEmpty ? null : pktBytes.ToArray();
+            data = data[1..];
+            _identity = data.IsEmpty ? null : data.ToArray();
         }
 
-        private void ProcessUserMulticastChannelChat(byte[] pkt, int len)
+        private void ProcessUserMulticastChannelChat(Span<byte> data)
         {
-            if (len < B2S_UserMulticastChannelChatHeader.Length)
+            int length = data.Length;
+            if (length < B2S_UserMulticastChannelChatHeader.Length)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - length ({len}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - length ({length}).");
                 return;
             }
 
-            ReadOnlySpan<byte> pktBytes = new(pkt, 0, len);
-
             // Header
-            ref readonly B2S_UserMulticastChannelChatHeader header = ref MemoryMarshal.AsRef<B2S_UserMulticastChannelChatHeader>(pktBytes[..B2S_UserMulticastChannelChatHeader.Length]);
+            ref readonly B2S_UserMulticastChannelChatHeader header = ref MemoryMarshal.AsRef<B2S_UserMulticastChannelChatHeader>(data[..B2S_UserMulticastChannelChatHeader.Length]);
             if (header.Count < 1)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - {header.Count} recipients.");
                 return;
             }
 
-            pktBytes = pktBytes[B2S_UserMulticastChannelChatHeader.Length..];
+			data = data[B2S_UserMulticastChannelChatHeader.Length..];
 
             // Recipients
             int recipientsLength = header.Count * MulticastChannelChatRecipient.Length;
-            if (pktBytes.Length < recipientsLength + 1) // +1 for at least one byte of text
+            if (data.Length < recipientsLength + 1) // +1 for at least one byte of text
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - length ({len}) for {header.Count} recipients.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - length ({length}) for {header.Count} recipients.");
                 return;
             }
 
-            ReadOnlySpan<MulticastChannelChatRecipient> recipients = MemoryMarshal.Cast<byte, MulticastChannelChatRecipient>(pktBytes[..recipientsLength]);
+            ReadOnlySpan<MulticastChannelChatRecipient> recipients = MemoryMarshal.Cast<byte, MulticastChannelChatRecipient>(data[..recipientsLength]);
             Debug.Assert(header.Count == recipients.Length);
 
-            pktBytes = pktBytes[recipientsLength..];
+			data = data[recipientsLength..];
 
             // Text
-            if (pktBytes.Length > ChatPacket.MaxMessageBytes)
+            if (data.Length > ChatPacket.MaxMessageBytes)
             {
-                pktBytes = pktBytes[..ChatPacket.MaxMessageBytes];
+				data = data[..ChatPacket.MaxMessageBytes];
             }
 
-            int index = pktBytes.IndexOf((byte)0);
+            int index = data.IndexOf((byte)0);
             if (index == -1)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - Text not null-terminated.");
                 return;
             }
 
-            pktBytes = pktBytes[..index];
-            if (pktBytes.IsEmpty)
+			data = data[..index];
+            if (data.IsEmpty)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - Text was empty.");
                 return;
             }
 
-            Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(pktBytes)];
-            int numDecodedBytes = StringUtils.DefaultEncoding.GetChars(pktBytes, text);
-            Debug.Assert(pktBytes.Length == numDecodedBytes);
+            Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(data)];
+            int numDecodedBytes = StringUtils.DefaultEncoding.GetChars(data, text);
+            Debug.Assert(data.Length == numDecodedBytes);
 
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();

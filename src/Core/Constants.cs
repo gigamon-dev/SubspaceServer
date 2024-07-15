@@ -67,17 +67,17 @@ namespace SS.Core
 		/// <summary>
 		/// The maximum number of incoming reliable packets to buffer for a player connection.
 		/// </summary>
-		public const int IncomingReliableBufferLength_Player = 32;
+		public const int PlayerReliableReceiveWindowSize = 32;
 
 		/// <summary>
 		/// The maximum number of incoming reliable packets to buffer for a client connection.
 		/// </summary>
-		public const int IncomingReliableBufferLength_ClientConnection = 32; // TODO: Maybe use a larger buffer for client connections? e.g., to allow the connection to the biller to receive a large amount of data, such as chat
+		public const int ClientConnectionReliableReceiveWindowSize = 255;
 
 		/// <summary>
 		/// Maximum # of bytes a game packet can be.
 		/// </summary>
-		public const int MaxPacket = 512; // TODO: maybe this can be increased to 520?
+		public const int MaxPacket = 520;
 
 		/// <summary>
 		/// Maximum # of bytes a grouped packet (00 0E) can be.

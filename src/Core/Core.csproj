@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DefineConstants>TRACE;CFG_DUMP_RAW_PACKETS CFG_LOG_STUPID_STUFF</DefineConstants>
+    <DefineConstants>$(DefineConstants);CFG_DUMP_RAW_PACKETS;CFG_LOG_STUPID_STUFF</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

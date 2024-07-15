@@ -25,19 +25,19 @@ namespace SS.Packets.Billing
         #region Static members
 
         /// <summary>
-        /// # of bytes with <see cref="Score"/>.
-        /// </summary>
-        public static readonly int LengthWithScore;
-
-        /// <summary>
         /// # of bytes without <see cref="Score"/>.
         /// </summary>
         public static readonly int LengthWithoutScore;
 
-        static B2S_UserLogin()
+		/// <summary>
+		/// # of bytes with a <see cref="PlayerScore"/> (not included in the <see cref="B2S_UserLogin"/> struct).
+		/// </summary>
+		public static readonly int LengthWithScore;
+
+		static B2S_UserLogin()
         {
-            LengthWithScore = Marshal.SizeOf<B2S_UserLogin>();
-            LengthWithoutScore = LengthWithScore - PlayerScore.Length;
+			LengthWithoutScore = Marshal.SizeOf<B2S_UserLogin>();
+			LengthWithScore = LengthWithoutScore + PlayerScore.Length;
         }
 
         #endregion
@@ -53,15 +53,12 @@ namespace SS.Packets.Billing
         private uint Unused0;
         private uint userId;
         private uint Unused1;
+		// Optionally followed by a PlayerScore struct for when the result is B2SUserLoginResult.Ok. Purposely not included here.
+		//public PlayerScore Score;
 
-        /// <summary>
-        /// Only if <see cref="Result"/> = <see cref="B2SUserLoginResult.Ok"/>.
-        /// </summary>
-        public PlayerScore Score;
+		#region Helpers
 
-        #region Helpers
-
-        public B2SUserLoginResult Result => (B2SUserLoginResult)result;
+		public B2SUserLoginResult Result => (B2SUserLoginResult)result;
 
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 

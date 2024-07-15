@@ -439,7 +439,7 @@ namespace SS.Core.Modules
             {
                 lock (lockObj)
                 {
-                    uint s, r;
+                    ulong s, r;
 
                     s = Packetloss.ServerPacketsSent;
                     r = Packetloss.ClientPacketsReceived;

@@ -18,14 +18,14 @@ namespace SS.Packets.Billing
         #endregion
 
         public byte Type;
-        private uint scoreId;
-        private uint scoreIdNegative;
+        private int scoreId;
+        private int scoreIdNegative;
 
         #region Helpers
 
-        public uint ScoreId => LittleEndianConverter.Convert(scoreId);
+        public int ScoreId => LittleEndianConverter.Convert(scoreId);
 
-        public uint ScoreIdNegative => LittleEndianConverter.Convert(scoreIdNegative);
+        public int ScoreIdNegative => LittleEndianConverter.Convert(scoreIdNegative);
 
         #endregion
     }

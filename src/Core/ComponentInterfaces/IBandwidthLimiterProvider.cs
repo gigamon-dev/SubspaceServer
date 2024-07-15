@@ -1,12 +1,12 @@
-﻿using System;
+﻿using System.Diagnostics;
 using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
-    /// <summary>
-    /// Represents priority of network traffic.
-    /// </summary>
-    public enum BandwidthPriority
+	/// <summary>
+	/// Represents priority of network traffic.
+	/// </summary>
+	public enum BandwidthPriority
     {
         UnreliableLow = 0,
         Unreliable,
@@ -20,11 +20,11 @@ namespace SS.Core.ComponentInterfaces
     /// </summary>
     public interface IBandwidthLimiter
     {
-        /// <summary>
-        /// Refreshes the current state of how many much bandwidth is available to be used for each priority.
-        /// </summary>
-        /// <param name="now">The timestamp to recalculate stats as of.</param>
-        void Iter(DateTime now);
+		/// <summary>
+		/// Refreshes the current state of how many much bandwidth is available to be used for each priority.
+		/// </summary>
+		/// <param name="asOf">The <see cref="Stopwatch"/> timestamp to recalculate stats as of.</param>
+		void Iter(long asOf);
 
         /// <summary>
         /// Checks if <paramref name="bytes"/> bytes at priority <paramref name="priority"/> can be sent.
@@ -45,16 +45,18 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         void AdjustForRetry();
 
-        /// <summary>
-        /// Gets the max range of reliable packets that can be buffered.
-        /// <para>
-        /// E.g., if X is the lowest pending (not yet sent OR sent but not yet acknolwedged) reliable sequence # for a connection, 
-        /// then only allow sending of reliable packets with a sequence # less than or equal to:
-        /// X + <see cref="GetCanBufferPackets"/>.
-        /// </para>
-        /// </summary>
-        /// <returns>The range.</returns>
-        int GetCanBufferPackets();
+		/// <summary>
+		/// Gets the max # of reliable packets that can be sent at the same time without being ACK'd yet.
+		/// </summary>
+		/// <remarks>
+		/// <para>
+		/// E.g., if X is the lowest pending (not yet sent OR sent but not yet acknolwedged) reliable sequence # for a connection, 
+		/// then only allow sending of reliable packets with a sequence # less than or equal to:
+		/// X + <see cref="GetSendWindowSize"/>.
+		/// </para>
+		/// </remarks>
+		/// <returns>The window size.</returns>
+		int GetSendWindowSize();
 
         /// <summary>
         /// Gets info about the limiter.

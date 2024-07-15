@@ -286,11 +286,11 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            TimeSpan lastPacket = _network.GetLastPacketTimeSpan(player);
-            if (lastPacket > lagLimits.SpikeForceSpec
+            TimeSpan lastReceive = _network.GetLastReceiveTimeSpan(player);
+            if (lastReceive > lagLimits.SpikeForceSpec
                 && Spec(player, lagLimits.SpecFreq, "spike"))
             {
-                _chat.SendMessage(player, $"You have been specced for a {lastPacket.TotalMilliseconds} ms spike.");
+                _chat.SendMessage(player, $"You have been specced for a {lastReceive.TotalMilliseconds} ms spike.");
             }
         }
 

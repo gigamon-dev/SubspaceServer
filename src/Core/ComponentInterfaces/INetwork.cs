@@ -168,29 +168,28 @@ namespace SS.Core.ComponentInterfaces
         ulong PriorityStats4 { get; }
     }
 
-    public struct NetClientStats
+    public ref struct NetConnectionStats
     {
-        /// <summary>
-        /// Server to client sequence number
-        /// </summary>
-        public int s2cn;
-
-        /// <summary>
-        /// Client to server sequence number
-        /// </summary>
-        public int c2sn;
-
-        public uint PacketsSent;
-        public uint PacketsReceived;
-        public ulong BytesSent;
+        public ulong PacketsSent;
+        public ulong PacketsReceived;
+		public ulong ReliablePacketsSent;
+		public ulong ReliablePacketsReceived;
+		public ulong BytesSent;
         public ulong BytesReceived;
 
-        /// <summary>
-        /// Server to client packets dropped
-        /// </summary>
-        public ulong PacketsDropped;
+        /// <inheritdoc cref="Modules.Network.ConnData.RelDups" path="/summary"/>>
+        public ulong RelDups;
 
-        public string EncryptionName;
+		/// <inheritdoc cref="Modules.Network.ConnData.AckDups" path="/summary"/>>
+		public ulong AckDups;
+
+		/// <inheritdoc cref="Modules.Network.ConnData.Retries" path="/summary"/>>
+		public ulong Retries;
+
+		/// <inheritdoc cref="Modules.Network.ConnData.PacketsDropped" path="/summary"/>>
+		public ulong PacketsDropped;
+
+        public string EncryptorName;
 
         public IPEndPoint IPEndPoint;
 
@@ -381,14 +380,16 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to get information about.</param>
         /// <param name="stats">The information to populate.</param>
-        void GetClientStats(Player player, ref NetClientStats stats);
+        /// <exception cref="ArgumentNullException"><paramref name="player"/> is null.</exception>
+        void GetConnectionStats(Player player, ref NetConnectionStats stats);
 
-        /// <summary>
-        /// Gets how long it has been since a packet was received from a specified player.
-        /// </summary>
-        /// <param name="player">The player to check.</param>
-        /// <returns>The <see cref="TimeSpan"/> since the last packet was received.</returns>
-        TimeSpan GetLastPacketTimeSpan(Player player);
+		/// <summary>
+		/// Gets how long it has been since a packet was received from a specified player.
+		/// </summary>
+		/// <param name="player">The player to check.</param>
+		/// <returns>The <see cref="TimeSpan"/> since the last packet was received.</returns>
+		/// <exception cref="ArgumentNullException"><paramref name="player"/> is null.</exception>
+		TimeSpan GetLastReceiveTimeSpan(Player player);
 
         /// <summary>
         /// Gets the endpoint (IP Address and port) and connectAs that the server is listening on for game clients.

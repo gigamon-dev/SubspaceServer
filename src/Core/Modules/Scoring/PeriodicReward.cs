@@ -308,17 +308,30 @@ namespace SS.Core.Modules.Scoring
                         // Send the reward packet.
                         //
 
-                        Span<byte> packet = stackalloc byte[1 + freqPoints.Count * PeriodicRewardItem.Length];
+                        const int MaxPacketLength = 513; // The maximum accepted by Continuum
+                        int maxItems = (MaxPacketLength - 1) / PeriodicRewardItem.Length;
+
+						Span<byte> packet = stackalloc byte[1 + int.Min(freqPoints.Count, maxItems) * PeriodicRewardItem.Length];
                         packet[0] = (byte)S2CPacketType.PeriodicReward;
 
                         Span<PeriodicRewardItem> rewards = MemoryMarshal.Cast<byte, PeriodicRewardItem>(packet[1..]);
-                        int i = 0;
+                        int index = 0;
                         foreach ((short freq, short points) in freqPoints)
                         {
-                            rewards[i++] = new(freq, points);
+                            rewards[index++] = new(freq, points);
+
+                            if (index >= rewards.Length)
+                            {
+                                // We have the maximum #  of items that can be sent in a packet. Send it.
+								_network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
+								index = 0;
+                            }
                         }
 
-                        _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
+                        if (index > 0)
+                        {
+                            _network.SendToArena(arena, null, packet[..(1 + (index * PeriodicRewardItem.Length))], NetSendFlags.Reliable);
+                        }
 
                         // The client does not reward players that are in spectator mode.
                         // The client does not reward players that it thinks are in a safe zone (based on the last known position of that player).

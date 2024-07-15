@@ -1,46 +1,46 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides a default implementation of bandwidth limiters.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This is a port of ASSS's bw_default module. The following is a description of what it does and how it works.
-    /// </para>
-    /// <para>
-    /// The default bandwidth limiter attempts to figure out how much bandwidth is available between the server and the client.
-    /// In the SubSpace protocol, the only way to tell if the other end received a packet is to send data reliably.
-    /// The limiter is notified of certain reliable data events: 
-    /// 1. When the server resends a reliable packet.
-    /// 2. When the server receives an acknowlegement (ACK) that reliable packet was sucessfully received.
-    /// The limiter uses these events to modify the "limit" it considers to be available.
-    /// When the server resends a reliable packet, the limiter interprets it as a reason to decrease the "limit".
-    /// Whereas, when the server receives an ACK, the limiter interprets it as a reason to increase the "limit".
-    /// </para>
-    /// <para>
-    /// This "limit" is the overall # of bytes per second that the server thinks is possible to send to the client.
-    /// The "limit" is split into a buckets, one for each <see cref="BandwidthPriority"/>. Each bucket is given a percentage 
-    /// of the overall "limit". Each time the server does an iteration of sending data to a connection, it tells the
-    /// limiter by calling <see cref="IBandwidthLimiter.Iter(DateTime)"/>. When called, the limiter recalculates how many
-    /// bytes are available for each priority's bucket.  That is, it adds availablity based on the amount of time that has
-    /// past since the last iteration.
-    /// </para>
-    /// <para>
-    /// When data needs to be sent, the limiter's <see cref="IBandwidthLimiter.Check(int, BandwidthPriority)"/> method is called.
-    /// There, the limiter decides if there is available bandwidth to send the data. It does this by starting at the priority's 
-    /// bucket looking to pull out availablity. When exhausted, it pulls from the next lower priority bucket, and so on. This 
-    /// priority / bucket mechanism ensures that higher priority traffic will always have some availablity that lower priority 
-    /// traffic cannot use.
-    /// </para>
-    /// </remarks>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides a default implementation of bandwidth limiters.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This is a port of ASSS's bw_default module. The following is a description of what it does and how it works.
+	/// </para>
+	/// <para>
+	/// The default bandwidth limiter attempts to figure out how much bandwidth is available between the server and the client.
+	/// In the SubSpace protocol, the only way to tell if the other end received a packet is to send data reliably.
+	/// The limiter is notified of certain reliable data events: 
+	/// 1. When the server resends a reliable packet.
+	/// 2. When the server receives an acknowlegement (ACK) that reliable packet was sucessfully received.
+	/// The limiter uses these events to modify the "limit" it considers to be available.
+	/// When the server resends a reliable packet, the limiter interprets it as a reason to decrease the "limit".
+	/// Whereas, when the server receives an ACK, the limiter interprets it as a reason to increase the "limit".
+	/// </para>
+	/// <para>
+	/// This "limit" is the overall # of bytes per second that the server thinks is possible to send to the client.
+	/// The "limit" is split into a buckets, one for each <see cref="BandwidthPriority"/>. Each bucket is given a percentage 
+	/// of the overall "limit". Each time the server does an iteration of sending data to a connection, it tells the
+	/// limiter by calling <see cref="IBandwidthLimiter.Iter(DateTime)"/>. When called, the limiter recalculates how many
+	/// bytes are available for each priority's bucket.  That is, it adds availablity based on the amount of time that has
+	/// past since the last iteration.
+	/// </para>
+	/// <para>
+	/// When data needs to be sent, the limiter's <see cref="IBandwidthLimiter.Check(int, BandwidthPriority)"/> method is called.
+	/// There, the limiter decides if there is available bandwidth to send the data. It does this by starting at the priority's 
+	/// bucket looking to pull out availablity. When exhausted, it pulls from the next lower priority bucket, and so on. This 
+	/// priority / bucket mechanism ensures that higher priority traffic will always have some availablity that lower priority 
+	/// traffic cannot use.
+	/// </para>
+	/// </remarks>
+	[CoreModuleInfo]
     public class BandwidthDefault : IModule, IBandwidthLimiterProvider
     {
         private IConfigManager _configManager;
@@ -60,7 +60,7 @@ namespace SS.Core.Modules
                 LimitLow = _configManager.GetInt(_configManager.Global, "Net", "LimitMinimum", 2500),
                 LimitHigh = _configManager.GetInt(_configManager.Global, "Net", "LimitMaximum", 102400),
                 LimitInitial = _configManager.GetInt(_configManager.Global, "Net", "LimitInitial", 5000),
-                ClientCanBuffer = _configManager.GetInt(_configManager.Global, "Net", "SendAtOnce", 255),
+                ClientCanBuffer = _configManager.GetInt(_configManager.Global, "Net", "SendAtOnce", 64),
                 LimitScale = _configManager.GetInt(_configManager.Global, "Net", "LimitScale", Constants.MaxPacket * 1),
                 MaxAvail = _configManager.GetInt(_configManager.Global, "Net", "Burst", Constants.MaxPacket * 4),
                 UseHitLimit = _configManager.GetInt(_configManager.Global, "Net", "UseHitLimit", 0) != 0,
@@ -174,7 +174,7 @@ namespace SS.Core.Modules
 
             public bool Return(DefaultBandwidthLimiter obj)
             {
-                if (obj == null)
+                if (obj is null)
                     return false;
 
                 return true;
@@ -188,12 +188,13 @@ namespace SS.Core.Modules
             private int _limit;
             private readonly int[] _avail = new int[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
             private bool _hitLimit;
-            private DateTime _sinceTime;
+            private long _sinceTime;
 
             private const int Granularity = 8;
             private static readonly TimeSpan s_sliceTimeSpan = TimeSpan.FromMilliseconds(1000 / Granularity);
+			private static readonly long s_sliceFrequency = Stopwatch.Frequency / Granularity;
 
-            public DefaultBandwidthLimiter(Settings settings)
+			public DefaultBandwidthLimiter(Settings settings)
             {
                 _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
@@ -204,7 +205,7 @@ namespace SS.Core.Modules
             {
                 _limit = _settings.LimitInitial;
                 _hitLimit = false;
-                _sinceTime = DateTime.UtcNow;
+                _sinceTime = Stopwatch.GetTimestamp();
 
                 // Rather than start with 0, start as if one iteration had already gone by.
                 // This way, we'll have some bandwidth available to use immediately without having to wait.
@@ -219,17 +220,25 @@ namespace SS.Core.Modules
 
             #region IBandwidthLimiter Members
 
-            public void Iter(DateTime now)
+            public void Iter(long asOf)
             {
-                int slices = (int)((now - _sinceTime).Duration() / s_sliceTimeSpan);
-                _sinceTime += s_sliceTimeSpan * slices;
+                TimeSpan elapsed = Stopwatch.GetElapsedTime(_sinceTime, asOf);
+                if (elapsed <= TimeSpan.Zero)
+                    return;
 
-                for (int pri = 0; pri < _avail.Length; pri++)
+				int slices = (int)(elapsed / s_sliceTimeSpan);
+
+                if (slices > 0)
                 {
-                    _avail[pri] += slices * (_limit * _settings.PriorityLimits[pri] / 100) / Granularity;
-                    if (_avail[pri] > _settings.MaxAvail)
-                        _avail[pri] = _settings.MaxAvail;
-                }
+					_sinceTime += s_sliceFrequency * slices;
+
+					for (int pri = 0; pri < _avail.Length; pri++)
+					{
+						_avail[pri] += slices * (_limit * _settings.PriorityLimits[pri] / 100) / Granularity;
+						if (_avail[pri] > _settings.MaxAvail)
+							_avail[pri] = _settings.MaxAvail;
+					}
+				}
             }
 
             public bool Check(int bytes, BandwidthPriority priority)
@@ -250,7 +259,7 @@ namespace SS.Core.Modules
                     {
                         availCopy[pri] -= bytes;
                         availCopy.CopyTo(_avail);
-                        return true;
+						return true;
                     }
                     else
                     {
@@ -283,9 +292,9 @@ namespace SS.Core.Modules
                 _limit += (int)Math.Sqrt(_limit * _limit - 4 * _settings.LimitScale * _settings.LimitScale);
                 _limit /= 2;
                 _limit = Math.Clamp(_limit, _settings.LimitLow, _settings.LimitHigh);
-            }
+			}
 
-            public int GetCanBufferPackets()
+			public int GetSendWindowSize()
             {
                 int canSend = _limit / Constants.MaxPacket;
                 canSend = Math.Clamp(canSend, 1, _settings.ClientCanBuffer);

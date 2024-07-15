@@ -1,5 +1,8 @@
 ﻿namespace SS.Core.ComponentInterfaces
 {
+    /// <summary>
+    /// Client reported lag data from <see cref="Packets.Game.C2S_Security"/>.
+    /// </summary>
     public readonly struct ClientLatencyData
     {
         public readonly uint WeaponCount { get; init; }
@@ -14,11 +17,14 @@
         public readonly ushort HighestPing { get; init; }
     }
 
+    /// <summary>
+    /// Lag data from a time sync request (0x00 0x05).
+    /// </summary>
     public readonly struct TimeSyncData
     {
         /* what the server thinks */
-        public readonly uint ServerPacketsReceived { get; init; }
-        public readonly uint ServerPacketsSent { get; init; }
+        public readonly ulong ServerPacketsReceived { get; init; }
+        public readonly ulong ServerPacketsSent { get; init; }
 
         /* what the client reports */
         public readonly uint ClientPacketsReceived { get; init; }
@@ -31,25 +37,20 @@
 
     public readonly struct ReliableLagData
     {
-        /// <summary>
-        /// The total number of duplicates that have been received.
-        /// </summary>
-        public readonly uint RelDups { get; init; }
+		/// <inheritdoc cref="Modules.Network.ConnData.RelDups" path="/summary"/>
+		public readonly ulong RelDups { get; init; }
 
-        /// <summary>
-        /// The reliable seqnum so far (i.e., the number of reliable packets that should have been received, excluding dups).
-        /// </summary>
-        public readonly uint C2SN { get; init; }
+		/// <inheritdoc cref="Modules.Network.ConnData.AckDups" path="/summary"/>
+		public readonly ulong AckDups { get; init; }
 
-        /// <summary>
-        /// The number of times the server has had to re-send a reliable packet.
-        /// </summary>
-        public readonly uint Retries { get; init; }
+		/// <inheritdoc cref="Modules.Network.ConnData.ReliablePacketsReceived" path="/summary"/>
+		public readonly uint ReliablePacketsReceived { get; init; }
 
-        /// <summary>
-        /// The number of reliable packets that should have been sent, excluding retries.
-        /// </summary>
-        public readonly uint S2CN { get; init; }
+		/// <inheritdoc cref="Modules.Network.ConnData.Retries" path="/summary"/>
+		public readonly ulong Retries { get; init; }
+
+        /// <inheritdoc cref="Modules.Network.ConnData.ReliablePacketsSent" path="/summary"/>
+		public readonly uint ReliablePacketsSent { get; init; }
     }
 
     /// <summary>

@@ -4,37 +4,30 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct TimeSyncResponse
+    public readonly struct TimeSyncResponse(uint clientTime, uint serverTime)
     {
-        public byte T1;
-        public byte T2;
-        private uint clientTime;
-        private uint serverTime;
+		#region Static members
 
-        public uint ClientTime
-        {
-            get { return LittleEndianConverter.Convert(clientTime); }
-            set { clientTime = LittleEndianConverter.Convert(value); }
-        }
+		public static readonly int Length;
 
-        public uint ServerTime
-        {
-            get { return LittleEndianConverter.Convert(serverTime); }
-            set { serverTime = LittleEndianConverter.Convert(value); }
-        }
+		static TimeSyncResponse()
+		{
+			Length = Marshal.SizeOf<TimeSyncResponse>();
+		}
 
-        public void Initialize()
-        {
-            T1 = 0x00;
-            T2 = 0x06;
-        }
+		#endregion
 
-        public void Initialize(uint clientTime, uint serverTime)
-        {
-            Initialize();
+		public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x06;
+        private readonly uint clientTime = LittleEndianConverter.Convert(clientTime);
+        private readonly uint serverTime = LittleEndianConverter.Convert(serverTime);
 
-            ClientTime = clientTime;
-            ServerTime = serverTime;
-        }
+        #region Helper Properties
+
+        public uint ClientTime => LittleEndianConverter.Convert(clientTime);
+
+        public uint ServerTime => LittleEndianConverter.Convert(serverTime);
+
+        #endregion
     }
 }

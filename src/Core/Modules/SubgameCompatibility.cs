@@ -305,8 +305,8 @@ namespace SS.Core.Modules
                 targetPlayer = player;
             }
 
-            NetClientStats stats = new();
-            _network.GetClientStats(targetPlayer, ref stats);
+            NetConnectionStats stats = new();
+            _network.GetConnectionStats(targetPlayer, ref stats);
 
             _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
             _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
@@ -324,7 +324,7 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, $"Ping:{current}ms  LowPing:{low}ms  HighPing:{high}ms  AvePing:{average}ms");
 
             // TODO: unacked rels
-            _chat.SendMessage(player, $"LOSS: S2C:{packetloss.s2c * 100d,4:F1}%  C2S:{packetloss.c2s * 100d,4:F1}%  S2CWeapons:{packetloss.s2cwpn * 100d,4:F1}%  S2C_RelOut:0({stats.s2cn})");
+            _chat.SendMessage(player, $"LOSS: S2C:{packetloss.s2c * 100d,4:F1}%  C2S:{packetloss.c2s * 100d,4:F1}%  S2CWeapons:{packetloss.s2cwpn * 100d,4:F1}%  S2C_RelOut:0({stats.ReliablePacketsSent})");
             _chat.SendMessage(player, $"S2C:0-->0  C2S:0-->0");
             _chat.SendMessage(player, $"C2S CURRENT: Slow:0 Fast:0 0.0%   TOTAL: Slow:0 Fast:0 0.0%");
             _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientPing.S2CSlowCurrent} Fast:{clientPing.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientPing.S2CSlowTotal} Fast:{clientPing.S2CFastTotal} 0.0%");
