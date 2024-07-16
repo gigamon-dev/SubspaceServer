@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.Collections;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
@@ -63,7 +64,7 @@ namespace SS.Core.Modules
 		private Pool<ReliableConnectionCallbackInvoker> _reliableConnectionCallbackInvokerPool;
 		private ObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
 		private readonly DefaultObjectPool<LinkedListNode<ISizedSendData>> _sizedSendDataNodePool = new(new LinkedListNodePooledObjectPolicy<ISizedSendData>(), Constants.TargetPlayerCount);
-		private readonly DefaultObjectPool<LinkedListNode<ConnData>> _connDataNodePool = new(new LinkedListNodePooledObjectPolicy<ConnData>(), Constants.TargetPlayerCount);
+		private static readonly DefaultObjectPool<LinkedListNode<ConnData>> s_connDataNodePool = new(new LinkedListNodePooledObjectPolicy<ConnData>(), Constants.TargetPlayerCount * 2);
 
 		/// <summary>
 		/// Config settings.
@@ -152,52 +153,29 @@ namespace SS.Core.Modules
 		private const int MICROSECONDS_PER_MILLISECOND = 1000;
 
 		/// <summary>
-		/// Queue that reliable threads watch for work.
+		/// Queue for processing incoming reliable data.
 		/// </summary>
 		/// <remarks>
 		/// When reliable data is received from known connection, that connection's <see cref="ConnData"/> 
-		/// is added to this queue so that the reliable data can be processed.
+		/// is added to this queue so that the reliable data can be processed by a <see cref="RelThread"/>.
 		/// </remarks>
-		private readonly MessagePassingQueue<ConnData> _relqueue = new();
-
-		#region Sized Send members
+		private readonly HybridEventQueue<ConnData> _relQueue = new(Constants.TargetPlayerCount, s_connDataNodePool);
 
 		/// <summary>
-		/// For synchronizing <see cref="_sizedSendConnections"/> and <see cref="_sizedSendQueue"/>.
+		/// Queue for sending sized data.
 		/// </summary>
-		private readonly object _sizedSendLock = new();
+		private readonly HybridEventQueue<ConnData> _sizedSendQueue = new(Constants.TargetPlayerCount, s_connDataNodePool);
 
-		/// <summary>
-		/// The connections with a sized send in progress.
-		/// </summary>
-		/// <remarks>
-		/// The LinkedListNode reference is to be able to quickly tell if the connection is in the <see cref="_sizedSendQueue"/> without having to iterate over the queue.
-		/// </remarks>
-		private readonly Dictionary<ConnData, LinkedListNode<ConnData>> _sizedSendConnections = new(Constants.TargetPlayerCount);
-
-		/// <summary>
-		/// Queue containing connections to process.
-		/// </summary>
-		private readonly LinkedList<ConnData> _sizedSendQueue = new();
-
-		/// <summary>
-		/// An event that is signaled when work has been added to the <see cref="_sizedSendQueue"/>.
-		/// </summary>
-		private readonly AutoResetEvent _sizedSendEvent = new(false);
-
-		#endregion
-
-		// Used to stop the SendThread, ReceiveThread, and SizedSendThread.
+		// Used to stop the SendThread, ReceiveThread, RelThread, and SizedSendThread.
 		private readonly CancellationTokenSource _stopCancellationTokenSource = new();
 		private CancellationToken _stopToken;
 
-		private readonly List<Thread> _threadList = new();
-		private readonly List<Thread> _reliableThreads = new();
+		private readonly List<Thread> _threadList = new(8);
 
 		/// <summary>
 		/// List of info about the sockets being listened on.
 		/// </summary>
-		private readonly List<ListenData> _listenDataList = new();
+		private readonly List<ListenData> _listenDataList = new(8);
 		private readonly ReadOnlyCollection<ListenData> _readOnlyListenData;
 
 		/// <summary>
@@ -333,7 +311,6 @@ namespace SS.Core.Modules
 			{
 				thread = new Thread(RelThread) { Name = $"{nameof(Network)}-rel-" + i };
 				thread.Start();
-				_reliableThreads.Add(thread);
 				_threadList.Add(thread);
 			}
 
@@ -594,24 +571,20 @@ namespace SS.Core.Modules
 			// stop threads
 			_stopCancellationTokenSource.Cancel();
 
-			for (int x = 0; x < _reliableThreads.Count; x++)
-			{
-				_relqueue.Enqueue(null);
-			}
-
 			foreach (Thread thread in _threadList)
 			{
 				thread.Join();
 			}
 			_threadList.Clear();
-			_reliableThreads.Clear();
 
 			_mainloop.WaitForMainWorkItemDrain();
 
 			Array.Clear(_handlers, 0, _handlers.Length);
 			Array.Clear(_nethandlers, 0, _nethandlers.Length); // for some reason ASSS doesn't clear this?
 			Array.Clear(_sizedhandlers, 0, _sizedhandlers.Length);
-			_relqueue.Clear();
+
+			_relQueue.Clear();
+			_sizedSendQueue.Clear();
 
 			// close all sockets
 			foreach (ListenData listenData in _listenDataList)
@@ -945,26 +918,7 @@ namespace SS.Core.Modules
 			}
 
 			// Add the connection to the sized send queue to be processed.
-			bool queued = false;
-
-			lock (_sizedSendLock)
-			{
-				if (!_sizedSendConnections.TryGetValue(conn, out LinkedListNode<ConnData> connNode))
-				{
-					connNode = _connDataNodePool.Get();
-					connNode.Value = conn;
-
-					_sizedSendConnections.Add(conn, connNode);
-					_sizedSendQueue.AddLast(connNode);
-
-					queued = true;
-				}
-			}
-
-			if (queued)
-			{
-				_sizedSendEvent.Set();
-			}
+			_sizedSendQueue.TryEnqueue(conn);
 
 			return true;
 		}
@@ -1278,7 +1232,7 @@ namespace SS.Core.Modules
 				if (canProcess)
 				{
 					// It's ready to be processed. Queue it to be processed by the RelThread.
-					_relqueue.Enqueue(conn);
+					_relQueue.TryEnqueue(conn);
 				}
 			}
 			else
@@ -1608,24 +1562,7 @@ namespace SS.Core.Modules
 			if (cancelled)
 			{
 				// Make sure the connection is in the queue to be processed.
-				bool queued = false;
-
-				lock (_sizedSendLock)
-				{
-					if (_sizedSendConnections.TryGetValue(conn, out LinkedListNode<ConnData> node))
-					{
-						if (node.List is null)
-						{
-							_sizedSendQueue.AddLast(node);
-							queued = true;
-						}
-					}
-				}
-
-				if (queued)
-				{
-					_sizedSendEvent.Set();
-				}
+				_sizedSendQueue.TryEnqueue(conn);
 			}
 		}
 
@@ -1698,7 +1635,8 @@ namespace SS.Core.Modules
 		{
 			_stopCancellationTokenSource.Dispose();
 			_clientConnectionsLock.Dispose();
-			_sizedSendEvent.Dispose();
+			_relQueue.Dispose();
+			_sizedSendQueue.Dispose();
 		}
 
 		#endregion
@@ -2546,24 +2484,7 @@ namespace SS.Core.Modules
 					if (cancelledSizeSend)
 					{
 						// Make sure the connection is in the sized send queue to be processed.
-						bool queued = false;
-
-						lock (_sizedSendLock)
-						{
-							if (_sizedSendConnections.TryGetValue(conn, out LinkedListNode<ConnData> connNode))
-							{
-								if (connNode.List is null)
-								{
-									_sizedSendQueue.AddLast(connNode);
-									queued = true;
-								}
-							}
-						}
-
-						if (queued)
-						{
-							_sizedSendEvent.Set();
-						}
+						_sizedSendQueue.TryEnqueue(conn);
 					}
 
 					if (hasSizedSend)
@@ -2635,7 +2556,7 @@ namespace SS.Core.Modules
 				}
 
 				// and remove from relible signaling queue
-				_relqueue.ClearOne(conn);
+				_relQueue.Remove(conn);
 
 				void ClearOutgoingQueue(LinkedList<SubspaceBuffer> outlist)
 				{
@@ -2918,67 +2839,85 @@ namespace SS.Core.Modules
 
 		private void RelThread()
 		{
-			while (true)
+			WaitHandle[] waitHandles = [_relQueue.ReadyEvent, _stopToken.WaitHandle];
+
+			while (!_stopToken.IsCancellationRequested)
 			{
-				// Get the next connection that has packets to process.
-				ConnData conn = _relqueue.Dequeue();
-				if (conn is null)
+				switch (WaitHandle.WaitAny(waitHandles))
 				{
-					// null means stop the thread (module is unloading)
-					return; 
+					case 0:
+						ProcessReliableQueue();
+						break;
+
+					case 1:
+						// We've been told to stop.
+						return;
 				}
+			}
 
-				if (!Monitor.TryEnter(conn.ReliableProcessingLock))
+			void ProcessReliableQueue()
+			{
+				while (!_stopToken.IsCancellationRequested)
 				{
-					// Another RelThread is already processing the connection.
-					continue;
-				}
-
-				try
-				{
-					// Only process a limited # of packets so that one connection doesn't hog all the processing time.
-					int limit = conn.ReliableBuffer.Capacity; // Never modified, so ok to read outside of the ReliableLock.
-					int processedCount = 0;
-
-					do
+					// Get the next connection that has packets to process.
+					if (!_relQueue.TryDequeue(out ConnData conn))
 					{
-						SubspaceBuffer buffer;
+						// No pending work.
+						break;
+					}
 
-						// Get the next buffer to process.
-						lock (conn.ReliableLock)
+					if (!Monitor.TryEnter(conn.ReliableProcessingLock))
+					{
+						// Another RelThread is already processing the connection.
+						continue;
+					}
+
+					try
+					{
+						// Only process a limited # of packets so that one connection doesn't hog all the processing time.
+						int limit = conn.ReliableBuffer.Capacity; // Never modified, so ok to read outside of the ReliableLock.
+						int processedCount = 0;
+
+						do
 						{
-							if (!conn.ReliableBuffer.TryGetNext(out _, out buffer))
+							SubspaceBuffer buffer;
+
+							// Get the next buffer to process.
+							lock (conn.ReliableLock)
 							{
-								// Nothing left to process.
-								break;
+								if (!conn.ReliableBuffer.TryGetNext(out _, out buffer))
+								{
+									// Nothing left to process.
+									break;
+								}
 							}
+
+							// Process it.
+							ProcessBuffer(conn, new Span<byte>(buffer.Bytes, ReliableHeader.Length, buffer.NumBytes - ReliableHeader.Length), buffer.ReceiveFlags);
+							buffer.Dispose();
 						}
-
-						// Process it.
-						ProcessBuffer(conn, new Span<byte>(buffer.Bytes, ReliableHeader.Length, buffer.NumBytes - ReliableHeader.Length), buffer.ReceiveFlags);
-						buffer.Dispose();
+						while (++processedCount <= limit);
 					}
-					while (++processedCount <= limit);
-				}
-				finally
-				{
-					Monitor.Exit(conn.ReliableProcessingLock);
-				}
-
-				// If there is more work, make sure the connection gets processed again.
-				bool requeue = false;
-
-				lock (conn.ReliableLock)
-				{
-					if (conn.ReliableBuffer.HasNext())
+					finally
 					{
-						requeue = true;
+						Monitor.Exit(conn.ReliableProcessingLock);
 					}
-				}
 
-				if (requeue)
-				{
-					_relqueue.Enqueue(conn);
+					// If there is more work, make sure the connection gets processed again.
+					bool requeue = false;
+
+					lock (conn.ReliableLock)
+					{
+						if (conn.ReliableBuffer.HasNext())
+						{
+							requeue = true;
+						}
+					}
+
+					if (requeue)
+					{
+						_relQueue.TryEnqueue(conn);
+					}
 				}
 			}
 		}
@@ -3011,7 +2950,7 @@ namespace SS.Core.Modules
 		/// </remarks>
 		private void SizedSendThread()
 		{
-			WaitHandle[] waitHandles = [_sizedSendEvent, _stopToken.WaitHandle];
+			WaitHandle[] waitHandles = [_sizedSendQueue.ReadyEvent, _stopToken.WaitHandle];
 
 			while (!_stopToken.IsCancellationRequested)
 			{
@@ -3036,20 +2975,10 @@ namespace SS.Core.Modules
 					ConnData conn;
 
 					// Try to dequeue.
-					lock (_sizedSendLock)
+					if (!_sizedSendQueue.TryDequeue(out conn))
 					{
-						LinkedListNode<ConnData> node = _sizedSendQueue.First;
-						if (node is null)
-						{
-							// No work to do.
-							break;
-						}
-
-						conn = node.Value;
-						_sizedSendQueue.Remove(node);
-
-						// Keep in mind that the node is still in _sizedSendConnections.
-						// We'll deal with that later, when the connection has no more sized sends.
+						// No work to do.
+						break;
 					}
 
 					if (ProcessSizedSends(conn) && _config.SizedSendOutgoing)
@@ -3228,25 +3157,10 @@ namespace SS.Core.Modules
 							if (conn.SizedSends.Count == 0)
 							{
 								// No more sized sends for the connection.
-								LinkedListNode<ConnData> node;
 
 								// This is purposely done while continuing to hold the ConnData.SizedSendLock,
 								// so that there will be no conflict if a sized send is being simultaneously added.
-								lock (_sizedSendLock)
-								{
-									if (_sizedSendConnections.Remove(conn, out node))
-									{
-										if (node.List is not null)
-										{
-											_sizedSendQueue.Remove(node);
-										}
-									}
-								}
-
-								if (node is not null)
-								{
-									_connDataNodePool.Return(node);
-								}
+								_sizedSendQueue.Remove(conn);
 							}
 						}
 
@@ -3347,25 +3261,7 @@ namespace SS.Core.Modules
 				return;
 
 			// Make sure the connection is queued to be processed by the SizedSendThread.
-			bool queued = false;
-
-			lock (_sizedSendLock)
-			{
-				if (!_sizedSendConnections.TryGetValue(connData, out LinkedListNode<ConnData> node))
-					return;
-
-				if (node.List is null)
-				{
-					// Not already queued, queue it.
-					_sizedSendQueue.AddLast(node);
-					queued = true;
-				}
-			}
-
-			if (queued)
-			{
-				_sizedSendEvent.Set();
-			}
+			_sizedSendQueue.TryEnqueue(connData);
 		}
 
 		#endregion
