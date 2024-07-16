@@ -59,7 +59,8 @@ namespace SS.Core.Modules
 
 		private Pool<SubspaceBuffer> _bufferPool;
 		private Pool<BigReceive> _bigReceivePool;
-		private Pool<ReliableCallbackInvoker> _reliableCallbackInvokerPool;
+		private Pool<ReliablePlayerCallbackInvoker> _reliableCallbackInvokerPool;
+		private Pool<ReliableConnectionCallbackInvoker> _reliableConnectionCallbackInvokerPool;
 		private ObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
 		private readonly DefaultObjectPool<LinkedListNode<ISizedSendData>> _sizedSendDataNodePool = new(new LinkedListNodePooledObjectPolicy<ISizedSendData>(), Constants.TargetPlayerCount);
 		private readonly DefaultObjectPool<LinkedListNode<ConnData>> _connDataNodePool = new(new LinkedListNodePooledObjectPolicy<ConnData>(), Constants.TargetPlayerCount);
@@ -241,7 +242,7 @@ namespace SS.Core.Modules
 
 		// Cached delegates
 		private readonly Action<SubspaceBuffer> _mainloopWork_CallPacketHandlers;
-		private readonly ReliableDelegate _sizedSendChunkCompleted;
+		private readonly ReliableConnectionCallbackInvoker.ReliableConnectionCallback _sizedSendChunkCompleted;
 
 		public Network()
 		{
@@ -304,7 +305,8 @@ namespace SS.Core.Modules
 
 			_bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
 			_bigReceivePool = objectPoolManager.GetPool<BigReceive>();
-			_reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliableCallbackInvoker>();
+			_reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliablePlayerCallbackInvoker>();
+			_reliableConnectionCallbackInvokerPool = objectPoolManager.GetPool<ReliableConnectionCallbackInvoker>();
 			_bufferNodePool = new DefaultObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>(), Constants.TargetPlayerCount * _config.MaxOutlistSize);
 
 			if (!InitializeSockets())
@@ -850,7 +852,7 @@ namespace SS.Core.Modules
 
 		void INetwork.SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback)
 		{
-			ReliableCallbackInvoker invoker = _reliableCallbackInvokerPool.Get();
+			ReliablePlayerCallbackInvoker invoker = _reliableCallbackInvokerPool.Get();
 			invoker.SetCallback(callback, ReliableCallbackExecutionOption.Mainloop);
 			SendWithCallback(player, data, invoker);
 		}
@@ -860,16 +862,16 @@ namespace SS.Core.Modules
 			((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback);
 		}
 
-		void INetwork.SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState clos)
+		void INetwork.SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState state)
 		{
-			ReliableCallbackInvoker<TState> invoker = _objectPoolManager.GetPool<ReliableCallbackInvoker<TState>>().Get();
-			invoker.SetCallback(callback, clos, ReliableCallbackExecutionOption.Mainloop);
+			ReliablePlayerCallbackInvoker<TState> invoker = _objectPoolManager.GetPool<ReliablePlayerCallbackInvoker<TState>>().Get();
+			invoker.SetCallback(callback, state, ReliableCallbackExecutionOption.Mainloop);
 			SendWithCallback(player, data, invoker);
 		}
 
-		void INetwork.SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState clos)
+		void INetwork.SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state)
 		{
-			((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback, clos);
+			((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback, state);
 		}
 
 		void INetwork.SendToTarget(ITarget target, ReadOnlySpan<byte> data, NetSendFlags flags)
@@ -3173,17 +3175,15 @@ namespace SS.Core.Modules
 												{
 													Span<byte> packetSpan = bufferSpan[..int.Min(bufferSpan.Length, headerSpan.Length + Constants.ChunkSize)];
 
-													//_logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"{DateTime.Now:O} Queuing sized data ({packetSpan.Length - headerSpan.Length} bytes)");
-
 													// Write the header in front of the data.
 													headerSpan.CopyTo(packetSpan);
 
 													// We want to get a callback when we receive an ACK back.
-													ReliableCallbackInvoker reliableInvoker = _reliableCallbackInvokerPool.Get();
-													reliableInvoker.SetCallback(_sizedSendChunkCompleted, ReliableCallbackExecutionOption.Synchronous);
+													ReliableConnectionCallbackInvoker invoker = _reliableConnectionCallbackInvokerPool.Get();
+													invoker.SetCallback(_sizedSendChunkCompleted, ReliableCallbackExecutionOption.Synchronous);
 
 													Interlocked.Increment(ref conn.SizedSendQueuedCount);
-													SendOrBufferPacket(conn, packetSpan, NetSendFlags.PriorityN1 | NetSendFlags.Reliable, reliableInvoker);
+													SendOrBufferPacket(conn, packetSpan, NetSendFlags.PriorityN1 | NetSendFlags.Reliable, invoker);
 													queuedData = true;
 
 													bufferSpan = bufferSpan[(packetSpan.Length - headerSpan.Length)..];
@@ -3336,12 +3336,10 @@ namespace SS.Core.Modules
 			}
 		}
 
-		private void SizedSendChunkCompleted(Player player, bool success)
+		private void SizedSendChunkCompleted(ConnData connData, bool success)
 		{
-			if (player is null || !player.TryGetExtraData(_connKey, out ConnData connData))
+			if (connData is null)
 				return;
-
-			//_logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"{DateTime.Now:O} Sized Send Chunk Ack (Success = {success})");
 
 			Interlocked.Decrement(ref connData.SizedSendQueuedCount);
 
@@ -3891,10 +3889,6 @@ namespace SS.Core.Modules
 			ArgumentNullException.ThrowIfNull(callbackInvoker);
 			ArgumentNullException.ThrowIfNull(conn);
 
-			Player player = conn.Player;
-			if (player is null)
-				return; // TODO: support reliable callback for client connections too, and reliable callbacks for connections (for sized sends)
-
 			// TOOD: fix callbacks that are processed asynchronously getting executed after disconnection
 
 			do
@@ -3908,7 +3902,7 @@ namespace SS.Core.Modules
 							new InvokeReliableCallbackWork()
 							{
 								CallbackInvoker = callbackInvoker,
-								Player = player,
+								ConnData = conn,
 								Success = success,
 							});
 						break;
@@ -3919,7 +3913,7 @@ namespace SS.Core.Modules
 							new InvokeReliableCallbackWork()
 							{
 								CallbackInvoker = callbackInvoker,
-								Player = player,
+								ConnData = conn,
 								Success = success,
 							});
 						break;
@@ -3931,7 +3925,7 @@ namespace SS.Core.Modules
 							new InvokeReliableCallbackWork()
 							{
 								CallbackInvoker = callbackInvoker,
-								Player = player,
+								ConnData = conn,
 								Success = success,
 							});
 						break;
@@ -3946,9 +3940,9 @@ namespace SS.Core.Modules
 			{
 				using (work.CallbackInvoker)
 				{
-					if (work.Player is not null)
+					if (work.ConnData is not null)
 					{
-						work.CallbackInvoker.Invoke(work.Player, work.Success);
+						work.CallbackInvoker.Invoke(work.ConnData, work.Success);
 					}
 				}
 			}
@@ -4685,9 +4679,9 @@ namespace SS.Core.Modules
 			/// <summary>
 			/// Invokes the reliable callback.
 			/// </summary>
-			/// <param name="player">The player.</param>
+			/// <param name="connData">Data about the connection.</param>
 			/// <param name="success">True if the reliable packet was sucessfully sent and acknowledged. False if it was cancelled.</param>
-			void Invoke(Player player, bool success);
+			void Invoke(ConnData connData, bool success);
 
 			/// <summary>
 			/// Option that indicates how the callback should be invoked.
@@ -4706,9 +4700,52 @@ namespace SS.Core.Modules
 		}
 
 		/// <summary>
-		/// Represents a callback that has no arguments.
+		/// A reliable callback invoker that wraps calling a delegate.
 		/// </summary>
-		private class ReliableCallbackInvoker : PooledObject, IReliableCallbackInvoker
+		private class ReliableConnectionCallbackInvoker : PooledObject, IReliableCallbackInvoker
+		{
+			public delegate void ReliableConnectionCallback(ConnData connData, bool success);
+			private ReliableConnectionCallback _callback;
+
+			public void SetCallback(ReliableConnectionCallback callback, ReliableCallbackExecutionOption executionOption)
+			{
+				if (!Enum.IsDefined(executionOption))
+					throw new InvalidEnumArgumentException(nameof(executionOption), (int)executionOption, typeof(ReliableCallbackExecutionOption));
+
+				_callback = callback ?? throw new ArgumentNullException(nameof(callback));
+				ExecutionOption = executionOption;
+			}
+
+			#region IReliableCallbackInvoker
+
+			public void Invoke(ConnData connData, bool success)
+			{
+				_callback?.Invoke(connData, success);
+			}
+
+			public ReliableCallbackExecutionOption ExecutionOption { get; private set; } = ReliableCallbackExecutionOption.Mainloop;
+
+			public IReliableCallbackInvoker Next { get; set; }			
+
+			#endregion
+
+			protected override void Dispose(bool isDisposing)
+			{
+				if (isDisposing)
+				{
+					_callback = null;
+					ExecutionOption = ReliableCallbackExecutionOption.Mainloop;
+					Next = null;
+				}
+
+				base.Dispose(isDisposing);
+			}
+		}
+
+		/// <summary>
+		/// A reliable callback invoker that wraps calling a delegate for a player.
+		/// </summary>
+		private class ReliablePlayerCallbackInvoker : PooledObject, IReliableCallbackInvoker
 		{
 			private ReliableDelegate _callback;
 
@@ -4723,9 +4760,13 @@ namespace SS.Core.Modules
 
 			#region IReliableDelegateInvoker Members
 
-			public void Invoke(Player player, bool success)
+			public void Invoke(ConnData connData, bool success)
 			{
-				_callback?.Invoke(player, success);
+				Player player = connData.Player;
+				if (player is not null)
+				{
+					_callback?.Invoke(player, success);
+				}
 			}
 
 			public ReliableCallbackExecutionOption ExecutionOption { get; private set; } = ReliableCallbackExecutionOption.Mainloop;
@@ -4748,29 +4789,33 @@ namespace SS.Core.Modules
 		}
 
 		/// <summary>
-		/// Represents a callback that has an argument of type <typeparamref name="T"/>.
+		/// A reliable callback invoker that wraps calling a delegate for a player with an extra state argument of type <typeparamref name="T"/>.
 		/// </summary>
 		/// <typeparam name="T">The type of state to pass to the callback.</typeparam>
-		private class ReliableCallbackInvoker<T> : PooledObject, IReliableCallbackInvoker
+		private class ReliablePlayerCallbackInvoker<T> : PooledObject, IReliableCallbackInvoker
 		{
 			private ReliableDelegate<T> _callback;
-			private T _clos;
+			private T _state;
 
-			public void SetCallback(ReliableDelegate<T> callback, T clos, ReliableCallbackExecutionOption executionOption)
+			public void SetCallback(ReliableDelegate<T> callback, T state, ReliableCallbackExecutionOption executionOption)
 			{
 				if (!Enum.IsDefined(executionOption))
 					throw new InvalidEnumArgumentException(nameof(executionOption), (int)executionOption, typeof(ReliableCallbackExecutionOption));
 
 				_callback = callback ?? throw new ArgumentNullException(nameof(callback));
-				_clos = clos;
+				_state = state;
 				ExecutionOption = executionOption;
 			}
 
 			#region IReliableDelegateInvoker Members
 
-			public void Invoke(Player player, bool success)
+			public void Invoke(ConnData connData, bool success)
 			{
-				_callback?.Invoke(player, success, _clos);
+				Player player = connData.Player;
+				if (player is not null)
+				{
+					_callback?.Invoke(player, success, _state);
+				}
 			}
 
 			public ReliableCallbackExecutionOption ExecutionOption { get; private set; } = ReliableCallbackExecutionOption.Mainloop;
@@ -4784,7 +4829,7 @@ namespace SS.Core.Modules
 				if (isDisposing)
 				{
 					_callback = null;
-					_clos = default;
+					_state = default;
 					ExecutionOption = ReliableCallbackExecutionOption.Mainloop;
 					Next = null;
 				}
@@ -5451,13 +5496,13 @@ namespace SS.Core.Modules
 		}
 
 		/// <summary>
-		/// State for executing a reliable callback on the mainloop thread.
+		/// State for executing a reliable callback.
 		/// </summary>
-		private struct InvokeReliableCallbackWork
+		private readonly struct InvokeReliableCallbackWork
 		{
-			public IReliableCallbackInvoker CallbackInvoker;
-			public Player Player;
-			public bool Success;
+			public required readonly IReliableCallbackInvoker CallbackInvoker { get; init; }
+			public required readonly ConnData ConnData { get; init; }
+			public required readonly bool Success { get; init; }
 		}
 
 		/// <summary>
