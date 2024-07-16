@@ -1,17 +1,17 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.Collections;
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Net;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides the ability to redirect players to another zone server.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides the ability to redirect players to another zone server.
+	/// </summary>
+	[CoreModuleInfo]
     public class Redirect : IModule, IRedirect
     {
         private ICommandManager _commandManager;

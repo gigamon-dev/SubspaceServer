@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
+using SS.Utilities.Collections;
 using System;
 
 namespace SS.Core.Modules

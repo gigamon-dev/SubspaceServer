@@ -4,6 +4,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.Collections;
 using System;
 using System.Buffers;
 using System.Collections.Generic;

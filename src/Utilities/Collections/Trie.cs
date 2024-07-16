@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 
 #nullable enable
 
-namespace SS.Utilities
+namespace SS.Utilities.Collections
 {
     /// <summary>
     /// An implementation of the trie data structure for storing string keys as <see cref="char"/> symbols.
@@ -480,13 +480,13 @@ namespace SS.Utilities
             public Dictionary<char, TrieNode>.Enumerator Enumerator;
             public EnumeratorNode? Previous;
 
-			bool IResettable.TryReset()
-			{
-				Enumerator = default;
-				Previous = null;
-				return true;
-			}
-		}
+            bool IResettable.TryReset()
+            {
+                Enumerator = default;
+                Previous = null;
+                return true;
+            }
+        }
 
         public struct KeyEnumerator : IEnumerator<ReadOnlyMemory<char>>
         {

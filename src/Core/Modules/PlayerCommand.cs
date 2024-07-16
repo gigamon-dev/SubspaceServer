@@ -4,6 +4,7 @@ using SS.Core.Configuration;
 using SS.Core.Map;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.Collections;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;

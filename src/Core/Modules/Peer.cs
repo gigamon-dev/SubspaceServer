@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Packets.Peer;
 using SS.Utilities;
+using SS.Utilities.Collections;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -19,20 +20,20 @@ using static SS.Core.ComponentInterfaces.IPeer;
 
 namespace SS.Core.Modules
 {
-	/// <summary>
-	/// Module that provides functionality to communicate with other "peer" zones to send and/or receive:
-	/// <list type="bullet">
-	/// <item>Player lists (list of arenas and players in each)</item>
-	/// <item>Player counts (overall for the zone)</item>
-	/// <item>Zone messages and alert (moderator) messages</item>
-	/// <item>The ability to redirect a player to a peer's arena.</item>
-	/// </list>
-	/// </summary>
-	/// <remarks>
-	/// The original implementation for ASSS was written by Sharvil Nanavati (Snrrrub) in C++.
-	/// JoWie rewrote it into a C module, and this is based on JoWie's C module.
-	/// </remarks>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module that provides functionality to communicate with other "peer" zones to send and/or receive:
+    /// <list type="bullet">
+    /// <item>Player lists (list of arenas and players in each)</item>
+    /// <item>Player counts (overall for the zone)</item>
+    /// <item>Zone messages and alert (moderator) messages</item>
+    /// <item>The ability to redirect a player to a peer's arena.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>
+    /// The original implementation for ASSS was written by Sharvil Nanavati (Snrrrub) in C++.
+    /// JoWie rewrote it into a C module, and this is based on JoWie's C module.
+    /// </remarks>
+    [CoreModuleInfo]
     public class Peer : IModule, IPeer, IStringBuilderPoolProvider
     {
         private static readonly TimeSpan StaleArenaTimeout = TimeSpan.FromSeconds(30);

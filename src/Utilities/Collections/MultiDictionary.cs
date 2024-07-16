@@ -1,16 +1,15 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 
-namespace SS.Utilities
+namespace SS.Utilities.Collections
 {
-    /// <summary>
-    /// Dictionary that allows multiple values per key.
-    /// Each bucket internally is a LinkedList, hence the similarity many of the methods have to LinkedLists.
-    /// </summary>
-    /// <typeparam name="TKey"></typeparam>
-    /// <typeparam name="TValue"></typeparam>
-    public class MultiDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, ICollection<KeyValuePair<TKey, TValue>>
+	/// <summary>
+	/// Dictionary that allows multiple values per key.
+	/// Each bucket internally is a LinkedList, hence the similarity many of the methods have to LinkedLists.
+	/// </summary>
+	/// <typeparam name="TKey"></typeparam>
+	/// <typeparam name="TValue"></typeparam>
+	public class MultiDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, ICollection<KeyValuePair<TKey, TValue>>
     {
         private Dictionary<TKey, LinkedList<TValue>> _dictionary;
         private int _count = 0;
@@ -74,7 +73,7 @@ namespace SS.Utilities
             bucketList.AddLast(value);
             _count++;
         }
-        
+
         /// <summary>
         /// removes one instance of the key, value pair
         /// </summary>
@@ -113,7 +112,7 @@ namespace SS.Utilities
                 values = new TValue[bucketList.Count];
                 LinkedListNode<TValue> node = bucketList.First;
                 int index = 0;
-                while ((node != null) && (++index < values.Length))
+                while (node != null && ++index < values.Length)
                 {
                     values[index] = node.Value;
                     node = node.Next;
@@ -147,7 +146,7 @@ namespace SS.Utilities
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Gets all of the items that match the specified key and adds them to the end of an existing list.
         /// </summary>
@@ -172,7 +171,7 @@ namespace SS.Utilities
                 return false;
             }
         }
-        
+
         /// <summary>
         /// Gets the first value assocated with the specified key.
         /// </summary>
@@ -184,13 +183,13 @@ namespace SS.Utilities
             LinkedList<TValue> bucketList;
             if (_dictionary.TryGetValue(key, out bucketList) == false)
             {
-                firstValue = default(TValue);
+                firstValue = default;
                 return false;
             }
 
-            if(bucketList.Count == 0) // this should never come back as true if this class is implemented correctly, putting this here to be defensive...
+            if (bucketList.Count == 0) // this should never come back as true if this class is implemented correctly, putting this here to be defensive...
             {
-                firstValue = default(TValue);
+                firstValue = default;
                 return false;
             }
 
@@ -286,7 +285,7 @@ namespace SS.Utilities
 
             object System.Collections.IEnumerator.Current
             {
-                get { return this.Current; }
+                get { return Current; }
             }
 
             public bool MoveNext()
@@ -325,7 +324,7 @@ namespace SS.Utilities
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
         {
-            return this.GetEnumerator();
+            return GetEnumerator();
         }
 
         #endregion
@@ -356,7 +355,7 @@ namespace SS.Utilities
 
         void ICollection<KeyValuePair<TKey, TValue>>.CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
         {
-            if(arrayIndex >= array.Length)
+            if (arrayIndex >= array.Length)
             {
                 throw new ArgumentException("arrayIndex is equal to or greater than the length of array");
             }
