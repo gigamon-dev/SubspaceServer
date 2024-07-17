@@ -24,24 +24,19 @@ namespace SS.Core.Modules
 {
 	/// <summary>
 	/// Module that provides functionality to communicate using UDP and the Subspace 'core' procotol.
-	/// 
+	/// </summary>
+	/// <remarks>
 	/// <para>
 	/// Though primarily designed towards being used as a server, this module also provides functionality for use as a client.
 	/// The <see cref="INetwork"/> interface provides methods for server functionality,
 	/// and the <see cref="INetworkClient"/> interface provides functionality for being a client.
 	/// As a 'zone' server it acts as a server that listens for 'game' clients to connect.
-	/// However, it may act as a client to other servers, such as a 'billing' server (<see cref="BillingUdp"/>).
+	/// However, it also acts as a client to other servers, such as a 'billing' server (<see cref="BillingUdp"/>).
 	/// </para>
-	/// 
 	/// <para>
-	/// This module is a direct port of the 'net' module from ASSS.
-	/// One notable difference is the addition of the ability to group reliable data.
-	/// That is, when there are multiple packets waiting to be sent reliably to a connection, it can combine them (size permitting)
-	/// into a grouped packet (0x00 0x0E) wrapped within a single reliable packet (0x00 0x03).
-	/// So, instead of using multiple reliable packets (each with a sequence number), it can instead use a single reliable packet (1 sequence number).
-	/// Doing so reduces bandwidth used: fewer ACK packets (0x00 0x04) used and likely fewer datagrams too (ACKs are most likely sent separately, not grouped).
+	/// This module is equivalent to the 'net' module in ASSS. However, in many ways it is enhanced and implemented differently.
 	/// </para>
-	/// </summary>
+	/// </remarks>
 	[CoreModuleInfo]
 	public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient, IDisposable
 	{

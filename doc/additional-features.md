@@ -1,6 +1,6 @@
 # Notable Additional Features (not in ASSS)
 
-## Network module - reliable packet grouping
+## Network module - Reliable packet grouping
 ### Overview
 In ASSS, when reliable data is queued up to be sent, a reliable header is prepended to it it and assigned a sequence number. When the packet is to be sent, it may get combined **into** a Grouped (0x00 0x0E) packet. That is, the reliable packet can be placed inside of a grouped packet as one of the grouped packet's items. Grouped packets are a nice feature of the Subspace protocol. They substantially reduce the # of UDP datagrams needed to be sent. However, there is room for improvement in the algorithm ASSS uses.
 
@@ -65,6 +65,55 @@ outgoing queue. When it does this move, it tries to group up the packets. The re
 Additionally, there is a setting to limit the grouping of reliable packets such that, the resulting reliable packet containing a grouped packet, can itself can fit into another grouped packet. This is off by default, since I think it is still more efficient to group as many as possible to reduce the amount of sequence numbers used.
 
 ---
+
+## Network module - Enhanced sending of sized data
+Sending of sized data is implemented completely differently than in ASSS. This was to resolve many issues including:
+- A race condition where sized data packets (0x0A) could be sent after a sized cancellation ACK (0x00 0x0C).
+- A race condition where memory is used after it is freed.
+- File I/O being performed on the mainloop thread.
+
+Additionally, ASSS uses a timer to queue sized data to be sent. The timer limits the maximum possible transfer rate.
+This doesn't have that limitation. When receiving an ACK for a sized data packet, it can immediately queue up more data
+and optionally, attempt to send that data.
+
+---
+
+## Network module - Maximum packet length
+The Subspace protocol allows for packets to have a maximum length of 520 bytes.
+ASSS only sends up to 512 bytes, with larger packets getting fragmented using big data packets (0x00 0x08 and 0x00 0x09).
+Subspace Server .NET supports the full 520 byte length, including handling when the data is sent reliably. This allows for the following to be sent in a single packet:
+- A full static flag packet (0x22) containing 256 flags. The max length being: 1 + (256 * 2) = 513. Plus the 6 byte reliable header = 519 bytes.
+- A full brick packet (0x21) containing 32 bricks. The max length being: 1 + (32 * 16) = 513. Plus the 6 byte reliable header = 519 bytes.
+- A full periodic reward packet (0x23) containing 128 teams. The max length being 1 + (128 * 4) = 513. Plus the 6 byte reliable header = 519 bytes.
+
+---
+
+## Network module - Incoming sequence number overflow
+For incoming reliable data, ASSS doesn't handle when sequence numbers overflow and wrap back around. This issue is addressed in Subspace Server .NET. Note, getting to the overflow limit is highly unlikely, especially for player connections. However, for a client connection to a billing server it is possible if connected long enough.
+
+---
+
+## Network module - Big data receive limit
+When big data (0x00 0x08 and 0x00 0x09) is received, it is buffered into memory until ending the 0x00 0x09 packet is received. There is a limit on the amount of data allowed to be buffered. When ASSS hits that limit, it completely discards the big data in such a way that it forgets that it was receiving a big data transfer. This means any additional big data packets will be seen as the start of a new transfer. In Subspace Server .NET, this scenario is handled in such a way that the big data transfer is not forgotten. It just continues to ignore additional data, until the 0x00 0x09 packet is received.
+
+---
+
+## Network module - Connection stats for client connections
+
+Added the ability to get conneciton stats for client connections. Updated the BillingUdp module to output the stats in the `?userdbadm` command. This should give some insight into the quality of the billing server connection. Note, it's not full lag stats like for players.
+
+---
+
+## Network module - Configurable incoming reliable window size
+
+Added the ability to configure the size of the incoming reliable data buffer.
+- `Net:PlayerReliableReceiveWindowSize` for player connections.
+- `Net:ClientConnectionReliableReceiveWindowSize` for client connecitons.
+
+This might be useful for client connections (to a billing server), where most data is transferred reliably and there is a lot of it (chat messages). Though, even for that it has limited usefulness since it depends on the other end's send window size.
+
+---
+
 ## ConfigManager - Enhanced automatic config file reload on modification
 ASSS does detect when a conf file is modified and will reload it. However, it only does this for "root" conf files. Any additional conf files pulled in from #include statements are not watched.
 
