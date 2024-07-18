@@ -1,7 +1,10 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+
+#nullable enable
 
 namespace SS.Utilities.Collections
 {
@@ -18,7 +21,7 @@ namespace SS.Utilities.Collections
 	/// <param name="initialCapacity">The initial capacity of the queue.</param>
 	/// <param name="comparer">The <see cref="IEqualityComparer{T}"/> to use when comparing items, or <see langword="null"/> to use the default <see cref="EqualityComparer{T}"/> of <typeparamref name="T"/>.</param>
 	/// <param name="nodePool">An object pool of <see cref="LinkedListNode{T}"/>.</param>
-	public sealed class HybridEventQueue<T>(int initialCapacity, IEqualityComparer<T> comparer, ObjectPool<LinkedListNode<T>> nodePool) : IDisposable
+	public sealed class HybridEventQueue<T>(int initialCapacity, IEqualityComparer<T>? comparer, ObjectPool<LinkedListNode<T>> nodePool) : IDisposable where T : notnull
 	{
 		private readonly object _lock = new();
 		private readonly Dictionary<T, LinkedListNode<T>> _itemNodeDictionary = new(initialCapacity, comparer);
@@ -90,12 +93,12 @@ namespace SS.Utilities.Collections
 		/// <remarks>O(1)</remarks>
 		/// <param name="item">When this method returns, the item if one was taken.</param>
 		/// <returns><see langword="true"/> if an item was taken from the queue. Otherwise, <see langword="false"/>.</returns>
-		public bool TryDequeue(out T item)
+		public bool TryDequeue([MaybeNullWhen(false)] out T item)
 		{
 			ObjectDisposedException.ThrowIf(_isDisposed, this);
 
 			bool setEvent = false;
-			LinkedListNode<T> node = null;
+			LinkedListNode<T>? node = null;
 
 			try
 			{
@@ -142,14 +145,14 @@ namespace SS.Utilities.Collections
 		{
 			ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-			LinkedListNode<T> node;
+			LinkedListNode<T>? node;
 			bool removed;
 
 			lock (_lock)
 			{
 				if (removed = _itemNodeDictionary.Remove(item, out node))
 				{
-					_queue.Remove(node);
+					_queue.Remove(node!);
 				}
 			}
 
