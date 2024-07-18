@@ -591,6 +591,9 @@ namespace SS.Matchmaking.Modules
             // The stats module can calculate assists and solo kills based on damage stats, and write a more detailed chat message than we can in here.
             bool isNotificationHandled = false;
 
+            string killedName = killed.Name;
+            string killerName = killer.Name;
+
             if (_teamVersusStatsBehavior is not null)
             {
                 isNotificationHandled = await _teamVersusStatsBehavior.PlayerKilledAsync(
@@ -602,7 +605,17 @@ namespace SS.Matchmaking.Modules
                     killer,
                     killerPlayerSlot,
                     isKnockout);
-            }
+
+				// The Player objects (and therefore the PlayerData objects too) might be invalid after the await
+				// (e.g. if a player disconnected during the delay).
+				// We could verify a Player object by comparing Player.Name and checking that Player.Status = PlayerState.Playing.
+				// However, we aren't going to use the Player or PlayerData objects after this point.
+				// So, let's just clear our references to them.
+				killed = null;
+				killedPlayerData = null;
+				killer = null;
+				killerPlayerData = null;
+			}
 
             if (!isNotificationHandled)
             {
@@ -622,16 +635,16 @@ namespace SS.Matchmaking.Modules
                     GetPlayersToNotify(matchData, notifySet);
 
                     // Kill notification
-                    _chat.SendSetMessage(notifySet, $"{killed.Name} kb {killer.Name}");
+                    _chat.SendSetMessage(notifySet, $"{killedName} kb {killerName}");
 
                     // Remaining lives notification
                     if (isKnockout)
                     {
-                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} is OUT! [{gameTimeBuilder}]");
+                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killedName} is OUT! [{gameTimeBuilder}]");
                     }
                     else
                     {
-                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killed.Name} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining [{gameTimeBuilder}]");
+                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killedName} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining [{gameTimeBuilder}]");
                     }
 
                     // Score notification
