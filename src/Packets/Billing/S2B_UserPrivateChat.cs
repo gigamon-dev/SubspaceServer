@@ -5,10 +5,10 @@ using System.Runtime.InteropServices;
 
 namespace SS.Packets.Billing
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_UserPrivateChat
-    {
-		#region Static members
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public readonly struct S2B_UserPrivateChat(int connectionId, uint groupId, byte subType, byte sound)
+	{
+		#region Static Members
 
 		/// <summary>
 		/// The maximum # of bytes the text portion of the packet can be.
@@ -54,20 +54,19 @@ namespace SS.Packets.Billing
 
 		#endregion
 
-		public readonly byte Type;
-        private int connectionId;
-        private uint groupId;
-        public byte SubType;
-        public byte Sound;
+		public readonly byte Type = (byte)S2BPacketType.UserPrivateChat;
+        private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
+        private readonly uint groupId = LittleEndianConverter.Convert(groupId);
+        public readonly byte SubType = subType;
+        public readonly byte Sound = sound;
 		// Followed by the text bytes which must be null-terminated.
 
-		public S2B_UserPrivateChat(int connectionId, uint groupId, byte subType, byte sound)
-        {
-            Type = (byte)S2BPacketType.UserPrivateChat;
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-            this.groupId = LittleEndianConverter.Convert(groupId);
-            SubType = subType;
-            Sound = sound;
-        }
-    }
+		#region Helper Properties
+
+		public int ConnectionId => LittleEndianConverter.Convert(connectionId);
+
+		public uint GroupId => LittleEndianConverter.Convert(groupId);
+
+		#endregion
+	}
 }

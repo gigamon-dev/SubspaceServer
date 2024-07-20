@@ -4,41 +4,31 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
 	[StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct B2S_UserMulticastChannelChatHeader
+    public readonly struct B2S_UserMulticastChannelChatHeader
     {
-        #region Static members
+        #region Static Members
 
-        public static readonly int Length;
-
-        static B2S_UserMulticastChannelChatHeader()
-        {
-            Length = Marshal.SizeOf<B2S_UserMulticastChannelChatHeader>();
-        }
+        public static readonly int Length = Marshal.SizeOf<B2S_UserMulticastChannelChatHeader>();
 
         #endregion
 
-        public byte Type;
-        public byte Count;
+        public readonly byte Type;
+        public readonly byte Count;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct MulticastChannelChatRecipient
+    public readonly struct MulticastChannelChatRecipient
     {
-        #region Static members
+        #region Static Members
 
-        public static readonly int Length;
-
-        static MulticastChannelChatRecipient()
-        {
-            Length = Marshal.SizeOf<MulticastChannelChatRecipient>();
-        }
+        public static readonly int Length = Marshal.SizeOf<MulticastChannelChatRecipient>();
 
         #endregion
 
-        private int connectionId;
-        public byte Channel;
+        private readonly int connectionId;
+        public readonly byte Channel;
 
-        #region Helpers
+        #region Helper Properties
 
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 

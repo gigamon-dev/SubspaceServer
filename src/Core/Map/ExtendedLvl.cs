@@ -6,16 +6,15 @@ using System.Collections.Immutable;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 
 namespace SS.Core.Map
 {
-    /// <summary>
-    /// For reading the Extended lvl format.
-    /// Extended means it may contain extra metadata such as regions and attributes.
-    /// </summary>
-    public class ExtendedLvl : BasicLvl
+	/// <summary>
+	/// For reading the Extended lvl format.
+	/// Extended means it may contain extra metadata such as regions and attributes.
+	/// </summary>
+	public class ExtendedLvl : BasicLvl
     {
         /// <summary>
         /// Maximum size in bytes that a metadata chunk can be.
@@ -124,19 +123,18 @@ namespace SS.Core.Map
 
             long length = new FileInfo(path).Length;
             long position = 0;
-            int metadataHeaderLength = Marshal.SizeOf<MetadataHeader>();
 
-            if (length >= Marshal.SizeOf<BitmapHeader>())
+            if (length >= BitmapHeader.Length)
             {
                 va.Read(position, out BitmapHeader bitmapHeader);
 
-                if (bitmapHeader.BM == 19778)
+                if (bitmapHeader.BM == 0x4D42) // BM in ASCII
                 {
                     // has a bitmap tileset
                     if (bitmapHeader.Reserved != 0)
                     {
                         // possibly has metadata
-                        if (length >= bitmapHeader.Reserved + metadataHeaderLength)
+                        if (length >= bitmapHeader.Reserved + MetadataHeader.Length)
                         {
                             va.Read(bitmapHeader.Reserved, out MetadataHeader metadataHeader);
                             if (metadataHeader.Magic == MetadataHeader.MetadataMagic
@@ -145,8 +143,8 @@ namespace SS.Core.Map
                                 // has metadata
                                 ReadChunks(
                                     va,
-                                    bitmapHeader.Reserved + metadataHeaderLength,
-                                    metadataHeader.TotalSize - metadataHeaderLength,
+                                    bitmapHeader.Reserved + MetadataHeader.Length,
+                                    metadataHeader.TotalSize - MetadataHeader.Length,
                                     ProcessBackwardsCompatibleMapChunk);
                             }
                         }
@@ -161,7 +159,7 @@ namespace SS.Core.Map
             {
                 // was not a bitmap
                 // possibly starts with metadata (non-backwards compatible extended lvl) which could contain TSET and TILE chunks
-                if (length >= metadataHeaderLength)
+                if (length >= MetadataHeader.Length)
                 {
                     va.Read(position, out MetadataHeader metadataHeader);
                     if (metadataHeader.Magic == MetadataHeader.MetadataMagic
@@ -170,8 +168,8 @@ namespace SS.Core.Map
                         // has metadata
                         ReadChunks(
                             va,
-                            metadataHeaderLength,
-                            metadataHeader.TotalSize - metadataHeaderLength,
+							MetadataHeader.Length,
+                            metadataHeader.TotalSize - MetadataHeader.Length,
                             ProcessNonBackwardsCompatibleMapChunk);
 
                         // in a non-backwards compatible extended lvl, the tile data should be included in the metadata
@@ -302,20 +300,15 @@ namespace SS.Core.Map
             long length,
             Action<MemoryMappedViewAccessor, uint, long, int> processChunkCallback)
         {
-            if (accessor == null)
-                throw new ArgumentNullException(nameof(accessor));
+			ArgumentNullException.ThrowIfNull(accessor);
+			ArgumentNullException.ThrowIfNull(processChunkCallback);
 
-            if (processChunkCallback == null)
-                throw new ArgumentNullException(nameof(processChunkCallback));
-
-            int chunkHeaderLength = Marshal.SizeOf<ChunkHeader>();
-
-            while (length >= chunkHeaderLength)
+			while (length >= ChunkHeader.Length)
             {
                 // first check the chunk header
                 accessor.Read(position, out ChunkHeader chunkHeader);
 
-                long chunkSize = chunkHeaderLength + chunkHeader.Size;
+                long chunkSize = ChunkHeader.Length + chunkHeader.Size;
 
                 if (chunkHeader.Size > MaxChunkSize || chunkSize > length)
                 {
@@ -323,7 +316,7 @@ namespace SS.Core.Map
                     break;
                 }
 
-                processChunkCallback(accessor, chunkHeader.Type, position + chunkHeaderLength, (int)chunkHeader.Size);
+                processChunkCallback(accessor, chunkHeader.Type, position + ChunkHeader.Length, (int)chunkHeader.Size);
 
                 position += chunkSize;
                 length -= chunkSize;
@@ -356,10 +349,9 @@ namespace SS.Core.Map
             int length, 
             bool backwardsCompatible)
         {
-            if (accessor == null)
-                throw new ArgumentNullException(nameof(accessor));
+			ArgumentNullException.ThrowIfNull(accessor);
 
-            if (chunkType == MapMetadataChunkType.ATTR)
+			if (chunkType == MapMetadataChunkType.ATTR)
             {
                 byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 

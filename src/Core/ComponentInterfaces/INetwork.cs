@@ -71,37 +71,29 @@ namespace SS.Core.ComponentInterfaces
 	/// Delegate for a handler to an incoming regular packet.
 	/// </summary>
 	/// <param name="player">The player that sent the packet.</param>
-	/// <param name="data">
-	/// The buffer containing the packet data that was received.
-	/// <para>
-	/// The buffer is guaranteed to be at least <see cref="Constants.MaxPacket"/>, 
-    /// which can be larger than the <paramref name="length"/> of bytes received.
-	/// This means a handler can use <see cref="System.Runtime.InteropServices.MemoryMarshal.AsRef{T}(Span{byte})"/>
-	/// with a structure larger than the <paramref name="length"/> of bytes received.
-	/// Doing so allows variable length data to be processed with a struct that contains all fields, including the optional ones.
-	/// It is up to the handler to know which fields are available based on the <paramref name="length"/>.
-	/// For example, packets with Continuum-only fields added at the end, 
-	/// or position packets where the extra position data at the end is optional.
-	/// </para>
-	/// </param>
-	/// <param name="length">Number of bytes in <paramref name="data"/> that were received.</param>
+	/// <param name="data">The buffer containing the packet data that was received.</param>
 	/// <param name="flags">Flags indicating how the data was received.</param>
-	public delegate void PacketDelegate(Player player, Span<byte> data, int length, NetReceiveFlags flags);
+	public delegate void PacketHandler(Player player, Span<byte> data, NetReceiveFlags flags);
 
-    /// <summary>
-    /// Delegate for a handler to an incoming sized packet (file transfer).
-    /// </summary>
-    /// <param name="player">The player that sent the packet.</param>
-    /// <param name="data">The buffer containing the packet data that was received.</param>
-    /// <param name="offset">
-    /// Starting position of the data being transmitted.
-    /// -1 indicates that the transfer was cancelled.
-    /// </param>
-    /// <param name="totalLength">
-    /// Overall size of the transfer in bytes.
-    /// -1 indicates that the transfer was cancelled.
-    /// </param>
-    public delegate void SizedPacketDelegate(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
+	/// <summary>
+	/// Delegate for a handler to an incoming sized data packet.
+	/// </summary>
+	/// <remarks>
+	/// This is invoked for each fragment of the data received as sized data packets.
+	/// It is also invoked when the transfer is complete, which can be because all data was 
+	/// sucessfully received or the because the transfer was cancelled.
+	/// </remarks>
+	/// <param name="player">The player that sent the packet.</param>
+	/// <param name="data">The buffer containing the packet data that was received.</param>
+	/// <param name="offset">
+	/// Starting position of the data being transmitted.
+	/// -1 indicates that the transfer was cancelled.
+	/// </param>
+	/// <param name="totalLength">
+	/// Overall size of the transfer in bytes.
+	/// -1 indicates that the transfer was cancelled.
+	/// </param>
+	public delegate void SizedPacketHandler(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
     /// Delegate for a callback when the send of a reliable packet completes.
@@ -110,28 +102,34 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
     public delegate void ReliableDelegate(Player player, bool success);
 
-    /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes.
-    /// The callback includes a parameter for state.
-    /// </summary>
-    /// <typeparam name="T">The type of state object.</typeparam>
-    /// <param name="player">The player the packet was being sent to.</param>
-    /// <param name="success">Whether the packet was sucessfully sent.</param>
-    /// <param name="state">The state object.</param>
-    public delegate void ReliableDelegate<T>(Player player, bool success, T state);
+	/// <summary>
+	/// Delegate for a callback when the send of a reliable packet completes.
+	/// The callback includes a parameter for state.
+	/// </summary>
+	/// <typeparam name="T">The type of state object.</typeparam>
+	/// <param name="player">The player the packet was being sent to.</param>
+	/// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
+	/// <param name="state">The state object.</param>
+	public delegate void ReliableDelegate<T>(Player player, bool success, T state);
 
-    /// <summary>
-    /// Delegate for retrieving sized send data.
-    /// This is used to request the sender to provide data for the transfer.
-    /// </summary>
-    /// <typeparam name="T">The type of the argument for passing state.</typeparam>
-    /// <param name="state">The state to pass (provides a way to identify the data to retrieve).</param>
-    /// <param name="offset">The starting position of the data to retrieve.</param>
-    /// <param name="dataSpan">
-    /// The buffer to fill with data. 
-    /// An empty span indicates the end of a transfer and can be used to perform any necessary cleanup.
-    /// </param>
-    public delegate void GetSizedSendDataDelegate<T>(T state, int offset, Span<byte> dataSpan);
+	/// <summary>
+	/// Delegate for retrieving data to be sent out as sized data.
+	/// </summary>
+	/// <remarks>
+	/// This is invoked to get data for an outgoing sized data transfer.
+    /// It will be called multiple times, to grab chunks of the data.
+    /// These chunks are then broken down into fragments and sent using size data packets.
+    /// It is also invoked invoked when the transfer is complete, either because all of the
+    /// data was retrieved or because the transfer was cancelled.
+	/// </remarks>
+	/// <typeparam name="T">The type of the argument for passing state.</typeparam>
+	/// <param name="state">The state to pass (provides a way to identify the data to retrieve).</param>
+	/// <param name="offset">The starting position of the data to retrieve.</param>
+	/// <param name="dataSpan">
+	/// The buffer to fill with data. 
+	/// An empty span indicates the end of a transfer and can be used to perform any necessary cleanup.
+	/// </param>
+	public delegate void GetSizedSendDataDelegate<T>(T state, int offset, Span<byte> dataSpan);
 
     public interface IReadOnlyNetStats
     {
@@ -332,9 +330,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to send data to.</param>
         /// <param name="len">The total number of bytes to send in the transfer.</param>
         /// <param name="requestData">The delegate to call back for retrieving pieces of data for the transfer.</param>
-        /// <param name="clos">The argument to pass when calling <paramref name="requestData"/>.</param>
+        /// <param name="state">The state to pass when calling <paramref name="requestData"/>.</param>
         /// <returns><see langword="true"/> if the job was queued. Otherwise, <see langword="false"/>.</returns>
-        bool SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestData, T clos);
+        bool SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestData, T state);
 
         /// <summary>
         /// Registers a handler for a regular packet type.
@@ -343,31 +341,31 @@ namespace SS.Core.ComponentInterfaces
         /// This is usually used to register handlers for game packets.
         /// Note, this can also be used to register a handler for 0x00 0x13 by passing a packet type of 0x1300.
         /// </remarks>
-        /// <param name="pktype">The type of packet to register.</param>
-        /// <param name="func">The handler to register.</param>
-        void AddPacket(C2SPacketType pktype, PacketDelegate func);
+        /// <param name="packetType">The type of packet to register.</param>
+        /// <param name="handler">The handler to register.</param>
+        void AddPacket(C2SPacketType packetType, PacketHandler handler);
 
         /// <summary>
         /// Unregisters a handler for a regular packet type.
         /// </summary>
-        /// <param name="pktype">The type of packet to unregister.</param>
-        /// <param name="func">The handler to unregister.</param>
-        void RemovePacket(C2SPacketType pktype, PacketDelegate func);
+        /// <param name="packetType">The type of packet to unregister.</param>
+        /// <param name="handler">The handler to unregister.</param>
+        void RemovePacket(C2SPacketType packetType, PacketHandler handler);
 
-        /// <summary>
-        /// To register a handler for a sized packet.
-        /// <remarks>This is used for receiving file uploads.  Includes voices (wave messages in macros).</remarks>
-        /// </summary>
-        /// <param name="pktype"></param>
-        /// <param name="func"></param>
-        void AddSizedPacket(C2SPacketType pktype, SizedPacketDelegate func);
+		/// <summary>
+		/// To register a handler for a sized packet.
+		/// <remarks>This is used for receiving file uploads.  Includes voices (wave messages in macros).</remarks>
+		/// </summary>
+		/// <param name="packetType">The type of packet to register.</param>
+		/// <param name="handler">The handler to register.</param>
+		void AddSizedPacket(C2SPacketType packetType, SizedPacketHandler handler);
 
-        /// <summary>
-        /// To unregister a handler for a sized packet.
-        /// </summary>
-        /// <param name="pktype"></param>
-        /// <param name="func"></param>
-        void RemoveSizedPacket(C2SPacketType pktype, SizedPacketDelegate func);
+		/// <summary>
+		/// To unregister a handler for a sized packet.
+		/// </summary>
+		/// <param name="packetType">The type of packet to unregister.</param>
+		/// <param name="handler">The handler to unregister.</param>
+		void RemoveSizedPacket(C2SPacketType packetType, SizedPacketHandler handler);
 
         /// <summary>
         /// Gets statistics about the Network module.

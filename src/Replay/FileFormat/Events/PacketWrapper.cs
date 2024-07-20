@@ -8,12 +8,7 @@ namespace SS.Replay.FileFormat.Events
     {
         #region Static members
 
-        public static readonly int Length;
-
-        static PacketWrapper()
-        {
-            Length = Marshal.SizeOf(typeof(PacketWrapper));
-        }
+        public static readonly int Length = Marshal.SizeOf<PacketWrapper>();
 
         #endregion
 
@@ -24,7 +19,7 @@ namespace SS.Replay.FileFormat.Events
 
         public ushort DataLength
         {
-            get => LittleEndianConverter.Convert(dataLength);
+            readonly get => LittleEndianConverter.Convert(dataLength);
             set => dataLength = LittleEndianConverter.Convert(value);
         }
 

@@ -4,44 +4,32 @@ using System.Runtime.InteropServices;
 namespace SS.Replay.FileFormat.Events
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct FreqChange
-    {
+    public struct FreqChange(ServerTick ticks, short playerId, short newFreq)
+	{
         #region Static members
 
-        public static readonly int Length;
-
-        static FreqChange()
-        {
-            Length = Marshal.SizeOf(typeof(FreqChange));
-        }
+        public static readonly int Length = Marshal.SizeOf<FreqChange>();
 
         #endregion
 
-        public EventHeader Header;
-        private short playerId;
-        private short newFreq;
+        public EventHeader Header = new(ticks, EventType.FreqChange);
+        private short playerId = LittleEndianConverter.Convert(playerId);
+        private short newFreq = LittleEndianConverter.Convert(newFreq);
 
-        public FreqChange(ServerTick ticks, short playerId, short newFreq)
-        {
-            Header = new(ticks, EventType.FreqChange);
-            this.playerId = LittleEndianConverter.Convert(playerId);
-            this.newFreq = LittleEndianConverter.Convert(newFreq);
-        }
+		#region Helper properties
 
-        #region Helper properties
+		public short PlayerId
+		{
+			readonly get => LittleEndianConverter.Convert(playerId);
+			set => playerId = LittleEndianConverter.Convert(value);
+		}
 
-        public short PlayerId
-        {
-            get => LittleEndianConverter.Convert(playerId);
-            set => playerId = LittleEndianConverter.Convert(value);
-        }
+		public short NewFreq
+		{
+			readonly get => LittleEndianConverter.Convert(newFreq);
+			set => newFreq = LittleEndianConverter.Convert(value);
+		}
 
-        public short NewFreq
-        {
-            get => LittleEndianConverter.Convert(newFreq);
-            set => newFreq = LittleEndianConverter.Convert(value);
-        }
-
-        #endregion
-    }
+		#endregion
+	}
 }

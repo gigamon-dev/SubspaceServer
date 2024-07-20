@@ -42,21 +42,31 @@ namespace SS.Packets.Game
 
         public uint MacId
         {
-            get => LittleEndianConverter.Convert(macId);
+            readonly get => LittleEndianConverter.Convert(macId);
             set => macId = LittleEndianConverter.Convert(value);
         }
 
-        public ushort TimeZoneBias => LittleEndianConverter.Convert(timeZoneBias);
+		public ushort TimeZoneBias
+		{
+			readonly get => LittleEndianConverter.Convert(timeZoneBias);
+			set => timeZoneBias = LittleEndianConverter.Convert(value);
+		}
 
-        public ushort CVersion
+		public ushort CVersion
         {
-            get => LittleEndianConverter.Convert(cVersion);
+			readonly get => LittleEndianConverter.Convert(cVersion);
             set => cVersion = LittleEndianConverter.Convert(value);
         }
 
-        public uint D2 => LittleEndianConverter.Convert(d2);
+		public uint D2
+		{
+			readonly get => LittleEndianConverter.Convert(d2);
+			set => d2 = LittleEndianConverter.Convert(value);
+		}
 
 		#endregion
+
+		#region Inline Array Types
 
 		[InlineArray(Length)]
 		public struct NameInlineArray
@@ -97,5 +107,7 @@ namespace SS.Packets.Game
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 		}
+
+		#endregion
 	}
 }

@@ -13,7 +13,7 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="player">The player the position packet was for.</param>
         /// <param name="positionPacket">The position packet.</param>
         /// <param name="hasExtraPositionData">Whether the <paramref name="positionPacket"/> contains <see cref="C2S_PositionPacket.Extra"/>.</param>
-        public delegate void PlayerPositionPacketDelegate(Player player, in C2S_PositionPacket positionPacket, bool hasExtraPositionData);
+        public delegate void PlayerPositionPacketDelegate(Player player, ref readonly C2S_PositionPacket positionPacket, ref readonly ExtraPositionData extra, bool hasExtraPositionData);
 
         public static void Register(ComponentBroker broker, PlayerPositionPacketDelegate handler)
         {
@@ -25,12 +25,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, in C2S_PositionPacket positionPacket, bool hasExtraPositionData)
+        public static void Fire(ComponentBroker broker, Player player, ref readonly C2S_PositionPacket positionPacket, ref readonly ExtraPositionData extra, bool hasExtraPositionData)
         {
-            broker?.GetCallback<PlayerPositionPacketDelegate>()?.Invoke(player, in positionPacket,  hasExtraPositionData);
+            broker?.GetCallback<PlayerPositionPacketDelegate>()?.Invoke(player, in positionPacket, in extra, hasExtraPositionData);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, player, in positionPacket, hasExtraPositionData);
+                Fire(broker.Parent, player, in positionPacket, in extra, hasExtraPositionData);
         }
     }
 }

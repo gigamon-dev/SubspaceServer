@@ -24,8 +24,9 @@ namespace SS.Core.ComponentAdvisors
         /// <param name="player">The player that the position packet belongs to.</param>
         /// <param name="toPlayer">The player that the position packet will be sent to.</param>
         /// <param name="positionPacket">The position packet.</param>
-        /// <param name="extraLength">The extra length of the position packet (0 = none, 2 = energy, 10 = epd).</param>
+        /// <param name="extra">The extra position data.</param>
+        /// <param name="extraLength">The length of the <paramref name="extra"/> position data (0 = none, 2 = energy only, 10 = all extra position data).</param>
         /// <returns><see langword="true"/> if this function modified the packet. Otherwise, <see langword="false"/>.</returns>
-        bool EditIndividualPositionPacket(Player player, Player toPlayer, ref C2S_PositionPacket positionPacket, ref int extraLength) => false;
+        bool EditIndividualPositionPacket(Player player, Player toPlayer, ref C2S_PositionPacket positionPacket, ref ExtraPositionData extra, ref int extraLength) => false;
     }
 }

@@ -10,22 +10,21 @@ namespace SS.Packets.Game
     /// Packet that requests the client to send a file.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2C_RequestFile
-    {
-        public readonly byte Type;
-        public PathInlineArray Path;
-        public FilenameInlineArray Filename;
+    public readonly struct S2C_RequestFile(ReadOnlySpan<char> path, string filename)
+	{
+		#region Static Members
 
-        public S2C_RequestFile(ReadOnlySpan<char> path, string filename)
-        {
-            Type = (byte)S2CPacketType.RequestForFile;
-			Path.Set(path);
-			Filename.Set(filename);
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_RequestFile>();
 
-        #region Inline Array Types
+		#endregion
 
-        [InlineArray(Length)]
+		public readonly byte Type = (byte)S2CPacketType.RequestForFile;
+        public readonly PathInlineArray Path = new(path);
+        public readonly FilenameInlineArray Filename = new(filename);
+
+		#region Inline Array Types
+
+		[InlineArray(Length)]
         public struct PathInlineArray
         {
             public const int Length = 256;
@@ -34,7 +33,7 @@ namespace SS.Packets.Game
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 
-			public void Set(ReadOnlySpan<char> value)
+			public PathInlineArray(ReadOnlySpan<char> value)
 			{
 				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
 			}
@@ -49,7 +48,7 @@ namespace SS.Packets.Game
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 
-			public void Set(ReadOnlySpan<char> value)
+			public FilenameInlineArray(ReadOnlySpan<char> value)
 			{
 				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
 			}

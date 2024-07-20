@@ -7,40 +7,36 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_ServerConnect
-    {
+    public readonly struct S2B_ServerConnect(uint serverId, uint groupId, uint scoreId, ReadOnlySpan<char> serverName, ushort port, ReadOnlySpan<char> password)
+	{
         #region Static members
 
         /// <summary>
         /// Number of bytes in a packet.
         /// </summary>
-        public static readonly int Length;
-
-        static S2B_ServerConnect()
-        {
-            Length = Marshal.SizeOf<S2B_ServerConnect>();
-        }
+        public static readonly int Length = Marshal.SizeOf<S2B_ServerConnect>();
 
         #endregion
 
-        public readonly byte Type;
-        private uint serverId;
-        private uint groupId;
-        private uint scoreId;
-        public ServerNameInlineArray ServerName;
-        private ushort port;
-        public PasswordInlineArray Password;
+        public readonly byte Type = (byte)S2BPacketType.ServerConnect;
+        private readonly uint serverId = LittleEndianConverter.Convert(serverId);
+        private readonly uint groupId = LittleEndianConverter.Convert(groupId);
+        private readonly uint scoreId = LittleEndianConverter.Convert(scoreId);
+        public readonly ServerNameInlineArray ServerName = new(serverName);
+        private readonly ushort port = LittleEndianConverter.Convert(port);
+        public readonly PasswordInlineArray Password = new(password);
 
-        public S2B_ServerConnect(uint serverId, uint groupId, uint scoreId, ReadOnlySpan<char> serverName, ushort port, ReadOnlySpan<char> password)
-        {
-            Type = (byte)S2BPacketType.ServerConnect;
-            this.serverId = LittleEndianConverter.Convert(serverId);
-            this.groupId = LittleEndianConverter.Convert(groupId);
-            this.scoreId = LittleEndianConverter.Convert(scoreId);
-            this.port = LittleEndianConverter.Convert(port);
-            ServerName.Set(serverName);
-            Password.Set(password);
-        }
+		#region Helper Properties
+
+		public uint ServerId => LittleEndianConverter.Convert(serverId);
+
+		public uint GroupId => LittleEndianConverter.Convert(groupId);
+
+		public uint ScoreId => LittleEndianConverter.Convert(scoreId);
+
+		public ushort Port => LittleEndianConverter.Convert(port);
+
+		#endregion
 
 		#region Inline Array Types
 
@@ -53,7 +49,7 @@ namespace SS.Packets.Billing
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 
-			public void Set(ReadOnlySpan<char> value)
+			public ServerNameInlineArray(ReadOnlySpan<char> value)
 			{
 				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
 			}
@@ -68,7 +64,7 @@ namespace SS.Packets.Billing
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 
-			public void Set(ReadOnlySpan<char> value)
+			public PasswordInlineArray(ReadOnlySpan<char> value)
 			{
 				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
 			}

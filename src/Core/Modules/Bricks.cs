@@ -310,13 +310,13 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Brick(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_Brick(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             Arena arena = player.Arena;
 
-            if (length != C2S_Brick.Length)
+            if (data.Length != C2S_Brick.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Bricks), player, $"Bad packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Bricks), player, $"Bad packet (length={data.Length}).");
                 return;
             }
 

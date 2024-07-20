@@ -34,7 +34,7 @@ namespace SS.Packets
 
 		/// <summary>
 		/// This nested struct is to allow <see cref="Banner"/> to be readonly.
-		/// <see cref="Banner"/> couldn't be readonly with the fixed size buffer directly inside of it.
+		/// <see cref="Banner"/> couldn't be readonly if it was the inline array.
 		/// Having <see cref="Banner"/> as a readonly struct helps prevent defensive copies when passed as an 'in' parameter.
 		/// </summary>
 		[InlineArray(Length)]
@@ -45,6 +45,6 @@ namespace SS.Packets
 			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
-        }
+		}
     }
 }

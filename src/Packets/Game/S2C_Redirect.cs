@@ -12,6 +12,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_Redirect
     {
+        #region Static Members
+
+        public static readonly int Length = Marshal.SizeOf<S2C_Redirect>();
+
+        #endregion
+
         public readonly byte Type;
         private uint ip;
         private ushort port;

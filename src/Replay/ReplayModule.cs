@@ -450,10 +450,11 @@ namespace SS.Replay
 
         #endregion
 
-        private void Packet_Position(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
+            int length = data.Length;
             if (length != C2S_PositionPacket.Length && length != C2S_PositionPacket.LengthWithExtra)
                 return;
 
@@ -472,11 +473,18 @@ namespace SS.Replay
 
             ref C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
 
-            byte[] buffer = _recordBufferPool.Rent(Position.Length);
+            byte[] buffer = _recordBufferPool.Rent(EventHeader.Length + length);
             ref Position position = ref MemoryMarshal.AsRef<Position>(buffer);
             position = new(ServerTick.Now, c2sPosition);
             position.PositionPacket.Type = (byte)length;
             position.PositionPacket.Time = (uint)player.Id;
+
+            if (length == C2S_PositionPacket.LengthWithExtra)
+            {
+                ref ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
+                ref PositionWithExtra positionWithExtra = ref MemoryMarshal.AsRef<PositionWithExtra>(buffer);
+                positionWithExtra.ExtraPositionData = extra;
+            }
 
             ad.RecorderQueue.Add(new RecordBuffer(buffer, EventHeader.Length + length));
         }
@@ -1860,8 +1868,17 @@ namespace SS.Replay
                             if (ad.PlayerIdMap.TryGetValue(playerId, out player))
                             {
                                 position.PositionPacket.Type = (byte)C2SPacketType.Position;
-                                position.PositionPacket.Time = now; // This is not entirely accurate!
-                                _game.FakePosition(player, ref position.PositionPacket, length);
+                                position.PositionPacket.Time = now;
+
+                                if (length == C2S_PositionPacket.Length)
+                                {
+                                    _game.FakePosition(player, ref position.PositionPacket);
+                                }
+                                else if (length == C2S_PositionPacket.LengthWithExtra)
+                                {
+                                    ref PositionWithExtra positionWithExtra = ref MemoryMarshal.AsRef<PositionWithExtra>(buffer);
+                                    _game.FakePosition(player, ref positionWithExtra.PositionPacket, ref positionWithExtra.ExtraPositionData);
+                                }
                             }
                             else
                             {

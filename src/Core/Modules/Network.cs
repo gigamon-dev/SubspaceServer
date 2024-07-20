@@ -118,17 +118,17 @@ namespace SS.Core.Modules
 		/// <summary>
 		/// Handlers for 'game' packets that are received.
 		/// </summary>
-		private readonly PacketDelegate[] _handlers = new PacketDelegate[MaxPacketTypes];
+		private readonly PacketHandler[] _handlers = new PacketHandler[MaxPacketTypes];
 
 		/// <summary>
 		/// Handlers for special network layer AKA 'core' packets that are received.
 		/// </summary>
-		private readonly PacketDelegate[] _nethandlers = new PacketDelegate[0x14];
+		private readonly PacketHandler[] _nethandlers = new PacketHandler[0x14];
 
 		/// <summary>
 		/// Handlers for sized packets (0x0A) that are received.
 		/// </summary>
-		private readonly SizedPacketDelegate[] _sizedhandlers = new SizedPacketDelegate[MaxPacketTypes];
+		private readonly SizedPacketHandler[] _sizedhandlers = new SizedPacketHandler[MaxPacketTypes];
 
 		/// <summary>
 		/// Handlers for connection init packets that are received.
@@ -865,7 +865,7 @@ namespace SS.Core.Modules
 			((INetwork)this).SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
 		}
 
-		bool INetwork.SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestCallback, T clos)
+		bool INetwork.SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestCallback, T state)
 		{
 			if (player is null)
 				return false;
@@ -897,7 +897,7 @@ namespace SS.Core.Modules
 
 				// Add the sized send while continuing to hold the global player data lock (so that the status can't be changed while we're adding).
 				SizedSendData<T> sizedSendData = SizedSendData<T>.Pool.Get();
-				sizedSendData.Initialize(requestCallback, clos, len);
+				sizedSendData.Initialize(requestCallback, state, len);
 
 				LinkedListNode<ISizedSendData> node = _sizedSendDataNodePool.Get();
 				node.Value = sizedSendData;
@@ -918,16 +918,16 @@ namespace SS.Core.Modules
 			return true;
 		}
 
-		void INetwork.AddPacket(C2SPacketType packetType, PacketDelegate func)
+		void INetwork.AddPacket(C2SPacketType packetType, PacketHandler handler)
 		{
-			if (func is null)
+			if (handler is null)
 				return;
 
 			int packetTypeInt = (int)packetType;
 			if (packetTypeInt >= 0 && packetTypeInt < _handlers.Length)
 			{
-				PacketDelegate d = _handlers[packetTypeInt];
-				_handlers[packetTypeInt] = (d is null) ? func : (d += func);
+				PacketHandler d = _handlers[packetTypeInt];
+				_handlers[packetTypeInt] = (d is null) ? handler : (d += handler);
 			}
 			else if ((packetTypeInt & 0xFF) == 0)
 			{
@@ -935,61 +935,61 @@ namespace SS.Core.Modules
 
 				if (b2 >= 0 && b2 < _nethandlers.Length && _nethandlers[b2] is null)
 				{
-					_nethandlers[b2] = func;
+					_nethandlers[b2] = handler;
 				}
 			}
 		}
 
-		void INetwork.RemovePacket(C2SPacketType packetType, PacketDelegate func)
+		void INetwork.RemovePacket(C2SPacketType packetType, PacketHandler handler)
 		{
-			if (func is null)
+			if (handler is null)
 				return;
 
 			int packetTypeInt = (int)packetType;
 			if (packetTypeInt >= 0 && packetTypeInt < _handlers.Length)
 			{
-				PacketDelegate d = _handlers[packetTypeInt];
+				PacketHandler d = _handlers[packetTypeInt];
 				if (d is not null)
 				{
-					_handlers[packetTypeInt] = (d -= func);
+					_handlers[packetTypeInt] = (d -= handler);
 				}
 			}
 			else if ((packetTypeInt & 0xFF) == 0)
 			{
 				int b2 = packetTypeInt >> 8;
 
-				if (b2 >= 0 && b2 < _nethandlers.Length && _nethandlers[b2] == func)
+				if (b2 >= 0 && b2 < _nethandlers.Length && _nethandlers[b2] == handler)
 				{
 					_nethandlers[b2] = null;
 				}
 			}
 		}
 
-		void INetwork.AddSizedPacket(C2SPacketType packetType, SizedPacketDelegate func)
+		void INetwork.AddSizedPacket(C2SPacketType packetType, SizedPacketHandler handler)
 		{
-			if (func is null)
+			if (handler is null)
 				return;
 
 			int packetTypeInt = (int)packetType;
 			if (packetTypeInt >= 0 && packetTypeInt < _sizedhandlers.Length)
 			{
-				SizedPacketDelegate d = _sizedhandlers[packetTypeInt];
-				_sizedhandlers[packetTypeInt] = (d is null) ? func : (d += func);
+				SizedPacketHandler d = _sizedhandlers[packetTypeInt];
+				_sizedhandlers[packetTypeInt] = (d is null) ? handler : (d += handler);
 			}
 		}
 
-		void INetwork.RemoveSizedPacket(C2SPacketType packetType, SizedPacketDelegate func)
+		void INetwork.RemoveSizedPacket(C2SPacketType packetType, SizedPacketHandler handler)
 		{
-			if (func is null)
+			if (handler is null)
 				return;
 
 			int packetTypeInt = (int)packetType;
 			if (packetTypeInt >= 0 && packetTypeInt < _sizedhandlers.Length)
 			{
-				SizedPacketDelegate d = _sizedhandlers[packetTypeInt];
+				SizedPacketHandler d = _sizedhandlers[packetTypeInt];
 				if (d is not null)
 				{
-					_sizedhandlers[packetTypeInt] = (d -= func);
+					_sizedhandlers[packetTypeInt] = (d -= handler);
 				}
 			}
 		}
@@ -1618,7 +1618,7 @@ namespace SS.Core.Modules
 
 			if (t2 < _nethandlers.Length)
 			{
-				_nethandlers[t2]?.Invoke(player, data, data.Length, flags);
+				_nethandlers[t2]?.Invoke(player, data, flags);
 			}
 		}
 
@@ -1745,7 +1745,7 @@ namespace SS.Core.Modules
 					_logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a connection init packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
 					return;
 				}
-				else if (!isConnectionInitPacket && bytesReceived > Constants.MaxPacket) // TODO: verify that this is the true maximum, I've read articles that said it was 520 (due to the VIE encryption limit)
+				else if (!isConnectionInitPacket && bytesReceived > Constants.MaxPacket)
 				{
 					_logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a game packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
 					return;
@@ -2640,7 +2640,7 @@ namespace SS.Core.Modules
 								groupedBuffer.Tries = 0;
 
 								ref ReliableHeader groupedRelHeader = ref MemoryMarshal.AsRef<ReliableHeader>(groupedBuffer.Bytes);
-								groupedRelHeader.Initialize(conn.SeqNumOut++);
+								groupedRelHeader = new(conn.SeqNumOut++);
 
 								// Group up as many as possible
 								PacketGrouper relGrouper = new(this, groupedBuffer.Bytes.AsSpan(ReliableHeader.Length, maxRelGroupedPacketLength - ReliableHeader.Length));
@@ -2710,7 +2710,7 @@ namespace SS.Core.Modules
 
 						// Write in the reliable header.
 						ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(b1.Bytes);
-						header.Initialize(conn.SeqNumOut++);
+						header = new(conn.SeqNumOut++);
 
 						b1.NumBytes += ReliableHeader.Length;
 						b1.LastTryTimestamp = null;
@@ -3336,7 +3336,7 @@ namespace SS.Core.Modules
 				if (conn is null)
 					return;
 
-				CallPacketHandlers(conn, buffer.Bytes, buffer.NumBytes, buffer.ReceiveFlags);
+				CallPacketHandlers(conn, buffer.Bytes.AsSpan(0, buffer.NumBytes), buffer.ReceiveFlags);
 			}
 			finally
 			{
@@ -3344,17 +3344,17 @@ namespace SS.Core.Modules
 			}
 		}
 
-		private void CallPacketHandlers(ConnData conn, Span<byte> data, int len, NetReceiveFlags flags)
+		private void CallPacketHandlers(ConnData conn, Span<byte> data, NetReceiveFlags flags)
 		{
 			ArgumentNullException.ThrowIfNull(conn);
-			ArgumentOutOfRangeException.ThrowIfLessThan(len, 1);
+			ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
 
 			byte packetType = data[0];
 
 			if (conn.Player is not null)
 			{
 				// player connection
-				PacketDelegate handler = null;
+				PacketHandler handler = null;
 
 				if (packetType < _handlers.Length)
 					handler = _handlers[packetType];
@@ -3367,7 +3367,7 @@ namespace SS.Core.Modules
 
 				try
 				{
-					handler(conn.Player, data, len, flags);
+					handler(conn.Player, data, flags);
 				}
 				catch (Exception ex)
 				{
@@ -3379,7 +3379,7 @@ namespace SS.Core.Modules
 				// client connection
 				try
 				{
-					conn.ClientConnection.Handler.HandlePacket(data[..len], flags);
+					conn.ClientConnection.Handler.HandlePacket(data, flags);
 				}
 				catch (Exception ex)
 				{
@@ -3388,7 +3388,7 @@ namespace SS.Core.Modules
 			}
 			else
 			{
-				_logManager.LogM(LogLevel.Drivel, nameof(Network), $"No player or client connection, but got packet type [0x{packetType:X2}] of length {len}.");
+				_logManager.LogM(LogLevel.Drivel, nameof(Network), $"No player or client connection, but got packet type [0x{packetType:X2}] of length {data.Length}.");
 			}
 		}
 

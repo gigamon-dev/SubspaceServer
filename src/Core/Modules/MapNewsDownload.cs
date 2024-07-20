@@ -4,6 +4,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -344,14 +345,14 @@ namespace SS.Core.Modules
 			}
 		}
 
-        private void Packet_UpdateRequest(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_UpdateRequest(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
 
-            if (len != 1)
+            if (data.Length != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad update req packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad update req packet (length={data.Length}).");
                 return;
             }
 
@@ -372,16 +373,16 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_MapNewsRequest(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_MapNewsRequest(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
 
             if (data[0] == (byte)C2SPacketType.MapRequest)
             {
-                if (len != 1 && len != 3)
+                if (data.Length != 1 && data.Length != 3)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad map/LVZ req packet len={len}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad map/LVZ req packet (length={data.Length}).");
                     return;
                 }
 
@@ -392,7 +393,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                ushort lvznum = (len == 3) ? (ushort)(data[1] | data[2] << 8) : (ushort)0;
+                ushort lvznum = (data.Length == 3) ? BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(1, 2)) : (ushort)0;
                 bool wantOpt = player.Flags.WantAllLvz;
 
                 MapDownloadData mdd = GetMap(arena, lvznum, wantOpt);
@@ -427,9 +428,9 @@ namespace SS.Core.Modules
             }
             else if (data[0] == (byte)C2SPacketType.NewsRequest)
             {
-                if (len != 1)
+                if (data.Length != 1)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad news req packet len={len}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, $"Bad news req packet (length={data.Length}).");
                     return;
                 }
 

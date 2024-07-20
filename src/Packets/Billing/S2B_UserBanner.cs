@@ -4,17 +4,22 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_UserBanner
-    {
-        public readonly byte Type;
-        private int connectionId;
-        public Banner Banner;
+    public readonly struct S2B_UserBanner(int connectionId, ref readonly Banner banner)
+	{
+		#region Static Members
 
-        public S2B_UserBanner(int connectionId, in Banner banner)
-        {
-            Type = (byte)S2BPacketType.UserBanner;
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-            Banner = banner;
-        }
-    }
+		public static readonly int Length = Marshal.SizeOf<S2B_UserBanner>();
+
+		#endregion
+
+		public readonly byte Type = (byte)S2BPacketType.UserBanner;
+        private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
+        public readonly Banner Banner = banner;
+
+		#region Helper Properties
+
+		public int ConnectionId => LittleEndianConverter.Convert(connectionId);
+
+		#endregion
+	}
 }

@@ -765,7 +765,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Chat(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_Chat(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -776,10 +776,10 @@ namespace SS.Core.Modules
             // but with seemingly garbage data in the remaining bytes.
             // So, we'll allow 261, but only actually read up to the actual 250 characters.
 
-			if (len < ChatPacket.MinLength
-                || len > 261) // Note: for some reason ASSS checks if > 500 instead
+			if (data.Length < ChatPacket.MinLength
+                || data.Length > 261) // Note: for some reason ASSS checks if > 500 instead
 			{
-                _logManager.LogP(LogLevel.Malicious, nameof(Chat), player, $"Bad chat packet (length={len}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Chat), player, $"Bad chat packet (length={data.Length}).");
                 return;
             }
 
@@ -787,7 +787,6 @@ namespace SS.Core.Modules
             if (arena is null || player.Status != PlayerState.Playing)
                 return;
 
-            data = data[..len];
             ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
 
             // Determine which bytes are part of the message.

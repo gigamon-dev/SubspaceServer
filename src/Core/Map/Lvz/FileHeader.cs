@@ -7,21 +7,25 @@ namespace SS.Core.Map.Lvz
     /// The header to a LVZ file. That is, the first 4 bytes of every LVZ file.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct FileHeader
+    public readonly struct FileHeader
     {
-        public const uint LvzMagic = 0x544e4f43; // CONT
+		#region Static Members
 
-        public static int Length;
+		public const uint LvzMagic = 0x544e4f43; // CONT
 
-        static FileHeader()
-        {
-            Length = Marshal.SizeOf<FileHeader>();
-        }
+        public static readonly int Length = Marshal.SizeOf<FileHeader>();
 
-        private uint magic;
-        public uint Magic => LittleEndianConverter.Convert(magic);
+        #endregion
 
-        private int compressedSectionCount;
+        private readonly uint magic;
+		private readonly int compressedSectionCount;
+
+		#region Helper Properties
+
+		public uint Magic => LittleEndianConverter.Convert(magic);
+
         public int CompressedSectionCount => LittleEndianConverter.Convert(compressedSectionCount);
+
+        #endregion
     }
 }

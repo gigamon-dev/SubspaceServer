@@ -1,4 +1,5 @@
 ﻿using SS.Utilities;
+using System.Runtime.InteropServices;
 
 namespace SS.Core.Map
 {
@@ -7,6 +8,12 @@ namespace SS.Core.Map
     /// </summary>
     public struct MapTileData
     {
+        #region Static Members
+
+        public static readonly int Length = Marshal.SizeOf<MapTileData>();
+
+        #endregion
+
         private uint bitfield;
 
         private const uint XMask    = 0b_00000000_00000000_00001111_11111111;
@@ -15,25 +22,25 @@ namespace SS.Core.Map
 
         private uint BitField
         {
-            get { return LittleEndianConverter.Convert(bitfield); }
+            readonly get { return LittleEndianConverter.Convert(bitfield); }
             set { bitfield = LittleEndianConverter.Convert(value); }
         }
 
         public short X
         {
-            get { return (short)(BitField & XMask); }
+            readonly get { return (short)(BitField & XMask); }
             set { BitField = (BitField & ~XMask) | ((uint)value & XMask); }
         }
 
         public short Y
         {
-            get { return (short)((BitField & YMask) >> 12); }
+            readonly get { return (short)((BitField & YMask) >> 12); }
             set { BitField = (BitField & ~YMask) | (((uint)value << 12) & YMask); }
         }
 
         public byte Type
         {
-            get { return (byte)((BitField & TypeMask) >> 24); }
+            readonly get { return (byte)((BitField & TypeMask) >> 24); }
             set { BitField = (BitField & ~TypeMask) | (((uint)value << 24) & TypeMask); }
         }
     }

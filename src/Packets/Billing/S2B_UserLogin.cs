@@ -7,101 +7,49 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_UserLogin
-    {
-        #region Static members
+    public readonly struct S2B_UserLogin(
+		byte makeNew,
+		uint ipAddress,
+		ReadOnlySpan<byte> name,
+		ReadOnlySpan<byte> password,
+		int connectionId,
+		uint machineId,
+		int timeZone,
+		ushort clientVersion)
+	{
+        #region Static Members
 
         /// <summary>
         /// Maximum # of bytes in a packet, not including the <see cref="S2B_UserLogin_ClientExtraData"/> that Continuum sends.
         /// </summary>
-        public static readonly int Length;
-
-        static S2B_UserLogin()
-        {
-            Length = Marshal.SizeOf<S2B_UserLogin>();
-        }
+        public static readonly int Length = Marshal.SizeOf<S2B_UserLogin>();
 
         #endregion
 
-        public readonly byte Type;
-        public byte MakeNew;
-        private uint ipAddress;
-        public NameInlineArray Name;
-        public PasswordInlineArray Password;
-        private int connectionId;
-        private uint machineId;
-        private int timeZone;
-        private byte Unused0;
-        private byte Sysop;
-        private ushort clientVersion;
-        // Followed by client extra data bytes (Continuum only)
+        public readonly byte Type = (byte)S2BPacketType.UserLogin;
+        public readonly byte MakeNew = makeNew;
+        private readonly uint ipAddress = LittleEndianConverter.Convert(ipAddress);
+        public readonly NameInlineArray Name = new(name);
+        public readonly PasswordInlineArray Password = new(password);
+        private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
+        private readonly uint machineId = LittleEndianConverter.Convert(machineId);
+        private readonly int timeZone = LittleEndianConverter.Convert(timeZone);
+        private readonly byte Unused0 = 0;
+        private readonly byte Sysop = 0;
+        private readonly ushort clientVersion = LittleEndianConverter.Convert(clientVersion);
+		// Followed by client extra data bytes (Continuum only)
 
-        public S2B_UserLogin(
-            byte makeNew, 
-            uint ipAddress, 
-            ReadOnlySpan<byte> name, 
-            ReadOnlySpan<byte> password, 
-            int connectionId,
-            uint machineId,
-            int timeZone,
-            ushort clientVersion)
-        {
-            Type = (byte)S2BPacketType.UserLogin;
-            MakeNew = makeNew;
-            this.ipAddress = LittleEndianConverter.Convert(ipAddress);
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-            this.machineId = LittleEndianConverter.Convert(machineId);
-            this.timeZone = LittleEndianConverter.Convert(timeZone);
-            Unused0 = 0;
-            Sysop = 0;
-            this.clientVersion = LittleEndianConverter.Convert(clientVersion);
+		#region Helper Properties
 
-            name = name.SliceNullTerminated();
-            if (name.Length > NameInlineArray.Length)
-                name = name[..NameInlineArray.Length];
+		public uint IPAddress => LittleEndianConverter.Convert(ipAddress);
 
-            name.CopyTo(Name);
-            Name[name.Length..].Clear();
+		public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
-            password = password.SliceNullTerminated();
-            if (password.Length > PasswordInlineArray.Length)
-                password = password[..PasswordInlineArray.Length];
+		public uint MachineId => LittleEndianConverter.Convert(machineId);
 
-            password.CopyTo(Password);
-            Password[password.Length..].Clear();
-        }
+		public int TimeZone => LittleEndianConverter.Convert(timeZone);
 
-        #region Helpers
-
-        public uint IPAddress
-        {
-            get => LittleEndianConverter.Convert(ipAddress);
-            set => ipAddress = LittleEndianConverter.Convert(value);
-        }
-
-        public int ConnectionId
-        {
-            get => LittleEndianConverter.Convert(connectionId);
-            set => connectionId = LittleEndianConverter.Convert(value);
-        }
-
-        public uint MachineId
-        {
-            get => LittleEndianConverter.Convert(machineId);
-            set => machineId = LittleEndianConverter.Convert(value);
-        }
-
-        public int TimeZone
-        {
-            get => LittleEndianConverter.Convert(timeZone);
-            set => timeZone = LittleEndianConverter.Convert(value);
-        }
-
-        public ushort ClientVersion
-        {
-            get => LittleEndianConverter.Convert(clientVersion);
-            set => clientVersion = LittleEndianConverter.Convert(value);
-        }
+		public ushort ClientVersion => LittleEndianConverter.Convert(clientVersion);
 
 		#endregion
 
@@ -115,6 +63,16 @@ namespace SS.Packets.Billing
 			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
+
+            public NameInlineArray(ReadOnlySpan<byte> value)
+            {
+				value = value.SliceNullTerminated();
+				if (value.Length > Length)
+					value = value[..Length];
+
+				value.CopyTo(this);
+				this[value.Length..].Clear();
+			}
 
 			public void Clear()
 			{
@@ -130,6 +88,16 @@ namespace SS.Packets.Billing
 			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
+
+			public PasswordInlineArray(ReadOnlySpan<byte> value)
+			{
+				value = value.SliceNullTerminated();
+				if (value.Length > Length)
+					value = value[..Length];
+
+				value.CopyTo(this);
+				this[value.Length..].Clear();
+			}
 
 			public void Clear()
 			{

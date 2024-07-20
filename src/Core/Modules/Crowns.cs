@@ -199,11 +199,11 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_CrownExpired(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_CrownExpired(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (length != 1)
+            if (data.Length != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Crowns), player, $"Invalid C2S CrownExpired packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Crowns), player, $"Invalid C2S CrownExpired packet (length={data.Length}).");
                 return;
             }
 
@@ -214,15 +214,13 @@ namespace SS.Core.Modules
             }
 
             Arena arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
-            ICrownsBehavior behavior = arena.GetInterface<ICrownsBehavior>();
-            if (behavior == null)
-                behavior = this; // default implementation
+            ICrownsBehavior behavior = arena.GetInterface<ICrownsBehavior>() ?? this;
 
-            try
-            {
+			try
+			{
                 behavior.CrownExpired(player);
             }
             finally

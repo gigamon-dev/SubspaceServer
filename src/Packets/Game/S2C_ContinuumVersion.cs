@@ -4,22 +4,24 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2C_ContinuumVersion
+    public readonly struct S2C_ContinuumVersion(ushort contVersion, uint checksum)
     {
-        public byte Type;
-        private ushort contVersion;
-        private uint checksum;
+		#region Static Members
 
-        public ushort ContVersion
-        {
-            get { return LittleEndianConverter.Convert(contVersion); }
-            set { contVersion = LittleEndianConverter.Convert(value); }
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_ContinuumVersion>();
 
-        public uint Checksum
-        {
-            get { return LittleEndianConverter.Convert(checksum); }
-            set { checksum = LittleEndianConverter.Convert(value); }
-        }
-    }
+		#endregion
+
+		public readonly byte Type = (byte)S2CPacketType.ContVersion;
+		private readonly ushort contVersion = LittleEndianConverter.Convert(contVersion);
+		private readonly uint checksum = LittleEndianConverter.Convert(checksum);
+
+		#region Helper Properties
+
+		public ushort ContVersion => LittleEndianConverter.Convert(contVersion);
+
+		public uint Checksum => LittleEndianConverter.Convert(checksum);
+
+		#endregion
+	}
 }

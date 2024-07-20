@@ -10,12 +10,7 @@ namespace SS.Replay.FileFormat
     {
         #region Static members
 
-        public static readonly int Length;
-
-        static FileHeader()
-        {
-            Length = Marshal.SizeOf(typeof(FileHeader));
-        }
+        public static readonly int Length = Marshal.SizeOf<FileHeader>();
 
 		#endregion
 
@@ -50,7 +45,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint Version
         {
-            get => LittleEndianConverter.Convert(version);
+            readonly get => LittleEndianConverter.Convert(version);
             set => version = LittleEndianConverter.Convert(value);
         }
 
@@ -59,7 +54,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint Offset
         {
-            get => LittleEndianConverter.Convert(offset);
+			readonly get => LittleEndianConverter.Convert(offset);
             set => offset = LittleEndianConverter.Convert(value);
         }
 
@@ -68,7 +63,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint Events
         {
-            get => LittleEndianConverter.Convert(events);
+			readonly get => LittleEndianConverter.Convert(events);
             set => events = LittleEndianConverter.Convert(value);
         }
 
@@ -77,7 +72,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint EndTime
         {
-            get => LittleEndianConverter.Convert(endTime);
+			readonly get => LittleEndianConverter.Convert(endTime);
             set => endTime = LittleEndianConverter.Convert(value);
         }
 
@@ -86,7 +81,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint MaxPlayerId
         {
-            get => LittleEndianConverter.Convert(maxPlayerId);
+			readonly get => LittleEndianConverter.Convert(maxPlayerId);
             set => maxPlayerId = LittleEndianConverter.Convert(value);
         }
 
@@ -95,7 +90,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint SpecFreq
         {
-            get => LittleEndianConverter.Convert(specFreq);
+			readonly get => LittleEndianConverter.Convert(specFreq);
             set => specFreq = LittleEndianConverter.Convert(value);
         }
 
@@ -104,7 +99,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public DateTimeOffset Recorded
         {
-            get => DateTimeOffset.FromUnixTimeSeconds(recorded);
+			readonly get => DateTimeOffset.FromUnixTimeSeconds(recorded);
             set => recorded = value.ToUnixTimeSeconds();
         }
 
@@ -113,7 +108,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint MapChecksum
         {
-            get => LittleEndianConverter.Convert(mapChecksum);
+			readonly get => LittleEndianConverter.Convert(mapChecksum);
             set => mapChecksum = LittleEndianConverter.Convert(value);
         }
 
@@ -126,7 +121,6 @@ namespace SS.Replay.FileFormat
 		{
 			public const int Length = 8;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 
@@ -156,7 +150,6 @@ namespace SS.Replay.FileFormat
 		{
 			public const int Length = 24;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 
@@ -186,7 +179,6 @@ namespace SS.Replay.FileFormat
 		{
 			public const int Length = 24;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
 			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
 			private byte _element0;
 

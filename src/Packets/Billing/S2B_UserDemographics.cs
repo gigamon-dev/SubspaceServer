@@ -7,9 +7,9 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_UserDemographics
-    {
-        #region Static members
+    public struct S2B_UserDemographics(int connectionId)
+	{
+        #region Static Members
 
         public static readonly int Length;
 		public static readonly int LengthWithoutData;
@@ -22,20 +22,20 @@ namespace SS.Packets.Billing
 
         #endregion
 
-        public byte Type;
-        private int connectionId;
+        public readonly byte Type = (byte)S2BPacketType.UserDemographics;
+        private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
         private DataInlineArray data;
 
-        public S2B_UserDemographics(int connectionId)
-        {
-            Type = (byte)S2BPacketType.UserDemographics;
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-        }
+		#region Helper Properties
 
-        public int SetData(ReadOnlySpan<byte> data)
-        {
-            data.CopyTo(this.data);
-            return LengthWithoutData + data.Length;
+		public readonly int ConnectionId => LittleEndianConverter.Convert(connectionId);
+
+		#endregion
+
+		public int SetData(ReadOnlySpan<byte> data)
+		{
+			data.CopyTo(this.data);
+			return LengthWithoutData + data.Length;
 		}
 
 		#region Inline Array Types

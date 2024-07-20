@@ -4,20 +4,21 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2C_PlayerLeaving
-    {
-        public readonly byte Type;
-        private readonly short playerId;
+    public readonly struct S2C_PlayerLeaving(short playerId)
+	{
+		#region Static Member
 
-        public readonly short PlayerId
-        {
-            get { return LittleEndianConverter.Convert(playerId); }
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_PlayerLeaving>();
 
-        public S2C_PlayerLeaving(short playerId)
-        {
-            Type = (byte)S2CPacketType.PlayerLeaving;
-            this.playerId = LittleEndianConverter.Convert(playerId);
-        }
-    }
+		#endregion
+
+		public readonly byte Type = (byte)S2CPacketType.PlayerLeaving;
+        private readonly short playerId = LittleEndianConverter.Convert(playerId);
+
+		#region Helper Properties
+
+		public readonly short PlayerId => LittleEndianConverter.Convert(playerId);
+
+		#endregion
+	}
 }

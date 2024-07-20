@@ -4,39 +4,26 @@ using System.Runtime.InteropServices;
 namespace SS.Core.Map
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct RegionAutoWarpChunk
+    public readonly struct RegionAutoWarpChunk(short x, short y)
     {
-        #region Static members
+        #region Static Members
 
-        public static readonly int Length;
+        public static readonly int Length = Marshal.SizeOf<RegionAutoWarpChunk>();
 
-        static RegionAutoWarpChunk()
-        {
-            Length = Marshal.SizeOf<RegionAutoWarpChunk>();
-        }
+		#endregion
 
-        #endregion
+		private readonly short x = LittleEndianConverter.Convert(x);
+		private readonly short y = LittleEndianConverter.Convert(y);
+		// This can be followed by an optional 16 bytes containing the destination arena name.
+		// If the warp does not cross arenas it can be excluded.
+		// Therefore, it's not included in this struct, but read separately.
 
-        private short x;
-        private short y;
-        // This can be followed by an optional 16 bytes containing the destination arena name.
-        // If the warp does not cross arenas it can be excluded.
-        // Therefore, it's not included in this struct, but read separately.
+		#region Helpers
 
-        #region Helpers
+		public short X => LittleEndianConverter.Convert(x);
 
-        public short X
-        {
-            get => LittleEndianConverter.Convert(x);
-            set => x = LittleEndianConverter.Convert(value);
-        }
+		public short Y => LittleEndianConverter.Convert(y);
 
-        public short Y
-        {
-            get => LittleEndianConverter.Convert(y);
-            set => y = LittleEndianConverter.Convert(value);
-        }
-
-        #endregion
-    }
+		#endregion
+	}
 }

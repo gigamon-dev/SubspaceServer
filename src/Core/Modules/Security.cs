@@ -524,10 +524,9 @@ namespace SS.Core.Modules
 
         private void KickPlayer(Player player)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
+			ArgumentNullException.ThrowIfNull(player);
 
-            if (_securityKickoff)
+			if (_securityKickoff)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.BypassSecurity))
                 {
@@ -537,16 +536,16 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SecurityResponse(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_SecurityResponse(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
 
-            if (length < 0 || length < C2S_Security.Length)
+            if (data.Length < C2S_Security.Length)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Got a security response with a bad packet length={length}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Invalid security response packet (length={data.Length}).");
                 }
 
                 return;
@@ -572,7 +571,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(data[..length]);
+            ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(data);
 
             lock (_lockObj)
             {

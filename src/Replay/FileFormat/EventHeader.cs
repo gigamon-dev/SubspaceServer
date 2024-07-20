@@ -4,39 +4,28 @@ using System.Runtime.InteropServices;
 namespace SS.Replay.FileFormat
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct EventHeader
-    {
+    public struct EventHeader(ServerTick ticks, EventType type)
+	{
         #region Static members
 
-        public static readonly int Length;
-
-        static EventHeader()
-        {
-            Length = Marshal.SizeOf(typeof(EventHeader));
-        }
+        public static readonly int Length = Marshal.SizeOf<EventHeader>();
 
         #endregion
 
-        private uint ticks;
-        private short type;
+        private uint ticks = LittleEndianConverter.Convert(ticks);
+        private short type = LittleEndianConverter.Convert((short)type);
 
-        public EventHeader(ServerTick ticks, EventType type)
+		#region Helper properties
+
+		public ServerTick Ticks
         {
-            this.ticks = LittleEndianConverter.Convert(ticks);
-            this.type = LittleEndianConverter.Convert((short)type);
-        }
-
-        #region Helper properties
-
-        public ServerTick Ticks
-        {
-            get => LittleEndianConverter.Convert(ticks);
+            readonly get => LittleEndianConverter.Convert(ticks);
             set => ticks = LittleEndianConverter.Convert(value);
         }
 
         public EventType Type
         {
-            get => (EventType)LittleEndianConverter.Convert(type);
+            readonly get => (EventType)LittleEndianConverter.Convert(type);
             set => type = LittleEndianConverter.Convert((short)value);
         }
 

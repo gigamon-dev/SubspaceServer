@@ -4,59 +4,44 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ConnectionInitPacket
-    {
-        public static readonly int Length;
+    public readonly struct ConnectionInitPacket(int key, byte clientType)
+	{
+		#region Static Members
 
-        static ConnectionInitPacket()
-        {
-            Length = Marshal.SizeOf<ConnectionInitPacket>();
-        }
+		public static readonly int Length = Marshal.SizeOf<ConnectionInitPacket>();
 
-        public byte T1;
-        public byte T2;
+        #endregion
 
-        private int key;
-        public int Key => LittleEndianConverter.Convert(key);
+        public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x01;
+        private readonly int key = LittleEndianConverter.Convert(key);
+        public readonly byte ClientType = clientType;
+        public readonly byte Zero = 0;
 
-        public byte ClientType;
-        public byte Zero;
+		#region Helper Properties
 
-        public ConnectionInitPacket(int key, byte clientType)
-        {
-            T1 = 0x00;
-            T2 = 0x01;
-            this.key = LittleEndianConverter.Convert(key);
-            ClientType = clientType;
-            Zero = 0;
-        }
+		public int Key => LittleEndianConverter.Convert(key);
+
+        #endregion
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ConnectionInitResponsePacket
-    {
-        public static readonly int Length;
+    public readonly struct ConnectionInitResponsePacket(int key)
+	{
+		#region Static Members
 
-        static ConnectionInitResponsePacket()
-        {
-            Length = Marshal.SizeOf<ConnectionInitResponsePacket>();
-        }
+		public static readonly int Length = Marshal.SizeOf<ConnectionInitResponsePacket>();
 
-        public byte T1;
-        public byte T2;
-        private int key;
+        #endregion
 
-        public int Key
-        {
-            get => LittleEndianConverter.Convert(key);
-            set => key = LittleEndianConverter.Convert(value);
-        }
+        public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x02;
+        private readonly int key = LittleEndianConverter.Convert(key);
 
-        public ConnectionInitResponsePacket(int key)
-        {
-            T1 = 0x00;
-            T2 = 0x02;
-            this.key = LittleEndianConverter.Convert(key);
-        }
+		#region Helper Properties
+
+		public int Key => LittleEndianConverter.Convert(key);
+
+        #endregion
     }
 }

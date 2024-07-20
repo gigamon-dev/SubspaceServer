@@ -16,12 +16,7 @@ namespace SS.Packets.Game
     {
         #region Static members
 
-        public static readonly int Length;
-
-        static LvzObjectToggle()
-        {
-            Length = Marshal.SizeOf<LvzObjectToggle>();
-        }
+        public static readonly int Length = Marshal.SizeOf<LvzObjectToggle>();
 
         #endregion
 
@@ -184,12 +179,7 @@ namespace SS.Packets.Game
     {
         #region Static members
 
-        public static readonly int Length;
-
-        static ObjectData()
-        {
-            Length = Marshal.SizeOf<ObjectData>();
-        }
+        public static readonly int Length = Marshal.SizeOf<ObjectData>();
 
         public static ObjectChange CalculateChange(ref ObjectData left, ref ObjectData right)
         {
@@ -436,12 +426,7 @@ namespace SS.Packets.Game
     {
         #region Static members
 
-        public static readonly int Length;
-
-        static LvzObjectChange()
-        {
-            Length = Marshal.SizeOf<LvzObjectChange>();
-        }
+        public static readonly int Length = Marshal.SizeOf<LvzObjectChange>();
 
         #endregion
 

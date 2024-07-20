@@ -4,29 +4,22 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct AckPacket
-    {
-        public static readonly int Length;
+    public readonly struct AckPacket(int seqNum)
+	{
+		#region Static Members
 
-        static AckPacket()
-        {
-            Length = Marshal.SizeOf<AckPacket>();
-        }
+		public static readonly int Length = Marshal.SizeOf<AckPacket>();
 
-        public readonly byte T1;
-        public readonly byte T2;
-        private readonly int seqNum;
+        #endregion
 
-        public int SeqNum
-        {
-            get { return LittleEndianConverter.Convert(seqNum); }
-        }
+        public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x04;
+        private readonly int seqNum = LittleEndianConverter.Convert(seqNum);
 
-        public AckPacket(int seqNum)
-        {
-            T1 = 0x00;
-            T2 = 0x04;
-            this.seqNum = LittleEndianConverter.Convert(seqNum);
-        }
-    }
+		#region Helper Properties
+
+		public int SeqNum => LittleEndianConverter.Convert(seqNum);
+
+		#endregion
+	}
 }

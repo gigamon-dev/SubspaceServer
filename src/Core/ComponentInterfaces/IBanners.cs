@@ -17,7 +17,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to set the banner for.</param>
         /// <param name="banner">The banner to set.</param>
-        void SetBanner(Player player, in Banner banner);
+        void SetBanner(Player player, ref readonly Banner banner);
 
         /// <summary>
         /// Checks whether a player has a banner waiting to be used.

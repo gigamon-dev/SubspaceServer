@@ -4,27 +4,24 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2C_PrizeReceive
-    {
-        public readonly byte Type;
-        private readonly short count;
-        private readonly short prize;
+    public readonly struct S2C_PrizeReceive(short count, Prize prize)
+	{
+		#region Static Members
 
-        public readonly short Count
-        {
-            get { return LittleEndianConverter.Convert(count); }
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_PrizeReceive>();
 
-        public readonly Prize Prize
-        {
-            get { return (Prize)LittleEndianConverter.Convert(prize); }
-        }
+		#endregion
 
-        public S2C_PrizeReceive(short count, Prize prize)
-        {
-            Type = (byte)S2CPacketType.PrizeRecv;
-            this.count = LittleEndianConverter.Convert(count);
-            this.prize = LittleEndianConverter.Convert((short)prize);
-        }
-    }
+		public readonly byte Type = (byte)S2CPacketType.PrizeRecv;
+        private readonly short count = LittleEndianConverter.Convert(count);
+        private readonly short prize = LittleEndianConverter.Convert((short)prize);
+
+		#region Helper Properties
+
+		public readonly short Count => LittleEndianConverter.Convert(count);
+
+		public readonly Prize Prize => (Prize)LittleEndianConverter.Convert(prize);
+
+		#endregion
+	}
 }

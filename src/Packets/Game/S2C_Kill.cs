@@ -4,43 +4,31 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2C_Kill
-    {
-        public readonly byte Type;
-        public readonly byte Green;
-        private readonly short killer;
-        private readonly short killed;
-        private readonly short bounty;
-        private readonly short flags;
+    public readonly struct S2C_Kill(Prize green, short killer, short killed, short bounty, short flags)
+	{
+        #region Static Members
 
-        public readonly short Killer
-        {
-            get {  return LittleEndianConverter.Convert(killer); }
-        }
+        public static readonly int Length = Marshal.SizeOf<S2C_Kill>();
 
-        public readonly short Killed
-        {
-            get { return LittleEndianConverter.Convert(killed); }
-        }
+        #endregion
 
-        public readonly short Bounty
-        {
-            get { return LittleEndianConverter.Convert(bounty); }
-        }
+        public readonly byte Type = (byte)S2CPacketType.Kill;
+        public readonly byte Green = (byte)green;
+        private readonly short killer = LittleEndianConverter.Convert(killer);
+        private readonly short killed = LittleEndianConverter.Convert(killed);
+        private readonly short bounty = LittleEndianConverter.Convert(bounty);
+        private readonly short flags = LittleEndianConverter.Convert(flags);
 
-        public readonly short Flags
-        {
-            get { return LittleEndianConverter.Convert(flags); }
-        }
+		#region Helper Properties
 
-        public S2C_Kill(Prize green, short killer, short killed, short bounty, short flags)
-        {
-            Type = (byte)S2CPacketType.Kill;
-            Green = (byte)green;
-            this.killer = LittleEndianConverter.Convert(killer);
-            this.killed = LittleEndianConverter.Convert(killed);
-            this.bounty = LittleEndianConverter.Convert(bounty);
-            this.flags = LittleEndianConverter.Convert(flags);
-        }
+		public short Killer => LittleEndianConverter.Convert(killer);
+
+		public short Killed => LittleEndianConverter.Convert(killed);
+
+		public short Bounty => LittleEndianConverter.Convert(bounty);
+
+		public short Flags => LittleEndianConverter.Convert(flags);
+
+        #endregion
     }
 }

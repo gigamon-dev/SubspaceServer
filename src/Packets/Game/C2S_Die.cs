@@ -4,34 +4,24 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct C2S_Die
-    {
-        public static readonly int Length;
+    public readonly struct C2S_Die(short killer, short bounty)
+	{
+		#region Static Members
 
-        static C2S_Die()
-        {
-            Length = Marshal.SizeOf<C2S_Die>();
-        }
+		public static readonly int Length = Marshal.SizeOf<C2S_Die>();
 
-        public readonly byte Type;
-        private readonly short killer;
-        private readonly short bounty;
+        #endregion
 
-        public short Killer
-        {
-            get { return LittleEndianConverter.Convert(killer); }
-        }
+        public readonly byte Type = (byte)C2SPacketType.Die;
+        private readonly short killer = LittleEndianConverter.Convert(killer);
+        private readonly short bounty = LittleEndianConverter.Convert(bounty);
 
-        public short Bounty
-        {
-            get { return LittleEndianConverter.Convert(bounty); }
-        }
+		#region Helper Properties
 
-        public C2S_Die(short killer, short bounty)
-        {
-            Type = (byte)C2SPacketType.Die;
-            this.killer = LittleEndianConverter.Convert(killer);
-            this.bounty = LittleEndianConverter.Convert(bounty);
-        }
-    }
+		public short Killer => LittleEndianConverter.Convert(killer);
+
+		public short Bounty => LittleEndianConverter.Convert(bounty);
+
+		#endregion
+	}
 }

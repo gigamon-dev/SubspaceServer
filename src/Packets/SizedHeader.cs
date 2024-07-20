@@ -4,23 +4,22 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct SizedHeader
+    public readonly struct SizedHeader(int size)
     {
-        public static readonly int Length;
+		#region Static Members
 
-        static SizedHeader()
-        {
-            Length = Marshal.SizeOf<SizedHeader>();
-        }
+		public static readonly int Length = Marshal.SizeOf<SizedHeader>();
 
-        public byte T1;
-        public byte T2;
-        private int size;
+        #endregion
 
-        public int Size
-        {
-            get => LittleEndianConverter.Convert(size);
-            set => size = LittleEndianConverter.Convert(value);
-        }
+        public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x0A;
+        private readonly int size = LittleEndianConverter.Convert(size);
+
+		#region Helper Properties
+
+		public int Size => LittleEndianConverter.Convert(size);
+
+        #endregion
     }
 }

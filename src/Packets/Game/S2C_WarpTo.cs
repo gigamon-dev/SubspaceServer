@@ -4,27 +4,24 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2C_WarpTo
-    {
-        public readonly byte Type;
-        private readonly short x;
-        private readonly short y;
+    public readonly struct S2C_WarpTo(short x, short y)
+	{
+		#region Static Members
 
-        public readonly short X
-        {
-            get { return LittleEndianConverter.Convert(x); }
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_WarpTo>();
 
-        public readonly short Y
-        {
-            get { return LittleEndianConverter.Convert(y); }
-        }
+		#endregion
 
-        public S2C_WarpTo(short x, short y)
-        {
-            Type = (byte)S2CPacketType.WarpTo;
-            this.x = LittleEndianConverter.Convert(x);
-            this.y = LittleEndianConverter.Convert(y);
-        }
-    }
+		public readonly byte Type = (byte)S2CPacketType.WarpTo;
+        private readonly short x = LittleEndianConverter.Convert(x);
+        private readonly short y = LittleEndianConverter.Convert(y);
+
+		#region Helper Properties
+
+		public readonly short X => LittleEndianConverter.Convert(x);
+
+		public readonly short Y => LittleEndianConverter.Convert(y);
+
+		#endregion
+	}
 }

@@ -97,7 +97,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IBanners.SetBanner(Player player, in Banner banner)
+        void IBanners.SetBanner(Player player, ref readonly Banner banner)
         {
             SetBanner(player, in banner, false);
         }
@@ -182,7 +182,7 @@ namespace SS.Core.Modules
                             {
                                 if (opd.Status == BannerStatus.Good)
                                 {
-                                    S2C_Banner packet = new((short)other.Id, in opd.Banner);
+                                    S2C_Banner packet = new((short)other.Id, ref opd.Banner);
                                     _network.SendToOne(player, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityP1);
                                 }
                             }
@@ -213,11 +213,11 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Banner(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_Banner(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (length != C2S_Banner.Length)
+            if (data.Length != C2S_Banner.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, $"Bad C2S banner packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, $"Bad C2S banner packet (length={data.Length}).");
                 return;
             }
 
@@ -256,7 +256,7 @@ namespace SS.Core.Modules
             _logManager.LogP(LogLevel.Drivel, nameof(Banners), player, "Set banner.");
         }
 
-        private void SetBanner(Player player, in Banner banner, bool isFromPlayer)
+        private void SetBanner(Player player, ref readonly Banner banner, bool isFromPlayer)
         {
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
@@ -288,7 +288,7 @@ namespace SS.Core.Modules
                 CheckAndSendBanner(player);
             }
 
-            BannerSetCallback.Fire(player.Arena ?? _broker, player, in pd.Banner, isFromPlayer);
+            BannerSetCallback.Fire(player.Arena ?? _broker, player, ref pd.Banner, isFromPlayer);
         }
 
         private void CheckAndSendBanner(Player player)
@@ -312,7 +312,7 @@ namespace SS.Core.Modules
                     || pd.Status == BannerStatus.PendingClear)
                 {
                     // Send the change to everyone.
-                    S2C_Banner packet = new((short)player.Id, in pd.Banner);
+                    S2C_Banner packet = new((short)player.Id, ref pd.Banner);
                     _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
 
                     if (pd.Status == BannerStatus.Pending)

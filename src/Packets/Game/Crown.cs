@@ -18,62 +18,46 @@ namespace SS.Packets.Game
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2C_Crown
-    {
-        #region Static members
+    public readonly struct S2C_Crown(CrownAction action, TimeSpan duration, short playerId)
+	{
+        #region Static Members
 
-        public static int Length;
-
-        static S2C_Crown()
-        {
-            Length = Marshal.SizeOf(typeof(S2C_Crown));
-        }
+        public static readonly int Length = Marshal.SizeOf<S2C_Crown>();
 
         #endregion
 
-        public readonly byte Type;
-        private byte action;
-        private uint duration;
-        private short playerId;
+        public readonly byte Type = (byte)S2CPacketType.Crown;
+        private readonly byte action = (byte)action;
+        private readonly uint duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
+        private readonly short playerId = LittleEndianConverter.Convert(playerId);
 
-        public CrownAction Action => (CrownAction)LittleEndianConverter.Convert(action);
+		#region Helper Properties
+
+		public CrownAction Action => (CrownAction)LittleEndianConverter.Convert(action);
 
         public TimeSpan Duration => TimeSpan.FromMilliseconds(LittleEndianConverter.Convert(duration) * 10);
 
         public short PlayerId => LittleEndianConverter.Convert(playerId);
 
-        public S2C_Crown(CrownAction action, TimeSpan duration, short playerId)
-        {
-            Type = (byte)S2CPacketType.Crown;
-            this.action = (byte)action;
-            this.duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
-            this.playerId = LittleEndianConverter.Convert(playerId);
-        }
+        #endregion
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2C_CrownTimer
-    {
-        #region Static members
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public readonly struct S2C_CrownTimer(bool add, TimeSpan duration)
+	{
+        #region Static Members
 
-        public static int Length;
-
-        static S2C_CrownTimer()
-        {
-            Length = Marshal.SizeOf(typeof(S2C_CrownTimer));
-        }
+        public static readonly int Length = Marshal.SizeOf<S2C_CrownTimer>();
 
         #endregion
 
-        public readonly byte Type;
-        private uint duration;
+        public readonly byte Type = add ? (byte)S2CPacketType.AddCrownTimer : (byte)S2CPacketType.SetCrownTimer;
+        private readonly uint duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
 
-        public TimeSpan Duration => TimeSpan.FromMilliseconds(LittleEndianConverter.Convert(duration) * 10);
+		#region Helper Properties
 
-        public S2C_CrownTimer(bool add, TimeSpan duration)
-        {
-            Type = add ? (byte)S2CPacketType.AddCrownTimer : (byte)S2CPacketType.SetCrownTimer;
-            this.duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
-        }
+		public TimeSpan Duration => TimeSpan.FromMilliseconds(LittleEndianConverter.Convert(duration) * 10);
+
+        #endregion
     }
 }

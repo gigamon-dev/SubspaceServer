@@ -12,33 +12,26 @@ namespace SS.Replay.FileFormat.Events
     /// This event is a variable length, based on the flag count.
     /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct StaticFlagFullUpdate
-    {
+    public struct StaticFlagFullUpdate(ServerTick ticks, short flagCount)
+	{
         #region Static members
 
-        public static readonly int Length;
-
-        static StaticFlagFullUpdate()
-        {
-            Length = Marshal.SizeOf(typeof(StaticFlagFullUpdate));
-        }
+        public static readonly int Length = Marshal.SizeOf<StaticFlagFullUpdate>();
 
         #endregion
 
-        public EventHeader Header;
-        private short flagCount;
-        // Followed by an array of short with the length of flagCount which contains the owner freq.
+        public EventHeader Header = new(ticks, EventType.StaticFlagFullUpdate);
+        private short flagCount = LittleEndianConverter.Convert(flagCount);
+		// Followed by an array of short with the length of flagCount which contains the owner freq.
 
-        public StaticFlagFullUpdate(ServerTick ticks, short flagCount)
-        {
-            Header = new(ticks, EventType.StaticFlagFullUpdate);
-            this.flagCount = LittleEndianConverter.Convert(flagCount);
-        }
+		#region Helper properties
 
-        #region Helper properties
+		public short FlagCount
+		{
+			readonly get => LittleEndianConverter.Convert(flagCount);
+			set => flagCount = LittleEndianConverter.Convert(value);
+		}
 
-        public short FlagCount => LittleEndianConverter.Convert(flagCount);
-
-        #endregion
-    }
+		#endregion
+	}
 }

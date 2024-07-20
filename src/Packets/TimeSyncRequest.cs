@@ -8,12 +8,7 @@ namespace SS.Packets
 	{
 		#region Static members
 
-		public static readonly int Length;
-
-        static TimeSyncRequest()
-        {
-            Length = Marshal.SizeOf<TimeSyncRequest>();
-        }
+		public static readonly int Length = Marshal.SizeOf<TimeSyncRequest>();
 
         #endregion
 

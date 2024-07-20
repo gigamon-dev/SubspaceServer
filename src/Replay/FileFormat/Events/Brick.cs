@@ -11,28 +11,16 @@ namespace SS.Replay.FileFormat.Events
     /// Only can represent a single brick.
     /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct Brick
-    {
+    public struct Brick(ServerTick ticks, in BrickData brickData)
+	{
         #region Static members
 
-        public static readonly int Length;
-
-        static Brick()
-        {
-            Length = Marshal.SizeOf(typeof(Brick));
-        }
+        public static readonly int Length = Marshal.SizeOf<Brick>();
 
         #endregion
 
-        public EventHeader Header;
-        public readonly byte Type;
-        public BrickData BrickData;
-
-        public Brick(ServerTick ticks, in BrickData brickData)
-        {
-            Header = new(ticks, EventType.Brick);
-            Type = (byte)S2CPacketType.Brick;
-            BrickData = brickData;
-        }
-    }
+        public EventHeader Header = new(ticks, EventType.Brick);
+        public byte Type = (byte)S2CPacketType.Brick;
+        public BrickData BrickData = brickData;
+	}
 }

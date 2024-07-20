@@ -12,12 +12,7 @@ namespace SS.Packets.Game
     {
         #region Static members
 
-        public static readonly int Length;
-
-        static S2C_ClientSettings()
-        {
-            Length = Marshal.SizeOf<S2C_ClientSettings>();
-        }
+        public static readonly int Length = Marshal.SizeOf<S2C_ClientSettings>();
 
         #endregion
 

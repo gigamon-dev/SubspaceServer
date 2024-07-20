@@ -4,9 +4,15 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_UserLogoff
-    {
-        #region Static members
+    public struct S2B_UserLogoff(
+		int connectionId,
+		ushort disconnectReason,
+		ushort latency,
+		ushort ping,
+		ushort packetlossS2C,
+		ushort packetlossC2S)
+	{
+        #region Static Members
 
         /// <summary>
         /// # of bytes with <see cref="Score"/>.
@@ -26,31 +32,29 @@ namespace SS.Packets.Billing
 
         #endregion
 
-        public readonly byte Type;
-        private int connectionId;
-        private ushort disconnectReason;
-        private ushort latency;
-        private ushort ping;
-        private ushort packetlossS2C;
-        private ushort packetlossC2S;
-        public PlayerScore Score;
+        public readonly byte Type = (byte)S2BPacketType.UserLogoff;
+        private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
+        private readonly ushort disconnectReason = LittleEndianConverter.Convert(disconnectReason);
+        private readonly ushort latency = LittleEndianConverter.Convert(latency);
+        private readonly ushort ping = LittleEndianConverter.Convert(ping);
+        private readonly ushort packetlossS2C = LittleEndianConverter.Convert(packetlossS2C);
+        private readonly ushort packetlossC2S = LittleEndianConverter.Convert(packetlossC2S);
+        public PlayerScore Score = default;
 
-        public S2B_UserLogoff(
-            int connectionId, 
-            ushort disconnectReason,
-            ushort latency,
-            ushort ping,
-            ushort packetlossS2C,
-            ushort packetlossC2S)
-        {
-            Type = (byte)S2BPacketType.UserLogoff;
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-            this.disconnectReason = LittleEndianConverter.Convert(disconnectReason);
-            this.latency = LittleEndianConverter.Convert(latency);
-            this.ping = LittleEndianConverter.Convert(ping);
-            this.packetlossS2C = LittleEndianConverter.Convert(packetlossS2C);
-            this.packetlossC2S = LittleEndianConverter.Convert(packetlossC2S);
-            Score = default;
-        }
-    }
+		#region Helper Properties
+
+		public readonly int ConnectionId => LittleEndianConverter.Convert(connectionId);
+
+		public readonly ushort DisconnectReason => LittleEndianConverter.Convert(disconnectReason);
+
+		public readonly ushort Latency => LittleEndianConverter.Convert(disconnectReason);
+
+		public readonly ushort Ping => LittleEndianConverter.Convert(disconnectReason);
+
+		public readonly ushort PacketlossS2C => LittleEndianConverter.Convert(disconnectReason);
+
+		public readonly ushort PacketlossC2S => LittleEndianConverter.Convert(disconnectReason);
+
+		#endregion
+	}
 }

@@ -47,12 +47,7 @@ namespace SS.Packets.Game
         /// <summary>
         /// Number of bytes in a packet.
         /// </summary>
-        public static readonly int Length;
-
-        static S2C_PlayerData()
-        {
-            Length = Marshal.SizeOf<S2C_PlayerData>();
-        }
+        public static readonly int Length = Marshal.SizeOf<S2C_PlayerData>();
 
         #endregion
 
@@ -74,54 +69,54 @@ namespace SS.Packets.Game
         #region Helper properties
 
         public int KillPoints
-        {
-            get { return LittleEndianConverter.Convert(killPoints); }
-            set { killPoints = LittleEndianConverter.Convert(value); }
-        }
+		{
+			get => LittleEndianConverter.Convert(killPoints);
+			set => killPoints = LittleEndianConverter.Convert(value);
+		}
 
-        public int FlagPoints
-        {
-            get { return LittleEndianConverter.Convert(flagPoints); }
-            set { flagPoints = LittleEndianConverter.Convert(value); }
-        }
+		public int FlagPoints
+		{
+			get => LittleEndianConverter.Convert(flagPoints);
+			set => flagPoints = LittleEndianConverter.Convert(value);
+		}
 
-        public short PlayerId
-        {
-            get { return LittleEndianConverter.Convert(playerId); }
-            set { playerId = LittleEndianConverter.Convert(value); }
-        }
+		public short PlayerId
+		{
+			get => LittleEndianConverter.Convert(playerId);
+			set => playerId = LittleEndianConverter.Convert(value);
+		}
 
-        public short Freq
-        {
-            get { return LittleEndianConverter.Convert(freq); }
-            set { freq = LittleEndianConverter.Convert(value); }
-        }
+		public short Freq
+		{
+			get => LittleEndianConverter.Convert(freq);
+			set => freq = LittleEndianConverter.Convert(value);
+		}
 
-        public ushort Wins
-        {
-            get { return LittleEndianConverter.Convert(wins); }
-            set { wins = LittleEndianConverter.Convert(value); }
-        }
+		public ushort Wins
+		{
+			get => LittleEndianConverter.Convert(wins);
+			set => wins = LittleEndianConverter.Convert(value);
+		}
 
-        public ushort Losses
-        {
-            get { return LittleEndianConverter.Convert(losses); }
-            set { losses = LittleEndianConverter.Convert(value); }
-        }
+		public ushort Losses
+		{
+			get => LittleEndianConverter.Convert(losses);
+			set => losses = LittleEndianConverter.Convert(value);
+		}
 
-        public short AttachedTo
-        {
-            get { return LittleEndianConverter.Convert(attachedTo); }
-            set { attachedTo = LittleEndianConverter.Convert(value); }
-        }
+		public short AttachedTo
+		{
+			get => LittleEndianConverter.Convert(attachedTo);
+			set => attachedTo = LittleEndianConverter.Convert(value);
+		}
 
-        public short FlagsCarried
-        {
-            get { return LittleEndianConverter.Convert(flagsCarried); }
-            set { flagsCarried = LittleEndianConverter.Convert(value); }
-        }
+		public short FlagsCarried
+		{
+			get => LittleEndianConverter.Convert(flagsCarried);
+			set => flagsCarried = LittleEndianConverter.Convert(value);
+		}
 
-        private const byte HasCrownMask = 0b00000001;
+		private const byte HasCrownMask = 0b00000001;
         private const byte SendDamageMask = 0b00000010;
 
         /// <summary>

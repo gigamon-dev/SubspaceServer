@@ -20,9 +20,9 @@ namespace SS.Packets.Billing
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct B2S_UserLogin
+    public readonly struct B2S_UserLogin
     {
-        #region Static members
+        #region Static Members
 
         /// <summary>
         /// # of bytes without <see cref="Score"/>.
@@ -43,20 +43,20 @@ namespace SS.Packets.Billing
         #endregion
 
         public readonly byte Type;
-        private byte result;
-        private int connectionId;
-        public NameInlineArray Name;
-        public SquadInlineArray Squad;
-        public Banner Banner;
-        private uint secondsPlayed;
-        public FirstLogin FirstLogin;
-        private uint Unused0;
-        private uint userId;
-        private uint Unused1;
+        private readonly byte result;
+        private readonly int connectionId;
+        public readonly NameInlineArray Name;
+        public readonly SquadInlineArray Squad;
+        public readonly Banner Banner;
+        private readonly uint secondsPlayed;
+        public readonly FirstLogin FirstLogin;
+        private readonly uint Unused0;
+        private readonly uint userId;
+        private readonly uint Unused1;
 		// Optionally followed by a PlayerScore struct for when the result is B2SUserLoginResult.Ok. Purposely not included here.
 		//public PlayerScore Score;
 
-		#region Helpers
+		#region Helper Properties
 
 		public B2SUserLoginResult Result => (B2SUserLoginResult)result;
 
@@ -94,14 +94,14 @@ namespace SS.Packets.Billing
     }
 
 	[StructLayout(LayoutKind.Sequential, Pack = 1)]
-	public struct FirstLogin
+	public readonly struct FirstLogin
 	{
-		private ushort year;
-		private ushort month;
-		private ushort day;
-		private ushort hour;
-		private ushort minute;
-		private ushort second;
+		private readonly ushort year;
+		private readonly ushort month;
+		private readonly ushort day;
+		private readonly ushort hour;
+		private readonly ushort minute;
+		private readonly ushort second;
 
 		public DateTime? ToDateTime()
 		{

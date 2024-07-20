@@ -4,30 +4,22 @@ using System.Runtime.InteropServices;
 namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ReliableHeader
-    {
-        public static readonly int Length;
+    public readonly struct ReliableHeader(int seqNum)
+	{
+		#region Static Members
 
-        static ReliableHeader()
-        {
-            Length = Marshal.SizeOf<ReliableHeader>();
-        }
+		public static readonly int Length = Marshal.SizeOf<ReliableHeader>();
 
-        public byte T1;
-        public byte T2;
-        private int seqNum;
+        #endregion
 
-        public int SeqNum
-        {
-            get => LittleEndianConverter.Convert(seqNum);
-            set => seqNum = LittleEndianConverter.Convert(value);
-        }
+        public readonly byte T1 = 0x00;
+        public readonly byte T2 = 0x03;
+        private readonly int seqNum = LittleEndianConverter.Convert(seqNum);
 
-        public void Initialize(int seqNum)
-        {
-            T1 = 0x00;
-            T2 = 0x03;
-            this.seqNum = LittleEndianConverter.Convert(seqNum);
-        }
-    }
+		#region Helper Properties
+
+		public int SeqNum => LittleEndianConverter.Convert(seqNum);
+
+		#endregion
+	}
 }

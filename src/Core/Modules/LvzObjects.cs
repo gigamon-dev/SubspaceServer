@@ -713,7 +713,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Rebroadcast(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_Rebroadcast(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             Arena arena = player.Arena;
             if (arena is null)
@@ -728,15 +728,14 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (length < 4)
+            if (data.Length < 4)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid broadcast packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid broadcast packet (length={data.Length}).");
                 return;
             }
 
-            Span<byte> packet = data[..length];
-            int toPlayerId = BinaryPrimitives.ReadInt16LittleEndian(packet.Slice(1, 2));
-            S2CPacketType type = (S2CPacketType)packet[3];
+            int toPlayerId = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(1, 2));
+            S2CPacketType type = (S2CPacketType)data[3];
 
             if (type == S2CPacketType.Zero)
             {
@@ -744,9 +743,9 @@ namespace SS.Core.Modules
             }
             else if (type == S2CPacketType.ToggleLVZ)
             {
-                if (length < (3 + 1 + LvzObjectToggle.Length) || (length - 4) % LvzObjectToggle.Length != 0)
+                if (data.Length < (3 + 1 + LvzObjectToggle.Length) || (data.Length - 4) % LvzObjectToggle.Length != 0)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({length}).");
+                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({data.Length}).");
                     return;
                 }
 
@@ -755,7 +754,7 @@ namespace SS.Core.Modules
                     if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                         return;
 
-                    Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(packet[4..]);
+                    Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(data[4..]);
 
                     lock (arenaData.Lock)
                     {
@@ -768,9 +767,9 @@ namespace SS.Core.Modules
             }
             else if (type == S2CPacketType.ChangeLVZ)
             {
-                if (length < (3 + 1 + LvzObjectChange.Length) || (length - 4) % LvzObjectChange.Length != 0)
+                if (data.Length < (3 + 1 + LvzObjectChange.Length) || (data.Length - 4) % LvzObjectChange.Length != 0)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({length}).");
+                    _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Invalid length for broadcasting a Toggle Object packet ({data.Length}).");
                     return;
                 }
 
@@ -779,7 +778,7 @@ namespace SS.Core.Modules
                     if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
                         return;
 
-                    Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(packet[4..]);
+                    Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(data[4..]);
 
                     lock (arenaData.Lock)
                     {
@@ -850,14 +849,14 @@ namespace SS.Core.Modules
 
             if (toPlayerId == -1)
             {
-                _network.SendToArena(arena, null, packet[4..], NetSendFlags.Reliable);
+                _network.SendToArena(arena, null, data[4..], NetSendFlags.Reliable);
             }
             else
             {
                 Player toPlayer = _playerData.PidToPlayer(toPlayerId);
                 if (toPlayer is not null && toPlayer.Status == PlayerState.Playing && player.Arena == toPlayer.Arena)
                 {
-                    _network.SendToOne(toPlayer, packet[4..], NetSendFlags.Reliable);
+                    _network.SendToOne(toPlayer, data[4..], NetSendFlags.Reliable);
                 }
             }
         }

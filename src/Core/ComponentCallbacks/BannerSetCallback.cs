@@ -13,7 +13,7 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="player">The player whose banner was set.</param>
         /// <param name="banner">The banner.</param>
         /// <param name="isFromPlayer">Whether the change was initiated by the player themself.</param>
-        public delegate void BannerSetDelegate(Player player, in Banner banner, bool isFromPlayer);
+        public delegate void BannerSetDelegate(Player player, ref readonly Banner banner, bool isFromPlayer);
 
         public static void Register(ComponentBroker broker, BannerSetDelegate handler)
         {
@@ -25,12 +25,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, in Banner banner, bool isFromPlayer)
+        public static void Fire(ComponentBroker broker, Player player, ref readonly Banner banner, bool isFromPlayer)
         {
-            broker?.GetCallback<BannerSetDelegate>()?.Invoke(player, banner, isFromPlayer);
+            broker?.GetCallback<BannerSetDelegate>()?.Invoke(player, in banner, isFromPlayer);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, player, banner, isFromPlayer);
+                Fire(broker.Parent, player, in banner, isFromPlayer);
         }
     }
 }

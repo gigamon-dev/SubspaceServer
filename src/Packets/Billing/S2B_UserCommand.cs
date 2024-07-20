@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_UserCommand
-    {
-		#region Static members
+    public readonly struct S2B_UserCommand(int connectionId)
+	{
+		#region Static Members
 
 		/// <summary>
 		/// The maximum # of bytes the text portion of the packet can be.
@@ -70,14 +70,14 @@ namespace SS.Packets.Billing
 
 		#endregion
 
-		public readonly byte Type;
-        private int connectionId;
+		public readonly byte Type = (byte)S2BPacketType.UserCommand;
+		private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
 		// Followed by the text bytes which must be null-terminated.
 
-		public S2B_UserCommand(int connectionId)
-        {
-            Type = (byte)S2BPacketType.UserCommand;
-            this.connectionId = LittleEndianConverter.Convert(connectionId);
-        }
-    }
+		#region Helper Properties
+
+		public int ConnectionId => LittleEndianConverter.Convert(connectionId);
+
+		#endregion
+	}
 }

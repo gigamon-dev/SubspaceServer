@@ -291,9 +291,15 @@ namespace SS.Core.Modules
             return ad.initLockship;
         }
 
-        void IGame.FakePosition(Player player, ref C2S_PositionPacket pos, int len)
+		void IGame.FakePosition(Player player, ref C2S_PositionPacket pos)
+		{
+            ExtraPositionData dummyExtra = new();
+			HandlePositionPacket(player, ref pos, ref dummyExtra, false, true);
+		}
+
+		void IGame.FakePosition(Player player, ref C2S_PositionPacket pos, ref ExtraPositionData extra)
         {
-            HandlePositionPacket(player, ref pos, len, true);
+            HandlePositionPacket(player, ref pos, ref extra, true, true);
         }
 
         void IGame.FakeKill(Player killer, Player killed, short pts, short flags)
@@ -967,26 +973,32 @@ namespace SS.Core.Modules
             _net.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
-        private void Packet_Position(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-			ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data[..C2S_PositionPacket.LengthWithExtra]);
-            HandlePositionPacket(player, ref pos, len, false);
+			if (data.Length != C2S_PositionPacket.Length && data.Length != C2S_PositionPacket.LengthWithExtra)
+            {
+				_logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad position packet (length={data.Length}).");
+				return;
+			}
+
+			ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
+
+            if (data.Length >= C2S_PositionPacket.LengthWithExtra)
+            {
+                ref ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
+                HandlePositionPacket(player, ref pos, ref extra, true, false);
+            }
+            else
+            {
+                ExtraPositionData dummyExtra = new();
+                HandlePositionPacket(player, ref pos, ref dummyExtra, false, false);
+            }
         }
 
-        private void HandlePositionPacket(Player player, ref C2S_PositionPacket pos, int len, bool isFake)
+        private void HandlePositionPacket(Player player, ref C2S_PositionPacket pos, ref ExtraPositionData extra, bool hasExtra, bool isFake)
         {
-            if (player == null || player.Status != PlayerState.Playing)
+            if (player is null || player.Status != PlayerState.Playing)
                 return;
-
-#if CFG_RELAX_LENGTH_CHECKS
-            if(len < C2SPositionPacket.Length)
-#else
-            if (len != C2S_PositionPacket.Length && len != C2S_PositionPacket.LengthWithExtra)
-#endif
-            {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad position packet len={len}.");
-                return;
-            }
 
             Arena arena = player.Arena;
             if (arena == null || arena.Status != ArenaState.Running)
@@ -1022,7 +1034,7 @@ namespace SS.Core.Modules
                 _lagCollect.Position(
                     player,
                     (gtc - pos.Time) * 10,
-                    len >= 26 ? pos.Extra.S2CPing * 10 : new int?(),
+                    hasExtra ? extra.S2CPing * 10 : new int?(),
                     pd.S2CWeaponSent);
             }
 
@@ -1246,7 +1258,8 @@ namespace SS.Core.Modules
                     nflags = NetSendFlags.Reliable;
                 }
 
-                C2S_PositionPacket copy = new();
+                C2S_PositionPacket posCopy = new();
+                ExtraPositionData extraCopy = new();
                 S2C_WeaponsPacket wpn = new();
                 S2C_PositionPacket sendpos = new();
 
@@ -1305,7 +1318,7 @@ namespace SS.Core.Modules
                                 {
                                     if (idata.pl_epd.seeEpd && idata.speccing == player)
                                     {
-                                        extralen = (len >= C2S_PositionPacket.LengthWithExtra) ? ExtraPositionData.Length : nrglen;
+                                        extralen = hasExtra ? ExtraPositionData.Length : nrglen;
                                     }
                                     else if (idata.pl_epd.seeNrgSpec == SeeEnergy.All
                                         || (idata.pl_epd.seeNrgSpec == SeeEnergy.Team
@@ -1333,7 +1346,8 @@ namespace SS.Core.Modules
 
                                 if (modified)
                                 {
-                                    copy = pos;
+                                    posCopy = pos;
+                                    extraCopy = extra;
                                     modified = false;
                                 }
 
@@ -1342,11 +1356,11 @@ namespace SS.Core.Modules
                                 // Consult the advisors to allow other modules to edit the packet going to player i.
                                 foreach (var advisor in advisors)
                                 {
-                                    if (advisor.EditIndividualPositionPacket(player, i, ref copy, ref extralen))
+                                    if (advisor.EditIndividualPositionPacket(player, i, ref posCopy, ref extraCopy, ref extralen))
                                         modified = true;
 
                                     // Allow advisors to drop the packet.
-                                    if (copy.X < 0 || copy.Y < 0) // slightly different than ASSS, here we consider anything negative to mean drop whereas ASSS looks for -1
+                                    if (posCopy.X < 0 || posCopy.Y < 0) // slightly different than ASSS, here we consider anything negative to mean drop whereas ASSS looks for -1
                                     {
                                         drop = true;
                                         break;
@@ -1359,8 +1373,8 @@ namespace SS.Core.Modules
                                 if (!drop)
                                 {
                                     if ((!modified && sendWeapon)
-                                        || copy.Weapon.Type > 0
-                                        || (copy.Bounty & 0xFF00) != 0
+                                        || posCopy.Weapon.Type > 0
+                                        || (posCopy.Bounty & 0xFF00) != 0
                                         || (player.Id & 0xFF00) != 0)
                                     {
                                         int length = S2C_WeaponsPacket.Length + extralen;
@@ -1368,22 +1382,22 @@ namespace SS.Core.Modules
                                         if (wpnDirty)
                                         {
                                             wpn.Type = (byte)S2CPacketType.Weapon;
-                                            wpn.Rotation = copy.Rotation;
+                                            wpn.Rotation = posCopy.Rotation;
                                             wpn.Time = (ushort)(gtc & 0xFFFF);
-                                            wpn.X = copy.X;
-                                            wpn.YSpeed = copy.YSpeed;
+                                            wpn.X = posCopy.X;
+                                            wpn.YSpeed = posCopy.YSpeed;
                                             wpn.PlayerId = (ushort)player.Id;
-                                            wpn.XSpeed = copy.XSpeed;
+                                            wpn.XSpeed = posCopy.XSpeed;
                                             wpn.Checksum = 0;
-                                            wpn.Status = copy.Status;
+                                            wpn.Status = posCopy.Status;
                                             wpn.C2SLatency = (byte)latency;
-                                            wpn.Y = copy.Y;
-                                            wpn.Bounty = copy.Bounty;
-                                            wpn.Weapon = copy.Weapon;
-                                            wpn.Extra = copy.Extra;
+                                            wpn.Y = posCopy.Y;
+                                            wpn.Bounty = posCopy.Bounty;
+                                            wpn.Weapon = posCopy.Weapon;
+                                            wpn.Extra = extraCopy;
 
                                             // move this field from the main packet to the extra data, in case they don't match.
-                                            wpn.Extra.Energy = (ushort)copy.Energy;
+                                            wpn.Extra.Energy = (ushort)posCopy.Energy;
 
                                             wpnDirty = modified;
 
@@ -1395,7 +1409,7 @@ namespace SS.Core.Modules
 
                                         ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref wpn, 1));
                                         if (data.Length > length)
-                                            data = data.Slice(0, length);
+                                            data = data[..length];
 
                                         _net.SendToOne(i, data, nflags);
                                     }
@@ -1406,27 +1420,27 @@ namespace SS.Core.Modules
                                         if (posDirty)
                                         {
                                             sendpos.Type = (byte)S2CPacketType.Position;
-                                            sendpos.Rotation = copy.Rotation;
+                                            sendpos.Rotation = posCopy.Rotation;
                                             sendpos.Time = (ushort)(gtc & 0xFFFF);
-                                            sendpos.X = copy.X;
+                                            sendpos.X = posCopy.X;
                                             sendpos.C2SLatency = (byte)latency;
-                                            sendpos.Bounty = (byte)copy.Bounty;
+                                            sendpos.Bounty = (byte)posCopy.Bounty;
                                             sendpos.PlayerId = (byte)player.Id;
-                                            sendpos.Status = copy.Status;
-                                            sendpos.YSpeed = copy.YSpeed;
-                                            sendpos.Y = copy.Y;
-                                            sendpos.XSpeed = copy.XSpeed;
-                                            sendpos.Extra = copy.Extra;
+                                            sendpos.Status = posCopy.Status;
+                                            sendpos.YSpeed = posCopy.YSpeed;
+                                            sendpos.Y = posCopy.Y;
+                                            sendpos.XSpeed = posCopy.XSpeed;
+                                            sendpos.Extra = extraCopy;
 
                                             // move this field from the main packet to the extra data, in case they don't match.
-                                            sendpos.Extra.Energy = (ushort)copy.Energy;
+                                            sendpos.Extra.Energy = (ushort)posCopy.Energy;
 
                                             posDirty = modified;
                                         }
 
                                         ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref sendpos, 1));
                                         if (data.Length > length)
-                                            data = data.Slice(0, length);
+                                            data = data[..length];
 
                                         _net.SendToOne(i, data, nflags);
                                     }
@@ -1440,7 +1454,7 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                PlayerPositionPacketCallback.Fire(arena, player, in pos, len == C2S_PositionPacket.LengthWithExtra);
+                PlayerPositionPacketCallback.Fire(arena, player, ref pos, ref extra, hasExtra);
             }
 
             pd.PlayerPostitionPacket_LastShip = player.Ship;
@@ -1485,18 +1499,15 @@ namespace SS.Core.Modules
             pd.LastRegionSet = newRegions;
         }
 
-        private void Packet_SpecRequest(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_SpecRequest(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player == null)
-                return;
-
-            if (len != C2S_SpecRequest.Length)
+            if (data.Length != C2S_SpecRequest.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad spec req packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad spec req packet (length={data.Length}).");
                 return;
             }
 
-            if (player.Status != PlayerState.Playing || player.Ship != ShipType.Spec)
+            if (player is null || player.Status != PlayerState.Playing || player.Ship != ShipType.Spec)
                 return;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
@@ -1518,19 +1529,19 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetShip(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_SetShip(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
-            if (len != 2)
+            if (data.Length != 2)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad ship req packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad ship req packet (length={data.Length}).");
                 return;
             }
 
             Arena arena = player.Arena;
-            if (player.Status != PlayerState.Playing || arena == null)
+            if (player.Status != PlayerState.Playing || arena is null)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Game), player, "State sync problem: Ship request from bad status.");
                 return;
@@ -1578,8 +1589,8 @@ namespace SS.Core.Modules
             }
 
             
-            IFreqManager fm = _broker.GetInterface<IFreqManager>();
-            if (fm != null)
+            IFreqManager fm = arena.GetInterface<IFreqManager>();
+            if (fm is not null)
             {
                 try
                 {
@@ -1601,7 +1612,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _broker.ReleaseInterface(ref fm);
+                    arena.ReleaseInterface(ref fm);
                 }
             }
             else
@@ -1610,14 +1621,14 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetFreq(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_SetFreq(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
-            if (len != C2S_SetFreq.Length)
+            if (data.Length != C2S_SetFreq.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad freq req packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad freq req packet (length={data.Length}).");
             }
             else if (player.Flags.DuringChange)
             {
@@ -1625,14 +1636,14 @@ namespace SS.Core.Modules
             }
             else
             {
-                ref C2S_SetFreq packet = ref MemoryMarshal.AsRef<C2S_SetFreq>(data[..C2S_SetFreq.Length]);
+                ref C2S_SetFreq packet = ref MemoryMarshal.AsRef<C2S_SetFreq>(data);
                 FreqChangeRequest(player, packet.Freq);
             }
         }
 
         private void FreqChangeRequest(Player player, short freq)
         {
-            if(player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
@@ -1866,14 +1877,14 @@ namespace SS.Core.Modules
             Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
         [ConfigHelp("Prize", "TeamkillPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
-        private void Packet_Die(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_Die(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
 
-            if (len != C2S_Die.Length)
+            if (data.Length != C2S_Die.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad death packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad death packet (length={data.Length}).");
                 return;
             }
 
@@ -2065,45 +2076,43 @@ namespace SS.Core.Modules
             _chatNetwork?.SendToArena(killer.Arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
-        private void Packet_Green(Player player, Span<byte> data, int len, NetReceiveFlags flags)
-        {
-            if (player == null)
-                return;
+		private void Packet_Green(Player player, Span<byte> data, NetReceiveFlags flags)
+		{
+			if (player == null)
+				return;
 
-            if (len != GreenPacket.C2SLength)
-            {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad green packet len={len}.");
-                return;
-            }
+			if (data.Length != C2S_Green.Length)
+			{
+				_logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad green packet (length={data.Length}).");
+				return;
+			}
 
-            if (player.Status != PlayerState.Playing)
-                return;
+			if (player.Status != PlayerState.Playing)
+				return;
 
-            Arena arena = player.Arena;
-            if (arena == null)
-                return;
+			Arena arena = player.Arena;
+			if (arena == null)
+				return;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
-                return;
+			if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+				return;
 
-            ref GreenPacket g = ref MemoryMarshal.AsRef<GreenPacket>(data);
-            Prize prize = g.Green;
+			ref C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
+			Prize prize = c2s.Prize;
 
-            // don't forward non-shared prizes
-            if(!(prize == Prize.Thor && (ad.PersonalGreen & PersonalGreen.Thor) == PersonalGreen.Thor) &&
-                !(prize == Prize.Burst && (ad.PersonalGreen & PersonalGreen.Burst) == PersonalGreen.Burst) &&
-                !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
-            {
-                g.PlayerId = (short)player.Id;
-                g.Type = (byte)S2CPacketType.Green; // HACK: reuse the buffer that it came in on
-                _net.SendToArena(arena, player, data[..GreenPacket.S2CLength], NetSendFlags.Unreliable);
-                //g.Type = C2SPacketType.Green; // asss sets it back, i dont think this is necessary though
-            }
+			// don't forward non-shared prizes
+			if (!(prize == Prize.Thor && (ad.PersonalGreen & PersonalGreen.Thor) == PersonalGreen.Thor)
+				&& !(prize == Prize.Burst && (ad.PersonalGreen & PersonalGreen.Burst) == PersonalGreen.Burst)
+				&& !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
+			{
+				S2C_Green s2c = new(ref c2s, (short)player.Id);
+				_net.SendToArena(arena, player, ref s2c, NetSendFlags.Unreliable);
+			}
 
-            FireGreenEvent(arena, player, g.X, g.Y, prize);
-        }
+			FireGreenEvent(arena, player, c2s.X, c2s.Y, prize);
+		}
 
-        private void FireGreenEvent(Arena arena, Player player, int x, int y, Prize prize)
+		private void FireGreenEvent(Arena arena, Player player, int x, int y, Prize prize)
         {
             if(player == null)
                 return;
@@ -2156,14 +2165,14 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_AttachTo(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_AttachTo(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
 
-            if (len != C2S_AttachTo.Length)
+            if (data.Length != C2S_AttachTo.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad attach req packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad attach req packet (length={data.Length}).");
                 return;
             }
 
@@ -2198,9 +2207,15 @@ namespace SS.Core.Modules
             Attach(player, to);
         }
 
-        private void Packet_TurretKickoff(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_TurretKickoff(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player == null)
+			if (data.Length != 1)
+			{
+				_logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad turret kickoff packet (length={data.Length}).");
+				return;
+			}
+
+			if (player == null)
                 return;
 
             if (player.Status != PlayerState.Playing)

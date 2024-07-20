@@ -493,12 +493,9 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Login(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_Login(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player == null)
-                return;
-
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
                 return;
 
             if (!player.IsStandard)
@@ -506,14 +503,14 @@ namespace SS.Core.Modules
                 _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Login packet from wrong client type ({player.Type}).");
             }
 #if CFG_RELAX_LENGTH_CHECKS
-            else if ((p.Type == ClientType.VIE && len < LoginPacket.LengthVIE) 
-                || (p.Type == ClientType.Continuum && len < LoginPacket.LengthContinuum))
+            else if ((p.Type == ClientType.VIE && data.Length < LoginPacket.LengthVIE) 
+                || (p.Type == ClientType.Continuum && data.Length < LoginPacket.LengthContinuum))
 #else
-            else if ((player.Type == ClientType.VIE && len != LoginPacket.VIELength)
-                || (player.Type == ClientType.Continuum && len != LoginPacket.ContinuumLength))
+			else if ((player.Type == ClientType.VIE && data.Length != LoginPacket.VIELength)
+                || (player.Type == ClientType.Continuum && data.Length != LoginPacket.ContinuumLength))
 #endif
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Bad login packet length ({len}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Core), player, $"Bad login packet (length={data.Length}).");
             }
             else if (player.Status != PlayerState.Connected)
             {
@@ -534,8 +531,10 @@ namespace SS.Core.Modules
 #endif
 
                 // copy into (per player) storage for use by authenticator
-                if (len > 512)
-                    len = 512;
+                if (data.Length > Constants.MaxPacket)
+                {
+                    data = data[..Constants.MaxPacket];
+                }
 
                 if (playerData.AuthRequest is not null)
                 {
@@ -543,7 +542,7 @@ namespace SS.Core.Modules
                 }
 
                 playerData.AuthRequest = _authRequestPool.Get();
-                playerData.AuthRequest.SetRequestInfo(player, data[..len], _authDone);
+                playerData.AuthRequest.SetRequestInfo(player, data, _authDone);
                 
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
@@ -675,8 +674,6 @@ namespace SS.Core.Modules
 
             loginPacket.Password.Clear();
             StringUtils.DefaultEncoding.GetBytes(password, loginPacket.Password);
-
-            loginPacket.MacId = 101;
 
             // Add an auth request.
             if (playerData.AuthRequest is not null)
@@ -899,18 +896,13 @@ namespace SS.Core.Modules
                 if (player.IsStandard)
                 {
                     S2C_LoginResponse lr = new();
-                    lr.Initialize();
                     lr.Code = (byte)authResult.Code;
                     lr.DemoData = authResult.DemoData ? (byte)1 : (byte)0;
                     lr.NewsChecksum = _mapNewsDownload.GetNewsChecksum();
 
                     if (player.Type == ClientType.Continuum)
                     {
-                        S2C_ContinuumVersion pkt = new();
-                        pkt.Type = (byte)S2CPacketType.ContVersion;
-                        pkt.ContVersion = ClientVersion_Cont;
-                        pkt.Checksum = _continuumChecksum;
-
+                        S2C_ContinuumVersion pkt = new(ClientVersion_Cont, _continuumChecksum);
                         _network.SendToOne(player, ref pkt, NetSendFlags.Reliable);
 
                         lr.ExeChecksum = _continuumChecksum;
@@ -1130,7 +1122,7 @@ namespace SS.Core.Modules
 
         private class AuthRequest : IAuthRequest, IResettable
         {
-            private readonly byte[] _loginBytes = new byte[512];
+            private readonly byte[] _loginBytes = new byte[Constants.MaxPacket];
             private int _loginLength = 0;
             private Action<Player> _doneCallback;
             private readonly AuthResult _result = new();

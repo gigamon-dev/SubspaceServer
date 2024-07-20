@@ -7,38 +7,23 @@ namespace SS.Packets.Game
     /// Item in a <see cref="S2CPacketType.PeriodicReward"/> packet.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct PeriodicRewardItem
-    {
+    public readonly struct PeriodicRewardItem(short freq, short points)
+	{
         #region Static members
 
-        public static readonly int Length;
-
-        static PeriodicRewardItem()
-        {
-            Length = Marshal.SizeOf(typeof(PeriodicRewardItem));
-        }
+        public static readonly int Length = Marshal.SizeOf<PeriodicRewardItem>();
 
         #endregion
 
-        private short freq;
-        private short points;
+        private readonly short freq = LittleEndianConverter.Convert(freq);
+        private readonly short points = LittleEndianConverter.Convert(points);
 
-        public short Freq
-        {
-            get => LittleEndianConverter.Convert(freq);
-            set => freq = LittleEndianConverter.Convert(value);
-        }
+		#region Helper Properties
 
-        public short Points
-        {
-            get => LittleEndianConverter.Convert(points);
-            set => points = LittleEndianConverter.Convert(value);
-        }
+		public short Freq => LittleEndianConverter.Convert(freq);
 
-        public PeriodicRewardItem(short freq, short points)
-        {
-            this.freq = LittleEndianConverter.Convert(freq);
-            this.points = LittleEndianConverter.Convert(points);
-        }
-    }
+		public short Points => LittleEndianConverter.Convert(points);
+
+		#endregion
+	}
 }

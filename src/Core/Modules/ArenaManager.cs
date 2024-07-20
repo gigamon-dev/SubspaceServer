@@ -280,8 +280,6 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    S2C_WhoAmI whoAmI = new(0);
-
                     // first move playing players elsewhere
                     foreach (Player player in _playerData.Players)
                     {
@@ -290,7 +288,7 @@ namespace SS.Core.Modules
                             // send whoami packet so the clients leave the arena
                             if (player.IsStandard)
                             {
-                                whoAmI.PlayerId = (short)player.Id;
+								S2C_WhoAmI whoAmI = new((short)player.Id);
                                 _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                             }
                             else if (player.IsChat)
@@ -801,18 +799,18 @@ namespace SS.Core.Modules
 
         [ConfigHelp("Chat", "ForceFilter", ConfigScope.Global, typeof(bool), DefaultValue = "0",
             Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
-        private void Packet_GotoArena(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_GotoArena(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
 
-            if (len != C2S_GoArena.LengthVIE && len != C2S_GoArena.LengthContinuum)
+            if (data.Length != C2S_GoArenaVIE.Length && data.Length != C2S_GoArenaContinuum.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena packet (length={data.Length}).");
                 return;
             }
 
-            ref C2S_GoArena go = ref MemoryMarshal.AsRef<C2S_GoArena>(data);
+            ref C2S_GoArenaVIE go = ref MemoryMarshal.AsRef<C2S_GoArenaVIE>(data);
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
@@ -908,13 +906,20 @@ namespace SS.Core.Modules
                 }
             }
 
+            bool optionalGraphics = false;
+            if (data.Length >= C2S_GoArenaContinuum.Length)
+            {
+				ref C2S_GoArenaContinuum goContinuum = ref MemoryMarshal.AsRef<C2S_GoArenaContinuum>(data);
+                optionalGraphics = goContinuum.OptionalGraphics != 0;
+            }
+
             CompleteGo(
                 player,
                 name,
                 (ShipType)go.ShipType,
                 go.XRes,
                 go.YRes,
-                (len >= C2S_GoArena.LengthContinuum) && go.OptionalGraphics != 0,
+                optionalGraphics,
                 go.WavMsg != 0,
                 (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
                 spx,
@@ -941,12 +946,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_LeaveArena(Player player, Span<byte> data, int len, NetReceiveFlags flags)
+        private void Packet_LeaveArena(Player player, Span<byte> data, NetReceiveFlags flags)
         {
 #if !CFG_RELAX_LENGTH_CHECKS
-            if (len != 1)
+            if (data.Length != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena leaving packet len={len}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, $"Bad arena leaving packet (length={data.Length}).");
             }
 #endif
             LeaveArena(player);

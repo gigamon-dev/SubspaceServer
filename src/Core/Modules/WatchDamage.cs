@@ -193,7 +193,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Damage(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_Damage(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player.Status != PlayerState.Playing)
                 return;
@@ -205,14 +205,14 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
 
-            if (length < C2S_WatchDamageHeader.Length + DamageData.Length)
+            if (data.Length < C2S_WatchDamageHeader.Length + DamageData.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(WatchDamage), player, $"Invalid C2S WatchDamage packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(WatchDamage), player, $"Invalid C2S WatchDamage packet (length={data.Length}).");
                 return;
             }
 
             ref C2S_WatchDamageHeader c2sHeader = ref MemoryMarshal.AsRef<C2S_WatchDamageHeader>(data);
-            Span<DamageData> c2sDamageSpan = MemoryMarshal.Cast<byte, DamageData>(data[C2S_WatchDamageHeader.Length..length]);
+            Span<DamageData> c2sDamageSpan = MemoryMarshal.Cast<byte, DamageData>(data[C2S_WatchDamageHeader.Length..]);
 
             if (pd.PlayersWatching.Count > 0)
             {
@@ -294,7 +294,7 @@ namespace SS.Core.Modules
         {
             if (player.Type == ClientType.Continuum)
             {
-                Span<byte> packet = stackalloc byte[2] { (byte)S2CPacketType.ToggleDamage, on ? (byte)1 : (byte)0 };
+                Span<byte> packet = [(byte)S2CPacketType.ToggleDamage, on ? (byte)1 : (byte)0];
                 _network.SendToOne(player, packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);
             }
         }

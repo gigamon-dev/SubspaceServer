@@ -11,29 +11,32 @@ namespace SS.Core.Map.Lvz
     /// This is because the filename is a not a fixed width. It is null-terminated.
     /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CompressionHeader
+    public readonly struct CompressionHeader
     {
-        public const uint LvzMagic = 0x544e4f43; // CONT
+		#region Static Members
 
-        public static int Length;
+		public const uint LvzMagic = 0x544e4f43; // CONT
 
-        static CompressionHeader()
-        {
-            Length = Marshal.SizeOf<CompressionHeader>();
-        }
+        public static readonly int Length = Marshal.SizeOf<CompressionHeader>();
 
-        private uint magic;
-        public uint Magic => LittleEndianConverter.Convert(magic);
+        #endregion
 
-        private uint decompressSize;
+        private readonly uint magic;
+		private readonly uint decompressSize;
+		private readonly uint fileTime;
+		private readonly uint compressedSize;
+		// Followed by a null-terminated file name of variable length
+
+		#region Helper Properties
+
+		public uint Magic => LittleEndianConverter.Convert(magic);
+
         public uint DecompressSize => LittleEndianConverter.Convert(decompressSize);
-
-        private uint fileTime;
+        
         public uint FileTime => LittleEndianConverter.Convert(fileTime);
-
-        private uint compressedSize;
+        
         public uint CompressedSize => LittleEndianConverter.Convert(compressedSize);
 
-        // null-terminated file name
+        #endregion
     }
 }

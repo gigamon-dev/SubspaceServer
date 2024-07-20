@@ -791,7 +791,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_PlayerPositionPacket(Player player, in C2S_PositionPacket positionPacket, bool hasExtraPositionData)
+        private void Callback_PlayerPositionPacket(Player player, ref readonly C2S_PositionPacket positionPacket, ref readonly ExtraPositionData extra, bool hasExtraPositionData)
         {
             if (player.Ship == ShipType.Spec)
                 return;
@@ -806,13 +806,13 @@ namespace SS.Matchmaking.Modules
             if (hasExtraPositionData)
             {
                 // Keep track of the items for the slot.
-                slot.Bursts = positionPacket.Extra.Bursts;
-                slot.Repels = positionPacket.Extra.Repels;
-                slot.Thors = positionPacket.Extra.Thors;
-                slot.Bricks = positionPacket.Extra.Bricks;
-                slot.Decoys = positionPacket.Extra.Decoys;
-                slot.Rockets = positionPacket.Extra.Rockets;
-                slot.Portals = positionPacket.Extra.Portals;
+                slot.Bursts = extra.Bursts;
+                slot.Repels = extra.Repels;
+                slot.Thors = extra.Thors;
+                slot.Bricks = extra.Bricks;
+                slot.Decoys = extra.Decoys;
+                slot.Rockets = extra.Rockets;
+                slot.Portals = extra.Portals;
             }
 
             if (positionPacket.Weapon.Type != WeaponCodes.Null // Note: bricks are not position packet weapons, therefore handled separately with Callback_BricksPlaced

@@ -451,11 +451,11 @@ namespace SS.Core.Modules.FlagGame
 
         #region Packet handlers
 
-        private void Packet_TouchFlag(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_TouchFlag(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (length != C2S_TouchFlag.Length)
+            if (data.Length != C2S_TouchFlag.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"Invalid C2S_TouchFlag packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"Invalid C2S_TouchFlag packet (length={data.Length}).");
                 return;
             }
 
@@ -516,14 +516,14 @@ namespace SS.Core.Modules.FlagGame
             ad.CarryFlagBehavior.TouchFlag(arena, player, flagId);
         }
 
-        private void Packet_DropFlags(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_DropFlags(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
 
-            if (length != 1)
+            if (data.Length != 1)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(CarryFlags), player, $"Invalid drop flag packet length ({length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(CarryFlags), player, $"Invalid drop flag packet (length={data.Length}).");
                 return;
             }
 

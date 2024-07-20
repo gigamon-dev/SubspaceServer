@@ -263,12 +263,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UploadFile(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_UploadFile(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player is null)
-                return;
-
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (player is null || !player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return;
 
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
@@ -283,7 +280,7 @@ namespace SS.Core.Modules
             {
                 ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
                 ud.FileName = ud.Stream.Name;
-				ud.Stream.Write(data[17..length]);
+				ud.Stream.Write(data[17..]);
                 success = true;
             }
             catch (Exception ex)

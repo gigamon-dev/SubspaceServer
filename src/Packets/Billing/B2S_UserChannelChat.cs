@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct B2S_UserChannelChat
+    public readonly struct B2S_UserChannelChat
     {
-        #region Static members
+        #region Static Members
 
         /// <summary>
         /// The maximum # of bytes the text portion of the packet can be.
@@ -56,12 +56,12 @@ namespace SS.Packets.Billing
 
         #endregion
 
-        public byte Type;
-        private int connectionId;
-        public byte Channel;
+        public readonly byte Type;
+        private readonly int connectionId;
+        public readonly byte Channel;
         // Followed by the text bytes which must be null-terminated.
 
-        #region Helpers
+        #region Helper Properties
 
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 

@@ -9,14 +9,9 @@ namespace SS.Packets.Directory
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2D_Announcement
     {
-		#region Static members
+		#region Static Members
 
-		private static readonly int LengthWithoutDescription;
-
-        static S2D_Announcement()
-        {
-            LengthWithoutDescription = Marshal.SizeOf<S2D_Announcement>() - Marshal.SizeOf<DescriptionInlineArray>();
-        }
+		private static readonly int LengthWithoutDescription = Marshal.SizeOf<S2D_Announcement>() - Marshal.SizeOf<DescriptionInlineArray>();
 
 		#endregion
 
@@ -29,35 +24,35 @@ namespace SS.Packets.Directory
         public PasswordInlineArray Password;
         public DescriptionInlineArray Description;
 
-		#region Helpers
+		#region Helper Properties
 
 		public uint IP
         {
-            get => LittleEndianConverter.Convert(ip);
+            readonly get => LittleEndianConverter.Convert(ip);
             set => ip = LittleEndianConverter.Convert(value);
         }
 
         public ushort Port
         {
-            get => LittleEndianConverter.Convert(port);
+			readonly get => LittleEndianConverter.Convert(port);
             set => port = LittleEndianConverter.Convert(value);
         }
 
         public ushort Players
         {
-            get => LittleEndianConverter.Convert(players);
+			readonly get => LittleEndianConverter.Convert(players);
             set => players = LittleEndianConverter.Convert(value);
         }
 
         public ushort Scorekeeping
         {
-            get => LittleEndianConverter.Convert(scorekeeping);
+			readonly get => LittleEndianConverter.Convert(scorekeeping);
             set => scorekeeping = LittleEndianConverter.Convert(value);
         }
 
         public uint Version
         {
-            get => LittleEndianConverter.Convert(version);
+			readonly get => LittleEndianConverter.Convert(version);
             set => version = LittleEndianConverter.Convert(value);
         }
 

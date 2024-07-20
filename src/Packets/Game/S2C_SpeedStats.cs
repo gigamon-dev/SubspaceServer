@@ -19,12 +19,7 @@ namespace SS.Packets.Game
         /// </summary>
         public const int TopScoreCount = 5;
 
-        public static readonly int Length;
-
-        static S2C_SpeedStats()
-        {
-            Length = Marshal.SizeOf(typeof(S2C_SpeedStats));
-        }
+        public static readonly int Length = Marshal.SizeOf<S2C_SpeedStats>();
 
         #endregion
 

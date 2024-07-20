@@ -12,7 +12,7 @@ namespace SS.Core.Map
 
         public bool TryGetValue(short x, short y, out TValue value)
         {
-            return this.TryGetValue(new MapCoordinate(x, y), out value);
+            return TryGetValue(new MapCoordinate(x, y), out value);
         }
     }
 

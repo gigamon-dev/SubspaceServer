@@ -7,35 +7,32 @@ namespace SS.Replay.FileFormat.Events
     /// Event for when the carry flag game should be reset.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct CarryFlagGameReset
-    {
+    public struct CarryFlagGameReset(ServerTick ticks, short freq, int points)
+	{
         #region Static members
 
-        public static readonly int Length;
-
-        static CarryFlagGameReset()
-        {
-            Length = Marshal.SizeOf(typeof(CarryFlagGameReset));
-        }
+        public static readonly int Length = Marshal.SizeOf<CarryFlagGameReset>();
 
         #endregion
 
-        public EventHeader Header;
-        private short freq;
-        private int points;
+        public EventHeader Header = new(ticks, EventType.CarryFlagGameReset);
+        private short freq = LittleEndianConverter.Convert(freq);
+        private int points = LittleEndianConverter.Convert(points);
 
-        public CarryFlagGameReset(ServerTick ticks, short freq, int points)
-        {
-            Header = new(ticks, EventType.CarryFlagGameReset);
-            this.freq = LittleEndianConverter.Convert(freq);
-            this.points = LittleEndianConverter.Convert(points);
-        }
+		#region Helper properties
 
-        #region Helper properties
+		public short Freq
+		{
+			readonly get => LittleEndianConverter.Convert(freq);
+			set => freq = LittleEndianConverter.Convert(value);
+		}
 
-        public short Freq => LittleEndianConverter.Convert(freq);
-        public int Points => LittleEndianConverter.Convert(points);
+		public int Points
+		{
+			readonly get => LittleEndianConverter.Convert(points);
+			set => points = LittleEndianConverter.Convert(value);
+		}
 
-        #endregion
-    }
+		#endregion
+	}
 }

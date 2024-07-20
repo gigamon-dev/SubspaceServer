@@ -490,11 +490,11 @@ namespace SS.Core.Modules
 
         #region Packet handlers
 
-        private void Packet_PickupBall(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_PickupBall(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (length != C2S_PickupBall.Length)
+            if (data.Length != C2S_PickupBall.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball pick up packet (length={length}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball pick up packet (length={data.Length}).");
                 return;
             }
 
@@ -600,11 +600,11 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_ShootBall(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_ShootBall(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (length != BallPacket.Length)
+            if (data.Length != BallPacket.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball shoot packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball shoot packet (length={data.Length}).");
                 return;
             }
 
@@ -695,11 +695,11 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Goal(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_Goal(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (length != C2S_Goal.Length)
+            if (data.Length != C2S_Goal.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball goal packet (length={length}).");
+                _logManager.LogP(LogLevel.Malicious, nameof(Balls), player, $"Bad ball goal packet (length={data.Length}).");
                 return;
             }
 

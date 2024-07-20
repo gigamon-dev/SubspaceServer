@@ -4,24 +4,19 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct B2S_ScoreReset
+    public readonly struct B2S_ScoreReset
     {
-        #region Static members
+        #region Static Members
 
-        public static readonly int Length;
-
-        static B2S_ScoreReset()
-        {
-            Length = Marshal.SizeOf<B2S_ScoreReset>();
-        }
+        public static readonly int Length = Marshal.SizeOf<B2S_ScoreReset>();
 
         #endregion
 
-        public byte Type;
-        private int scoreId;
-        private int scoreIdNegative;
+        public readonly byte Type;
+        private readonly int scoreId;
+        private readonly int scoreIdNegative;
 
-        #region Helpers
+        #region Helper Properties
 
         public int ScoreId => LittleEndianConverter.Convert(scoreId);
 

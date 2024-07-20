@@ -433,14 +433,14 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_RegData(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_RegData(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (length < 1 || length - 1 > S2B_UserDemographics.DataInlineArray.Length)
+            if (data.Length < 1 || data.Length - 1 > S2B_UserDemographics.DataInlineArray.Length)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), player, $"Invalid demographics packet length {length}.");
+                _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), player, $"Invalid demographics packet (length={data.Length}).");
                 return;
             }
 
@@ -457,9 +457,8 @@ namespace SS.Core.Modules
                     Span<byte> packetBytes = stackalloc byte[S2B_UserDemographics.Length];
                     ref S2B_UserDemographics packet = ref MemoryMarshal.AsRef<S2B_UserDemographics>(packetBytes);
                     packet = new(player.Id);
-                    int packetLength = packet.SetData(data[1..length]);
-
-                    _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
+                    int packetLength = packet.SetData(data[1..]);
+                    _networkClient.SendPacket(_cc, packetBytes[..packetLength], NetSendFlags.Reliable);
 
                     playerData.HasDemographics = true;
                 }
@@ -762,7 +761,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_BannerSet(Player player, in Banner banner, bool isFromPlayer)
+        private void Callback_BannerSet(Player player, ref readonly Banner banner, bool isFromPlayer)
         {
             if (!isFromPlayer)
                 return;
@@ -1140,7 +1139,7 @@ namespace SS.Core.Modules
         {
             _chat.SendArenaMessage((Arena)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
 
-            S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true);
+			S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true);
             _networkClient.SendPacket(_cc, ref packet, NetSendFlags.Reliable);
             _state = BillingState.LoggedIn;
             _identity = null;
@@ -1241,14 +1240,14 @@ namespace SS.Core.Modules
                 result.Code = result.DemoData ? AuthCode.AskDemographics : AuthCode.OK;
                 result.Authenticated = true;
 
-                Span<byte> nameBytes = ((Span<byte>)packet.Name).SliceNullTerminated();
+                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)packet.Name).SliceNullTerminated();
                 Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
                 result.SetName(nameChars);
                 result.SetSendName(nameChars);
 
-                Span<byte> squadBytes = ((Span<byte>)packet.Squad).SliceNullTerminated();
+				ReadOnlySpan<byte> squadBytes = ((ReadOnlySpan<byte>)packet.Squad).SliceNullTerminated();
                 Span<char> squadChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(squadBytes)];
                 decodedByteCount = StringUtils.DefaultEncoding.GetChars(squadBytes, squadChars);
                 Debug.Assert(squadBytes.Length == decodedByteCount);

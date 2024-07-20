@@ -19,9 +19,9 @@ namespace SS.Core.Map
         /// </summary>
         public const int MaxFlags = 255;
 
-        private readonly MapTileCollection _tileLookup = new MapTileCollection();
-        private readonly List<MapCoordinate> _flagCoordinateList = new List<MapCoordinate>(MaxFlags);
-        private readonly List<string> _errorList = new List<string>();
+        private readonly MapTileCollection _tileLookup = [];
+        private readonly List<MapCoordinate> _flagCoordinateList = new(MaxFlags);
+        private readonly List<string> _errorList = [];
         private readonly ReadOnlyCollection<string> _readOnlyErrors;
 
         protected BasicLvl()
@@ -126,12 +126,9 @@ namespace SS.Core.Map
         /// <param name="length">The maximum number of bytes to read.</param>
         protected void ReadPlainTileData(MemoryMappedViewAccessor accessor, long position, long length)
         {
-            if (accessor == null)
-                throw new ArgumentNullException(nameof(accessor));
+			ArgumentNullException.ThrowIfNull(accessor);
 
-            int mapTileDataLength = Marshal.SizeOf<MapTileData>();
-
-            while (length >= mapTileDataLength)
+			while (length >= MapTileData.Length)
             {
                 accessor.Read(position, out MapTileData td);
 
@@ -166,8 +163,8 @@ namespace SS.Core.Map
                     AddError($"Bad tile coordinate ({td.X},{td.Y}) of type {td.Type}.");
                 }
 
-                position += mapTileDataLength;
-                length -= mapTileDataLength;
+                position += MapTileData.Length;
+                length -= MapTileData.Length;
             }
 
             // order the flags, allowing them to be accessed by index (flag id)

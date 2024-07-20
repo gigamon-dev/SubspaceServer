@@ -4,70 +4,48 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2C_Banner
-    {
-        public static readonly int Length;
+    public readonly struct S2C_Banner(short playerId, ref readonly Banner banner)
+	{
+		#region Static Members
 
-        static S2C_Banner()
-        {
-            Length = Marshal.SizeOf<S2C_Banner>();
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_Banner>();
 
-        public readonly byte Type;
+        #endregion
 
-        private readonly short playerId;
-        public short PlayerId
-        {
-            get => LittleEndianConverter.Convert(playerId);
-        }
+        public readonly byte Type = (byte)S2CPacketType.Banner;
+        private readonly short playerId = LittleEndianConverter.Convert(playerId);
+		public readonly Banner Banner = banner;
 
-        public readonly Banner Banner;
+		#region Helper Properties
 
-        public S2C_Banner(short playerId, in Banner banner)
-        {
-            Type = (byte)S2CPacketType.Banner;
-            this.playerId = LittleEndianConverter.Convert(playerId);
-            Banner = banner; // copy
-        }
+		public short PlayerId => LittleEndianConverter.Convert(playerId);
+
+		#endregion
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct C2S_Banner
-    {
-        public static readonly int Length;
+    public readonly struct C2S_Banner(ref readonly Banner banner)
+	{
+		#region Static Members
 
-        static C2S_Banner()
-        {
-            Length = Marshal.SizeOf<C2S_Banner>();
-        }
+		public static readonly int Length = Marshal.SizeOf<C2S_Banner>();
 
-        public readonly byte Type;
-        public readonly Banner Banner;
+        #endregion
 
-        public C2S_Banner(in Banner banner)
-        {
-            Type = (byte)C2SPacketType.Banner;
-            Banner = banner; // copy
-        }
-    }
+        public readonly byte Type = (byte)C2SPacketType.Banner;
+        public readonly Banner Banner = banner;
+	}
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2C_BannerToggle
-    {
-        public static readonly int Length;
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public readonly struct S2C_BannerToggle(byte toggle)
+	{
+		#region Static Members
 
-        static S2C_BannerToggle()
-        {
-            Length = Marshal.SizeOf<S2C_BannerToggle>();
-        }
+		public static readonly int Length = Marshal.SizeOf<S2C_BannerToggle>();
 
-        public readonly byte Type;
-        public readonly byte Toggle;
+        #endregion
 
-        public S2C_BannerToggle(byte toggle)
-        {
-            Type = (byte)S2CPacketType.BannerToggle;
-            Toggle = toggle;
-        }
-    }
+        public readonly byte Type = (byte)S2CPacketType.BannerToggle;
+        public readonly byte Toggle = toggle;
+	}
 }

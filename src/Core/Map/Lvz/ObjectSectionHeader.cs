@@ -7,25 +7,29 @@ namespace SS.Core.Map.Lvz
     /// The header to the object section within a LVZ file.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ObjectSectionHeader
+    public readonly struct ObjectSectionHeader
     {
-        public const uint CLV1 = 0x31564c43;
+		#region Static Members
+
+		public const uint CLV1 = 0x31564c43;
         public const uint CLV2 = 0x32564c43;
 
-        public static int Length;
+        public static readonly int Length = Marshal.SizeOf<ObjectSectionHeader>();
 
-        static ObjectSectionHeader()
-        {
-            Length = Marshal.SizeOf<ObjectSectionHeader>();
-        }
+        #endregion
 
-        private uint type;
-        public uint Type => LittleEndianConverter.Convert(type);
+        private readonly uint type;
+		private readonly uint objectCount;
+		private readonly uint imageCount;
 
-        private uint objectCount;
+		#region Helper Properties
+
+		public uint Type => LittleEndianConverter.Convert(type);
+
         public uint ObjectCount => LittleEndianConverter.Convert(objectCount);
-
-        private uint imageCount;
+        
         public uint ImageCount => LittleEndianConverter.Convert(imageCount);
+
+        #endregion
     }
 }

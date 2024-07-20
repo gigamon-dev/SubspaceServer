@@ -4,10 +4,16 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct S2B_ServerCapabilities
+    public readonly struct S2B_ServerCapabilities
     {
+        #region Static Members
+
+        public static readonly int Length = Marshal.SizeOf<S2B_ServerCapabilities>();
+
+        #endregion
+
         public readonly byte Type;
-        private uint bitField;
+        private readonly uint bitField;
 
         public S2B_ServerCapabilities(bool multiCastChat, bool supportDemographics)
         {
@@ -17,12 +23,12 @@ namespace SS.Packets.Billing
             SupportDemographics = supportDemographics;
         }
 
-        #region Helpers
+        #region Helper Properties
 
         private uint BitField
         {
-            get => LittleEndianConverter.Convert(bitField);
-            set => bitField = LittleEndianConverter.Convert(value);
+            readonly get => LittleEndianConverter.Convert(bitField);
+            init => bitField = LittleEndianConverter.Convert(value);
         }
 
         private const uint MultiCastChatMask = 0b00000001;
@@ -30,8 +36,8 @@ namespace SS.Packets.Billing
 
         public bool MultiCastChat
         {
-            get => (BitField & MultiCastChatMask) != 0;
-            set
+			readonly get => (BitField & MultiCastChatMask) != 0;
+            init
             {
                 if (value)
                     BitField |= SupportDemographicsMask;
@@ -42,8 +48,8 @@ namespace SS.Packets.Billing
 
         public bool SupportDemographics
         {
-            get => (BitField & SupportDemographicsMask) != 0;
-            set
+			readonly get => (BitField & SupportDemographicsMask) != 0;
+            init
             {
                 if (value)
                     BitField |= SupportDemographicsMask;

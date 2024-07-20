@@ -66,7 +66,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void Packet_SettingChange(Player player, Span<byte> data, int length, NetReceiveFlags flags)
+        private void Packet_SettingChange(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))
             {
@@ -80,7 +80,7 @@ namespace SS.Core.Modules
 
             string comment = $"Set by {player.Name} with ?quickfix on {DateTime.UtcNow}";
             bool permanent = true;
-            data = data[1..length];
+            data = data[1..];
             while (!data.IsEmpty)
             {
                 int nullIndex = data.IndexOf((byte)0);
