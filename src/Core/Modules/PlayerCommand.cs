@@ -863,7 +863,8 @@ namespace SS.Core.Modules
                         if (arena.Status == ArenaState.Running
                             && (!arena.IsPrivate || includePrivateArenas || player.Arena == arena))
                         {
-                            AddOrUpdateArenaListItem(arenaList, arena.Name, false, arena.Total, arena == player.Arena);
+                            arena.GetPlayerCounts(out int total, out _);
+                            AddOrUpdateArenaListItem(arenaList, arena.Name, false, total, arena == player.Arena);
                         }
                     }
                 }

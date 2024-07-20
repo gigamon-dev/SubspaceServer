@@ -69,14 +69,11 @@ namespace SS.Core.ComponentInterfaces
         Arena FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing);
 
         /// <summary>
-        /// This counts the number of players in the server and in each arena.
-        /// It fills in its two parameters with population values for the
-        /// whole server, and also fills in the total and playing fields of
-        /// each Arena. You should be holding the arena lock when
-        /// calling this.
+        /// Counts the number of players on the server and in each arena.
+        /// This updates the player counts of every arena which can be accessed using <see cref="Arena.GetPlayerCounts(out int, out int)"/>.
         /// </summary>
-        /// <param name="total"></param>
-        /// <param name="playing"></param>
+        /// <param name="total">The total number of players.</param>
+        /// <param name="playing">The number of players playing (not in spectator mode).</param>
         void GetPopulationSummary(out int total, out int playing);
 
 		/// <summary>

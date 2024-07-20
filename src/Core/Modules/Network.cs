@@ -1939,6 +1939,8 @@ namespace SS.Core.Modules
 								// Get arena stats.
 								foreach (Arena arena in arenaManager.Arenas)
 								{
+									arena.GetPlayerCounts(out int arenaTotal, out int arenaPlaying);
+
 									// Arena summary for ping/info payload
 									if (arena.Status == ArenaState.Running
 										&& !arena.IsPrivate
@@ -1949,19 +1951,19 @@ namespace SS.Core.Modules
 										remainingArenaSummary = remainingArenaSummary[bytesWritten..];
 
 										// Total
-										BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arena.Total > ushort.MaxValue ? ushort.MaxValue : (ushort)arena.Total);
+										BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arenaTotal > ushort.MaxValue ? ushort.MaxValue : (ushort)arenaTotal);
 										remainingArenaSummary = remainingArenaSummary[2..];
 
 										// Playing
-										BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arena.Playing > ushort.MaxValue ? ushort.MaxValue : (ushort)arena.Playing);
+										BinaryPrimitives.WriteUInt16LittleEndian(remainingArenaSummary, arenaPlaying > ushort.MaxValue ? ushort.MaxValue : (ushort)arenaPlaying);
 										remainingArenaSummary = remainingArenaSummary[2..];
 									}
 
 									// Connect As
 									if (_pingData.ConnectAsPopulationStats.TryGetValue(arena.BaseName, out PopulationStats stats))
 									{
-										stats.TempTotal += (uint)arena.Total;
-										stats.TempPlaying += (uint)arena.Playing;
+										stats.TempTotal += (uint)arenaTotal;
+										stats.TempPlaying += (uint)arenaPlaying;
 									}
 								}
 							}
