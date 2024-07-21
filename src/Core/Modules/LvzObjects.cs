@@ -667,9 +667,9 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None,
             Args = null,
             Description = $"""
-            List all ServerControlled object id's. Use ?objinfo <id> for attributes
-            {CommonHelpText}
-            """)]
+                List all ServerControlled object id's. Use ?objinfo <id> for attributes
+                {CommonHelpText}
+                """)]
         private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
