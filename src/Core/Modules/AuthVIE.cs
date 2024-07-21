@@ -75,8 +75,8 @@ namespace SS.Core.Modules
 
             ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)authRequest.LoginPacket.Name).SliceNullTerminated();
             Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
-            Debug.Assert(decodedByteCount == nameBytes.Length);
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+            Debug.Assert(decodedCharCount == nameChars.Length);
 
             string ipStr = _configManager.GetStr(_configManager.Global, "VIEnames", nameChars);
 

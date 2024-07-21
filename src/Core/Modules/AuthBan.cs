@@ -127,8 +127,8 @@ namespace SS.Core.Modules
 
                         ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)authRequest.LoginPacket.Name).SliceNullTerminated();
                         Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                        int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
-                        Debug.Assert(nameBytes.Length == decodedByteCount);
+                        int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
+                        Debug.Assert(name.Length == decodedCharCount);
 
                         _logManager.LogM(LogLevel.Info, nameof(AuthBan), $"Player [{name}] tried to login (try {ban.Count}), banned for {ban.Expire - now} longer.");
                     }

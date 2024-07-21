@@ -809,13 +809,14 @@ namespace SS.Core.Modules
                     data = data[..lineIndex];
                     int charCount = StringUtils.DefaultEncoding.GetCharCount(data);
                     char[] line = ArrayPool<char>.Shared.Rent(charCount);
-                    int decodedByteCount = StringUtils.DefaultEncoding.GetChars(data, line);
-                    Debug.Assert(decodedByteCount == data.Length);
+                    int decodedCharCount = StringUtils.DefaultEncoding.GetChars(data, line);
+                    Debug.Assert(decodedCharCount == charCount);
 
                     // The line shouldn't have any control characters. Replace any that exist.
                     StringUtils.ReplaceControlCharacters(new Span<char>(line, 0, charCount));
 
                     // Queue it up to be processed on the mainloop thread.
+                    // The work item will return the line to the ArrayPool.
                     _mainloop.QueueMainWorkItem(MainloopWorkItem_ProcessLine, new CallHandlersDTO(player, line, charCount));
 
                     // Skip any additional CR or LF (end of line) delimiters.

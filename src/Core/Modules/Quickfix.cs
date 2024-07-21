@@ -2,6 +2,7 @@
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -99,43 +100,53 @@ namespace SS.Core.Modules
 
             bool ProcessOneChange(Player player, ReadOnlySpan<byte> strBytes, ref bool permanent)
             {
-                Span<char> delimitedString = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(strBytes)];
-                if (StringUtils.DefaultEncoding.GetChars(strBytes, delimitedString) != strBytes.Length)
-                    return false;
-
-                ReadOnlySpan<char> token1 = delimitedString.GetToken(':', out delimitedString);
-                if (token1.IsEmpty || delimitedString.IsEmpty)
-                    return false;
-
-                ReadOnlySpan<char> token2 = delimitedString.GetToken(':', out delimitedString);
-                if (token2.IsEmpty || delimitedString.IsEmpty)
-                    return false;
-
-                ReadOnlySpan<char> token3 = delimitedString[1..];
-                if (token3.IsEmpty)
-                    return false;
-
-                if (token1.Equals("__pragma", StringComparison.Ordinal))
+                char[] buffer = null;
+                try
                 {
-                    if (token2.Equals("perm", StringComparison.Ordinal))
-                    {
-                        // send __pragma:perm:0 to make further settings changes temporary
-                        permanent = !token3.Equals("0", StringComparison.Ordinal);
-                    }
-                    else if (token2.Equals("flush", StringComparison.Ordinal)
-                        && token3.Equals("1", StringComparison.Ordinal))
-                    {
-                        // send __pragma:flush:1 to flush settings changes
-                        //TODO: configManager.FlushDirtyValues();
-                    }
-                }
-                else
-                {
-                    _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {token1}:{token2} = {token3}");
-                    _configManager.SetStr(arenaConfigHandle, token1.ToString(), token2.ToString(), token3.ToString(), comment, permanent);
-                }
+                    int charCount = StringUtils.DefaultEncoding.GetCharCount(strBytes);
+                    Span<char> delimitedString = charCount > 1024 ? (buffer = ArrayPool<char>.Shared.Rent(charCount)).AsSpan(0, charCount) : stackalloc char[charCount];
+                    if (StringUtils.DefaultEncoding.GetChars(strBytes, delimitedString) != delimitedString.Length)
+                        return false;
 
-                return true;
+                    ReadOnlySpan<char> token1 = delimitedString.GetToken(':', out delimitedString);
+                    if (token1.IsEmpty || delimitedString.IsEmpty)
+                        return false;
+
+                    ReadOnlySpan<char> token2 = delimitedString.GetToken(':', out delimitedString);
+                    if (token2.IsEmpty || delimitedString.IsEmpty)
+                        return false;
+
+                    ReadOnlySpan<char> token3 = delimitedString[1..];
+                    if (token3.IsEmpty)
+                        return false;
+
+                    if (token1.Equals("__pragma", StringComparison.Ordinal))
+                    {
+                        if (token2.Equals("perm", StringComparison.Ordinal))
+                        {
+                            // send __pragma:perm:0 to make further settings changes temporary
+                            permanent = !token3.Equals("0", StringComparison.Ordinal);
+                        }
+                        else if (token2.Equals("flush", StringComparison.Ordinal)
+                            && token3.Equals("1", StringComparison.Ordinal))
+                        {
+                            // send __pragma:flush:1 to flush settings changes
+                            //TODO: configManager.FlushDirtyValues();
+                        }
+                    }
+                    else
+                    {
+                        _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {token1}:{token2} = {token3}");
+                        _configManager.SetStr(arenaConfigHandle, token1.ToString(), token2.ToString(), token3.ToString(), comment, permanent);
+                    }
+
+                    return true;
+                }
+                finally
+                {
+                    if (buffer is not null)
+                        ArrayPool<char>.Shared.Return(buffer);
+                }
             }
         }
 

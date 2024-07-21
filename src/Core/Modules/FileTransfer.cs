@@ -454,10 +454,7 @@ namespace SS.Core.Modules
             public int GetFileName(Span<char> filename)
             {
                 Span<byte> filenameBytes = StringUtils.SliceNullTerminated(_header.AsSpan(1));
-                int charCount = StringUtils.DefaultEncoding.GetCharCount(filenameBytes);
-                int numBytes = StringUtils.DefaultEncoding.GetChars(filenameBytes, filename);
-                Debug.Assert(numBytes == filenameBytes.Length);
-                return charCount;
+                return StringUtils.DefaultEncoding.GetChars(filenameBytes, filename);
             }
 
             bool IResettable.TryReset()

@@ -1267,8 +1267,8 @@ namespace SS.Replay
 
                 ReadOnlySpan<byte> headerBytes = ((ReadOnlySpan<byte>)fileHeader.Header).SliceNullTerminated();
                 Span<char> headerChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(headerBytes)];
-                int decodedBytes = StringUtils.DefaultEncoding.GetChars(headerBytes, headerChars);
-                Debug.Assert(decodedBytes == headerBytes.Length);
+                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(headerBytes, headerChars);
+                Debug.Assert(decodedCharCount == headerChars.Length);
 
                 if (!MemoryExtensions.Equals(headerChars, "asssgame", StringComparison.Ordinal))
                 {
@@ -1330,16 +1330,16 @@ namespace SS.Replay
 
                             ReadOnlySpan<byte> arenaNameBytes = ((ReadOnlySpan<byte>)fileHeader.ArenaName).SliceNullTerminated();
                             Span<char> arenaNameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(arenaNameBytes)];
-                            decodedBytes = StringUtils.DefaultEncoding.GetChars(arenaNameBytes, arenaNameChars);
-                            Debug.Assert(decodedBytes == arenaNameBytes.Length);
+                            decodedCharCount = StringUtils.DefaultEncoding.GetChars(arenaNameBytes, arenaNameChars);
+                            Debug.Assert(decodedCharCount == arenaNameChars.Length);
 
                             if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
                                 sb.Append($"in arena {arenaNameChars} ");
 
                             ReadOnlySpan<byte> recorderBytes = ((ReadOnlySpan<byte>)fileHeader.Recorder).SliceNullTerminated();
                             Span<char> recorderChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(recorderBytes)];
-                            decodedBytes = StringUtils.DefaultEncoding.GetChars(recorderBytes, recorderChars);
-                            Debug.Assert(decodedBytes == recorderBytes.Length);
+                            decodedCharCount = StringUtils.DefaultEncoding.GetChars(recorderBytes, recorderChars);
+                            Debug.Assert(decodedCharCount == recorderChars.Length);
 
                             if (!MemoryExtensions.IsWhiteSpace(recorderChars))
                                 sb.Append($"by {recorderChars} ");
@@ -1745,8 +1745,8 @@ namespace SS.Replay
                             ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)enter.Name).SliceNullTerminated();
                             Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes) + 1];
                             name[0] = '~';
-                            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name[1..]);
-                            Debug.Assert(decodedByteCount == nameBytes.Length);
+                            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name[1..]);
+                            Debug.Assert(decodedCharCount == name.Length - 1);
 
                             if (ad.PlayerIdMap.ContainsKey(enter.PlayerId))
                             {
@@ -1822,10 +1822,11 @@ namespace SS.Replay
 
                             Span<byte> messageBytes = buffer.Slice(Chat.Length, chat.MessageLength);
                             messageBytes = StringUtils.SliceNullTerminated(messageBytes);
-                            int numChars = StringUtils.DefaultEncoding.GetCharCount(messageBytes);
-                            Span<char> messageChars = stackalloc char[numChars];
+                            if (messageBytes.Length > ChatPacket.MaxMessageBytes - 1)
+                                messageBytes = messageBytes[..(ChatPacket.MaxMessageBytes - 1)];
 
-                            if (StringUtils.DefaultEncoding.GetChars(messageBytes, messageChars) != numChars)
+                            Span<char> messageChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(messageBytes)];
+                            if (StringUtils.DefaultEncoding.GetChars(messageBytes, messageChars) != messageChars.Length)
                                 return;
 
                             if (chat.Type == ChatMessageType.Arena && ad.Settings.PlaybackArenaChat)

@@ -193,8 +193,8 @@ namespace SS.Core.Modules
 
             ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)lp.Name).SliceNullTerminated();
             Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
-            Debug.Assert(nameBytes.Length == decodedByteCount);
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
+            Debug.Assert(name.Length == decodedCharCount);
 
             result.SetName(name);
             result.SetSendName(name);
@@ -549,8 +549,8 @@ namespace SS.Core.Modules
                 // name
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)pkt.Name).SliceNullTerminated();
                 Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
-                Debug.Assert(nameBytes.Length == decodedByteCount);
+                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name);
+                Debug.Assert(name.Length == decodedCharCount);
                 Span<char> cleanName = stackalloc char[name.Length];
                 CleanupPlayerName(name, ref cleanName);
 

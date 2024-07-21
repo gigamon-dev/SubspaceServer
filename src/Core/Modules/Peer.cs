@@ -750,7 +750,8 @@ namespace SS.Core.Modules
                         break;
                     }
 
-                    StringUtils.DefaultEncoding.GetChars(remoteNameBytes, arenaNameBuffer);
+                    int decodedCharCount = StringUtils.DefaultEncoding.GetChars(remoteNameBytes, arenaNameBuffer);
+                    Debug.Assert(charCount == decodedCharCount);
                     Span<char> remoteName = arenaNameBuffer[..charCount];
 
                     // Make sure the remote name is all lower case.
@@ -845,7 +846,8 @@ namespace SS.Core.Modules
                             break;
                         }
 
-                        StringUtils.DefaultEncoding.GetChars(playerNameBytes, playerNameBuffer);
+                        decodedCharCount = StringUtils.DefaultEncoding.GetChars(playerNameBytes, playerNameBuffer);
+                        Debug.Assert(charCount == decodedCharCount);
                         Span<char> playerNameChars = playerNameBuffer[..charCount];
                         peerArena.Players.Add(playerNameChars);
                     }
@@ -870,11 +872,15 @@ namespace SS.Core.Modules
                 if (payload.IsEmpty)
                     return;
 
-                Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, StringUtils.DefaultEncoding.GetCharCount(payload))];
+                if (payload.Length > ChatPacket.MaxMessageBytes - 1) // -1 for the null terminator
+                    payload = payload[..(ChatPacket.MaxMessageBytes - 1)];
+
+                Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(payload)];
                 if (text.IsEmpty)
                     return;
 
-                StringUtils.DefaultEncoding.GetChars(payload, text);
+                if (StringUtils.DefaultEncoding.GetChars(payload, text) != text.Length)
+                    return;
 
                 switch (packetType)
                 {

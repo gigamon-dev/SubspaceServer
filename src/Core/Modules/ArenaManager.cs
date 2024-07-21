@@ -872,7 +872,7 @@ namespace SS.Core.Modules
                 if (!HasCapGo(player))
                     return;
 
-                int charCount = go.GetArenaName(nameBuffer);
+                int charCount = go.ArenaName.Get(nameBuffer);
                 name = nameBuffer[..charCount];
             }
             else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)

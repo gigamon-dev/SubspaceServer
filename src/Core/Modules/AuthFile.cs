@@ -185,8 +185,8 @@ namespace SS.Core.Modules
 
             ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)lp.Name).SliceNullTerminated();
             Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
-            Debug.Assert(decodedByteCount == nameBytes.Length);
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+            Debug.Assert(decodedCharCount == nameChars.Length);
 
             // Extra name cleanup and check even though the Core module should have taken care of it.
             nameChars = nameChars.Trim();
@@ -199,8 +199,8 @@ namespace SS.Core.Modules
 
             ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)lp.Password).SliceNullTerminated();
             Span<char> passwordChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
-            decodedByteCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordChars);
-            Debug.Assert(decodedByteCount == passwordBytes.Length);
+            decodedCharCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordChars);
+            Debug.Assert(decodedCharCount == passwordChars.Length);
 
             Span<char> encodedHash = stackalloc char[_encodedHashLength];
             if (!TryGetPasswordHash(nameChars, passwordChars, ref encodedHash))

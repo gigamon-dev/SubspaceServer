@@ -73,11 +73,6 @@ namespace SS.Packets.Billing
                 value.CopyTo(this);
                 this[value.Length..].Clear();
             }
-
-            public void Clear()
-            {
-                ((Span<byte>)this).Clear();
-            }
         }
 
         [InlineArray(Length)]
@@ -97,11 +92,6 @@ namespace SS.Packets.Billing
 
                 value.CopyTo(this);
                 this[value.Length..].Clear();
-            }
-
-            public void Clear()
-            {
-                ((Span<byte>)this).Clear();
             }
         }
 

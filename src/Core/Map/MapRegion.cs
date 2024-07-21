@@ -300,13 +300,13 @@ namespace SS.Core.Map
                             {
                                 Span<byte> arenaNameBytes = buffer.AsSpan(0, bytesRead).SliceNullTerminated();
                                 Span<char> arenaNameChars = stackalloc char[Encoding.ASCII.GetCharCount(arenaNameBytes)];
-                                int decodedBytes = Encoding.ASCII.GetChars(arenaNameBytes, arenaNameChars);
-                                Debug.Assert(decodedBytes == arenaNameBytes.Length);
-
-                                arenaNameChars = arenaNameChars.Trim();
-                                if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
+                                if (Encoding.ASCII.GetChars(arenaNameBytes, arenaNameChars) == arenaNameChars.Length)
                                 {
-                                    arenaName = arenaNameChars.ToString();
+                                    arenaNameChars = arenaNameChars.Trim();
+                                    if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
+                                    {
+                                        arenaName = arenaNameChars.ToString();
+                                    }
                                 }
                             }
                         }

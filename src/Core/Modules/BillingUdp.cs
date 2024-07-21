@@ -306,13 +306,13 @@ namespace SS.Core.Modules
                 // Biller isn't connected, use fallback.
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)loginPacket.Name).SliceNullTerminated();
                 Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
-                Debug.Assert(nameBytes.Length == decodedByteCount);
+                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
+                Debug.Assert(nameSpan.Length == decodedCharCount);
 
                 ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)loginPacket.Password).SliceNullTerminated();
                 Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
-                decodedByteCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
-                Debug.Assert(passwordBytes.Length == decodedByteCount);
+                decodedCharCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+                Debug.Assert(passwordSpan.Length == decodedCharCount);
 
                 try
                 {
@@ -681,9 +681,6 @@ namespace SS.Core.Modules
 
         private void Callback_ChatMessage(Arena arena, Player player, ChatMessageType type, ChatSound sound, Player toPlayer, short freq, ReadOnlySpan<char> message)
         {
-            if (message.Length < 1)
-                return;
-
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
@@ -1098,8 +1095,8 @@ namespace SS.Core.Modules
 
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
                 Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
-                Debug.Assert(nameBytes.Length == decodedByteCount);
+                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+                Debug.Assert(nameChars.Length == decodedCharCount);
                 result.SetName(nameChars);
                 result.SetSendName(nameChars);
 
@@ -1113,10 +1110,11 @@ namespace SS.Core.Modules
                 result.Authenticated = false;
 
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
-                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes) + 1];
+                int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
+                Span<char> nameChars = stackalloc char[1 + charCount];
                 nameChars[0] = '^';
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
-                Debug.Assert(nameBytes.Length == decodedByteCount);
+                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
+                Debug.Assert(charCount == decodedCharCount);
                 result.SetName(nameChars);
                 result.SetSendName(nameChars);
 
@@ -1242,15 +1240,15 @@ namespace SS.Core.Modules
 
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)packet.Name).SliceNullTerminated();
                 Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
-                Debug.Assert(nameBytes.Length == decodedByteCount);
+                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+                Debug.Assert(nameChars.Length == decodedCharCount);
                 result.SetName(nameChars);
                 result.SetSendName(nameChars);
 
                 ReadOnlySpan<byte> squadBytes = ((ReadOnlySpan<byte>)packet.Squad).SliceNullTerminated();
                 Span<char> squadChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(squadBytes)];
-                decodedByteCount = StringUtils.DefaultEncoding.GetChars(squadBytes, squadChars);
-                Debug.Assert(squadBytes.Length == decodedByteCount);
+                decodedCharCount = StringUtils.DefaultEncoding.GetChars(squadBytes, squadChars);
+                Debug.Assert(squadChars.Length == decodedCharCount);
                 result.SetSquad(squadChars);
 
                 if (packet.Banner.IsSet)
@@ -1322,7 +1320,8 @@ namespace SS.Core.Modules
 
             textBytes = textBytes[..index];
             Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(textBytes)];
-            StringUtils.DefaultEncoding.GetChars(textBytes, text);
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(textBytes, text);
+            Debug.Assert(text.Length == decodedCharCount);
 
             if (text.Length >= 1 && text[0] == ':') // private message
             {
@@ -1474,7 +1473,8 @@ namespace SS.Core.Modules
 
             textBytes = textBytes[..index];
             Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(textBytes)];
-            StringUtils.DefaultEncoding.GetChars(textBytes, text);
+            int decodedByteCount = StringUtils.DefaultEncoding.GetChars(textBytes, text);
+            Debug.Assert(text.Length == decodedByteCount);
 
             index = text.IndexOf('|'); // local and staff chats have a pipe appended
             if (index != -1 && text.Length > 3 && MemoryExtensions.Equals(text[..3], "$l$", StringComparison.Ordinal))
@@ -1525,7 +1525,8 @@ namespace SS.Core.Modules
 
             messageBuffer[charsWritten++] = ':';
             Span<char> textBuffer = messageBuffer[charsWritten..];
-            StringUtils.DefaultEncoding.GetChars(textBytes, textBuffer);
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(textBytes, textBuffer);
+            Debug.Assert(numChars == decodedCharCount);
             messageBuffer = messageBuffer[..(charsWritten + numChars)];
 
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
@@ -1682,11 +1683,6 @@ namespace SS.Core.Modules
             data = data[recipientsLength..];
 
             // Text
-            if (data.Length > ChatPacket.MaxMessageBytes)
-            {
-                data = data[..ChatPacket.MaxMessageBytes];
-            }
-
             int index = data.IndexOf((byte)0);
             if (index == -1)
             {
@@ -1695,15 +1691,14 @@ namespace SS.Core.Modules
             }
 
             data = data[..index];
-            if (data.IsEmpty)
+            if (data.Length > ChatPacket.MaxMessageBytes - 1)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - Text was empty.");
-                return;
+                data = data[..(ChatPacket.MaxMessageBytes - 1)];
             }
 
             Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(data)];
-            int numDecodedBytes = StringUtils.DefaultEncoding.GetChars(data, text);
-            Debug.Assert(data.Length == numDecodedBytes);
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(data, text);
+            Debug.Assert(text.Length == decodedCharCount);
 
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();

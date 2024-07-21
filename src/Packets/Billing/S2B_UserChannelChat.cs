@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct S2B_UserChannelChat(int connectionId)
+    public struct S2B_UserChannelChat(int connectionId)
     {
         #region Static Members
 
@@ -61,7 +61,7 @@ namespace SS.Packets.Billing
 
         public readonly byte Type = (byte)S2BPacketType.UserChannelChat;
         private readonly int connectionId = LittleEndianConverter.Convert(connectionId);
-        public readonly ChannelInlineArray Channel;
+        public ChannelInlineArray Channel;
         // Followed by the text bytes which must be null-terminated.
 
         #region Helper Properties

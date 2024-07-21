@@ -22,7 +22,7 @@ namespace SS.Packets.Game
         private readonly short xRes = LittleEndianConverter.Convert(xRes);
         private readonly short yRes = LittleEndianConverter.Convert(yRes);
         private readonly short arenaType = LittleEndianConverter.Convert(arenaType);
-        private readonly ArenaName arenaName = new(arenaName);
+        public readonly ArenaNameInlineArray ArenaName = new(arenaName);
 
         #region Helpers
 
@@ -32,21 +32,10 @@ namespace SS.Packets.Game
 
         public short ArenaType => LittleEndianConverter.Convert(arenaType);
 
-        /// <summary>
-        /// Converts the arena name from encoded bytes to buffer of characters.
-        /// </summary>
-        /// <param name="destination">The buffer to write characters to.</param>
-        /// <returns>The number of characters written to <paramref name="destination"/>.</returns>
-        public readonly int GetArenaName(Span<char> destination)
-        {
-            ReadOnlySpan<byte> bytes = StringUtils.SliceNullTerminated((ReadOnlySpan<byte>)arenaName);
-            return StringUtils.DefaultEncoding.GetChars(bytes, destination);
-        }
-
         #endregion
 
         [InlineArray(Length)]
-        private struct ArenaName
+        public struct ArenaNameInlineArray
         {
             public const int Length = 16;
 
@@ -54,9 +43,26 @@ namespace SS.Packets.Game
             [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
             private byte _element0;
 
-            public ArenaName(ReadOnlySpan<char> value)
+            public ArenaNameInlineArray(ReadOnlySpan<char> value)
             {
                 StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+            }
+
+            /// <summary>
+            /// Converts the arena name from encoded bytes to buffer of characters.
+            /// </summary>
+            /// <param name="destination">The buffer to write characters to. The buffer provided should be at least 15 characters long.</param>
+            /// <returns>The number of characters written to <paramref name="destination"/>.</returns>
+            public readonly int Get(Span<char> destination)
+            {
+                ReadOnlySpan<byte> bytes = StringUtils.SliceNullTerminated((ReadOnlySpan<byte>)this);
+                if (bytes.Length >= Length)
+                {
+                    // The last byte is supposed to be a null-terminator, but it wasn't. Just ignore it.
+                    bytes = bytes[..(Length - 1)];
+                }
+
+                return StringUtils.DefaultEncoding.GetChars(bytes, destination);
             }
         }
     }

@@ -794,8 +794,8 @@ namespace SS.Core.Modules
 
             // Decode the bytes.
             Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetMaxCharCount(messageBytes.Length)];
-            int charsWritten = StringUtils.DefaultEncoding.GetChars(messageBytes, text);
-            text = text[..charsWritten];
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(messageBytes, text);
+            text = text[..decodedCharCount];
 
             // Remove control characters from the chat message.
             StringUtils.ReplaceControlCharacters(text);
