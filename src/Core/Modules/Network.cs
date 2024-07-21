@@ -363,20 +363,23 @@ namespace SS.Core.Modules
 
                 return true;
 
-                [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int),
-                    "The port that the game protocol listens on. Sections named " +
-                    "Listen1, Listen2, ... are also supported. All Listen " +
-                    "sections must contain a port setting.")]
-                [ConfigHelp("Listen", "BindAddress", ConfigScope.Global, typeof(string),
-                    "The interface address to bind to. This is optional, and if " +
-                    "omitted, the server will listen on all available interfaces.")]
-                [ConfigHelp("Listen", "ConnectAs", ConfigScope.Global, typeof(string),
-                    "This setting allows you to treat clients differently" +
-                    "depending on which port they connect to. It serves as a" +
-                    "virtual server identifier for the rest of the server.The" +
-                    "standard arena placement module will use this as the name of" +
-                    "a default arena to put clients who connect through this port" +
-                    "in.")]
+                [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int), """
+                    The port that the game protocol listens on. Sections named
+                    Listen1, Listen2, ... are also supported. All Listen
+                    sections must contain a port setting.
+                    """)]
+                [ConfigHelp("Listen", "BindAddress", ConfigScope.Global, typeof(string), """
+                    The interface address to bind to. This is optional, and if
+                    omitted, the server will listen on all available interfaces.
+                    """)]
+                [ConfigHelp("Listen", "ConnectAs", ConfigScope.Global, typeof(string), """
+                    This setting allows you to treat clients differently
+                    depending on which port they connect to. It serves as a
+                    virtual server identifier for the rest of the server.The
+                    standard arena placement module will use this as the name of
+                    a default arena to put clients who connect through this port
+                    in.
+                    """)]
                 [ConfigHelp("Listen", "AllowVIE", ConfigScope.Global, typeof(bool),
                     "Whether VIE protocol clients (i.e., Subspace 1.34 and bots) are allowed to connect to this port.")]
                 [ConfigHelp("Listen", "AllowCont", ConfigScope.Global, typeof(bool),

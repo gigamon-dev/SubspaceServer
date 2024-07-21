@@ -411,10 +411,12 @@ namespace SS.Core.Modules.Scoring
             [ConfigHelp("Periodic", "RewardMinimumPlayers", ConfigScope.Arena, typeof(int), DefaultValue = "0",
                 Description = "The minimum players necessary in the arena to give out periodic rewards.")]
             [ConfigHelp("Periodic", "RewardPoints", ConfigScope.Arena, typeof(int), DefaultValue = "0",
-                Description = "Periodic rewards are calculated as follows: If this setting is " +
-                "positive, you get this many points per flag.If it's negative, " +
-                "you get it's absolute value points per flag, times the number of " +
-                "players in the arena.")]
+                Description = """
+                    Periodic rewards are calculated as follows: If this setting is
+                    positive, you get this many points per flag.If it's negative,
+                    you get it's absolute value points per flag, times the number of
+                    players in the arena.
+                    """)]
             [ConfigHelp("Periodic", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "Whether points are divided among players on a team.")]
             [ConfigHelp("Periodic", "SendZeroRewards", ConfigScope.Arena, typeof(bool), DefaultValue = "1",

@@ -1251,8 +1251,10 @@ namespace SS.Core.Modules
 
 
             [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, typeof(string),
-            Description = "This is a list of modules that you want to take effect in this" +
-            "arena. Not all modules need to be attached to arenas to function, but some do.")]
+            Description = """
+                This is a list of modules that you want to take effect in this arena. 
+                Not all modules need to be attached to arenas to function, but some do.
+                """)]
             void DoAttach(Arena arena)
             {
                 string attachMods = _configManager.GetStr(arena.Cfg, "Modules", "AttachModules");

@@ -62,9 +62,10 @@ namespace SS.Core.Modules.Scoring
         #region Module members
 
         [ConfigHelp("Stats", "AdditionalIntervals", ConfigScope.Global, typeof(string),
-            Description =
-            $"By default {nameof(Stats)} module tracks intervals: forever, reset, and game. " +
-            $"This setting allows tracking of additional intervals.")]
+            Description = $"""
+                By default {nameof(Stats)} module tracks intervals: forever, reset, and game.
+                This setting allows tracking of additional intervals.
+                """)]
         public bool Load(
             ComponentBroker broker,
             IChat chat,

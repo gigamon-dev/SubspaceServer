@@ -162,12 +162,14 @@ namespace SS.Core.Modules.Scoring
 
         // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
         [ConfigHelp("Soccer", "CapturePoints", ConfigScope.Arena, typeof(int), DefaultValue = "1",
-            Description = "If positive, these points are distributed to each goal/team. " +
-            "When you make a goal, the points get transferred to your goal/team. " +
-            "In timed games, team with most points in their goal wins. " +
-            "If one team gets all the points, then they win as well. " +
-            "If negative, teams are given 1 point for each goal, " +
-            "first team to reach -CapturePoints points wins the game.")]
+            Description = """
+                If positive, these points are distributed to each goal/team.
+                When you make a goal, the points get transferred to your goal/team.
+                In timed games, team with most points in their goal wins.
+                If one team gets all the points, then they win as well.
+                If negative, teams are given 1 point for each goal,
+                first team to reach -CapturePoints points wins the game.
+                """)]
         [ConfigHelp("Soccer", "Reward", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "Negative numbers equal absolute points given, positive numbers use FlagReward formula.")]
         [ConfigHelp("Soccer", "WinBy", ConfigScope.Arena, typeof(int), DefaultValue = "0",

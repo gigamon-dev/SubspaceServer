@@ -134,19 +134,25 @@ namespace SS.Core.Modules.Scoring
         [ConfigHelp("Kill", "FlagMinimumBounty", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The minimum bounty the killing player must have to get any bonus kill points for flags transferred, carried or owned.")]
         [ConfigHelp("Kill", "PointsPerKilledFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
-            Description = "The number of extra points to give for each flag a killed player " +
-            "was carrying.Note that the flags don't actually have to be " +
-            "transferred to the killer to be counted here.")]
+            Description = """
+                The number of extra points to give for each flag a killed player
+                was carrying.Note that the flags don't actually have to be
+                transferred to the killer to be counted here.
+                """)]
         [ConfigHelp("Kill", "PointsPerCarriedFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
-            Description = "The number of extra points to give for each flag the killing " +
-            "player is carrying.Note that flags that were transfered to " +
-            "the killer as part of the kill are counted here, so adjust " +
-            "PointsPerKilledFlag accordingly.")]
+            Description = """
+                The number of extra points to give for each flag the killing
+                player is carrying.Note that flags that were transfered to
+                the killer as part of the kill are counted here, so adjust
+                PointsPerKilledFlag accordingly.
+                """)]
         [ConfigHelp("Kill", "PointsPerTeamFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
-            Description = "The number of extra points to give for each flag owned by " +
-            "the killing team.Note that flags that were transfered to " +
-            "the killer as part of the kill are counted here, so " +
-            "adjust PointsPerKilledFlag accordingly.")]
+            Description = """
+                The number of extra points to give for each flag owned by
+                the killing team.Note that flags that were transfered to
+                the killer as part of the kill are counted here, so
+                adjust PointsPerKilledFlag accordingly.
+                """)]
         [ConfigHelp("Misc", "TeamKillPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether points are awarded for a team-kill.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)

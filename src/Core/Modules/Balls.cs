@@ -824,23 +824,29 @@ namespace SS.Core.Modules
             Description = "The number of balls in this arena.")]
         // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
         [ConfigHelp("Soccer", "SpawnX[N]", ConfigScope.Arena, typeof(int),
-            Description = "The X coordinate that the ball spawns at (in tiles). " +
-            "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
-            "If there are more balls than spawn settings defined, later balls will repeat the spawns in order. " +
-            "For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second. " +
-            "If only part of a spawn is undefined, that part will default to the first spawn's setting.")]
+            Description = """
+                The X coordinate that the ball spawns at (in tiles).
+                N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
+                If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
+                For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
+                If only part of a spawn is undefined, that part will default to the first spawn's setting.
+                """)]
         [ConfigHelp("Soccer", "SpawnY[N]", ConfigScope.Arena, typeof(int),
-            Description = "The Y coordinate that the ball spawns at (in tiles). " +
-            "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
-            "If there are more balls than spawn settings defined, later balls will repeat the spawns in order. " +
-            "For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second. " +
-            "If only part of a spawn is undefined, that part will default to the first spawn's setting.")]
+            Description = """
+                The Y coordinate that the ball spawns at (in tiles).
+                N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
+                If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
+                For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
+                If only part of a spawn is undefined, that part will default to the first spawn's setting.
+                """)]
         [ConfigHelp("Soccer", "SpawnRadius[N]", ConfigScope.Arena, typeof(int),
-            Description = "How far from the spawn center the ball can spawn (in tiles). " +
-            "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
-            "If there are more balls than spawn settings defined, later balls will repeat the spawns in order. " +
-            "For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second. " +
-            "If only part of a spawn is undefined, that part will default to the first spawn's setting.")]
+            Description = """
+                How far from the spawn center the ball can spawn (in tiles).
+                N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
+                If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
+                For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
+                If only part of a spawn is undefined, that part will default to the first spawn's setting.
+                """)]
         [ConfigHelp("Soccer", "SendTime", ConfigScope.Arena, typeof(int), DefaultValue = "100", Range = "25-500",
             Description = "How often the server sends ball positions (in ticks).")]
         [ConfigHelp("Soccer", "GoalDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0",

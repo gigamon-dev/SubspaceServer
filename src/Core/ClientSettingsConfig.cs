@@ -174,14 +174,16 @@ namespace SS.Core
         [ConfigHelp("Soccer", "AllowBombs", ConfigScope.Arena, typeof(bool), "Whether the ball carrier can fire his bombs")]
         [ConfigHelp("Soccer", "AllowGuns", ConfigScope.Arena, typeof(bool), "Whether the ball carrier can fire his guns")]
         [ConfigHelp("Soccer", "Mode", ConfigScope.Arena, typeof(SoccerMode),
-            Description = "Goal configuration: " +
-            "All = All goals are open for scoring by any freq, " +
-            "LeftRight = Left vs Right: Even freqs (defend left side) vs odd freqs (defend right side), " +
-            "TopBottom = Top vs Bottom: Even freqs (defend top) vs odd freqs (defend bottom), " +
-            "QuadrantsDefend1 = 4 quadrants, 1 quadrant to defend, " +
-            "QuadrantsDefend3 = 4 quadrants, 3 quadrants to defend, " +
-            "SidesDefend1 = 4 sides, 1 side to defend, " +
-            "SidesDefend3 = 4 sides, 3 sides to defend")]
+            Description = """
+                Goal configuration:
+                All = All goals are open for scoring by any freq,
+                LeftRight = Left vs Right: Even freqs (defend left side) vs odd freqs (defend right side),
+                TopBottom = Top vs Bottom: Even freqs (defend top) vs odd freqs (defend bottom),
+                QuadrantsDefend1 = 4 quadrants, 1 quadrant to defend,
+                QuadrantsDefend3 = 4 quadrants, 3 quadrants to defend,
+                SidesDefend1 = 4 sides, 1 side to defend,
+                SidesDefend3 = 4 sides, 3 sides to defend
+                """)]
         //Team:MaxPerTeam
         //Team:MaxPerPrivateTeam
         [ConfigHelp("Mine", "TeamMaxMines", ConfigScope.Arena, typeof(byte), "Maximum number of mines allowed to be placed by an entire team")]

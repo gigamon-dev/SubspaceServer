@@ -137,11 +137,13 @@ namespace SS.Core.Modules
         [ConfigHelp("Brick", "BrickSpan", ConfigScope.Arena, typeof(int), DefaultValue = "10",
             Description = "The maximum length of a dropped brick.")]
         [ConfigHelp("Brick", "BrickMode", ConfigScope.Arena, typeof(BrickMode), DefaultValue = "Lateral",
-            Description = "How bricks behave when they are dropped (" +
-            "VIE = improved VIE style, " +
-            "AHEAD = drop in a line ahead of player, " +
-            "LATERAL = drop laterally across player, " +
-            "CAGE = drop 4 bricks simultaneously to create a cage)")]
+            Description = """
+                How bricks behave when they are dropped:
+                  VIE = improved VIE style
+                  AHEAD = drop in a line ahead of player
+                  LATERAL = drop laterally across player
+                  CAGE = drop 4 bricks simultaneously to create a cage
+                """)]
         [ConfigHelp("Brick", "BrickTime", ConfigScope.Arena, typeof(int), DefaultValue = "6000",
             Description = "How long bricks last (in ticks).")]
         [ConfigHelp("Routing", "WallResendCount", ConfigScope.Global, typeof(int), DefaultValue = "0", Range = "0-3",

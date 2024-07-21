@@ -141,12 +141,12 @@ namespace SS.Core.Modules
 
         [ConfigHelp("General", "PublicArenas", ConfigScope.Global, typeof(string),
             Description = """
-            A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested.
-            Allowed delimiters include: ' ' (space), ',', ':', and ';'.
-            When omitted, the server will use the default public arena names: "0", "1", ...
-            which on the client-side respectively are displayed as "(Public 0)", "(Public 1)", ...
-            This setting works in conjunction with each arena's the General:DesiredPlaying arena.conf setting.
-            """)]
+                A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested.
+                Allowed delimiters include: ' ' (space), ',', ':', and ';'.
+                When omitted, the server will use the default public arena names: "0", "1", ...
+                which on the client-side respectively are displayed as "(Public 0)", "(Public 1)", ...
+                This setting works in conjunction with each arena's the General:DesiredPlaying arena.conf setting.
+                """)]
         private void LoadPubNames()
         {
             string delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");

@@ -50,10 +50,12 @@ namespace SS.Core.Modules.Scoring
         }
 
         [ConfigHelp("Flag", "FlagMode", ConfigScope.Arena, typeof(FlagMode), DefaultValue = "None",
-            Description = "Style of flag game.\n" +
-            "0 = carry all flags to win (e.g. running/jackpot),\n" +
-            "1 = own all dropped flags to win (e.g. warzone),\n" +
-            "-1 = None (no win condition)")]
+            Description = """
+                Style of flag game.
+                0 = carry all flags to win (e.g. running/jackpot),
+                1 = own all dropped flags to win (e.g. warzone),
+                -1 = None (no win condition)
+                """)]
         [ConfigHelp("Flag", "FlagReward", ConfigScope.Arena, typeof(int), DefaultValue = "5000",
             Description = "The basic flag reward is calculated as (players in arena)^2 * FlagReward / 1000.")]
         [ConfigHelp("Flag", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",

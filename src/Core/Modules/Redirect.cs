@@ -51,10 +51,12 @@ namespace SS.Core.Modules
         #region IRedirect
 
         [ConfigHelp("Redirects", "<name>", ConfigScope.Global, typeof(string),
-            Description = "Settings in the Redirects section correspond to arena names. If a " +
-            "player tries to ?go to an arena name listed in this section, they " +
-            "will be redirected to the zone specified as the value of the " +
-            "setting. The format of values is 'ip:port[:arena]'.")]
+            Description = """
+                Settings in the Redirects section correspond to arena names. If a
+                player tries to ?go to an arena name listed in this section, they
+                will be redirected to the zone specified as the value of the
+                setting. The format of values is 'ip:port[:arena]'.
+                """)]
         bool IRedirect.AliasRedirect(ITarget target, ReadOnlySpan<char> destination)
         {
             if (target == null)

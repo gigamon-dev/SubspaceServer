@@ -48,10 +48,10 @@ namespace SS.Core.Modules
 
         [ConfigHelp("Net", "ChatMessageDelay", ConfigScope.Global, typeof(int), DefaultValue = "20",
             Description = """
-            The delay between sending messages to clients using the
-            text-based chat protocol. (To limit bandwidth used by
-            non-playing cilents.)
-            """)]
+                The delay between sending messages to clients using the
+                text-based chat protocol. (To limit bandwidth used by
+                non-playing cilents.)
+                """)]
         public bool Load(
             ComponentBroker broker,
             IConfigManager configManager,
@@ -90,14 +90,14 @@ namespace SS.Core.Modules
 
             [ConfigHelp("Net", "ChatListen", ConfigScope.Global, typeof(string),
                 Description = """
-                The TCP endpoint to listen on for the 'simple chat protocol' (SS.Core.Modules.ChatNetwork module).
-                The setting can be either a port or IP:port.
-                When only a port is specified, it will listen on all network interfaces (any IP address available).
-                When the setting is omitted, the settings in the [Listen] section are used.
-                IPv6 addresses are also supported. When specifying a port with an IPv6 address, enclose the IP in square brackets [].
-                For example, to listen on any available IPv6 address:
-                ChatListen = [::]:5000
-                """)]
+                    The TCP endpoint to listen on for the 'simple chat protocol' (SS.Core.Modules.ChatNetwork module).
+                    The setting can be either a port or IP:port.
+                    When only a port is specified, it will listen on all network interfaces (any IP address available).
+                    When the setting is omitted, the settings in the [Listen] section are used.
+                    IPv6 addresses are also supported. When specifying a port with an IPv6 address, enclose the IP in square brackets [].
+                    For example, to listen on any available IPv6 address:
+                    ChatListen = [::]:5000
+                    """)]
             bool Initialize()
             {
                 string endpointStr = _configManager.GetStr(_configManager.Global, "Net", "ChatListen");

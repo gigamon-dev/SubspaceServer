@@ -449,9 +449,9 @@ namespace SS.Core.Modules
 
         [ConfigHelp("SGCompat", "TemporarySet", ConfigScope.Global, typeof(bool), DefaultValue = "0",
             Description = """
-            "If this setting is 0, the `?set` command will be mapped to `?seta`.
-            "If this setting is 1, the `?set` command will be mapped to `?seta -t`.
-            """)]
+                "If this setting is 0, the `?set` command will be mapped to `?seta`.
+                "If this setting is 1, the `?set` command will be mapped to `?seta -t`.
+                """)]
         private void ReadConfig()
         {
             bool temporarySet = _configManager.GetInt(_configManager.Global, "SGCompat", "TemporarySet", 0) != 0;

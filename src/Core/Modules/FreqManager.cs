@@ -1025,13 +1025,17 @@ namespace SS.Core.Modules
             [ConfigHelp("Team", "PrivFreqStart", ConfigScope.Arena, typeof(int), DefaultValue = "100",
                 Description = "Freqs above this value are considered private freqs.")]
             [ConfigHelp("Team", "BalancedAgainstStart", ConfigScope.Arena, typeof(int), DefaultValue = "1",
-                Description = "Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be" +
-                "checked for balance even when players are not changing to or from" +
-                "these freqs. Set End < Start to disable this check.")]
+                Description = """
+                    Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be
+                    checked for balance even when players are not changing to or from
+                    these freqs. Set End < Start to disable this check.
+                    """)]
             [ConfigHelp("Team", "BalancedAgainstEnd", ConfigScope.Arena, typeof(int), DefaultValue = "0",
-                Description = "Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be" +
-                "checked for balance even when players are not changing to or from" +
-                "these freqs. Set End < Start to disable this check.")]
+                Description = """
+                    Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be
+                    checked for balance even when players are not changing to or from
+                    these freqs. Set End < Start to disable this check.
+                    """)]
             [ConfigHelp("Team", "DisallowTeamSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "If players are allowed to spectate outside of the spectator frequency.")]
             [ConfigHelp("Team", "InitialSpec", ConfigScope.Arena, typeof(bool), DefaultValue = "0",

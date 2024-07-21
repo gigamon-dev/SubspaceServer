@@ -279,12 +279,13 @@ namespace SS.Core.Modules
         #endregion
 
         [ConfigHelp("General", "ScoreGroup", ConfigScope.Arena, typeof(string),
-            Description =
-            "If this is set, it will be used as the score identifier for" +
-            "shared scores for this arena(unshared scores, e.g. per - game" +
-            "scores, always use the arena name as the identifier).Setting" +
-            "this to the same value in several different arenas will cause" +
-            "them to share scores. ")]
+            Description = """
+                If this is set, it will be used as the score identifier for
+                shared scores for this arena(unshared scores, e.g. per - game
+                scores, always use the arena name as the identifier).Setting
+                this to the same value in several different arenas will cause
+                them to share scores.
+                """)]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
