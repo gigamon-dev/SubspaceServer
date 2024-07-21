@@ -30,27 +30,27 @@
         public readonly uint ClientPacketsReceived { get; init; }
         public readonly uint ClientPacketsSent { get; init; }
 
-	    /* time sync */
+        /* time sync */
         public readonly uint ServerTime { get; init; }
         public readonly uint ClientTime { get; init; }
     }
 
     public readonly struct ReliableLagData
     {
-		/// <inheritdoc cref="Modules.Network.ConnData.RelDups" path="/summary"/>
-		public readonly ulong RelDups { get; init; }
+        /// <inheritdoc cref="Modules.Network.ConnData.RelDups" path="/summary"/>
+        public readonly ulong RelDups { get; init; }
 
-		/// <inheritdoc cref="Modules.Network.ConnData.AckDups" path="/summary"/>
-		public readonly ulong AckDups { get; init; }
+        /// <inheritdoc cref="Modules.Network.ConnData.AckDups" path="/summary"/>
+        public readonly ulong AckDups { get; init; }
 
-		/// <inheritdoc cref="Modules.Network.ConnData.ReliablePacketsReceived" path="/summary"/>
-		public readonly uint ReliablePacketsReceived { get; init; }
+        /// <inheritdoc cref="Modules.Network.ConnData.ReliablePacketsReceived" path="/summary"/>
+        public readonly uint ReliablePacketsReceived { get; init; }
 
-		/// <inheritdoc cref="Modules.Network.ConnData.Retries" path="/summary"/>
-		public readonly ulong Retries { get; init; }
+        /// <inheritdoc cref="Modules.Network.ConnData.Retries" path="/summary"/>
+        public readonly ulong Retries { get; init; }
 
         /// <inheritdoc cref="Modules.Network.ConnData.ReliablePacketsSent" path="/summary"/>
-		public readonly uint ReliablePacketsSent { get; init; }
+        public readonly uint ReliablePacketsSent { get; init; }
     }
 
     /// <summary>

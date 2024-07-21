@@ -27,7 +27,7 @@ namespace SS.Core.Modules
         #region Module methods
 
         public bool Load(
-            ComponentBroker broker, 
+            ComponentBroker broker,
             INetworkEncryption networkEncryption,
             IPlayerData playerData)
         {
@@ -344,8 +344,8 @@ namespace SS.Core.Modules
                 }
             }
 
-			public void Reset()
-			{
+            public void Reset()
+            {
                 _rwLock.EnterWriteLock();
 
                 try
@@ -363,8 +363,8 @@ namespace SS.Core.Modules
             bool IResettable.TryReset()
             {
                 Reset();
-				return true;
-			}
+                return true;
+            }
 
             public void Dispose()
             {

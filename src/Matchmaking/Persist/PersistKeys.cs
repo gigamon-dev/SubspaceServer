@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace SS.Matchmaking.Persist
+﻿namespace SS.Matchmaking.Persist
 {
     /// <summary>
     /// Keys for use with the <see cref="Core.ComponentInterfaces.IPersist"/>.

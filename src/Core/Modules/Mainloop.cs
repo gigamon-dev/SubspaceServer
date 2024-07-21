@@ -45,13 +45,13 @@ namespace SS.Core.Modules
 
         static Mainloop()
         {
-			// Use DefaultObjectPoolProvider so that it will create a DisposableObjectPool.
-			DefaultObjectPoolProvider provider = new()
+            // Use DefaultObjectPoolProvider so that it will create a DisposableObjectPool.
+            DefaultObjectPoolProvider provider = new()
             {
                 MaximumRetained = 65536 // a number it should never reach
             };
             s_jobPool = provider.Create<Job>();
-		}
+        }
 
         public Mainloop()
         {
@@ -141,7 +141,7 @@ namespace SS.Core.Modules
             WaitHandle[] waitHandles = new WaitHandle[]
             {
                 _cancellationToken.WaitHandle,
-                _runInMainAutoResetEvent, 
+                _runInMainAutoResetEvent,
                 _mainloopTimerAutoResetEvent
             };
 
@@ -157,7 +157,7 @@ namespace SS.Core.Modules
 
                 lock (_mainloopTimerLock)
                 {
-                    for(LinkedListNode<MainloopTimer> node = _mainloopTimerList.First; node != null; node = node.Next)
+                    for (LinkedListNode<MainloopTimer> node = _mainloopTimerList.First; node != null; node = node.Next)
                     {
                         if (dueNext == null || node.Value.WhenDue < dueNext.Value.WhenDue)
                             dueNext = node;
@@ -295,7 +295,7 @@ namespace SS.Core.Modules
             int maxToProcess = _runInMainQueue.Count;
             int count = 0;
 
-            while (++count <= maxToProcess 
+            while (++count <= maxToProcess
                 && _runInMainQueue.TryTake(out IRunInMainWorkItem workItem))
             {
                 if (workItem != null)
@@ -412,7 +412,7 @@ namespace SS.Core.Modules
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
 
-            lock(_mainloopTimerLock)
+            lock (_mainloopTimerLock)
             {
                 _mainloopTimerList.AddLast(new MainloopTimer(initialDelay, interval, key, callbackInvoker));
             }
@@ -1098,7 +1098,7 @@ namespace SS.Core.Modules
         }
 
         private sealed class Job : IResettable, IDisposable
-		{
+        {
             private SendOrPostCallback _callback;
             private object _state;
             private readonly AutoResetEvent _autoResetEvent = new(false);
@@ -1121,20 +1121,20 @@ namespace SS.Core.Modules
                 _autoResetEvent.WaitOne();
             }
 
-			bool IResettable.TryReset()
-			{
-				Set(null, null);
-				return true;
-			}
+            bool IResettable.TryReset()
+            {
+                Set(null, null);
+                return true;
+            }
 
-			#region IDisposable
+            #region IDisposable
 
-			public void Dispose()
+            public void Dispose()
             {
                 _autoResetEvent.Dispose();
             }
 
-			#endregion
-		}
+            #endregion
+        }
     }
 }

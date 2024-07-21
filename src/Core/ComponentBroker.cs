@@ -395,7 +395,7 @@ namespace SS.Core
             if (interfaceType.IsInterface == false)
                 throw new ArgumentException("Must be an interface.", nameof(interfaceType));
 
-            if(typeof(IComponentInterface).IsAssignableFrom(interfaceType) == false)
+            if (typeof(IComponentInterface).IsAssignableFrom(interfaceType) == false)
                 throw new ArgumentException("Must be an IComponentInterface.", nameof(interfaceType));
 
             if (instance == null)
@@ -524,7 +524,7 @@ namespace SS.Core
                 throw new ArgumentNullException(nameof(handler));
 
             Type key = typeof(TDelegate);
-            
+
             _callbackRwLock.EnterWriteLock();
 
             try

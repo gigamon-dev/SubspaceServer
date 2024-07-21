@@ -150,7 +150,7 @@ namespace SS.Core.Modules
                 Send(player.Name, relativePath);
             }
 
-			void Send(string playerName, string path)
+            void Send(string playerName, string path)
             {
                 // Use a worker thread to queue the file to be sent since we don't want to do file I/O on the mainloop thread.
                 // Purposely passing the player's name instead of the Player object since the Player object's state could change (e.g. player disconnects).
@@ -166,15 +166,15 @@ namespace SS.Core.Modules
 
                         if (!_fileTransfer.SendFile(player, path, Path.GetFileName(path.AsSpan()), false))
                         {
-							_chat.SendMessage(player, $"Error sending '{path}'.");
-						}
-					}
+                            _chat.SendMessage(player, $"Error sending '{path}'.");
+                        }
+                    }
                     finally
                     {
                         _playerData.Unlock();
                     }
                 });
-			}
+            }
         }
 
         [CommandHelp(
@@ -239,7 +239,7 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, "Invalid server path.");
                 return;
             }
-            
+
             string serverRelativePath = Path.GetRelativePath(currentDir, serverFullPath);
 
             if (!_fileTransfer.RequestFile(
@@ -469,7 +469,7 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None, 
+            Targets = CommandTarget.None,
             Args = null,
             Description = """
                 Prints the current server-side working directory.

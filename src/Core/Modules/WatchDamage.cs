@@ -282,7 +282,7 @@ namespace SS.Core.Modules
                     {
                         _chat.SendMessage(player, $"Damage watching of {targetPlayer.Name} turned on.");
                     }
-                    else if(((IWatchDamage)this).TryRemoveWatch(player, targetPlayer))
+                    else if (((IWatchDamage)this).TryRemoveWatch(player, targetPlayer))
                     {
                         _chat.SendMessage(player, $"Damage watching of {targetPlayer.Name} turned off.");
                     }
@@ -306,8 +306,8 @@ namespace SS.Core.Modules
 
             public int WatchCount => PlayersWatching.Count + CallbackWatchCount;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 PlayersWatching.Clear();
                 CallbackWatchCount = 0;
                 return true;

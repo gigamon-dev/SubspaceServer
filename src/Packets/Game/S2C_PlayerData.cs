@@ -69,54 +69,54 @@ namespace SS.Packets.Game
         #region Helper properties
 
         public int KillPoints
-		{
-			get => LittleEndianConverter.Convert(killPoints);
-			set => killPoints = LittleEndianConverter.Convert(value);
-		}
+        {
+            get => LittleEndianConverter.Convert(killPoints);
+            set => killPoints = LittleEndianConverter.Convert(value);
+        }
 
-		public int FlagPoints
-		{
-			get => LittleEndianConverter.Convert(flagPoints);
-			set => flagPoints = LittleEndianConverter.Convert(value);
-		}
+        public int FlagPoints
+        {
+            get => LittleEndianConverter.Convert(flagPoints);
+            set => flagPoints = LittleEndianConverter.Convert(value);
+        }
 
-		public short PlayerId
-		{
-			get => LittleEndianConverter.Convert(playerId);
-			set => playerId = LittleEndianConverter.Convert(value);
-		}
+        public short PlayerId
+        {
+            get => LittleEndianConverter.Convert(playerId);
+            set => playerId = LittleEndianConverter.Convert(value);
+        }
 
-		public short Freq
-		{
-			get => LittleEndianConverter.Convert(freq);
-			set => freq = LittleEndianConverter.Convert(value);
-		}
+        public short Freq
+        {
+            get => LittleEndianConverter.Convert(freq);
+            set => freq = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort Wins
-		{
-			get => LittleEndianConverter.Convert(wins);
-			set => wins = LittleEndianConverter.Convert(value);
-		}
+        public ushort Wins
+        {
+            get => LittleEndianConverter.Convert(wins);
+            set => wins = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort Losses
-		{
-			get => LittleEndianConverter.Convert(losses);
-			set => losses = LittleEndianConverter.Convert(value);
-		}
+        public ushort Losses
+        {
+            get => LittleEndianConverter.Convert(losses);
+            set => losses = LittleEndianConverter.Convert(value);
+        }
 
-		public short AttachedTo
-		{
-			get => LittleEndianConverter.Convert(attachedTo);
-			set => attachedTo = LittleEndianConverter.Convert(value);
-		}
+        public short AttachedTo
+        {
+            get => LittleEndianConverter.Convert(attachedTo);
+            set => attachedTo = LittleEndianConverter.Convert(value);
+        }
 
-		public short FlagsCarried
-		{
-			get => LittleEndianConverter.Convert(flagsCarried);
-			set => flagsCarried = LittleEndianConverter.Convert(value);
-		}
+        public short FlagsCarried
+        {
+            get => LittleEndianConverter.Convert(flagsCarried);
+            set => flagsCarried = LittleEndianConverter.Convert(value);
+        }
 
-		private const byte HasCrownMask = 0b00000001;
+        private const byte HasCrownMask = 0b00000001;
         private const byte SendDamageMask = 0b00000010;
 
         /// <summary>
@@ -134,68 +134,68 @@ namespace SS.Packets.Game
             }
         }
 
-		/// <summary>
-		/// Whether clients should send data for damage done to this player.
-		/// </summary>
-		// FUTURE: not implemented in continuum yet
-		//public bool SendDamage
-		//{
-		//    get
-		//    {
-		//        return (miscBitfield & SendDamageMask) != 0;
-		//    }
-		//    set
-		//    {
-		//        if (value)
-		//            miscBitfield = (byte)(miscBitfield | SendDamageMask);
-		//        else
-		//            miscBitfield = (byte)(miscBitfield & ~SendDamageMask);
-		//    }
-		//}
+        /// <summary>
+        /// Whether clients should send data for damage done to this player.
+        /// </summary>
+        // FUTURE: not implemented in continuum yet
+        //public bool SendDamage
+        //{
+        //    get
+        //    {
+        //        return (miscBitfield & SendDamageMask) != 0;
+        //    }
+        //    set
+        //    {
+        //        if (value)
+        //            miscBitfield = (byte)(miscBitfield | SendDamageMask);
+        //        else
+        //            miscBitfield = (byte)(miscBitfield & ~SendDamageMask);
+        //    }
+        //}
 
-		#endregion
+        #endregion
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(Length)]
-		public struct NameInlineArray
-		{
-			public const int Length = 20;
+        [InlineArray(Length)]
+        public struct NameInlineArray
+        {
+            public const int Length = 20;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public void Set(ReadOnlySpan<char> value)
-			{
+            public void Set(ReadOnlySpan<char> value)
+            {
                 StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
-			}
+            }
 
-			public void Clear()
-			{
-				((Span<byte>)this).Clear();
-			}
-		}
+            public void Clear()
+            {
+                ((Span<byte>)this).Clear();
+            }
+        }
 
-		[InlineArray(Length)]
-		public struct SquadInlineArray
-		{
-			public const int Length = 20;
+        [InlineArray(Length)]
+        public struct SquadInlineArray
+        {
+            public const int Length = 20;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public void Set(ReadOnlySpan<char> value)
-			{
-				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
-			}
+            public void Set(ReadOnlySpan<char> value)
+            {
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+            }
 
-			public void Clear()
-			{
-				((Span<byte>)this).Clear();
-			}
-		}
+            public void Clear()
+            {
+                ((Span<byte>)this).Clear();
+            }
+        }
 
         #endregion
     }

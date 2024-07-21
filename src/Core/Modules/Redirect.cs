@@ -8,10 +8,10 @@ using System.Net;
 
 namespace SS.Core.Modules
 {
-	/// <summary>
-	/// Module that provides the ability to redirect players to another zone server.
-	/// </summary>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module that provides the ability to redirect players to another zone server.
+    /// </summary>
+    [CoreModuleInfo]
     public class Redirect : IModule, IRedirect
     {
         private ICommandManager _commandManager;
@@ -50,7 +50,7 @@ namespace SS.Core.Modules
 
         #region IRedirect
 
-        [ConfigHelp("Redirects", "<name>", ConfigScope.Global, typeof(string), 
+        [ConfigHelp("Redirects", "<name>", ConfigScope.Global, typeof(string),
             Description = "Settings in the Redirects section correspond to arena names. If a " +
             "player tries to ?go to an arena name listed in this section, they " +
             "will be redirected to the zone specified as the value of the " +
@@ -78,7 +78,7 @@ namespace SS.Core.Modules
                 // ip
                 token = remaining.GetToken(':', out remaining);
                 if (token.IsEmpty || token.IsWhiteSpace() || !IPAddress.TryParse(token, out IPAddress address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-                        return false;
+                    return false;
 
                 // port
                 token = remaining.GetToken(':', out remaining);
@@ -102,8 +102,8 @@ namespace SS.Core.Modules
             }
 
             return ((IRedirect)this).RawRedirect(
-                target, 
-                registeredRedirect.IPEndPoint, 
+                target,
+                registeredRedirect.IPEndPoint,
                 registeredRedirect.ArenaName != null ? (short)-3 : (short)-1,
                 registeredRedirect.ArenaName);
         }

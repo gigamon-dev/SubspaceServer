@@ -268,8 +268,8 @@ namespace SS.Core.Modules
         {
             public SeeWhat SeeWhat;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 SeeWhat = SeeWhat.None;
                 return true;
             }

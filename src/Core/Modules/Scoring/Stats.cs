@@ -318,7 +318,7 @@ namespace SS.Core.Modules.Scoring
             }
 
             static void GetStatValueAndCheckDirty<TStat, TScore>(SortedDictionary<int, BaseStatInfo> stats, StatCode<TStat> statCode, ref TScore value, ref bool isDirty)
-                where TStat : struct, INumber<TStat> 
+                where TStat : struct, INumber<TStat>
                 where TScore : struct, INumber<TScore>
             {
                 if (stats.TryGetValue(statCode.StatId, out BaseStatInfo statInfo)
@@ -1319,8 +1319,8 @@ namespace SS.Core.Modules.Scoring
 
             public readonly object Lock = new();
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 lock (Lock)
                 {
                     foreach (var dictionary in CurrentArenaStats.Values)

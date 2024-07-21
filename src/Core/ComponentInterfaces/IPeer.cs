@@ -234,27 +234,27 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>The first match, or <see langword="null"/> if not found.</returns>
         IPeerZone FindZone(IPEndPoint endpoint);
 
-		/// <summary>
-		/// Find a peer zone using the given address and port.
-		/// </summary>
-		/// <remarks>
-		/// Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.
-		/// </remarks>
-		/// <param name="address">IP address and port to match.</param>
-		/// <returns>The first match, or <see langword="null"/> if not found.</returns>
-		IPeerZone FindZone(SocketAddress address);
+        /// <summary>
+        /// Find a peer zone using the given address and port.
+        /// </summary>
+        /// <remarks>
+        /// Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.
+        /// </remarks>
+        /// <param name="address">IP address and port to match.</param>
+        /// <returns>The first match, or <see langword="null"/> if not found.</returns>
+        IPeerZone FindZone(SocketAddress address);
 
-		/// <summary>
-		/// Find a peer arena with the given <paramref name="arenaName"/>. 
-		/// </summary>
-		/// <remarks>
-		/// <para>This may also return arenas that we are not configured to display to players for.</para>
-		/// <para>Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.</para>
-		/// </remarks>
-		/// <param name="arenaName">The name of the arena to match.</param>
-		/// <param name="remote"><see langword="false"/> to match using the arena 'localName'. <see langword="true"/> to match using the arena 'remoteName'.</param>
-		/// <returns>The first match, or <see langword="null"/> if not found.</returns>
-		IPeerArena FindArena(ReadOnlySpan<char> arenaName, bool remote);
+        /// <summary>
+        /// Find a peer arena with the given <paramref name="arenaName"/>. 
+        /// </summary>
+        /// <remarks>
+        /// <para>This may also return arenas that we are not configured to display to players for.</para>
+        /// <para>Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.</para>
+        /// </remarks>
+        /// <param name="arenaName">The name of the arena to match.</param>
+        /// <param name="remote"><see langword="false"/> to match using the arena 'localName'. <see langword="true"/> to match using the arena 'remoteName'.</param>
+        /// <returns>The first match, or <see langword="null"/> if not found.</returns>
+        IPeerArena FindArena(ReadOnlySpan<char> arenaName, bool remote);
 
         /// <summary>
         /// This is a list of all the configured peer zones.

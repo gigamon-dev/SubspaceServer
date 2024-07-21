@@ -45,15 +45,15 @@ namespace SS.Packets.Game
 
     public enum WeaponCodes : byte
     {
-        Null = 0, 
-        Bullet = 1, 
-        BounceBullet = 2, 
-        Bomb = 3, 
-        ProxBomb = 4, 
-        Repel = 5, 
-        Decoy = 6, 
-        Burst = 7, 
-        Thor = 8, 
+        Null = 0,
+        Bullet = 1,
+        BounceBullet = 2,
+        Bomb = 3,
+        ProxBomb = 4,
+        Repel = 5,
+        Decoy = 6,
+        Burst = 7,
+        Thor = 8,
 
         /// <summary>
         /// used in watch damage packet only
@@ -69,19 +69,19 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct WeaponData
     {
-		#region Static Members
+        #region Static Members
 
-		public const int Length = 2;
+        public const int Length = 2;
 
-		#endregion
+        #endregion
 
-		private byte bitfield1;
+        private byte bitfield1;
         private byte bitfield2;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		// bitfield1 masks
-		private const byte TypeMask = 0b00011111;
+        // bitfield1 masks
+        private const byte TypeMask = 0b00011111;
         private const byte LevelMask = 0b01100000;
         private const byte SharpBouncingMask = 0b10000000;
 
@@ -91,62 +91,62 @@ namespace SS.Packets.Game
         private const byte AlternateMask = 0b10000000;
 
         public WeaponCodes Type
-		{
-			readonly get => (WeaponCodes)(bitfield1 & TypeMask);
-			set => bitfield1 = (byte)((bitfield1 & ~TypeMask) | ((byte)value & TypeMask));
-		}
+        {
+            readonly get => (WeaponCodes)(bitfield1 & TypeMask);
+            set => bitfield1 = (byte)((bitfield1 & ~TypeMask) | ((byte)value & TypeMask));
+        }
 
-		public byte Level
-		{
-			readonly get => (byte)((bitfield1 & LevelMask) >> 5);
-			set => bitfield1 = (byte)((bitfield1 & ~LevelMask) | (value << 5 & LevelMask));
-		}
+        public byte Level
+        {
+            readonly get => (byte)((bitfield1 & LevelMask) >> 5);
+            set => bitfield1 = (byte)((bitfield1 & ~LevelMask) | (value << 5 & LevelMask));
+        }
 
-		public bool ShrapBouncing
-		{
-			readonly get => ((bitfield1 & SharpBouncingMask) >> 7) != 0;
-			set => bitfield1 = (byte)((bitfield1 & ~SharpBouncingMask) | ((value ? 1 : 0) << 7 & SharpBouncingMask));
-		}
+        public bool ShrapBouncing
+        {
+            readonly get => ((bitfield1 & SharpBouncingMask) >> 7) != 0;
+            set => bitfield1 = (byte)((bitfield1 & ~SharpBouncingMask) | ((value ? 1 : 0) << 7 & SharpBouncingMask));
+        }
 
-		public byte ShrapLevel
-		{
-			readonly get => (byte)(bitfield2 & ShrapLevelMask);
-			set => bitfield2 = (byte)((bitfield2 & ~ShrapLevelMask) | (value & ShrapLevelMask));
-		}
+        public byte ShrapLevel
+        {
+            readonly get => (byte)(bitfield2 & ShrapLevelMask);
+            set => bitfield2 = (byte)((bitfield2 & ~ShrapLevelMask) | (value & ShrapLevelMask));
+        }
 
-		public byte Shrap
-		{
-			readonly get => (byte)((bitfield2 & ShrapMask) >> 2);
-			set => bitfield2 = (byte)((bitfield2 & ~ShrapMask) | (value << 2 & ShrapMask));
-		}
+        public byte Shrap
+        {
+            readonly get => (byte)((bitfield2 & ShrapMask) >> 2);
+            set => bitfield2 = (byte)((bitfield2 & ~ShrapMask) | (value << 2 & ShrapMask));
+        }
 
-		public bool Alternate
-		{
-			readonly get => (byte)((bitfield2 & AlternateMask) >> 7) != 0;
-			set => bitfield2 = (byte)((bitfield2 & ~AlternateMask) | ((value ? 1 : 0) << 7 & AlternateMask));
-		}
+        public bool Alternate
+        {
+            readonly get => (byte)((bitfield2 & AlternateMask) >> 7) != 0;
+            set => bitfield2 = (byte)((bitfield2 & ~AlternateMask) | ((value ? 1 : 0) << 7 & AlternateMask));
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ExtraPositionData
     {
-		#region Static Members
+        #region Static Members
 
-		public const int Length = 10;
+        public const int Length = 10;
 
-		#endregion
+        #endregion
 
-		private ushort energy;
+        private ushort energy;
         private ushort s2cping;
         private ushort timer;
         private uint bitfield;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		// bitfield masks
-		private const uint ShieldsMask = 0b00000000_00000000_00000000_00000001;
+        // bitfield masks
+        private const uint ShieldsMask = 0b00000000_00000000_00000000_00000001;
         private const uint SuperMask = 0b00000000_00000000_00000000_00000010;
         private const uint BurstsMask = 0b00000000_00000000_00000000_00111100;
         private const uint RepelsMask = 0b00000000_00000000_00000011_11000000;
@@ -158,100 +158,100 @@ namespace SS.Packets.Game
         private const uint PaddingMask = 0b11000000_00000000_00000000_00000000; // unused bits?
 
         public ushort Energy
-		{
-			readonly get => LittleEndianConverter.Convert(energy);
-			set => energy = LittleEndianConverter.Convert(value);
-		}
+        {
+            readonly get => LittleEndianConverter.Convert(energy);
+            set => energy = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort S2CPing
-		{
-			readonly get => LittleEndianConverter.Convert(s2cping);
-			set => s2cping = LittleEndianConverter.Convert(value);
-		}
+        public ushort S2CPing
+        {
+            readonly get => LittleEndianConverter.Convert(s2cping);
+            set => s2cping = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort Timer
-		{
-			readonly get => LittleEndianConverter.Convert(timer);
-			set => timer = LittleEndianConverter.Convert(value);
-		}
+        public ushort Timer
+        {
+            readonly get => LittleEndianConverter.Convert(timer);
+            set => timer = LittleEndianConverter.Convert(value);
+        }
 
-		private uint BitField
-		{
-			readonly get => LittleEndianConverter.Convert(bitfield);
-			set => bitfield = LittleEndianConverter.Convert(value);
-		}
+        private uint BitField
+        {
+            readonly get => LittleEndianConverter.Convert(bitfield);
+            set => bitfield = LittleEndianConverter.Convert(value);
+        }
 
-		public bool Shields
-		{
-			readonly get => (byte)(BitField & ShieldsMask) != 0;
-			set => BitField = (BitField & ~ShieldsMask) | ((value ? 1u : 0u) & ShieldsMask);
-		}
+        public bool Shields
+        {
+            readonly get => (byte)(BitField & ShieldsMask) != 0;
+            set => BitField = (BitField & ~ShieldsMask) | ((value ? 1u : 0u) & ShieldsMask);
+        }
 
-		public bool Super
-		{
-			readonly get => (byte)(BitField & SuperMask) >> 1 != 0;
-			set => BitField = (BitField & ~SuperMask) | ((value ? 1u : 0u) << 1 & SuperMask);
-		}
+        public bool Super
+        {
+            readonly get => (byte)(BitField & SuperMask) >> 1 != 0;
+            set => BitField = (BitField & ~SuperMask) | ((value ? 1u : 0u) << 1 & SuperMask);
+        }
 
-		public byte Bursts
-		{
-			readonly get => (byte)((BitField & BurstsMask) >> 2);
-			set => BitField = (BitField & ~BurstsMask) | ((uint)value << 2 & BurstsMask);
-		}
+        public byte Bursts
+        {
+            readonly get => (byte)((BitField & BurstsMask) >> 2);
+            set => BitField = (BitField & ~BurstsMask) | ((uint)value << 2 & BurstsMask);
+        }
 
-		public byte Repels
-		{
-			readonly get => (byte)((BitField & RepelsMask) >> 6);
-			set => BitField = (BitField & ~RepelsMask) | ((uint)value << 6 & RepelsMask);
-		}
+        public byte Repels
+        {
+            readonly get => (byte)((BitField & RepelsMask) >> 6);
+            set => BitField = (BitField & ~RepelsMask) | ((uint)value << 6 & RepelsMask);
+        }
 
-		public byte Thors
-		{
-			readonly get => (byte)((BitField & ThorsMask) >> 10);
-			set => BitField = (BitField & ~ThorsMask) | ((uint)value << 10 & ThorsMask);
-		}
+        public byte Thors
+        {
+            readonly get => (byte)((BitField & ThorsMask) >> 10);
+            set => BitField = (BitField & ~ThorsMask) | ((uint)value << 10 & ThorsMask);
+        }
 
-		public byte Bricks
-		{
-			readonly get => (byte)((BitField & BricksMask) >> 14);
-			set => BitField = (BitField & ~BricksMask) | ((uint)value << 14 & BricksMask);
-		}
+        public byte Bricks
+        {
+            readonly get => (byte)((BitField & BricksMask) >> 14);
+            set => BitField = (BitField & ~BricksMask) | ((uint)value << 14 & BricksMask);
+        }
 
-		public byte Decoys
-		{
-			readonly get => (byte)((BitField & DecoysMask) >> 18);
-			set => BitField = (BitField & ~DecoysMask) | ((uint)value << 18 & DecoysMask);
-		}
+        public byte Decoys
+        {
+            readonly get => (byte)((BitField & DecoysMask) >> 18);
+            set => BitField = (BitField & ~DecoysMask) | ((uint)value << 18 & DecoysMask);
+        }
 
-		public byte Rockets
-		{
-			readonly get => (byte)((BitField & RocketsMask) >> 22);
-			set => BitField = (BitField & ~RocketsMask) | ((uint)value << 22 & RocketsMask);
-		}
+        public byte Rockets
+        {
+            readonly get => (byte)((BitField & RocketsMask) >> 22);
+            set => BitField = (BitField & ~RocketsMask) | ((uint)value << 22 & RocketsMask);
+        }
 
-		public byte Portals
-		{
-			readonly get => (byte)((BitField & PortalsMask) >> 26);
-			set => BitField = (BitField & ~PortalsMask) | ((uint)value << 26 & PortalsMask);
-		}
+        public byte Portals
+        {
+            readonly get => (byte)((BitField & PortalsMask) >> 26);
+            set => BitField = (BitField & ~PortalsMask) | ((uint)value << 26 & PortalsMask);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_WeaponsPacket()
     {
-		#region Static Members
+        #region Static Members
 
-		/// <summary>
-		/// Length without extra position data.
-		/// </summary>
-		public const int Length = 19 + WeaponData.Length;
+        /// <summary>
+        /// Length without extra position data.
+        /// </summary>
+        public const int Length = 19 + WeaponData.Length;
 
-		/// <summary>
-		/// Length with extra position data.
-		/// </summary>
-		public const int LengthWithExtra = Length + ExtraPositionData.Length;
+        /// <summary>
+        /// Length with extra position data.
+        /// </summary>
+        public const int LengthWithExtra = Length + ExtraPositionData.Length;
 
         #endregion
 
@@ -274,57 +274,57 @@ namespace SS.Packets.Game
         public WeaponData Weapon;
         public ExtraPositionData Extra;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public ushort Time
-		{
-			readonly get => LittleEndianConverter.Convert(time);
-			set => time = LittleEndianConverter.Convert(value);
-		}
+        public ushort Time
+        {
+            readonly get => LittleEndianConverter.Convert(time);
+            set => time = LittleEndianConverter.Convert(value);
+        }
 
-		public short X
-		{
-			readonly get => LittleEndianConverter.Convert(x);
-			set => x = LittleEndianConverter.Convert(value);
-		}
+        public short X
+        {
+            readonly get => LittleEndianConverter.Convert(x);
+            set => x = LittleEndianConverter.Convert(value);
+        }
 
-		public short YSpeed
-		{
-			readonly get => LittleEndianConverter.Convert(ySpeed);
-			set => ySpeed = LittleEndianConverter.Convert(value);
-		}
+        public short YSpeed
+        {
+            readonly get => LittleEndianConverter.Convert(ySpeed);
+            set => ySpeed = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort PlayerId
-		{
-			readonly get => LittleEndianConverter.Convert(playerId);
-			set => playerId = LittleEndianConverter.Convert(value);
-		}
+        public ushort PlayerId
+        {
+            readonly get => LittleEndianConverter.Convert(playerId);
+            set => playerId = LittleEndianConverter.Convert(value);
+        }
 
-		public short XSpeed
-		{
-			readonly get => LittleEndianConverter.Convert(xSpeed);
-			set => xSpeed = LittleEndianConverter.Convert(value);
-		}
+        public short XSpeed
+        {
+            readonly get => LittleEndianConverter.Convert(xSpeed);
+            set => xSpeed = LittleEndianConverter.Convert(value);
+        }
 
-		public PlayerPositionStatus Status
-		{
-			readonly get => (PlayerPositionStatus)LittleEndianConverter.Convert(status);
-			set => status = (byte)value;
-		}
+        public PlayerPositionStatus Status
+        {
+            readonly get => (PlayerPositionStatus)LittleEndianConverter.Convert(status);
+            set => status = (byte)value;
+        }
 
-		public short Y
-		{
-			readonly get => LittleEndianConverter.Convert(y);
-			set => y = LittleEndianConverter.Convert(value);
-		}
+        public short Y
+        {
+            readonly get => LittleEndianConverter.Convert(y);
+            set => y = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort Bounty
-		{
-			readonly get => LittleEndianConverter.Convert(bounty);
-			set => bounty = LittleEndianConverter.Convert(value);
-		}
+        public ushort Bounty
+        {
+            readonly get => LittleEndianConverter.Convert(bounty);
+            set => bounty = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
+        #endregion
 
         public void SetChecksum()
         {
@@ -342,19 +342,19 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_PositionPacket()
     {
-		#region Static Members
+        #region Static Members
 
-		public const int Length = 16;
-		public const int LengthWithExtra = Length + ExtraPositionData.Length;
+        public const int Length = 16;
+        public const int LengthWithExtra = Length + ExtraPositionData.Length;
 
-		#endregion
+        #endregion
 
-		public byte Type = 0x28;
+        public byte Type = 0x28;
 
-		/// <summary>
-		/// Ship rotation [0-39]. Where 0 is 12:00, 10 is 3:00, 20 is 6:00, and 30 is 9:00.
-		/// </summary>
-		public sbyte Rotation;
+        /// <summary>
+        /// Ship rotation [0-39]. Where 0 is 12:00, 10 is 3:00, 20 is 6:00, and 30 is 9:00.
+        /// </summary>
+        public sbyte Rotation;
         private ushort time;
         private short x;
         public byte C2SLatency;
@@ -366,61 +366,61 @@ namespace SS.Packets.Game
         private short xSpeed;
         public ExtraPositionData Extra;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public ushort Time
-		{
-			readonly get => LittleEndianConverter.Convert(time);
-			set => time = LittleEndianConverter.Convert(value);
-		}
+        public ushort Time
+        {
+            readonly get => LittleEndianConverter.Convert(time);
+            set => time = LittleEndianConverter.Convert(value);
+        }
 
-		public short X
-		{
-			readonly get => LittleEndianConverter.Convert(x);
-			set => x = LittleEndianConverter.Convert(value);
-		}
+        public short X
+        {
+            readonly get => LittleEndianConverter.Convert(x);
+            set => x = LittleEndianConverter.Convert(value);
+        }
 
-		public PlayerPositionStatus Status
-		{
-			readonly get => (PlayerPositionStatus)LittleEndianConverter.Convert(status);
-			set => status = (byte)value;
-		}
+        public PlayerPositionStatus Status
+        {
+            readonly get => (PlayerPositionStatus)LittleEndianConverter.Convert(status);
+            set => status = (byte)value;
+        }
 
-		public short YSpeed
-		{
-			readonly get => LittleEndianConverter.Convert(ySpeed);
-			set => ySpeed = LittleEndianConverter.Convert(value);
-		}
+        public short YSpeed
+        {
+            readonly get => LittleEndianConverter.Convert(ySpeed);
+            set => ySpeed = LittleEndianConverter.Convert(value);
+        }
 
-		public short Y
-		{
-			readonly get => LittleEndianConverter.Convert(y);
-			set => y = LittleEndianConverter.Convert(value);
-		}
+        public short Y
+        {
+            readonly get => LittleEndianConverter.Convert(y);
+            set => y = LittleEndianConverter.Convert(value);
+        }
 
-		public short XSpeed
-		{
-			readonly get => LittleEndianConverter.Convert(xSpeed);
-			set => xSpeed = LittleEndianConverter.Convert(value);
-		}
+        public short XSpeed
+        {
+            readonly get => LittleEndianConverter.Convert(xSpeed);
+            set => xSpeed = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct C2S_PositionPacket()
     {
-		#region Static Members
+        #region Static Members
 
-		/// <summary>
-		/// Length without extra position data.
-		/// </summary>
-		public const int Length = 20 + WeaponData.Length;
+        /// <summary>
+        /// Length without extra position data.
+        /// </summary>
+        public const int Length = 20 + WeaponData.Length;
 
-		/// <summary>
-		/// Length with extra position data.
-		/// </summary>
-		public const int LengthWithExtra = Length + ExtraPositionData.Length;
+        /// <summary>
+        /// Length with extra position data.
+        /// </summary>
+        public const int LengthWithExtra = Length + ExtraPositionData.Length;
 
         #endregion
 
@@ -440,59 +440,59 @@ namespace SS.Packets.Game
         private ushort bounty;
         private short energy;
         public WeaponData Weapon;
-		// Optionally followed by ExtraPositionData
+        // Optionally followed by ExtraPositionData
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public ServerTick Time
-		{
-			readonly get => new ServerTick(LittleEndianConverter.Convert(time));
-			set => time = LittleEndianConverter.Convert(value);
-		}
+        public ServerTick Time
+        {
+            readonly get => new ServerTick(LittleEndianConverter.Convert(time));
+            set => time = LittleEndianConverter.Convert(value);
+        }
 
-		public short XSpeed
-		{
-			readonly get => LittleEndianConverter.Convert(xSpeed);
-			set => xSpeed = LittleEndianConverter.Convert(value);
-		}
+        public short XSpeed
+        {
+            readonly get => LittleEndianConverter.Convert(xSpeed);
+            set => xSpeed = LittleEndianConverter.Convert(value);
+        }
 
-		public short Y
-		{
-			readonly get => LittleEndianConverter.Convert(y);
-			set => y = LittleEndianConverter.Convert(value);
-		}
+        public short Y
+        {
+            readonly get => LittleEndianConverter.Convert(y);
+            set => y = LittleEndianConverter.Convert(value);
+        }
 
-		public PlayerPositionStatus Status
-		{
-			readonly get => (PlayerPositionStatus)status;
-			set => status = (byte)value;
-		}
+        public PlayerPositionStatus Status
+        {
+            readonly get => (PlayerPositionStatus)status;
+            set => status = (byte)value;
+        }
 
-		public short X
-		{
-			readonly get => LittleEndianConverter.Convert(x);
-			set => x = LittleEndianConverter.Convert(value);
-		}
+        public short X
+        {
+            readonly get => LittleEndianConverter.Convert(x);
+            set => x = LittleEndianConverter.Convert(value);
+        }
 
-		public short YSpeed
-		{
-			readonly get => LittleEndianConverter.Convert(ySpeed);
-			set => ySpeed = LittleEndianConverter.Convert(value);
-		}
+        public short YSpeed
+        {
+            readonly get => LittleEndianConverter.Convert(ySpeed);
+            set => ySpeed = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort Bounty
-		{
-			readonly get => LittleEndianConverter.Convert(bounty);
-			set => bounty = LittleEndianConverter.Convert(value);
-		}
+        public ushort Bounty
+        {
+            readonly get => LittleEndianConverter.Convert(bounty);
+            set => bounty = LittleEndianConverter.Convert(value);
+        }
 
-		public short Energy
-		{
-			readonly get => LittleEndianConverter.Convert(energy);
-			set => energy = LittleEndianConverter.Convert(value);
-		}
+        public short Energy
+        {
+            readonly get => LittleEndianConverter.Convert(energy);
+            set => energy = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
+        #endregion
 
         public void SetChecksum()
         {

@@ -23,7 +23,7 @@ namespace SS.Packets.Billing
         /// <summary>
         /// The minimum packet length (empty text, only containing a null-terminator) in bytes.
         /// </summary>
-		public static readonly int MinLength;
+        public static readonly int MinLength;
 
         /// <summary>
         /// The maximum packet length (maxed out text) in bytes.
@@ -32,27 +32,27 @@ namespace SS.Packets.Billing
 
         static B2S_UserChannelChat()
         {
-			HeaderLength = Marshal.SizeOf<B2S_UserChannelChat>();
+            HeaderLength = Marshal.SizeOf<B2S_UserChannelChat>();
             MinLength = HeaderLength + 1;
             MaxLength = HeaderLength + MaxTextBytes;
         }
 
-		/// <summary>
-		/// Gets the text bytes of a packet.
-		/// </summary>
-		/// <param name="packetBytes">The full packet to get the text bytes of.</param>
-		/// <returns>A slice of <paramref name="packetBytes"/> containing the text bytes.</returns>
-		public static Span<byte> GetTextBytes(Span<byte> packetBytes)
+        /// <summary>
+        /// Gets the text bytes of a packet.
+        /// </summary>
+        /// <param name="packetBytes">The full packet to get the text bytes of.</param>
+        /// <returns>A slice of <paramref name="packetBytes"/> containing the text bytes.</returns>
+        public static Span<byte> GetTextBytes(Span<byte> packetBytes)
         {
             if (packetBytes.Length <= HeaderLength)
                 return Span<byte>.Empty;
 
-			packetBytes = packetBytes[HeaderLength..];
-			if (packetBytes.Length > MaxTextBytes)
-				packetBytes = packetBytes[..MaxTextBytes];
+            packetBytes = packetBytes[HeaderLength..];
+            if (packetBytes.Length > MaxTextBytes)
+                packetBytes = packetBytes[..MaxTextBytes];
 
             return packetBytes;
-		}
+        }
 
         #endregion
 

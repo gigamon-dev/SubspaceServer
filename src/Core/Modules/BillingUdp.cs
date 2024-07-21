@@ -15,18 +15,18 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
-	/// <summary>
-	/// Module for connecting to a billing server via the UDP billing protocol.
-	/// </summary>
-	/// <remarks>
-	/// <para>
-	/// To use this module the <see cref="EncryptionVIE"/> module must be loaded first.
-	/// </para>
-	/// <para>
-	/// This module is the equivalent of the 'billing_ssc' module in ASSS.
-	/// </para>
-	/// </remarks>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module for connecting to a billing server via the UDP billing protocol.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// To use this module the <see cref="EncryptionVIE"/> module must be loaded first.
+    /// </para>
+    /// <para>
+    /// This module is the equivalent of the 'billing_ssc' module in ASSS.
+    /// </para>
+    /// </remarks>
+    [CoreModuleInfo]
     public class BillingUdp : IModule, IBilling, IAuth, IClientConnectionHandler
     {
         private ComponentBroker _broker;
@@ -231,7 +231,7 @@ namespace SS.Core.Modules
                 return;
 
             Player player = authRequest.Player;
-            if (player is null 
+            if (player is null
                 || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
                 || authRequest.LoginBytes.Length < LoginPacket.VIELength)
             {
@@ -239,7 +239,7 @@ namespace SS.Core.Modules
                 authRequest.Result.SetCustomText("Internal server error.");
                 return;
             }
-            
+
             ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
 
             // default to false
@@ -260,7 +260,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-					ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
+                    ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
                     Span<byte> packetBytes = stackalloc byte[S2B_UserLogin.Length + S2B_UserLogin_ClientExtraData.Length];
                     ref S2B_UserLogin packet = ref MemoryMarshal.AsRef<S2B_UserLogin>(packetBytes);
                     packet = new(
@@ -282,8 +282,8 @@ namespace SS.Core.Modules
                             extraBytes = extraBytes[..S2B_UserLogin_ClientExtraData.Length];
                         }
 
-						ref S2B_UserLogin_ClientExtraData clientExtraData = ref MemoryMarshal.AsRef<S2B_UserLogin_ClientExtraData>(packetBytes[S2B_UserLogin.Length..]);
-						extraBytes.CopyTo(clientExtraData);
+                        ref S2B_UserLogin_ClientExtraData clientExtraData = ref MemoryMarshal.AsRef<S2B_UserLogin_ClientExtraData>(packetBytes[S2B_UserLogin.Length..]);
+                        extraBytes.CopyTo(clientExtraData);
                     }
 
                     _networkClient.SendPacket(_cc, packetBytes[..(S2B_UserLogin.Length + extraBytes.Length)], NetSendFlags.Reliable);
@@ -334,15 +334,15 @@ namespace SS.Core.Modules
 
         #region IClientConnectionHandler
 
-        [ConfigHelp("Billing", "ServerName", ConfigScope.Global, typeof(string), 
+        [ConfigHelp("Billing", "ServerName", ConfigScope.Global, typeof(string),
             Description = "The server name to send to the user database server.")]
         [ConfigHelp("Billing", "Password", ConfigScope.Global, typeof(string),
             Description = "The password to log in to the user database server with.")]
-        [ConfigHelp("Billing", "ServerID", ConfigScope.Global, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Billing", "ServerID", ConfigScope.Global, typeof(int), DefaultValue = "0",
             Description = "ServerID identifying zone to user database server.")]
-        [ConfigHelp("Billing", "GroupID", ConfigScope.Global, typeof(int), DefaultValue = "1", 
+        [ConfigHelp("Billing", "GroupID", ConfigScope.Global, typeof(int), DefaultValue = "1",
             Description = "GroupID identifying zone to user database server.")]
-        [ConfigHelp("Billing", "ScoreID", ConfigScope.Global, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Billing", "ScoreID", ConfigScope.Global, typeof(int), DefaultValue = "0",
             Description = "Server realm.")]
         void IClientConnectionHandler.Connected()
         {
@@ -465,7 +465,7 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Billing", "IP", ConfigScope.Global, typeof(string), 
+        [ConfigHelp("Billing", "IP", ConfigScope.Global, typeof(string),
             Description = "The IP address of the user database server (no DNS hostnames allowed).")]
         [ConfigHelp("Billing", "Port", ConfigScope.Global, typeof(int), DefaultValue = "1850",
             Description = "The port to connect to on the user database server.")]
@@ -700,7 +700,7 @@ namespace SS.Core.Modules
                 // Note that this supports a channel name in place of the usual channel number.
                 // e.g., ;foo;this is a message to the foo channel
                 // Most billers probably don't support this feature yet.
-                if (!channel.IsEmpty 
+                if (!channel.IsEmpty
                     && StringUtils.DefaultEncoding.GetByteCount(channel) < S2B_UserChannelChat.ChannelInlineArray.Length // < to allow for the null-terminator
                     && remaining.Length > 0) // found ;
                 {
@@ -725,8 +725,8 @@ namespace SS.Core.Modules
                 ref S2B_UserPrivateChat packet = ref MemoryMarshal.AsRef<S2B_UserPrivateChat>(packetBytes);
                 packet = new(
                     -1, // for some odd reason ConnectionID >= 0 indicates global broadcast message
-                    1, 
-                    2, 
+                    1,
+                    2,
                     (byte)sound);
 
                 ReadOnlySpan<char> toName = message.GetToken(':', out ReadOnlySpan<char> remaining);
@@ -783,7 +783,7 @@ namespace SS.Core.Modules
         #region Command Handlers
 
         [CommandHelp(
-            Targets = CommandTarget.Player  | CommandTarget.None,
+            Targets = CommandTarget.Player | CommandTarget.None,
             Args = null,
             Description = """
                 Displays the usage information (current hours and minutes logged in, and
@@ -862,34 +862,34 @@ namespace SS.Core.Modules
                 }
                 else if (parameters.Equals("identity", StringComparison.OrdinalIgnoreCase))
                 {
-					if (_identity is not null && _identity.Length > 0)
-					{
-						_chat.SendMessage(player, $"Identity ({_identity.Length} bytes):");
+                    if (_identity is not null && _identity.Length > 0)
+                    {
+                        _chat.SendMessage(player, $"Identity ({_identity.Length} bytes):");
 
-						StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
-						try
-						{
-							foreach (byte b in _identity)
-							{
-								if (sb.Length > 0)
-									sb.Append(' ');
+                        try
+                        {
+                            foreach (byte b in _identity)
+                            {
+                                if (sb.Length > 0)
+                                    sb.Append(' ');
 
-								sb.Append($"{b:X2}");
-							}
+                                sb.Append($"{b:X2}");
+                            }
 
-							_chat.SendWrappedText(player, sb);
-						}
-						finally
-						{
-							_objectPoolManager.StringBuilderPool.Return(sb);
-						}
-					}
+                            _chat.SendWrappedText(player, sb);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
+                    }
                     else
                     {
                         _chat.SendMessage(player, "Identity not found.");
                     }
-				}
+                }
                 else
                 {
                     // Billing status
@@ -953,17 +953,17 @@ namespace SS.Core.Modules
 
             Span<byte> packetBytes = stackalloc byte[S2B_UserCommand.MaxLength];
             ref S2B_UserCommand packet = ref MemoryMarshal.AsRef<S2B_UserCommand>(packetBytes);
-			packet = new(player.Id);
-			int length;
+            packet = new(player.Id);
+            int length;
 
             if (line.StartsWith("chat=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("chat ", StringComparison.OrdinalIgnoreCase))
             {
-				length = RewriteChatCommand(player, line, packetBytes);
+                length = RewriteChatCommand(player, line, packetBytes);
             }
             else
             {
-				// Write the command prepended with the question mark.
-				length = S2B_UserCommand.SetText(packetBytes, line, true);
+                // Write the command prepended with the question mark.
+                length = S2B_UserCommand.SetText(packetBytes, line, true);
             }
 
             lock (_lockObj)
@@ -1113,7 +1113,7 @@ namespace SS.Core.Modules
                 result.Authenticated = false;
 
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
-                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)+1];
+                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes) + 1];
                 nameChars[0] = '^';
                 int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
                 Debug.Assert(nameBytes.Length == decodedByteCount);
@@ -1139,7 +1139,7 @@ namespace SS.Core.Modules
         {
             _chat.SendArenaMessage((Arena)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
 
-			S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true);
+            S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true);
             _networkClient.SendPacket(_cc, ref packet, NetSendFlags.Reliable);
             _state = BillingState.LoggedIn;
             _identity = null;
@@ -1247,7 +1247,7 @@ namespace SS.Core.Modules
                 result.SetName(nameChars);
                 result.SetSendName(nameChars);
 
-				ReadOnlySpan<byte> squadBytes = ((ReadOnlySpan<byte>)packet.Squad).SliceNullTerminated();
+                ReadOnlySpan<byte> squadBytes = ((ReadOnlySpan<byte>)packet.Squad).SliceNullTerminated();
                 Span<char> squadChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(squadBytes)];
                 decodedByteCount = StringUtils.DefaultEncoding.GetChars(squadBytes, squadChars);
                 Debug.Assert(squadBytes.Length == decodedByteCount);
@@ -1334,100 +1334,100 @@ namespace SS.Core.Modules
             }
 
 
-			void ProcessRemotePrivateMessage(ChatSound sound, ReadOnlySpan<char> text)
-			{
-				// Remote private messages should be in the format:
-				// :recipient:(sender)>message
-				// recipient can be a squad, in which case it begins with a #
-				// if sender has )> in their name, then too bad, we take the first )>
+            void ProcessRemotePrivateMessage(ChatSound sound, ReadOnlySpan<char> text)
+            {
+                // Remote private messages should be in the format:
+                // :recipient:(sender)>message
+                // recipient can be a squad, in which case it begins with a #
+                // if sender has )> in their name, then too bad, we take the first )>
 
-				Span<Range> ranges = stackalloc Range[3];
-				int numRanges = text.Split(ranges, ':', StringSplitOptions.None);
-				if (numRanges != 3 || !text[ranges[0]].IsEmpty)
-					return;
+                Span<Range> ranges = stackalloc Range[3];
+                int numRanges = text.Split(ranges, ':', StringSplitOptions.None);
+                if (numRanges != 3 || !text[ranges[0]].IsEmpty)
+                    return;
 
-				ReadOnlySpan<char> recipient = text[ranges[1]];
-				if (recipient.IsEmpty)
-					return;
+                ReadOnlySpan<char> recipient = text[ranges[1]];
+                if (recipient.IsEmpty)
+                    return;
 
-				bool isSquadRecipient = recipient[0] == '#';
-				if (isSquadRecipient)
-				{
-					recipient = recipient[1..];
+                bool isSquadRecipient = recipient[0] == '#';
+                if (isSquadRecipient)
+                {
+                    recipient = recipient[1..];
 
-					if (recipient.IsEmpty || recipient.Length > Constants.MaxSquadNameLength)
-						return;
-				}
-				else if (recipient.Length > Constants.MaxPlayerNameLength)
-				{
-					return;
-				}
+                    if (recipient.IsEmpty || recipient.Length > Constants.MaxSquadNameLength)
+                        return;
+                }
+                else if (recipient.Length > Constants.MaxPlayerNameLength)
+                {
+                    return;
+                }
 
-				ReadOnlySpan<char> remaining = text[ranges[2]];
-				if (remaining.IsEmpty || remaining[0] != '(')
-					return;
+                ReadOnlySpan<char> remaining = text[ranges[2]];
+                if (remaining.IsEmpty || remaining[0] != '(')
+                    return;
 
-				remaining = remaining[1..];
-				numRanges = remaining.Split(ranges[..2], ")>", StringSplitOptions.None);
-				if (numRanges != 2)
-					return;
+                remaining = remaining[1..];
+                numRanges = remaining.Split(ranges[..2], ")>", StringSplitOptions.None);
+                if (numRanges != 2)
+                    return;
 
-				ReadOnlySpan<char> sender = remaining[ranges[0]];
-				if (sender.IsEmpty)
-					return;
+                ReadOnlySpan<char> sender = remaining[ranges[0]];
+                if (sender.IsEmpty)
+                    return;
 
-				ReadOnlySpan<char> message = remaining[ranges[1]];
+                ReadOnlySpan<char> message = remaining[ranges[1]];
 
-				if (isSquadRecipient)
-				{
-					// squad message
-					HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+                if (isSquadRecipient)
+                {
+                    // squad message
+                    HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-					try
-					{
-						_playerData.Lock();
+                    try
+                    {
+                        _playerData.Lock();
 
-						try
-						{
-							foreach (Player player in _playerData.Players)
-								if (MemoryExtensions.Equals(player.Squad, recipient, StringComparison.OrdinalIgnoreCase))
-									set.Add(player);
-						}
-						finally
-						{
-							_playerData.Unlock();
-						}
+                        try
+                        {
+                            foreach (Player player in _playerData.Players)
+                                if (MemoryExtensions.Equals(player.Squad, recipient, StringComparison.OrdinalIgnoreCase))
+                                    set.Add(player);
+                        }
+                        finally
+                        {
+                            _playerData.Unlock();
+                        }
 
-						if (set.Count == 0)
-							return;
+                        if (set.Count == 0)
+                            return;
 
-						_chat.SendRemotePrivMessage(set, sound, recipient, sender, message);
-					}
-					finally
-					{
-						_objectPoolManager.PlayerSetPool.Return(set);
-					}
-				}
-				else
-				{
-					Player player = _playerData.FindPlayer(recipient);
-					if (player is null)
-						return;
+                        _chat.SendRemotePrivMessage(set, sound, recipient, sender, message);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(set);
+                    }
+                }
+                else
+                {
+                    Player player = _playerData.FindPlayer(recipient);
+                    if (player is null)
+                        return;
 
-					HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+                    HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
-					try
-					{
-						set.Add(player);
-						_chat.SendRemotePrivMessage(set, sound, null, sender, message);
-					}
-					finally
-					{
-						_objectPoolManager.PlayerSetPool.Return(set);
-					}
-				}
-			}
-		}
+                    try
+                    {
+                        set.Add(player);
+                        _chat.SendRemotePrivMessage(set, sound, null, sender, message);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(set);
+                    }
+                }
+            }
+        }
 
         private void ProcessUserKickout(Span<byte> data)
         {
@@ -1455,7 +1455,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-			ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(data);
+            ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(data);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
@@ -1499,7 +1499,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-			ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(data);
+            ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(data);
 
             Player player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
@@ -1541,7 +1541,7 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Billing", "HonorScoreResetRequests", ConfigScope.Global, typeof(bool), DefaultValue = "1", 
+        [ConfigHelp("Billing", "HonorScoreResetRequests", ConfigScope.Global, typeof(bool), DefaultValue = "1",
             Description = "Whether to reset scores when the billing server says it is time to.")]
         [ConfigHelp("Billing", "ScoreResetArenaGroups", ConfigScope.Global, typeof(string), DefaultValue = Constants.ArenaGroup_Public,
             Description = "Which arena group(s) to affect when honoring a billing server score reset request.")]
@@ -1666,7 +1666,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-			data = data[B2S_UserMulticastChannelChatHeader.Length..];
+            data = data[B2S_UserMulticastChannelChatHeader.Length..];
 
             // Recipients
             int recipientsLength = header.Count * MulticastChannelChatRecipient.Length;
@@ -1679,12 +1679,12 @@ namespace SS.Core.Modules
             ReadOnlySpan<MulticastChannelChatRecipient> recipients = MemoryMarshal.Cast<byte, MulticastChannelChatRecipient>(data[..recipientsLength]);
             Debug.Assert(header.Count == recipients.Length);
 
-			data = data[recipientsLength..];
+            data = data[recipientsLength..];
 
             // Text
             if (data.Length > ChatPacket.MaxMessageBytes)
             {
-				data = data[..ChatPacket.MaxMessageBytes];
+                data = data[..ChatPacket.MaxMessageBytes];
             }
 
             int index = data.IndexOf((byte)0);
@@ -1694,7 +1694,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-			data = data[..index];
+            data = data[..index];
             if (data.IsEmpty)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - Text was empty.");
@@ -1756,19 +1756,19 @@ namespace SS.Core.Modules
             public PlayerScore? LoadedScore;
             public PlayerScore? SavedScore;
 
-			bool IResettable.TryReset()
-			{
-				BillingUserId = 0;
-				Usage = TimeSpan.Zero;
-				IsKnownToBiller = false;
-				HasDemographics = false;
-				AuthRequest = null;
-				FirstLogin = null;
-				LoadedScore = null;
-				SavedScore = null;
+            bool IResettable.TryReset()
+            {
+                BillingUserId = 0;
+                Usage = TimeSpan.Zero;
+                IsKnownToBiller = false;
+                HasDemographics = false;
+                AuthRequest = null;
+                FirstLogin = null;
+                LoadedScore = null;
+                SavedScore = null;
                 return true;
-			}
-		}
+            }
+        }
 
         private enum BillingState
         {

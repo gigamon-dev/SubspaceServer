@@ -102,7 +102,7 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly object _lockObj = new();
 
-        [ConfigHelp("Security", "SecurityKickoff", ConfigScope.Global, typeof(bool), DefaultValue = "false", 
+        [ConfigHelp("Security", "SecurityKickoff", ConfigScope.Global, typeof(bool), DefaultValue = "false",
             Description = "Whether to kick players off of the server for violating security checks.")]
         private bool _securityKickoff;
 
@@ -144,7 +144,7 @@ namespace SS.Core.Modules
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
 
-            mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(),null);
+            mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(), null);
 
             network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
 
@@ -524,9 +524,9 @@ namespace SS.Core.Modules
 
         private void KickPlayer(Player player)
         {
-			ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(player);
 
-			if (_securityKickoff)
+            if (_securityKickoff)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.BypassSecurity))
                 {
@@ -694,8 +694,8 @@ namespace SS.Core.Modules
             /// </summary>
             public S2C_Security? OverridePacket;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 MapChecksum = 0;
                 OverridePacket = null;
                 return true;

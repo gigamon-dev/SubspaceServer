@@ -57,7 +57,7 @@ namespace SS.Core.Map
             ReadOnlySpan<char> token;
             if ((token = input.GetToken(',', out input)).Length <= 0
                 || !short.TryParse(token, out short x)
-                || x < 0 
+                || x < 0
                 || x > 1023)
             {
                 mapCoordinate = default;

@@ -5,7 +5,7 @@ namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_Kill(Prize green, short killer, short killed, short bounty, short flags)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<S2C_Kill>();
@@ -19,15 +19,15 @@ namespace SS.Packets.Game
         private readonly short bounty = LittleEndianConverter.Convert(bounty);
         private readonly short flags = LittleEndianConverter.Convert(flags);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short Killer => LittleEndianConverter.Convert(killer);
+        public short Killer => LittleEndianConverter.Convert(killer);
 
-		public short Killed => LittleEndianConverter.Convert(killed);
+        public short Killed => LittleEndianConverter.Convert(killed);
 
-		public short Bounty => LittleEndianConverter.Convert(bounty);
+        public short Bounty => LittleEndianConverter.Convert(bounty);
 
-		public short Flags => LittleEndianConverter.Convert(flags);
+        public short Flags => LittleEndianConverter.Convert(flags);
 
         #endregion
     }

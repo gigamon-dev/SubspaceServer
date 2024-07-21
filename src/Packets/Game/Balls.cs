@@ -5,7 +5,7 @@ namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct BallPacket(bool isS2C, byte ballId, short x, short y, short xSpeed, short ySpeed, short playerId, uint time)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<BallPacket>();
@@ -21,41 +21,41 @@ namespace SS.Packets.Game
         private short playerId = LittleEndianConverter.Convert(playerId);
         private uint time = LittleEndianConverter.Convert(time);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short X
-		{
-			readonly get => LittleEndianConverter.Convert(x);
-			set => x = LittleEndianConverter.Convert(value);
-		}
-
-		public short Y
+        public short X
         {
-			readonly get => LittleEndianConverter.Convert(y);
+            readonly get => LittleEndianConverter.Convert(x);
+            set => x = LittleEndianConverter.Convert(value);
+        }
+
+        public short Y
+        {
+            readonly get => LittleEndianConverter.Convert(y);
             set => y = LittleEndianConverter.Convert(value);
         }
 
         public short XSpeed
         {
-			readonly get => LittleEndianConverter.Convert(xSpeed);
+            readonly get => LittleEndianConverter.Convert(xSpeed);
             set => xSpeed = LittleEndianConverter.Convert(value);
         }
 
         public short YSpeed
         {
-			readonly get => LittleEndianConverter.Convert(ySpeed);
+            readonly get => LittleEndianConverter.Convert(ySpeed);
             set => ySpeed = LittleEndianConverter.Convert(value);
         }
 
         public short PlayerId
         {
-			readonly get => LittleEndianConverter.Convert(playerId);
+            readonly get => LittleEndianConverter.Convert(playerId);
             set => playerId = LittleEndianConverter.Convert(value);
         }
 
         public uint Time
         {
-			readonly get => LittleEndianConverter.Convert(time);
+            readonly get => LittleEndianConverter.Convert(time);
             set => time = LittleEndianConverter.Convert(value);
         }
 
@@ -64,7 +64,7 @@ namespace SS.Packets.Game
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct C2S_PickupBall(byte ballId, uint time)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<C2S_PickupBall>();
@@ -75,16 +75,16 @@ namespace SS.Packets.Game
         public readonly byte BallId = ballId;
         private readonly uint time = LittleEndianConverter.Convert(time);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint Time => LittleEndianConverter.Convert(time);
+        public uint Time => LittleEndianConverter.Convert(time);
 
         #endregion
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct C2S_Goal(byte ballId, short x, short y)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<C2S_Goal>();
@@ -96,9 +96,9 @@ namespace SS.Packets.Game
         private readonly short x = LittleEndianConverter.Convert(x);
         private readonly short y = LittleEndianConverter.Convert(y);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short X => LittleEndianConverter.Convert(x);
+        public short X => LittleEndianConverter.Convert(x);
 
         public short Y => LittleEndianConverter.Convert(y);
 
@@ -107,20 +107,20 @@ namespace SS.Packets.Game
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_Goal(short freq, int points)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<S2C_Goal>();
 
-		#endregion
+        #endregion
 
-		public readonly byte Type = (byte)S2CPacketType.SoccerGoal;
+        public readonly byte Type = (byte)S2CPacketType.SoccerGoal;
         private readonly short freq = LittleEndianConverter.Convert(freq);
         private readonly int points = LittleEndianConverter.Convert(points);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short Freq => LittleEndianConverter.Convert(freq);
+        public short Freq => LittleEndianConverter.Convert(freq);
 
         public int Points => LittleEndianConverter.Convert(points);
 

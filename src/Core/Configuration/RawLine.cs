@@ -74,7 +74,7 @@ namespace SS.Core.Configuration
     /// </summary>
     public class RawParseError : RawLine
     {
-        public RawParseError(string raw) : base(raw) 
+        public RawParseError(string raw) : base(raw)
         {
         }
 
@@ -311,7 +311,7 @@ namespace SS.Core.Configuration
 
             if (!TryWriteRaw(writer))
             {
-                if(string.IsNullOrWhiteSpace(Value))
+                if (string.IsNullOrWhiteSpace(Value))
                     writer.WriteLine($"{DirectiveChar}{Directive} {Name}");
                 else
                     writer.WriteLine($"{DirectiveChar}{Directive} {Name} {Value}");

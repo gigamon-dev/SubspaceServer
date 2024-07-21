@@ -9,9 +9,9 @@ namespace SS.Core.Map
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct BitmapHeader
     {
-		#region Static Members
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<BitmapHeader>();
+        public static readonly int Length = Marshal.SizeOf<BitmapHeader>();
 
         #endregion
 
@@ -20,32 +20,32 @@ namespace SS.Core.Map
         private uint reserved;
         private uint offset;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public ushort BM
-		{
-			readonly get => LittleEndianConverter.Convert(bm);
-			set => bm = LittleEndianConverter.Convert(value);
-		}
+        public ushort BM
+        {
+            readonly get => LittleEndianConverter.Convert(bm);
+            set => bm = LittleEndianConverter.Convert(value);
+        }
 
-		public uint FileSize
-		{
-			readonly get => LittleEndianConverter.Convert(fileSize);
-			set => fileSize = LittleEndianConverter.Convert(value);
-		}
+        public uint FileSize
+        {
+            readonly get => LittleEndianConverter.Convert(fileSize);
+            set => fileSize = LittleEndianConverter.Convert(value);
+        }
 
-		public uint Reserved
-		{
-			readonly get => LittleEndianConverter.Convert(reserved);
-			set => reserved = LittleEndianConverter.Convert(value);
-		}
+        public uint Reserved
+        {
+            readonly get => LittleEndianConverter.Convert(reserved);
+            set => reserved = LittleEndianConverter.Convert(value);
+        }
 
-		public uint Offset
-		{
-			readonly get => LittleEndianConverter.Convert(offset);
-			set => offset = LittleEndianConverter.Convert(value);
-		}
+        public uint Offset
+        {
+            readonly get => LittleEndianConverter.Convert(offset);
+            set => offset = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

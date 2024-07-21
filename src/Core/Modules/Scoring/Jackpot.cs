@@ -132,7 +132,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Callbacks
 
-        [ConfigHelp("Kill", "JackpotBountyPercent", ConfigScope.Arena, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Kill", "JackpotBountyPercent", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The percent of a player's bounty added to the jackpot on each kill. Units: 0.1%.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -180,7 +180,7 @@ namespace SS.Core.Modules.Scoring
             Span<byte> data = stackalloc byte[4];
             Span<byte> remaining = data;
             int bytesRead;
-            
+
             while (remaining.Length > 0
                 && (bytesRead = inStream.Read(data)) > 0)
             {

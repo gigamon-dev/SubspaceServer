@@ -5,20 +5,20 @@ namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_PlayerLeaving(short playerId)
-	{
-		#region Static Member
+    {
+        #region Static Member
 
-		public static readonly int Length = Marshal.SizeOf<S2C_PlayerLeaving>();
+        public static readonly int Length = Marshal.SizeOf<S2C_PlayerLeaving>();
 
-		#endregion
+        #endregion
 
-		public readonly byte Type = (byte)S2CPacketType.PlayerLeaving;
+        public readonly byte Type = (byte)S2CPacketType.PlayerLeaving;
         private readonly short playerId = LittleEndianConverter.Convert(playerId);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public readonly short PlayerId => LittleEndianConverter.Convert(playerId);
+        public readonly short PlayerId => LittleEndianConverter.Convert(playerId);
 
-		#endregion
-	}
+        #endregion
+    }
 }

@@ -169,7 +169,7 @@ namespace SS.Core.ComponentInterfaces
         {
         }
 
-        public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope, 
+        public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope,
             GetDataDelegate getDataCallback, SetDataDelegate setDataCallback, ClearDataDelegate clearDataCallback)
             : base(key, interval, scope)
         {
@@ -490,7 +490,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="inStream"></param>
         /// <returns></returns>
         bool SetArenaData(string arenaGroup, PersistInterval interval, int key, MemoryStream inStream);
-        
+
         /// <summary>
         /// Deletes an arena's persistent data.
         /// </summary>

@@ -113,7 +113,7 @@ namespace SS.Matchmaking.Modules
         /// Slots that are available for substitute players.
         /// </summary>
         private readonly LinkedList<PlayerSlot> _availableSubSlots = new(); // TODO: pooling of node objects
-        // TODO: when a match ends, remember to remove from _availableSubSlots
+                                                                            // TODO: when a match ends, remember to remove from _availableSubSlots
 
         /// <summary>
         /// Data per arena base name (shared among arenas with the same base name).
@@ -567,7 +567,7 @@ namespace SS.Matchmaking.Modules
                 // The player needs to be moved to spec, but if done immediately, any of lingering weapons fire from the player will be removed.
                 // We want to wait a short time to allow for a double-kill (though shorter than respawn time), before moving the player to spec and checking for match completion.
 
-                short enterDelayTicks = 
+                short enterDelayTicks =
                     _clientSettings.TryGetSettingOverride(killed, _killEnterDelayClientSettingId, out int enterDelayInt)
                     ? (short)enterDelayInt
                     : _clientSettings.TryGetSettingOverride(arena, _killEnterDelayClientSettingId, out enterDelayInt)
@@ -578,7 +578,7 @@ namespace SS.Matchmaking.Modules
                 TimeSpan koDelay = matchData.Configuration.WinConditionDelay < enterDelay
                     ? matchData.Configuration.WinConditionDelay
                     : enterDelay / 2;
-                
+
                 _mainloopTimer.SetTimer(MainloopTimer_ProcessKnockOut, (int)koDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
             }
             else
@@ -606,16 +606,16 @@ namespace SS.Matchmaking.Modules
                     killerPlayerSlot,
                     isKnockout);
 
-				// The Player objects (and therefore the PlayerData objects too) might be invalid after the await
-				// (e.g. if a player disconnected during the delay).
-				// We could verify a Player object by comparing Player.Name and checking that Player.Status = PlayerState.Playing.
-				// However, we aren't going to use the Player or PlayerData objects after this point.
-				// So, let's just clear our references to them.
-				killed = null;
-				killedPlayerData = null;
-				killer = null;
-				killerPlayerData = null;
-			}
+                // The Player objects (and therefore the PlayerData objects too) might be invalid after the await
+                // (e.g. if a player disconnected during the delay).
+                // We could verify a Player object by comparing Player.Name and checking that Player.Status = PlayerState.Playing.
+                // However, we aren't going to use the Player or PlayerData objects after this point.
+                // So, let's just clear our references to them.
+                killed = null;
+                killedPlayerData = null;
+                killer = null;
+                killerPlayerData = null;
+            }
 
             if (!isNotificationHandled)
             {
@@ -1964,7 +1964,7 @@ namespace SS.Matchmaking.Modules
 
             // local function that randomizes team members
             void RandomizeTeams(
-                IMatchConfiguration matchConfiguration, 
+                IMatchConfiguration matchConfiguration,
                 IReadOnlyList<TeamLineup> teamList)
             {
                 if (matchConfiguration is null || teamList is null)
@@ -2733,7 +2733,7 @@ namespace SS.Matchmaking.Modules
                     ArrayPool<string>.Shared.Return(playerNames, true);
                 }
             }
-            
+
             //
             // Clear match data.
             //
@@ -2788,7 +2788,7 @@ namespace SS.Matchmaking.Modules
 
             // Now that the match has ended, check if there are enough players available to refill it.
             _mainloop.QueueMainWorkItem(MainloopWork_MakeMatch, matchData.Configuration.QueueName);
-            
+
 
             // local helper for a mainloop work item that attempts to make a match
             void MainloopWork_MakeMatch(string queueName)
@@ -3125,19 +3125,19 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public bool IsWatchingExtraPositionData = false;
 
-			bool IResettable.TryReset()
-			{
-				AssignedSlot = null;
+            bool IResettable.TryReset()
+            {
+                AssignedSlot = null;
                 SubSlot = null;
-				NextShip = null;
-				HasEnteredArena = false;
-				IsReturning = false;
+                NextShip = null;
+                HasEnteredArena = false;
+                IsReturning = false;
                 IsInitialConnect = false;
                 IsWatchingExtraPositionData = false;
 
                 return true;
-			}
-		}
+            }
+        }
 
         private readonly struct ShipSettings
         {
@@ -3173,14 +3173,14 @@ namespace SS.Matchmaking.Modules
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> IFreqManagerEnforcerAdvisorToken;
             public ShipSettings[] ShipSettings = new ShipSettings[8];
 
-			bool IResettable.TryReset()
-			{
-				IFreqManagerEnforcerAdvisorToken = null;
+            bool IResettable.TryReset()
+            {
+                IFreqManagerEnforcerAdvisorToken = null;
                 Array.Clear(ShipSettings);
 
-				return true;
-			}
-		}
+                return true;
+            }
+        }
 
         /// <summary>
         /// A type that wraps either a <see cref="Core.Player"/> or <see cref="IPlayerGroup"/>.

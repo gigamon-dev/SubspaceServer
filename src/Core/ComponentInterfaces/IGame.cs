@@ -124,44 +124,44 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>Whether there is an arena-wide lock.</returns>
         bool HasLock(Arena arena);
 
-		/// <summary>
-		/// Processes a C2S position packet for a player, almost as if a regular C2S position packet were received.
-		/// </summary>
-		/// <remarks>
-		/// This method is meant as a way to process position packets for fake players.
-		/// For example, for the replay module to process position packets read from a recording, or for an AI player module to send position packets.
-		/// However, it could also be used to fake packets for regular players too.
-		/// </remarks>
-		/// <param name="player">The player to process the position packet for.</param>
-		/// <param name="pos">The position packet to process.</param>
-		void FakePosition(Player player, ref C2S_PositionPacket pos);
+        /// <summary>
+        /// Processes a C2S position packet for a player, almost as if a regular C2S position packet were received.
+        /// </summary>
+        /// <remarks>
+        /// This method is meant as a way to process position packets for fake players.
+        /// For example, for the replay module to process position packets read from a recording, or for an AI player module to send position packets.
+        /// However, it could also be used to fake packets for regular players too.
+        /// </remarks>
+        /// <param name="player">The player to process the position packet for.</param>
+        /// <param name="pos">The position packet to process.</param>
+        void FakePosition(Player player, ref C2S_PositionPacket pos);
 
-		/// <summary>
-		/// Processes a C2S position packet for a player, almost as if a regular C2S position packet were received.
-		/// </summary>
-		/// <remarks>
-		/// This method is meant as a way to process position packets for fake players.
-		/// For example, for the replay module to process position packets read from a recording, or for an AI player module to send position packets.
-		/// However, it could also be used to fake packets for regular players too.
-		/// </remarks>
-		/// <param name="player">The player to process the position packet for.</param>
-		/// <param name="pos">The position packet to process.</param>
+        /// <summary>
+        /// Processes a C2S position packet for a player, almost as if a regular C2S position packet were received.
+        /// </summary>
+        /// <remarks>
+        /// This method is meant as a way to process position packets for fake players.
+        /// For example, for the replay module to process position packets read from a recording, or for an AI player module to send position packets.
+        /// However, it could also be used to fake packets for regular players too.
+        /// </remarks>
+        /// <param name="player">The player to process the position packet for.</param>
+        /// <param name="pos">The position packet to process.</param>
         /// <param name="extra">The extra position data to process.</param>
-		void FakePosition(Player player, ref C2S_PositionPacket pos, ref ExtraPositionData extra);
+        void FakePosition(Player player, ref C2S_PositionPacket pos, ref ExtraPositionData extra);
 
-		/// <summary>
-		/// Processes a kill event, almost as if a a C2S die packet were received.
-		/// </summary>
-		/// <remarks>
-		/// This method is meant as a way to send packets for fake players.
-		/// For example, for the replay module to process kill events, or for an AI player module to send kill events.
-		/// However, it could also be used to fake packets for regular players too.
-		/// </remarks>
-		/// <param name="killer">The player that made the kill.</param>
-		/// <param name="killed">The player that was killed.</param>
-		/// <param name="pts">The number of points awarded.</param>
-		/// <param name="flags">The number of carryable flags transferred.</param>
-		void FakeKill(Player killer, Player killed, short pts, short flags);
+        /// <summary>
+        /// Processes a kill event, almost as if a a C2S die packet were received.
+        /// </summary>
+        /// <remarks>
+        /// This method is meant as a way to send packets for fake players.
+        /// For example, for the replay module to process kill events, or for an AI player module to send kill events.
+        /// However, it could also be used to fake packets for regular players too.
+        /// </remarks>
+        /// <param name="killer">The player that made the kill.</param>
+        /// <param name="killed">The player that was killed.</param>
+        /// <param name="pts">The number of points awarded.</param>
+        /// <param name="flags">The number of carryable flags transferred.</param>
+        void FakeKill(Player killer, Player killed, short pts, short flags);
 
         /// <summary>
         /// Gets the percentage of weapons that are being ignored for a given player.
@@ -197,12 +197,12 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="value">Whether energy can be seen, and if so, of whom.</param>
         void SetPlayerEnergyViewing(Player player, SeeEnergy value);
 
-		/// <summary>
-		/// Sets whether a player, when spectating, can see other players energy.
-		/// </summary>
-		/// <param name="player">The player to set.</param>
-		/// <param name="value">Whether energy can be seen, and if so, of whom.</param>
-		void SetSpectatorEnergyViewing(Player player, SeeEnergy value);
+        /// <summary>
+        /// Sets whether a player, when spectating, can see other players energy.
+        /// </summary>
+        /// <param name="player">The player to set.</param>
+        /// <param name="value">Whether energy can be seen, and if so, of whom.</param>
+        void SetSpectatorEnergyViewing(Player player, SeeEnergy value);
 
         /// <summary>
         /// Resets whether a player can see other players energy, to the default for the player.

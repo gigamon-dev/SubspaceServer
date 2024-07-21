@@ -94,7 +94,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-				data = data[(nullIndex + 1)..];
+                data = data[(nullIndex + 1)..];
             }
 
             bool ProcessOneChange(Player player, ReadOnlySpan<byte> strBytes, ref bool permanent)
@@ -164,9 +164,9 @@ namespace SS.Core.Modules
             }
 
             bool hasData = false;
-			MemoryStream stream = new(); // TODO: Use Microsoft.IO.RecyclableMemoryStream instead
+            MemoryStream stream = new(); // TODO: Use Microsoft.IO.RecyclableMemoryStream instead
 
-			try
+            try
             {
                 using StreamWriter writer = new(stream, StringUtils.DefaultEncoding, leaveOpen: true);
 
@@ -207,17 +207,17 @@ namespace SS.Core.Modules
             }
 
             if (!hasData)
-			{
-				_chat.SendMessage(player, "No settings matched your query.");
+            {
+                _chat.SendMessage(player, "No settings matched your query.");
                 stream.Dispose();
                 return;
-			}
-			
-			stream.Position = 0;
+            }
 
-			_chat.SendMessage(player, "Sending settings...");
+            stream.Position = 0;
 
-			if (!_fileTransfer.SendFile(player, stream, "server.set"))
+            _chat.SendMessage(player, "Sending settings...");
+
+            if (!_fileTransfer.SendFile(player, stream, "server.set"))
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Quickfix), player, $"Failed to send server.set file.");
             }
@@ -225,9 +225,9 @@ namespace SS.Core.Modules
 
         private void TryWriteSection(
             ReadOnlySpan<char> filter,
-            string helpSection, 
-            ConfigHandle configHandle, 
-            StreamWriter writer, 
+            string helpSection,
+            ConfigHandle configHandle,
+            StreamWriter writer,
             string sectionName)
         {
             bool sectionMatch = filter.IsWhiteSpace() || sectionName.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
@@ -283,7 +283,7 @@ namespace SS.Core.Modules
                         {
                             _objectPoolManager.StringBuilderPool.Return(description);
                         }
-                        
+
                         // Only the first matching attribute.
                         break;
                     }

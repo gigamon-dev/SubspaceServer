@@ -104,7 +104,7 @@ namespace SubspaceServer
         {
             Console.WriteLine(propertyName);
             Console.WriteLine(new string('-', propertyName.Length));
-            
+
             string paths = AppContext.GetData(propertyName) as string;
             if (string.IsNullOrWhiteSpace(paths))
                 return;
@@ -114,7 +114,7 @@ namespace SubspaceServer
             foreach (var token in tokens)
                 Console.WriteLine(token);
         }
-        
+
         private static void MainMenu()
         {
             while (true)
@@ -133,7 +133,7 @@ X. Exit
                 {
                     return;
                 }
-                
+
                 int inputInt;
                 if (!int.TryParse(input, out inputInt))
                     continue;

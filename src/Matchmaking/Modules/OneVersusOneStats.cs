@@ -403,7 +403,7 @@ namespace SS.Matchmaking.Modules
                     else
                         playerStats.BombFireCount++;
                     break;
-                
+
                 default:
                     break;
             }
@@ -457,7 +457,7 @@ namespace SS.Matchmaking.Modules
                 PlayerStats2.Reset();
                 PlayerStats2.PlayerName = player2.Name;
                 PlayerStats2.Player = player2;
-                
+
                 StartTimestamp = DateTime.UtcNow;
                 EndTimestamp = null;
             }
@@ -467,17 +467,17 @@ namespace SS.Matchmaking.Modules
                 EndTimestamp = DateTime.UtcNow;
             }
 
-			bool IResettable.TryReset()
-			{
-				PlayerStats1.Reset();
-				PlayerStats2.Reset();
+            bool IResettable.TryReset()
+            {
+                PlayerStats1.Reset();
+                PlayerStats2.Reset();
 
-				StartTimestamp = null;
-				EndTimestamp = null;
+                StartTimestamp = null;
+                EndTimestamp = null;
 
                 return true;
-			}
-		}
+            }
+        }
 
         private class PlayerStats
         {
@@ -585,15 +585,15 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public bool IsWatchingDamage = false;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 CurrentMatchStats = null;
                 CurrentPlayerStats = null;
                 WinStreak = 0;
                 IsWatchingDamage = false;
                 return true;
-			}
-		}
+            }
+        }
 
         private readonly record struct MatchIdentifier(Arena Arena, int BoxId); // immutable, value equality
 

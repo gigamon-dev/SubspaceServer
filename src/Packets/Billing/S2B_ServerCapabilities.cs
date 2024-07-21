@@ -36,7 +36,7 @@ namespace SS.Packets.Billing
 
         public bool MultiCastChat
         {
-			readonly get => (BitField & MultiCastChatMask) != 0;
+            readonly get => (BitField & MultiCastChatMask) != 0;
             init
             {
                 if (value)
@@ -48,7 +48,7 @@ namespace SS.Packets.Billing
 
         public bool SupportDemographics
         {
-			readonly get => (BitField & SupportDemographicsMask) != 0;
+            readonly get => (BitField & SupportDemographicsMask) != 0;
             init
             {
                 if (value)

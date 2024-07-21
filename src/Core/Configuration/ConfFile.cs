@@ -390,7 +390,7 @@ namespace SS.Core.Configuration
             int i;
 
             try
-            {                
+            {
                 for (i = 0; i < line.Length; i++)
                 {
                     if (line[i] == RawProperty.KeyValueDelimiter)

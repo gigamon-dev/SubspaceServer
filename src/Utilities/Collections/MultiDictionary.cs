@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace SS.Utilities.Collections
 {
-	/// <summary>
-	/// Dictionary that allows multiple values per key.
-	/// Each bucket internally is a LinkedList, hence the similarity many of the methods have to LinkedLists.
-	/// </summary>
-	/// <typeparam name="TKey"></typeparam>
-	/// <typeparam name="TValue"></typeparam>
-	public class MultiDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, ICollection<KeyValuePair<TKey, TValue>>
+    /// <summary>
+    /// Dictionary that allows multiple values per key.
+    /// Each bucket internally is a LinkedList, hence the similarity many of the methods have to LinkedLists.
+    /// </summary>
+    /// <typeparam name="TKey"></typeparam>
+    /// <typeparam name="TValue"></typeparam>
+    public class MultiDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, ICollection<KeyValuePair<TKey, TValue>>
     {
         private Dictionary<TKey, LinkedList<TValue>> _dictionary;
         private int _count = 0;

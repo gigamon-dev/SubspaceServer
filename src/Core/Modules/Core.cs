@@ -67,7 +67,7 @@ namespace SS.Core.Modules
         {
             _authDone = AuthDone;
             _playerSyncDone = PlayerSyncDone;
-		}
+        }
 
         #region Module Members
 
@@ -111,8 +111,8 @@ namespace SS.Core.Modules
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
 
             _network.AddPacket(C2SPacketType.Login, Packet_Login);
-            _network.AddPacket(C2SPacketType.ContLogin, Packet_Login);          
-            
+            _network.AddPacket(C2SPacketType.ContLogin, Packet_Login);
+
             _chatNetwork?.AddHandler("LOGIN", ChatHandler_Login);
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerStates, 100, 100, null);
@@ -506,7 +506,7 @@ namespace SS.Core.Modules
             else if ((p.Type == ClientType.VIE && data.Length < LoginPacket.LengthVIE) 
                 || (p.Type == ClientType.Continuum && data.Length < LoginPacket.LengthContinuum))
 #else
-			else if ((player.Type == ClientType.VIE && data.Length != LoginPacket.VIELength)
+            else if ((player.Type == ClientType.VIE && data.Length != LoginPacket.VIELength)
                 || (player.Type == ClientType.Continuum && data.Length != LoginPacket.ContinuumLength))
 #endif
             {
@@ -543,7 +543,7 @@ namespace SS.Core.Modules
 
                 playerData.AuthRequest = _authRequestPool.Get();
                 playerData.AuthRequest.SetRequestInfo(player, data, _authDone);
-                
+
                 pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
                 // name
@@ -992,7 +992,7 @@ namespace SS.Core.Modules
                 {
                     if (!player.TryGetExtraData(_pdkey, out PlayerData pdata))
                         return;
-                    
+
                     Player replacedBy = pdata.ReplacedBy;
                     if (replacedBy != null)
                     {
@@ -1059,18 +1059,18 @@ namespace SS.Core.Modules
 
             try
             {
-				using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
-				Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+                Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
 
-				try
-				{
-					crc32.Append(fs);
-					return crc32.GetCurrentHashAsUInt32();
-				}
-				finally
-				{
-					_objectPoolManager.Crc32Pool.Return(crc32);
-				}
+                try
+                {
+                    crc32.Append(fs);
+                    return crc32.GetCurrentHashAsUInt32();
+                }
+                finally
+                {
+                    _objectPoolManager.Crc32Pool.Return(crc32);
+                }
             }
             catch (Exception ex)
             {
@@ -1109,16 +1109,16 @@ namespace SS.Core.Modules
             public bool HasDoneArenaSync; // arena sync
             public bool HasDoneGlobalCallbacks; // global callbacks
 
-			bool IResettable.TryReset()
-			{
-				AuthRequest = null;
-				ReplacedBy = null;
-				HasDoneGlobalSync = false;
-				HasDoneArenaSync = false;
-				HasDoneGlobalCallbacks = false;
-				return true;
-			}
-		}
+            bool IResettable.TryReset()
+            {
+                AuthRequest = null;
+                ReplacedBy = null;
+                HasDoneGlobalSync = false;
+                HasDoneArenaSync = false;
+                HasDoneGlobalCallbacks = false;
+                return true;
+            }
+        }
 
         private class AuthRequest : IAuthRequest, IResettable
         {
@@ -1187,12 +1187,12 @@ namespace SS.Core.Modules
                 _result.Reset();
             }
 
-			bool IResettable.TryReset()
-			{
+            bool IResettable.TryReset()
+            {
                 Reset();
                 return true;
-			}
-		}
+            }
+        }
 
         private class AuthResult : IAuthResult
         {

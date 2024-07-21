@@ -168,7 +168,7 @@ namespace SS.Core.Modules.Scoring
             "If one team gets all the points, then they win as well. " +
             "If negative, teams are given 1 point for each goal, " +
             "first team to reach -CapturePoints points wins the game.")]
-        [ConfigHelp("Soccer", "Reward", ConfigScope.Arena, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Soccer", "Reward", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "Negative numbers equal absolute points given, positive numbers use FlagReward formula.")]
         [ConfigHelp("Soccer", "WinBy", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "Have to beat other team by this many goals.")]
@@ -208,7 +208,7 @@ namespace SS.Core.Modules.Scoring
                 return; // custom soccer games do their own goal handling (e.g. scramble)
 
             //if (!_balls.TryGetBallData(arena, ballId, out BallData ballData))
-                //return;
+            //return;
 
             short scoringFreq = player.Freq; // TODO: investigate how ASSS has a value other than -1 when it accesses ballData.Freq;
             if (scoringFreq < 0)

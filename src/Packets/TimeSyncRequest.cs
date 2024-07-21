@@ -5,10 +5,10 @@ namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct TimeSyncRequest(uint time, uint packetsSent, uint packetsReceived)
-	{
-		#region Static members
+    {
+        #region Static members
 
-		public static readonly int Length = Marshal.SizeOf<TimeSyncRequest>();
+        public static readonly int Length = Marshal.SizeOf<TimeSyncRequest>();
 
         #endregion
 
@@ -18,9 +18,9 @@ namespace SS.Packets
         private readonly uint packetsSent = LittleEndianConverter.Convert(packetsSent);
         private readonly uint packetsReceived = LittleEndianConverter.Convert(packetsReceived);
 
-		#region Helper properties
+        #region Helper properties
 
-		public uint Time => LittleEndianConverter.Convert(time);
+        public uint Time => LittleEndianConverter.Convert(time);
 
         public uint PacketsSent => LittleEndianConverter.Convert(packetsSent);
 

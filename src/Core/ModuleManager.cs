@@ -277,16 +277,16 @@ namespace SS.Core
 
         public bool AddModule(string moduleTypeName, string path) => AddAndLoadModule(moduleTypeName, path, false);
 
-        
+
         public bool AddModule(string moduleTypeName) => AddAndLoadModule(moduleTypeName, null, false);
 
-        
+
         public bool AddModule(IModule module) => AddAndLoadModule(module, false);
 
-        
+
         public bool AddModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, false);
 
-        
+
         public bool AddModule<TModule>() where TModule : class, IModule => AddAndLoadModule<TModule>(false);
 
         #endregion
@@ -559,7 +559,7 @@ namespace SS.Core
                     WriteLogM(LogLevel.Error, $"Can't unload module [{type.FullName}] because it is not loaded.");
                     return false;
                 }
-                
+
                 return UnloadModule(node);
             }
         }
@@ -598,7 +598,7 @@ namespace SS.Core
                 if (_pluginModuleTypeSet.Any((t) => t.Assembly == assembly) == false)
                 {
                     WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}]");
-                    
+
                     _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
 
                     PluginAssemblyUnloadingCallback.Fire(this, assembly);
@@ -757,11 +757,11 @@ namespace SS.Core
 
                 Assembly assembly = type.Assembly;
                 return new ModuleInfo(
-                    type.FullName, 
+                    type.FullName,
                     type.AssemblyQualifiedName,
-                    assembly.Location, 
+                    assembly.Location,
                     _pluginModuleTypeSet.Contains(type),
-                    moduleInfo.Description, 
+                    moduleInfo.Description,
                     moduleInfo.AttachedArenas);
             }
         }

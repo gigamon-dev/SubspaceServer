@@ -208,7 +208,7 @@ namespace SS.Core.Configuration
             }
 
             _settings.Remove(trieKey, out _);
-            _settings.TryAdd(trieKey, settingInfo);    
+            _settings.TryAdd(trieKey, settingInfo);
         }
 
         private bool Settings_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out SettingInfo settingInfo)

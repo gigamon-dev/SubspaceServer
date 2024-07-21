@@ -5,7 +5,7 @@ namespace SS.Replay.FileFormat.Events
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct FreqChange(ServerTick ticks, short playerId, short newFreq)
-	{
+    {
         #region Static members
 
         public static readonly int Length = Marshal.SizeOf<FreqChange>();
@@ -16,20 +16,20 @@ namespace SS.Replay.FileFormat.Events
         private short playerId = LittleEndianConverter.Convert(playerId);
         private short newFreq = LittleEndianConverter.Convert(newFreq);
 
-		#region Helper properties
+        #region Helper properties
 
-		public short PlayerId
-		{
-			readonly get => LittleEndianConverter.Convert(playerId);
-			set => playerId = LittleEndianConverter.Convert(value);
-		}
+        public short PlayerId
+        {
+            readonly get => LittleEndianConverter.Convert(playerId);
+            set => playerId = LittleEndianConverter.Convert(value);
+        }
 
-		public short NewFreq
-		{
-			readonly get => LittleEndianConverter.Convert(newFreq);
-			set => newFreq = LittleEndianConverter.Convert(value);
-		}
+        public short NewFreq
+        {
+            readonly get => LittleEndianConverter.Convert(newFreq);
+            set => newFreq = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

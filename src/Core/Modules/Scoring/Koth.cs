@@ -337,7 +337,7 @@ namespace SS.Core.Modules.Scoring
 
             if (ad.GameState != GameState.Starting)
                 return;
-            
+
             HashSet<Player> crownSet = _objectPoolManager.PlayerSetPool.Get();
             HashSet<Player> noCrownSet = _objectPoolManager.PlayerSetPool.Get();
 
@@ -765,8 +765,8 @@ namespace SS.Core.Modules.Scoring
             public int Deaths;
             public int CrownKills;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 ExpireTimestamp = null;
                 Deaths = 0;
                 CrownKills = 0;

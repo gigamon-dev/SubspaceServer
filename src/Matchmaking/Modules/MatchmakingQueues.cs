@@ -310,7 +310,7 @@ namespace SS.Matchmaking.Modules
             Player player = _playerData.FindPlayer(playerName);
             if (player is not null)
             {
-               UnsetPlaying(player, allowAutoRequeue, false);
+                UnsetPlaying(player, allowAutoRequeue, false);
             }
             else
             {
@@ -361,7 +361,7 @@ namespace SS.Matchmaking.Modules
             {
                 // The player is not logged on.
                 // However, we still want to remember that the player should have a play hold if they reconnect.
-                if (!_pendingPlayerHoldDurations.TryGetValue(playerName, out TimeSpan duration) 
+                if (!_pendingPlayerHoldDurations.TryGetValue(playerName, out TimeSpan duration)
                     || duration < delay)
                 {
                     _pendingPlayerHoldDurations[playerName] = delay;
@@ -974,7 +974,7 @@ namespace SS.Matchmaking.Modules
                     {
                         _objectPoolManager.StringBuilderPool.Return(sb);
                     }
-                    
+
                     return;
                 }
             }
@@ -1650,8 +1650,8 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-			public void Reset()
-			{
+            public void Reset()
+            {
                 lock (_lock)
                 {
                     _playHoldExpireTimestamp = null;
@@ -1670,7 +1670,7 @@ namespace SS.Matchmaking.Modules
         private class UsageData : IResettable
         {
             public QueueState State { get; private set; } = QueueState.None;
-			public bool AutoRequeue = false;
+            public bool AutoRequeue = false;
             public bool IsPlayingAsSub = false;
 
             // TODO: Maybe better to use LinkedList<QueuedInfo> but then have to deal with pooling of LinkedListNode<QueuedInfo> objects.
@@ -1777,16 +1777,16 @@ namespace SS.Matchmaking.Modules
                 PreviousQueued.Clear();
             }
 
-			bool IResettable.TryReset()
-			{
-				State = QueueState.None;
-				AutoRequeue = false;
-				IsPlayingAsSub = false;
-				Queued.Clear();
-				PreviousQueued.Clear();
+            bool IResettable.TryReset()
+            {
+                State = QueueState.None;
+                AutoRequeue = false;
+                IsPlayingAsSub = false;
+                Queued.Clear();
+                PreviousQueued.Clear();
                 return true;
-			}
-		}
+            }
+        }
 
         #endregion
     }

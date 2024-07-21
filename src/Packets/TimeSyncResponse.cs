@@ -6,13 +6,13 @@ namespace SS.Packets
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct TimeSyncResponse(uint clientTime, uint serverTime)
     {
-		#region Static members
+        #region Static members
 
-		public static readonly int Length = Marshal.SizeOf<TimeSyncResponse>();
+        public static readonly int Length = Marshal.SizeOf<TimeSyncResponse>();
 
-		#endregion
+        #endregion
 
-		public readonly byte T1 = 0x00;
+        public readonly byte T1 = 0x00;
         public readonly byte T2 = 0x06;
         private readonly uint clientTime = LittleEndianConverter.Convert(clientTime);
         private readonly uint serverTime = LittleEndianConverter.Convert(serverTime);

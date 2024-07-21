@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-
-namespace SS.Core
+﻿namespace SS.Core
 {
     /// <summary>
     /// Interface for modules to implement.

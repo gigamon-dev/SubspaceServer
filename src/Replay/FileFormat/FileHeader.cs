@@ -12,12 +12,12 @@ namespace SS.Replay.FileFormat
 
         public static readonly int Length = Marshal.SizeOf<FileHeader>();
 
-		#endregion
+        #endregion
 
-		/// <summary>
-		/// Always "asssgame".
-		/// </summary>
-		public HeaderInlineArray Header;
+        /// <summary>
+        /// Always "asssgame".
+        /// </summary>
+        public HeaderInlineArray Header;
 
         private uint version;
         private uint offset;
@@ -28,15 +28,15 @@ namespace SS.Replay.FileFormat
         private long recorded;
         private uint mapChecksum;
 
-		/// <summary>
-		/// The name of the player who recorded it.
-		/// </summary>
-		public RecorderInlineArray Recorder;
+        /// <summary>
+        /// The name of the player who recorded it.
+        /// </summary>
+        public RecorderInlineArray Recorder;
 
-		/// <summary>
-		/// The name of the arena that the replay was recorded in.
-		/// </summary>
-		public ArenaNameInlineArray ArenaName;
+        /// <summary>
+        /// The name of the arena that the replay was recorded in.
+        /// </summary>
+        public ArenaNameInlineArray ArenaName;
 
         #region Helper properties
 
@@ -54,7 +54,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint Offset
         {
-			readonly get => LittleEndianConverter.Convert(offset);
+            readonly get => LittleEndianConverter.Convert(offset);
             set => offset = LittleEndianConverter.Convert(value);
         }
 
@@ -63,7 +63,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint Events
         {
-			readonly get => LittleEndianConverter.Convert(events);
+            readonly get => LittleEndianConverter.Convert(events);
             set => events = LittleEndianConverter.Convert(value);
         }
 
@@ -72,7 +72,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint EndTime
         {
-			readonly get => LittleEndianConverter.Convert(endTime);
+            readonly get => LittleEndianConverter.Convert(endTime);
             set => endTime = LittleEndianConverter.Convert(value);
         }
 
@@ -81,7 +81,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint MaxPlayerId
         {
-			readonly get => LittleEndianConverter.Convert(maxPlayerId);
+            readonly get => LittleEndianConverter.Convert(maxPlayerId);
             set => maxPlayerId = LittleEndianConverter.Convert(value);
         }
 
@@ -90,7 +90,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint SpecFreq
         {
-			readonly get => LittleEndianConverter.Convert(specFreq);
+            readonly get => LittleEndianConverter.Convert(specFreq);
             set => specFreq = LittleEndianConverter.Convert(value);
         }
 
@@ -99,7 +99,7 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public DateTimeOffset Recorded
         {
-			readonly get => DateTimeOffset.FromUnixTimeSeconds(recorded);
+            readonly get => DateTimeOffset.FromUnixTimeSeconds(recorded);
             set => recorded = value.ToUnixTimeSeconds();
         }
 
@@ -108,101 +108,101 @@ namespace SS.Replay.FileFormat
         /// </summary>
         public uint MapChecksum
         {
-			readonly get => LittleEndianConverter.Convert(mapChecksum);
+            readonly get => LittleEndianConverter.Convert(mapChecksum);
             set => mapChecksum = LittleEndianConverter.Convert(value);
         }
 
-		#endregion
+        #endregion
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(Length)]
-		public struct HeaderInlineArray
-		{
-			public const int Length = 8;
+        [InlineArray(Length)]
+        public struct HeaderInlineArray
+        {
+            public const int Length = 8;
 
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public HeaderInlineArray(ReadOnlySpan<char> name)
-			{
-				Set(name);
-			}
+            public HeaderInlineArray(ReadOnlySpan<char> name)
+            {
+                Set(name);
+            }
 
-			public static implicit operator HeaderInlineArray(string value)
-			{
-				return new(value);
-			}
+            public static implicit operator HeaderInlineArray(string value)
+            {
+                return new(value);
+            }
 
-			public void Set(ReadOnlySpan<char> value)
-			{
-				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
-			}
+            public void Set(ReadOnlySpan<char> value)
+            {
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+            }
 
-			public void Clear()
-			{
-				((Span<byte>)this).Clear();
-			}
-		}
+            public void Clear()
+            {
+                ((Span<byte>)this).Clear();
+            }
+        }
 
-		[InlineArray(Length)]
-		public struct RecorderInlineArray
-		{
-			public const int Length = 24;
+        [InlineArray(Length)]
+        public struct RecorderInlineArray
+        {
+            public const int Length = 24;
 
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public RecorderInlineArray(ReadOnlySpan<char> name)
-			{
-				Set(name);
-			}
+            public RecorderInlineArray(ReadOnlySpan<char> name)
+            {
+                Set(name);
+            }
 
-			public static implicit operator RecorderInlineArray(string value)
-			{
-				return new(value);
-			}
+            public static implicit operator RecorderInlineArray(string value)
+            {
+                return new(value);
+            }
 
-			public void Set(ReadOnlySpan<char> value)
-			{
-				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
-			}
+            public void Set(ReadOnlySpan<char> value)
+            {
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+            }
 
-			public void Clear()
-			{
-				((Span<byte>)this).Clear();
-			}
-		}
+            public void Clear()
+            {
+                ((Span<byte>)this).Clear();
+            }
+        }
 
-		[InlineArray(Length)]
-		public struct ArenaNameInlineArray
-		{
-			public const int Length = 24;
+        [InlineArray(Length)]
+        public struct ArenaNameInlineArray
+        {
+            public const int Length = 24;
 
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public ArenaNameInlineArray(ReadOnlySpan<char> name)
-			{
-				Set(name);
-			}
+            public ArenaNameInlineArray(ReadOnlySpan<char> name)
+            {
+                Set(name);
+            }
 
-			public static implicit operator ArenaNameInlineArray(string value)
-			{
-				return new(value);
-			}
+            public static implicit operator ArenaNameInlineArray(string value)
+            {
+                return new(value);
+            }
 
-			public void Set(ReadOnlySpan<char> value)
-			{
-				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
-			}
+            public void Set(ReadOnlySpan<char> value)
+            {
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+            }
 
-			public void Clear()
-			{
-				((Span<byte>)this).Clear();
-			}
-		}
+            public void Clear()
+            {
+                ((Span<byte>)this).Clear();
+            }
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

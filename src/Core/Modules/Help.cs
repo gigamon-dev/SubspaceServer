@@ -33,7 +33,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IConfigHelp> _iConfigHelpToken;
 
         private string _helpCommandName;
-        
+
         /// <summary>
         /// ConfigHelpRecords for each assembly.
         /// </summary>
@@ -91,7 +91,7 @@ namespace SS.Core.Modules
         #region Module members
 
         public bool Load(
-            ComponentBroker broker, 
+            ComponentBroker broker,
             IChat chat,
             ICommandManager commandManager,
             IConfigManager configManager,
@@ -608,7 +608,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            
+
             void Load(Assembly assembly)
             {
                 if (assembly is null)
@@ -630,7 +630,7 @@ namespace SS.Core.Modules
                     }
 
                     int count = 0;
-					foreach (Type type in assembly.GetTypes())
+                    foreach (Type type in assembly.GetTypes())
                     {
                         foreach (var constructorInfo in type.GetConstructors())
                         {
@@ -638,7 +638,7 @@ namespace SS.Core.Modules
                             {
                                 Add(attribute, assembly, type);
                                 count++;
-							}
+                            }
                         }
 
                         foreach (var methodInfo in type.GetRuntimeMethods())
@@ -646,8 +646,8 @@ namespace SS.Core.Modules
                             foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
                             {
                                 Add(attribute, assembly, type);
-								count++;
-							}
+                                count++;
+                            }
                         }
 
                         foreach (var fieldInfo in type.GetRuntimeFields())
@@ -655,8 +655,8 @@ namespace SS.Core.Modules
                             foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
                             {
                                 Add(attribute, assembly, type);
-								count++;
-							}
+                                count++;
+                            }
                         }
 
                         foreach (var propertyInfo in type.GetRuntimeProperties())
@@ -664,8 +664,8 @@ namespace SS.Core.Modules
                             foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
                             {
                                 Add(attribute, assembly, type);
-								count++;
-							}
+                                count++;
+                            }
                         }
 
                         foreach (var eventInfo in type.GetRuntimeEvents())
@@ -673,8 +673,8 @@ namespace SS.Core.Modules
                             foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
                             {
                                 Add(attribute, assembly, type);
-								count++;
-							}
+                                count++;
+                            }
                         }
                     }
 
@@ -682,7 +682,7 @@ namespace SS.Core.Modules
                     {
                         _logManager.LogM(LogLevel.Info, nameof(Help), $"Read {count} {(count == 1 ? "attribute" : "attributes")} from assembly '{assembly}'.");
                     }
-				}
+                }
                 catch (Exception ex)
                 {
                     _logManager.LogM(LogLevel.Warn, nameof(Help), $"Unable to read attributes from assembly '{assembly}'. {ex.Message}");
@@ -793,7 +793,7 @@ namespace SS.Core.Modules
 
             // Known keys for each section
             RefreshKeys();
-            
+
 
             void RefreshSections()
             {
@@ -827,7 +827,7 @@ namespace SS.Core.Modules
 
                 // Remove sections that no longer exist.
                 while (TryRemoveOneEmpty()) { }
-                
+
 
                 bool TryRemoveOneEmpty()
                 {

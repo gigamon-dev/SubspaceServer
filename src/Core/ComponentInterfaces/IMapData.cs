@@ -152,27 +152,27 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
         ImmutableHashSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coord);
 
-		/// <summary>
-		/// Saves an image of the map to a file.
-		/// </summary>
-		/// <param name="arena">The arena of the map to save.</param>
-		/// <param name="path">The path of the file. The image format is automatically determined based on the filename extension.</param>
-		/// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
-		/// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
-		/// <exception cref="ArgumentException">The <paramref name="path"/> file extension specifies an unsupported image format.</exception>
-		/// <exception cref="Exception">Error encoding image.</exception>
-		void SaveImage(Arena arena, string path);
+        /// <summary>
+        /// Saves an image of the map to a file.
+        /// </summary>
+        /// <param name="arena">The arena of the map to save.</param>
+        /// <param name="path">The path of the file. The image format is automatically determined based on the filename extension.</param>
+        /// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
+        /// <exception cref="ArgumentException">The <paramref name="path"/> file extension specifies an unsupported image format.</exception>
+        /// <exception cref="Exception">Error encoding image.</exception>
+        void SaveImage(Arena arena, string path);
 
-		/// <summary>
-		/// Saves an image of the map to a file.
-		/// </summary>
-		/// <param name="arena">The arena of the map to save.</param>
-		/// <param name="stream">The stream to write the image data to.</param>
-		/// <param name="imageFormat">The format to save the image as. Supported formats: 'png', 'jpg', and 'webp'.</param>
-		/// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
-		/// <exception cref="ArgumentNullException">The <paramref name="stream"/> is <see langword="null"/>.</exception>
-		/// <exception cref="ArgumentException">Unsupported image format for the provided <paramref name="imageFormat"/>.</exception>
-		/// <exception cref="Exception">Error encoding image.</exception>
-		void SaveImage(Arena arena, Stream stream, ReadOnlySpan<char> imageFormat);
+        /// <summary>
+        /// Saves an image of the map to a file.
+        /// </summary>
+        /// <param name="arena">The arena of the map to save.</param>
+        /// <param name="stream">The stream to write the image data to.</param>
+        /// <param name="imageFormat">The format to save the image as. Supported formats: 'png', 'jpg', and 'webp'.</param>
+        /// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException">The <paramref name="stream"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">Unsupported image format for the provided <paramref name="imageFormat"/>.</exception>
+        /// <exception cref="Exception">Error encoding image.</exception>
+        void SaveImage(Arena arena, Stream stream, ReadOnlySpan<char> imageFormat);
     }
 }

@@ -46,11 +46,11 @@ namespace SS.Core.Modules
         public LagAction()
         {
             _mainloopWorkItem_checkPlayer = MainloopWorkItem_CheckPlayer;
-		}
+        }
 
-		#region Module members
+        #region Module members
 
-		[ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300", 
+        [ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300",
             Description = "How often to check each player for out-of-bounds lag values (in ticks).")]
         public bool Load(
             ComponentBroker broker,
@@ -457,8 +457,8 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 lock (Lock)
                 {
                     Ping = default;
@@ -490,8 +490,8 @@ namespace SS.Core.Modules
             /// </summary>
             public readonly object Lock = new();
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 lock (Lock)
                 {
                     LastCheck = DateTime.MinValue;

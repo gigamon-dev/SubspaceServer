@@ -30,30 +30,30 @@ namespace SS.Packets.Game
         private ushort rank;
         private int score;
 
-		// top 5
-		public ScoresInlineArray TopScores;
-		public PlayerIdsInlineArray TopPlayerIds;
+        // top 5
+        public ScoresInlineArray TopScores;
+        public PlayerIdsInlineArray TopPlayerIds;
 
-		public S2C_SpeedStats(bool isPersonalBest, ushort rank, int score)
-		{
-			Type = (byte)S2CPacketType.Speed;
+        public S2C_SpeedStats(bool isPersonalBest, ushort rank, int score)
+        {
+            Type = (byte)S2CPacketType.Speed;
 
-			best = isPersonalBest ? (byte)1 : (byte)0;
-			this.rank = LittleEndianConverter.Convert(rank);
-			this.score = LittleEndianConverter.Convert(score);
+            best = isPersonalBest ? (byte)1 : (byte)0;
+            this.rank = LittleEndianConverter.Convert(rank);
+            this.score = LittleEndianConverter.Convert(score);
 
-			for (int index = 0; index < TopScoreCount; index++)
-			{
-				ClearTopScore(index);
-			}
-		}
+            for (int index = 0; index < TopScoreCount; index++)
+            {
+                ClearTopScore(index);
+            }
+        }
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public bool IsPersonalBest => best != 0;
+        public bool IsPersonalBest => best != 0;
         public ushort Rank => LittleEndianConverter.Convert(rank);
         public int Score => LittleEndianConverter.Convert(score);
-        
+
         #endregion
 
         #region Helper methods
@@ -93,23 +93,23 @@ namespace SS.Packets.Game
 
         #endregion
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(TopScoreCount)]
+        [InlineArray(TopScoreCount)]
         public struct ScoresInlineArray
         {
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private int _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private int _element0;
+        }
 
-		[InlineArray(TopScoreCount)]
-		public struct PlayerIdsInlineArray
-		{
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private short _element0;
-		}
+        [InlineArray(TopScoreCount)]
+        public struct PlayerIdsInlineArray
+        {
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private short _element0;
+        }
 
         #endregion
     }

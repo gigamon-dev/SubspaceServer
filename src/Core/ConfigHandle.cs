@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SS.Core
+﻿namespace SS.Core
 {
     public delegate void ConfigChangedDelegate();
     public delegate void ConfigChangedDelegate<TState>(TState state);

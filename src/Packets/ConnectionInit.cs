@@ -5,10 +5,10 @@ namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct ConnectionInitPacket(int key, byte clientType)
-	{
-		#region Static Members
+    {
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<ConnectionInitPacket>();
+        public static readonly int Length = Marshal.SizeOf<ConnectionInitPacket>();
 
         #endregion
 
@@ -18,19 +18,19 @@ namespace SS.Packets
         public readonly byte ClientType = clientType;
         public readonly byte Zero = 0;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public int Key => LittleEndianConverter.Convert(key);
+        public int Key => LittleEndianConverter.Convert(key);
 
         #endregion
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct ConnectionInitResponsePacket(int key)
-	{
-		#region Static Members
+    {
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<ConnectionInitResponsePacket>();
+        public static readonly int Length = Marshal.SizeOf<ConnectionInitResponsePacket>();
 
         #endregion
 
@@ -38,9 +38,9 @@ namespace SS.Packets
         public readonly byte T2 = 0x02;
         private readonly int key = LittleEndianConverter.Convert(key);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public int Key => LittleEndianConverter.Convert(key);
+        public int Key => LittleEndianConverter.Convert(key);
 
         #endregion
     }

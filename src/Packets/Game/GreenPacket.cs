@@ -38,9 +38,9 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct C2S_Green(byte type, uint time, short x, short y, short prize)
     {
-		#region Static Members
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<C2S_Green>();
+        public static readonly int Length = Marshal.SizeOf<C2S_Green>();
 
         #endregion
 
@@ -55,35 +55,35 @@ namespace SS.Packets.Game
         {
         }
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint Time => LittleEndianConverter.Convert(time);
+        public uint Time => LittleEndianConverter.Convert(time);
 
-		public short X => LittleEndianConverter.Convert(x);
+        public short X => LittleEndianConverter.Convert(x);
 
-		public short Y => LittleEndianConverter.Convert(y);
+        public short Y => LittleEndianConverter.Convert(y);
 
-		public Prize Prize => (Prize)LittleEndianConverter.Convert(prize);
+        public Prize Prize => (Prize)LittleEndianConverter.Convert(prize);
 
-		#endregion
-	}
+        #endregion
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_Green(ref readonly C2S_Green c2s, short playerId)
     {
-		#region Static Members
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<S2C_Green>();
+        public static readonly int Length = Marshal.SizeOf<S2C_Green>();
 
         #endregion
 
         public readonly C2S_Green C2S = new((byte)S2CPacketType.Green, c2s.Time, c2s.X, c2s.Y, (short)c2s.Prize);
-		private readonly short playerId = LittleEndianConverter.Convert(playerId);
+        private readonly short playerId = LittleEndianConverter.Convert(playerId);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short PlayerId => LittleEndianConverter.Convert(playerId);
+        public short PlayerId => LittleEndianConverter.Convert(playerId);
 
-		#endregion
-	}
+        #endregion
+    }
 }

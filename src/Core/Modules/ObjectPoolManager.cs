@@ -10,10 +10,10 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
-	/// <summary>
-	/// Module for managing and tracking object pool usage.
-	/// </summary>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module for managing and tracking object pool usage.
+    /// </summary>
+    [CoreModuleInfo]
     public class ObjectPoolManager : IModule, IObjectPoolManager
     {
         private InterfaceRegistrationToken<IObjectPoolManager> _iObjectPoolManagerToken;
@@ -80,22 +80,22 @@ namespace SS.Core.Modules
 
         #region PooledObjectPolicy classes
 
-		private class Crc32PooledObjectPolicy : IPooledObjectPolicy<Crc32>
-		{
-			public Crc32 Create()
-			{
+        private class Crc32PooledObjectPolicy : IPooledObjectPolicy<Crc32>
+        {
+            public Crc32 Create()
+            {
                 return new Crc32();
-			}
+            }
 
-			public bool Return(Crc32 obj)
-			{
+            public bool Return(Crc32 obj)
+            {
                 if (obj is null)
                     return false;
 
                 obj.Reset();
                 return true;
-			}
-		}
+            }
+        }
 
         #endregion
     }

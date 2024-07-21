@@ -283,7 +283,7 @@ namespace SS.Core.Modules
                     if (!key.Equals(bitfieldKey, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    int byteOffset = 
+                    int byteOffset =
                           (int)Marshal.OffsetOf<S2C_ClientSettings>("Ships")
                         + (int)Marshal.OffsetOf<AllShipSettings>(shipNames[shipIndex])
                         + (int)Marshal.OffsetOf<ShipSettings>("Weapons");
@@ -572,7 +572,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Bullet", "ExactDamage", ConfigScope.Arena, typeof(bool), DefaultValue ="0", Description = "Whether to use exact bullet damage (Cont .36+)")]
+        [ConfigHelp("Bullet", "ExactDamage", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to use exact bullet damage (Cont .36+)")]
         [ConfigHelp("Spectator", "HideFlags", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to show dropped flags to spectators (Cont .36+)")]
         [ConfigHelp("Spectator", "NoXRadar", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether spectators are disallowed from having X radar (Cont .36+)")]
         [ConfigHelp("Misc", "SlowFrameCheck", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "Whether to check for slow frames on the client (possible cheat technique) (flawed on some machines, do not use)")]
@@ -670,7 +670,7 @@ namespace SS.Core.Modules
                 wb.SeeMines = _configManager.GetInt(ch, shipName, "SeeMines", 0) != 0;
 
                 // strange bitfield
-				ref MiscBits misc = ref MemoryMarshal.Cast<short, MiscBits>(((Span<short>)ss.Int16Settings).Slice(10, 1))[0];
+                ref MiscBits misc = ref MemoryMarshal.Cast<short, MiscBits>(((Span<short>)ss.Int16Settings).Slice(10, 1))[0];
                 misc.SeeBombLevel = (byte)_configManager.GetInt(ch, shipName, "SeeBombLevel", 0);
                 misc.DisableFastShooting = _configManager.GetInt(ch, shipName, "DisableFastShooting", 0) != 0;
                 misc.Radius = (byte)_configManager.GetInt(ch, shipName, "Radius", 0);
@@ -1040,12 +1040,12 @@ namespace SS.Core.Modules
                 OverrideData = default;
             }
 
-			bool IResettable.TryReset()
+            bool IResettable.TryReset()
             {
                 Reset();
                 return true;
             }
-		}
+        }
 
         private struct OverrideData
         {

@@ -10,11 +10,11 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules.FlagGame
 {
-	/// <summary>
-	/// Module that manages flag games where flags can be carried.
-	/// E.g. jackpot zone, running zone, warzone ctf.
-	/// </summary>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module that manages flag games where flags can be carried.
+    /// E.g. jackpot zone, running zone, warzone ctf.
+    /// </summary>
+    [CoreModuleInfo]
     public class CarryFlags : IModule, ICarryFlagGame
     {
         public const int MaxFlags = 256; // continuum supports 303
@@ -274,7 +274,7 @@ namespace SS.Core.Modules.FlagGame
             {
                 return false;
             }
-            
+
             FlagInfo flagInfo = ad.Flags[flagId];
             if (flagInfo.State == FlagState.None)
             {
@@ -674,7 +674,7 @@ namespace SS.Core.Modules.FlagGame
 
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            if(newShip == oldShip)
+            if (newShip == oldShip)
             {
                 AdjustCarriedFlags(player.Arena, player, AdjustFlagReason.FreqChange);
             }
@@ -821,7 +821,7 @@ namespace SS.Core.Modules.FlagGame
             public int MaxFlags { get; private set; }
             public int MinFlags { get; private set; }
 
-            [ConfigHelp("Flag", "AutoStart", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
+            [ConfigHelp("Flag", "AutoStart", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
                 Description = "Whether a flag game will automatically start.")]
             [ConfigHelp("Flag", "SpawnX", ConfigScope.Arena, typeof(int), DefaultValue = "512",
                 Description = "The X coordinate that new flags spawn at (in tiles).")]
@@ -941,15 +941,15 @@ namespace SS.Core.Modules.FlagGame
             public MapCoordinate? Location { get; set; } = null;
             public short Freq { get; set; } = -1;
 
-			bool IResettable.TryReset()
-			{
-				State = FlagState.None;
-				Carrier = null;
-				Location = null;
-				Freq = -1;
-				return true;
-			}
-		}
+            bool IResettable.TryReset()
+            {
+                State = FlagState.None;
+                Carrier = null;
+                Location = null;
+                Freq = -1;
+                return true;
+            }
+        }
 
         private class ArenaData : IResettable
         {

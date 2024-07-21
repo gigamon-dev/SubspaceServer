@@ -23,7 +23,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IObjectPoolManager _objectPoolManager;
 
-		private InterfaceRegistrationToken<IObscene> _iObsceneRegistrationToken;
+        private InterfaceRegistrationToken<IObscene> _iObsceneRegistrationToken;
 
         private const string ObsceneFileName = "obscene.txt";
         private const string Replace = "%@$&%*!#@&%!#&*$#?@!*%@&!%#&%!?$*#!*$&@#&%$!*%@#&%!@&#$!*@&$%*@?";
@@ -111,7 +111,7 @@ namespace SS.Core.Modules
                 foreach (string obscenity in obsceneList)
                 {
                     int index;
-                    
+
                     while ((index = MemoryExtensions.IndexOf(line, obscenity, StringComparison.OrdinalIgnoreCase)) != -1)
                     {
                         filtered = true;
@@ -206,21 +206,21 @@ namespace SS.Core.Modules
 
                     using StreamReader sr = new(fs, StringUtils.DefaultEncoding);
 
-					//
-					// Checksum
-					//
+                    //
+                    // Checksum
+                    //
 
-					Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+                    Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
 
-					try
-					{
-						crc32.Append(fs);
-						checksum =  crc32.GetCurrentHashAsUInt32();
-					}
-					finally
-					{
-						_objectPoolManager.Crc32Pool.Return(crc32);
-					}
+                    try
+                    {
+                        crc32.Append(fs);
+                        checksum = crc32.GetCurrentHashAsUInt32();
+                    }
+                    finally
+                    {
+                        _objectPoolManager.Crc32Pool.Return(crc32);
+                    }
 
                     if (_checksum != null && _checksum == checksum)
                         return; // no change

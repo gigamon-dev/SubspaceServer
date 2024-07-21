@@ -19,7 +19,7 @@ namespace SS.Packets.Game
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_Crown(CrownAction action, TimeSpan duration, short playerId)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<S2C_Crown>();
@@ -31,9 +31,9 @@ namespace SS.Packets.Game
         private readonly uint duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
         private readonly short playerId = LittleEndianConverter.Convert(playerId);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public CrownAction Action => (CrownAction)LittleEndianConverter.Convert(action);
+        public CrownAction Action => (CrownAction)LittleEndianConverter.Convert(action);
 
         public TimeSpan Duration => TimeSpan.FromMilliseconds(LittleEndianConverter.Convert(duration) * 10);
 
@@ -42,9 +42,9 @@ namespace SS.Packets.Game
         #endregion
     }
 
-	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_CrownTimer(bool add, TimeSpan duration)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<S2C_CrownTimer>();
@@ -54,9 +54,9 @@ namespace SS.Packets.Game
         public readonly byte Type = add ? (byte)S2CPacketType.AddCrownTimer : (byte)S2CPacketType.SetCrownTimer;
         private readonly uint duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public TimeSpan Duration => TimeSpan.FromMilliseconds(LittleEndianConverter.Convert(duration) * 10);
+        public TimeSpan Duration => TimeSpan.FromMilliseconds(LittleEndianConverter.Convert(duration) * 10);
 
         #endregion
     }

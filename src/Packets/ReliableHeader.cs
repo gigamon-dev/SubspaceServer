@@ -5,10 +5,10 @@ namespace SS.Packets
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct ReliableHeader(int seqNum)
-	{
-		#region Static Members
+    {
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<ReliableHeader>();
+        public static readonly int Length = Marshal.SizeOf<ReliableHeader>();
 
         #endregion
 
@@ -16,10 +16,10 @@ namespace SS.Packets
         public readonly byte T2 = 0x03;
         private readonly int seqNum = LittleEndianConverter.Convert(seqNum);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public int SeqNum => LittleEndianConverter.Convert(seqNum);
+        public int SeqNum => LittleEndianConverter.Convert(seqNum);
 
-		#endregion
-	}
+        #endregion
+    }
 }

@@ -9,10 +9,10 @@ using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules.Scoring
 {
-	/// <summary>
-	/// Module for rewarding players periodically for flag games.
-	/// </summary>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module for rewarding players periodically for flag games.
+    /// </summary>
+    [CoreModuleInfo]
     public class PeriodicReward : IModule, IPeriodicReward, IPeriodicRewardPoints
     {
         private IAllPlayerStats _allPlayerStats;
@@ -140,7 +140,7 @@ namespace SS.Core.Modules.Scoring
                 ad.Settings = new(_configManager, arena.Cfg);
                 StartTimer(arena);
             }
-            else if(action == ArenaAction.Destroy)
+            else if (action == ArenaAction.Destroy)
             {
                 StopTimer(arena);
             }
@@ -311,7 +311,7 @@ namespace SS.Core.Modules.Scoring
                         const int MaxPacketLength = 513; // The maximum accepted by Continuum
                         int maxItems = (MaxPacketLength - 1) / PeriodicRewardItem.Length;
 
-						Span<byte> packet = stackalloc byte[1 + int.Min(freqPoints.Count, maxItems) * PeriodicRewardItem.Length];
+                        Span<byte> packet = stackalloc byte[1 + int.Min(freqPoints.Count, maxItems) * PeriodicRewardItem.Length];
                         packet[0] = (byte)S2CPacketType.PeriodicReward;
 
                         Span<PeriodicRewardItem> rewards = MemoryMarshal.Cast<byte, PeriodicRewardItem>(packet[1..]);
@@ -323,8 +323,8 @@ namespace SS.Core.Modules.Scoring
                             if (index >= rewards.Length)
                             {
                                 // We have the maximum #  of items that can be sent in a packet. Send it.
-								_network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
-								index = 0;
+                                _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
+                                index = 0;
                             }
                         }
 
@@ -382,8 +382,8 @@ namespace SS.Core.Modules.Scoring
             public Settings Settings;
             public bool TimerRunning;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 Settings = default;
                 TimerRunning = false;
                 return true;
@@ -415,7 +415,7 @@ namespace SS.Core.Modules.Scoring
                 "positive, you get this many points per flag.If it's negative, " +
                 "you get it's absolute value points per flag, times the number of " +
                 "players in the arena.")]
-            [ConfigHelp("Periodic", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
+            [ConfigHelp("Periodic", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
                 Description = "Whether points are divided among players on a team.")]
             [ConfigHelp("Periodic", "SendZeroRewards", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
                 Description = "Whether frequencies with zero points will still get a reward notification during the ding.")]
@@ -450,13 +450,13 @@ namespace SS.Core.Modules.Scoring
 
             int IPeriodicRewardPoints.ITeamData.FlagCount => FlagCount;
 
-			public bool TryReset()
-			{
-				Players.Clear();
-				FlagCount = 0;
+            public bool TryReset()
+            {
+                Players.Clear();
+                FlagCount = 0;
                 return true;
-			}
-		}
+            }
+        }
 
         #endregion
     }

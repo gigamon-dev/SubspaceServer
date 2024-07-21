@@ -81,8 +81,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="teams">A dictionary containing data about the teams. Key = freq, Value = Data about the team.</param>
         /// <param name="freqPoints">The dictionary to populate with reward info. Key = freq, Value = # of points to award.</param>
         void GetRewardPoints(
-            Arena arena, 
-            ISettings settings, 
+            Arena arena,
+            ISettings settings,
             int totalPlayerCount,
             IReadOnlyDictionary<short, ITeamData> teams,
             IDictionary<short, short> freqPoints);

@@ -20,19 +20,19 @@ namespace SS.Packets.Game
         public AllShipSettings Ships;
         public Int32InlineArray Int32Settings;
         public SpawnPositions SpawnPositions;
-		public Int16InlineArray Int16Settings;
+        public Int16InlineArray Int16Settings;
         public ByteInlineArray ByteSettings;
         public PrizeWeightInlineArray PrizeWeightSettings;
 
-		#region Helper members
+        #region Helper members
 
-		public byte Type
-		{
-			get => BitSet.Type;
-			set => BitSet.Type = value;
-		}
+        public byte Type
+        {
+            get => BitSet.Type;
+            set => BitSet.Type = value;
+        }
 
-		public uint GetChecksum(uint key)
+        public uint GetChecksum(uint key)
         {
             ReadOnlySpan<byte> byteSpan = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
             uint checksum = 0;
@@ -51,49 +51,49 @@ namespace SS.Packets.Game
         #region Inline Array Types
 
         [InlineArray(Length)]
-		public struct Int32InlineArray
-		{
-			public const int Length = 20;
+        public struct Int32InlineArray
+        {
+            public const int Length = 20;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private int _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private int _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct Int16InlineArray
-		{
-			public const int Length = 58;
+        [InlineArray(Length)]
+        public struct Int16InlineArray
+        {
+            public const int Length = 58;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private short _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private short _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct ByteInlineArray
-		{
-			public const int Length = 32;
+        [InlineArray(Length)]
+        public struct ByteInlineArray
+        {
+            public const int Length = 32;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct PrizeWeightInlineArray
-		{
-			public const int Length = 28;
+        [InlineArray(Length)]
+        public struct PrizeWeightInlineArray
+        {
+            public const int Length = 28;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 
-	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ClientBits
     {
         private uint bitfield;
@@ -202,55 +202,55 @@ namespace SS.Packets.Game
         public Int32InlineArray Int32Settings;
         public Int16InlineArray Int16Settings; // [10] is the MiscBits bitfield
         public ByteInlineArray ByteSettings;
-		public WeaponBits Weapons;
-		private PaddingInlineArray padding;
+        public WeaponBits Weapons;
+        private PaddingInlineArray padding;
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(Length)]
-		public struct Int32InlineArray
-		{
-			public const int Length = 2;
+        [InlineArray(Length)]
+        public struct Int32InlineArray
+        {
+            public const int Length = 2;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private int _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private int _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct Int16InlineArray
-		{
-			public const int Length = 49;
+        [InlineArray(Length)]
+        public struct Int16InlineArray
+        {
+            public const int Length = 49;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private short _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private short _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct ByteInlineArray
-		{
-			public const int Length = 18;
+        [InlineArray(Length)]
+        public struct ByteInlineArray
+        {
+            public const int Length = 18;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct PaddingInlineArray
-		{
-			public const int Length = 16;
+        [InlineArray(Length)]
+        public struct PaddingInlineArray
+        {
+            public const int Length = 16;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 
-	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct MiscBits
     {
         private ushort bitfield;

@@ -15,7 +15,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Not connected, but may attempt to reconnect.
         /// </summary>
-        Down = 1, 
+        Down = 1,
 
         /// <summary>
         /// Connected.

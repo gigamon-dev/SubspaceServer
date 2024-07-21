@@ -6,10 +6,10 @@ using System.Text;
 
 namespace SS.Core.ComponentInterfaces
 {
-	/// <summary>
-	/// Interface for a module that manages and tracks object pool usage.
-	/// </summary>
-	public interface IObjectPoolManager : IComponentInterface
+    /// <summary>
+    /// Interface for a module that manages and tracks object pool usage.
+    /// </summary>
+    public interface IObjectPoolManager : IComponentInterface
     {
         /// <summary>
         /// Gets the default pool for a given type and begins tracking the pool if it isn't already being tracked.

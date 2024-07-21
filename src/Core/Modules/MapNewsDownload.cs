@@ -14,10 +14,10 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
-	/// <summary>
-	/// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
-	/// </summary>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
+    /// </summary>
+    [CoreModuleInfo]
     public sealed class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
     {
         private ComponentBroker _broker;
@@ -29,7 +29,7 @@ namespace SS.Core.Modules
         private IArenaManager _arenaManager;
         private IMapData _mapData;
         private IObjectPoolManager _objectPoolManager;
-		private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
+        private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
 
         private ArenaDataKey<List<MapDownloadData>> _dlKey;
 
@@ -40,7 +40,7 @@ namespace SS.Core.Modules
         /// This includes the header (0x2A, with filename "tinymap.lvl") and data (last 12 bytes).
         /// </remarks>
         private readonly byte[] _emergencyMap = [
-			0x2a, 0x74, 0x69, 0x6e, 0x79, 0x6d, 0x61, 0x70,
+            0x2a, 0x74, 0x69, 0x6e, 0x79, 0x6d, 0x61, 0x70,
             0x2e, 0x6c, 0x76, 0x6c, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x78, 0x9c, 0x63, 0x60, 0x60, 0x60, 0x04,
             0x00, 0x00, 0x05, 0x00, 0x02
@@ -54,9 +54,9 @@ namespace SS.Core.Modules
         // Cached delegates
         private readonly Action<Arena> _threadPoolWork_InitializeArena;
         private readonly GetSizedSendDataDelegate<NewsDownloadContext> _getNewsData;
-		private readonly GetSizedSendDataDelegate<MapDownloadContext> _getMapData;
+        private readonly GetSizedSendDataDelegate<MapDownloadContext> _getMapData;
 
-		public MapNewsDownload()
+        public MapNewsDownload()
         {
             _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
             _getNewsData = GetNewsData;
@@ -173,7 +173,7 @@ namespace SS.Core.Modules
 
             if (len > 0)
             {
-				_net.SendToOne(
+                _net.SendToOne(
                     player,
                     MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..len],
                     NetSendFlags.Reliable);
@@ -204,105 +204,105 @@ namespace SS.Core.Modules
             }
         }
 
-		private void ThreadPoolWork_InitializeArena(Arena arena)
-		{
-			if (arena is null)
-				return;
+        private void ThreadPoolWork_InitializeArena(Arena arena)
+        {
+            if (arena is null)
+                return;
 
-			try
-			{
-				if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
-					return;
+            try
+            {
+                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+                    return;
 
-				downloadList.Clear();
+                downloadList.Clear();
 
-				MapDownloadData data = null;
+                MapDownloadData data = null;
 
                 // First, add the map itself
-				string filePath = _mapData.GetMapFilename(arena, null);
-				if (!string.IsNullOrEmpty(filePath))
-				{
-					data = CompressMap(filePath, true, false);
-				}
+                string filePath = _mapData.GetMapFilename(arena, null);
+                if (!string.IsNullOrEmpty(filePath))
+                {
+                    data = CompressMap(filePath, true, false);
+                }
 
-				if (data is null)
-				{
-					_logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
+                if (data is null)
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
                     data = new MapDownloadData("tinymap.lvl", false, 0x5643ef8a, _emergencyMap);
-				}
+                }
 
-				downloadList.Add(data);
+                downloadList.Add(data);
 
-				// Next, add lvz files
-				foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
-				{
-					data = CompressMap(lvzInfo.Filename, false, lvzInfo.IsOptional);
+                // Next, add lvz files
+                foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
+                {
+                    data = CompressMap(lvzInfo.Filename, false, lvzInfo.IsOptional);
 
-					if (data is not null)
-					{
-						downloadList.Add(data);
-					}
-				}
-			}
-			finally
-			{
-				_arenaManager.UnholdArena(arena);
-			}
+                    if (data is not null)
+                    {
+                        downloadList.Add(data);
+                    }
+                }
+            }
+            finally
+            {
+                _arenaManager.UnholdArena(arena);
+            }
 
 
-			MapDownloadData CompressMap(string filePath, bool compress, bool isOptional)
-			{
-				if (string.IsNullOrWhiteSpace(filePath))
-					throw new ArgumentException("Cannot be null or white-space.", nameof(filePath));
+            MapDownloadData CompressMap(string filePath, bool compress, bool isOptional)
+            {
+                if (string.IsNullOrWhiteSpace(filePath))
+                    throw new ArgumentException("Cannot be null or white-space.", nameof(filePath));
 
-				try
-				{
-					string fileName = Path.GetFileName(filePath);
+                try
+                {
+                    string fileName = Path.GetFileName(filePath);
 
-					if (string.IsNullOrWhiteSpace(fileName))
-					{
-						_logManager.LogM(LogLevel.Error, nameof(MapNewsDownload), $"Missing file name '{filePath}'.");
-						return null;
-					}
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(MapNewsDownload), $"Missing file name '{filePath}'.");
+                        return null;
+                    }
 
-					if (StringUtils.DefaultEncoding.GetByteCount(fileName) >= S2C_MapFilename.File.FileNameInlineArray.Length)
-					{
-						_logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"File name '{fileName}' is too long.");
-					}
+                    if (StringUtils.DefaultEncoding.GetByteCount(fileName) >= S2C_MapFilename.File.FileNameInlineArray.Length)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"File name '{fileName}' is too long.");
+                    }
 
-					uint checksum;
-					byte[] mapData;
+                    uint checksum;
+                    byte[] mapData;
 
-					using (FileStream inputStream = File.OpenRead(filePath))
-					{
-						// Calculate CRC
-						Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+                    using (FileStream inputStream = File.OpenRead(filePath))
+                    {
+                        // Calculate CRC
+                        Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
 
-						try
-						{
-							crc32.Append(inputStream);
-							checksum = crc32.GetCurrentHashAsUInt32();
-						}
-						finally
-						{
-							_objectPoolManager.Crc32Pool.Return(crc32);
-						}
+                        try
+                        {
+                            crc32.Append(inputStream);
+                            checksum = crc32.GetCurrentHashAsUInt32();
+                        }
+                        finally
+                        {
+                            _objectPoolManager.Crc32Pool.Return(crc32);
+                        }
 
-						inputStream.Position = 0;
+                        inputStream.Position = 0;
 
-						if (compress)
-						{
-							// Compress using zlib
-							using MemoryStream compressedStream = new();
-							using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
-							{
-								inputStream.CopyTo(zlibStream);
-							}
+                        if (compress)
+                        {
+                            // Compress using zlib
+                            using MemoryStream compressedStream = new();
+                            using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
+                            {
+                                inputStream.CopyTo(zlibStream);
+                            }
 
-							compressedStream.Position = 0;
+                            compressedStream.Position = 0;
 
-							// Create the map data packet and copy the compressed data into it.
-							mapData = new byte[17 + compressedStream.Length];
+                            // Create the map data packet and copy the compressed data into it.
+                            mapData = new byte[17 + compressedStream.Length];
                             Span<byte> dataSpan = mapData.AsSpan(17);
                             while (dataSpan.Length > 0)
                             {
@@ -312,38 +312,38 @@ namespace SS.Core.Modules
 
                                 dataSpan = dataSpan[bytesRead..];
                             }
-						}
-						else
-						{
-							// Create the map data packet and copy the uncompressed data into it.
-							mapData = new byte[17 + inputStream.Length];
-							Span<byte> dataSpan = mapData.AsSpan(17);
-							while (dataSpan.Length > 0)
-							{
-								int bytesRead = inputStream.Read(dataSpan);
-								if (bytesRead == 0)
-									return null; // end of stream when we expected more data
+                        }
+                        else
+                        {
+                            // Create the map data packet and copy the uncompressed data into it.
+                            mapData = new byte[17 + inputStream.Length];
+                            Span<byte> dataSpan = mapData.AsSpan(17);
+                            while (dataSpan.Length > 0)
+                            {
+                                int bytesRead = inputStream.Read(dataSpan);
+                                if (bytesRead == 0)
+                                    return null; // end of stream when we expected more data
 
-								dataSpan = dataSpan[bytesRead..];
-							}
-						}
-					}
+                                dataSpan = dataSpan[bytesRead..];
+                            }
+                        }
+                    }
 
-					// Fill in the packet header.
-					mapData[0] = (byte)S2CPacketType.MapData;
-					StringUtils.DefaultEncoding.GetBytes(fileName, 0, (fileName.Length <= 16) ? fileName.Length : 16, mapData, 1);
+                    // Fill in the packet header.
+                    mapData[0] = (byte)S2CPacketType.MapData;
+                    StringUtils.DefaultEncoding.GetBytes(fileName, 0, (fileName.Length <= 16) ? fileName.Length : 16, mapData, 1);
 
-					if (mapData.Length > 256 * 1024)
-						_logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Compressed map/lvz is bigger than 256k: {filePath}.");
+                    if (mapData.Length > 256 * 1024)
+                        _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Compressed map/lvz is bigger than 256k: {filePath}.");
 
-					return new MapDownloadData(fileName, isOptional, checksum, mapData);
-				}
-				catch
-				{
-					return null;
-				}
-			}
-		}
+                    return new MapDownloadData(fileName, isOptional, checksum, mapData);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
 
         private void Packet_UpdateRequest(Player player, Span<byte> data, NetReceiveFlags flags)
         {
@@ -436,7 +436,7 @@ namespace SS.Core.Modules
 
                 if (_newsManager.TryGetNews(out ReadOnlyMemory<byte> compressedNewsData, out _))
                 {
-					_net.SendSized(player, compressedNewsData.Length, _getNewsData, new NewsDownloadContext(player, compressedNewsData));
+                    _net.SendSized(player, compressedNewsData.Length, _getNewsData, new NewsDownloadContext(player, compressedNewsData));
                     _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), player, $"Sending news.txt ({compressedNewsData.Length} bytes).");
                 }
                 else
@@ -446,26 +446,26 @@ namespace SS.Core.Modules
             }
 
 
-			MapDownloadData GetMap(Arena arena, int lvznum, bool wantOpt)
-			{
-				if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
-					return null;
+            MapDownloadData GetMap(Arena arena, int lvznum, bool wantOpt)
+            {
+                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+                    return null;
 
-				int idx = lvznum;
-				foreach (MapDownloadData mdd in downloadList)
-				{
-					if (!mdd.IsOptional || wantOpt)
-					{
-						if (idx == 0)
-							return mdd;
+                int idx = lvznum;
+                foreach (MapDownloadData mdd in downloadList)
+                {
+                    if (!mdd.IsOptional || wantOpt)
+                    {
+                        if (idx == 0)
+                            return mdd;
 
-						idx--;
-					}
-				}
+                        idx--;
+                    }
+                }
 
-				return null;
-			}
-		}
+                return null;
+            }
+        }
 
         private void GetNewsData(NewsDownloadContext context, int offset, Span<byte> dataSpan)
         {
@@ -490,7 +490,7 @@ namespace SS.Core.Modules
                     _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Needed to retrieve news sized data of {dataSpan.Length} bytes, but there was no data remaining.");
                     return;
                 }
-                
+
                 _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Needed to retrieve news sized data of {dataSpan.Length} bytes, but there was only {bytesToCopy} bytes.");
             }
 
@@ -499,19 +499,19 @@ namespace SS.Core.Modules
 
         private void GetMapData(MapDownloadContext context, int offset, Span<byte> dataSpan)
         {
-			if (offset < 0)
-				throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be less than zero.");
+            if (offset < 0)
+                throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be less than zero.");
 
-			MapDownloadData mdd = context.MapDownloadData;
+            MapDownloadData mdd = context.MapDownloadData;
 
-			if (dataSpan.IsEmpty)
+            if (dataSpan.IsEmpty)
             {
                 _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), context.Player, $"Finished map/lvz download (transfer '{mdd.FileName}').");
                 return;
             }
 
             int bytesToCopy = dataSpan.Length;
-			if (mdd.Data.Length - offset < bytesToCopy)
+            if (mdd.Data.Length - offset < bytesToCopy)
             {
                 bytesToCopy = mdd.Data.Length - offset;
 
@@ -520,7 +520,7 @@ namespace SS.Core.Modules
                     _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Needed to retrieve map sized data of {dataSpan.Length} bytes, but there was no data remaining.");
                     return;
                 }
-                
+
                 _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), $"Needed to retrieve map sized data of {dataSpan.Length} bytes, but there was only {bytesToCopy} bytes.");
             }
 
@@ -535,16 +535,16 @@ namespace SS.Core.Modules
         #region Helper types
 
         private readonly struct NewsDownloadContext(Player player, ReadOnlyMemory<byte> newsData)
-		{
-			public Player Player { get; } = player ?? throw new ArgumentNullException(nameof(player));
-			public ReadOnlyMemory<byte> NewsData { get; } = newsData;
-		}
+        {
+            public Player Player { get; } = player ?? throw new ArgumentNullException(nameof(player));
+            public ReadOnlyMemory<byte> NewsData { get; } = newsData;
+        }
 
-		private readonly struct MapDownloadContext(Player player, MapDownloadData mapDownloadData)
-		{
-			public Player Player { get; } = player ?? throw new ArgumentNullException(nameof(player));
-			public MapDownloadData MapDownloadData { get; } = mapDownloadData ?? throw new ArgumentNullException(nameof(mapDownloadData));
-		}
+        private readonly struct MapDownloadContext(Player player, MapDownloadData mapDownloadData)
+        {
+            public Player Player { get; } = player ?? throw new ArgumentNullException(nameof(player));
+            public MapDownloadData MapDownloadData { get; } = mapDownloadData ?? throw new ArgumentNullException(nameof(mapDownloadData));
+        }
 
         private sealed class NewsManager : IDisposable
         {
@@ -586,7 +586,7 @@ namespace SS.Core.Modules
                     uint checksum;
                     byte[] fileData;
 
-					try
+                    try
                     {
                         FileStream newsStream = null;
                         int tries = 0;
@@ -623,17 +623,17 @@ namespace SS.Core.Modules
                             // calculate the checksum
                             Crc32 crc32 = _parent._objectPoolManager.Crc32Pool.Get();
 
-							try
-							{
-								crc32.Append(newsStream);
-								checksum = crc32.GetCurrentHashAsUInt32();
-							}
-							finally
-							{
-								_parent._objectPoolManager.Crc32Pool.Return(crc32);
-							}
+                            try
+                            {
+                                crc32.Append(newsStream);
+                                checksum = crc32.GetCurrentHashAsUInt32();
+                            }
+                            finally
+                            {
+                                _parent._objectPoolManager.Crc32Pool.Return(crc32);
+                            }
 
-							if (_newsChecksum is not null && _newsChecksum.Value == checksum)
+                            if (_newsChecksum is not null && _newsChecksum.Value == checksum)
                             {
                                 _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Checked '{_newsFilename}', but there was no change (checksum {checksum:X}).");
                                 return; // same checksum, no change
@@ -650,10 +650,10 @@ namespace SS.Core.Modules
 
                             compressedStream.Position = 0;
 
-							fileData = new byte[17 + compressedStream.Length]; // 17 is the size of the header
-							fileData[0] = (byte)S2CPacketType.IncomingFile;
-							// intentionally leaving 16 bytes of 0 for the name
-							Span<byte> dataSpan = fileData.AsSpan(17);
+                            fileData = new byte[17 + compressedStream.Length]; // 17 is the size of the header
+                            fileData[0] = (byte)S2CPacketType.IncomingFile;
+                            // intentionally leaving 16 bytes of 0 for the name
+                            Span<byte> dataSpan = fileData.AsSpan(17);
                             while (dataSpan.Length > 0)
                             {
                                 int bytesRead = compressedStream.Read(dataSpan);
@@ -661,12 +661,12 @@ namespace SS.Core.Modules
                                 {
                                     // end of stream when we expected more data
                                     _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error loading '{_newsFilename}'. Unable to read all data.");
-									return; 
-								}
+                                    return;
+                                }
 
-								dataSpan = dataSpan[bytesRead..];
-							}
-						}
+                                dataSpan = dataSpan[bytesRead..];
+                            }
+                        }
                         finally
                         {
                             newsStream.Dispose();
@@ -740,14 +740,14 @@ namespace SS.Core.Modules
             #endregion
         }
 
-		/// <summary>
-		/// Data for a map file that can be downloaded.
-		/// </summary>
-		/// <param name="FileName">Name of the file.</param>
-		/// <param name="IsOptional">Whether the file is optional (lvzs are optional).</param>
-		/// <param name="Checksum">CRC32 of the file.</param>
-		/// <param name="Data">Compressed bytes of the file, includes the packet header.</param>
-		private record MapDownloadData(string FileName, bool IsOptional, uint Checksum, ReadOnlyMemory<byte> Data);
+        /// <summary>
+        /// Data for a map file that can be downloaded.
+        /// </summary>
+        /// <param name="FileName">Name of the file.</param>
+        /// <param name="IsOptional">Whether the file is optional (lvzs are optional).</param>
+        /// <param name="Checksum">CRC32 of the file.</param>
+        /// <param name="Data">Compressed bytes of the file, includes the packet header.</param>
+        private record MapDownloadData(string FileName, bool IsOptional, uint Checksum, ReadOnlyMemory<byte> Data);
 
         #endregion
     }

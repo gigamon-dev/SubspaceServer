@@ -31,47 +31,47 @@ namespace SS.Packets.Game
         private readonly byte blah4_7;
         private readonly byte blah4_8;
 
-		public S2C_LoginResponse()
-		{
-			Type = (byte)S2CPacketType.LoginResponse;
-			Code = 0;
-			ServerVersion = 134;
-			IsVip = 0;
-			blah_1 = blah_2 = blah_3 = 0;
-			blah2_1 = blah2_2 = blah2_3 = blah2_4 = blah2_5 = 0;
-			ExeChecksum = 0;
-			DemoData = 0;
-			CodeChecksum = 0;
-			NewsChecksum = 0;
-			blah4_1 = blah4_2 = blah4_3 = blah4_4 = blah4_5 = blah4_6 = blah4_7 = blah4_8 = 0;
-		}
+        public S2C_LoginResponse()
+        {
+            Type = (byte)S2CPacketType.LoginResponse;
+            Code = 0;
+            ServerVersion = 134;
+            IsVip = 0;
+            blah_1 = blah_2 = blah_3 = 0;
+            blah2_1 = blah2_2 = blah2_3 = blah2_4 = blah2_5 = 0;
+            ExeChecksum = 0;
+            DemoData = 0;
+            CodeChecksum = 0;
+            NewsChecksum = 0;
+            blah4_1 = blah4_2 = blah4_3 = blah4_4 = blah4_5 = blah4_6 = blah4_7 = blah4_8 = 0;
+        }
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint ServerVersion
-		{
-			readonly get => LittleEndianConverter.Convert(serverVersion);
-			set => serverVersion = LittleEndianConverter.Convert(value);
-		}
+        public uint ServerVersion
+        {
+            readonly get => LittleEndianConverter.Convert(serverVersion);
+            set => serverVersion = LittleEndianConverter.Convert(value);
+        }
 
-		public uint ExeChecksum
-		{
-			readonly get => LittleEndianConverter.Convert(exeChecksum);
-			set => exeChecksum = LittleEndianConverter.Convert(value);
-		}
+        public uint ExeChecksum
+        {
+            readonly get => LittleEndianConverter.Convert(exeChecksum);
+            set => exeChecksum = LittleEndianConverter.Convert(value);
+        }
 
-		public uint CodeChecksum
-		{
-			readonly get => LittleEndianConverter.Convert(codeChecksum);
-			set => codeChecksum = LittleEndianConverter.Convert(value);
-		}
+        public uint CodeChecksum
+        {
+            readonly get => LittleEndianConverter.Convert(codeChecksum);
+            set => codeChecksum = LittleEndianConverter.Convert(value);
+        }
 
-		public uint NewsChecksum
-		{
-			readonly get => LittleEndianConverter.Convert(newsChecksum);
-			set => newsChecksum = LittleEndianConverter.Convert(value);
-		}
+        public uint NewsChecksum
+        {
+            readonly get => LittleEndianConverter.Convert(newsChecksum);
+            set => newsChecksum = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
+        #endregion
     }
 }

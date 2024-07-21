@@ -18,16 +18,16 @@ namespace SS.Packets.Game
         private readonly short damage;
         private readonly byte unknown;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		/// <summary>
-		/// Id of the player that inflicted the damage.
-		/// </summary>
-		/// <remarks>
-		/// For damage taken from a wormhole, this will be the player's own PlayerId.
-		/// </remarks>
-		public short AttackerPlayerId => LittleEndianConverter.Convert(attackerPlayerId);
-        
+        /// <summary>
+        /// Id of the player that inflicted the damage.
+        /// </summary>
+        /// <remarks>
+        /// For damage taken from a wormhole, this will be the player's own PlayerId.
+        /// </remarks>
+        public short AttackerPlayerId => LittleEndianConverter.Convert(attackerPlayerId);
+
         /// <summary>
         /// The amount of energy the player had when the damage occurred.
         /// </summary>
@@ -46,7 +46,7 @@ namespace SS.Packets.Game
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_WatchDamageHeader(short damagedPlayerId, ServerTick timestamp)
-	{
+    {
         #region Static Members
 
         public static readonly int Length = Marshal.SizeOf<S2C_WatchDamageHeader>();
@@ -57,9 +57,9 @@ namespace SS.Packets.Game
         private readonly short damagedPlayerId = LittleEndianConverter.Convert(damagedPlayerId);
         private readonly uint timestamp = LittleEndianConverter.Convert((uint)timestamp);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short DamagedPlayerId => LittleEndianConverter.Convert(damagedPlayerId);
+        public short DamagedPlayerId => LittleEndianConverter.Convert(damagedPlayerId);
 
         public ServerTick Timestamp => LittleEndianConverter.Convert(timestamp);
 
@@ -78,9 +78,9 @@ namespace SS.Packets.Game
         public readonly byte Type;
         private readonly uint timestamp;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public ServerTick Timestamp => new(LittleEndianConverter.Convert(timestamp));
+        public ServerTick Timestamp => new(LittleEndianConverter.Convert(timestamp));
 
         #endregion
     }

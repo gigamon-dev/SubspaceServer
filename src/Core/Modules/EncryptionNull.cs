@@ -64,7 +64,7 @@ namespace SS.Core.Modules
                 return false;
 
             ClientType type;
-            
+
             // figure out client type
             switch (packet.ClientType)
             {
@@ -80,14 +80,14 @@ namespace SS.Core.Modules
                     return false; // unknown type
             }
 
-			// get connection (null means no encryption)
-			IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
-			Player player = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
+            // get connection (null means no encryption)
+            IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
+            Player player = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
 
             if (player is null)
             {
                 // no slots left?
-                Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07};
+                Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
                 _networkEncryption.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }

@@ -9,20 +9,20 @@ namespace SS.Core.Map.Lvz
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct FileHeader
     {
-		#region Static Members
+        #region Static Members
 
-		public const uint LvzMagic = 0x544e4f43; // CONT
+        public const uint LvzMagic = 0x544e4f43; // CONT
 
         public static readonly int Length = Marshal.SizeOf<FileHeader>();
 
         #endregion
 
         private readonly uint magic;
-		private readonly int compressedSectionCount;
+        private readonly int compressedSectionCount;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint Magic => LittleEndianConverter.Convert(magic);
+        public uint Magic => LittleEndianConverter.Convert(magic);
 
         public int CompressedSectionCount => LittleEndianConverter.Convert(compressedSectionCount);
 

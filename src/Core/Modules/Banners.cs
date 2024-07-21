@@ -241,7 +241,7 @@ namespace SS.Core.Modules
             // Rate limit banner changes.
             lock (pd.Lock)
             {
-                if (pd.LastSetByPlayer is not null 
+                if (pd.LastSetByPlayer is not null
                     && (DateTime.UtcNow - pd.LastSetByPlayer.Value) < TimeSpan.FromSeconds(5))
                 {
                     _chat.SendMessage(player, "You set your banner too recently.");
@@ -394,8 +394,8 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 lock (Lock)
                 {
                     LastSetByPlayer = null;

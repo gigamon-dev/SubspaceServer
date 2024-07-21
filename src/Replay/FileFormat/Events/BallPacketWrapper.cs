@@ -6,7 +6,7 @@ namespace SS.Replay.FileFormat.Events
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct BallPacketWrapper(ServerTick ticks, in BallPacket ballPacket)
-	{
+    {
         #region Static members
 
         public static readonly int Length = Marshal.SizeOf<BallPacketWrapper>();
@@ -15,5 +15,5 @@ namespace SS.Replay.FileFormat.Events
 
         public EventHeader Header = new(ticks, EventType.BallPacket);
         public BallPacket BallPacket = ballPacket;
-	}
+    }
 }

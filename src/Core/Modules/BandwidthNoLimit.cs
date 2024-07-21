@@ -3,10 +3,10 @@ using System.Text;
 
 namespace SS.Core.Modules
 {
-	/// <summary>
-	/// Module for that provides a bandwidth limiters that do not impose a limit.
-	/// </summary>
-	[CoreModuleInfo]
+    /// <summary>
+    /// Module for that provides a bandwidth limiters that do not impose a limit.
+    /// </summary>
+    [CoreModuleInfo]
     public class BandwidthNoLimit : IModule, IBandwidthLimiterProvider
     {
         private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
@@ -44,43 +44,43 @@ namespace SS.Core.Modules
             // no-op
         }
 
-		#endregion
+        #endregion
 
-		/// <summary>
-		/// An <see cref="IBandwidthLimiter"/> that does not enforce any limit.
-		/// </summary>
-		private class NoLimitBandwidthLimiter : IBandwidthLimiter
-		{
-			#region IBandwidthLimiter Members
+        /// <summary>
+        /// An <see cref="IBandwidthLimiter"/> that does not enforce any limit.
+        /// </summary>
+        private class NoLimitBandwidthLimiter : IBandwidthLimiter
+        {
+            #region IBandwidthLimiter Members
 
-			public void Iter(long asOf)
-			{
-			}
+            public void Iter(long asOf)
+            {
+            }
 
-			public bool Check(int bytes, BandwidthPriority priority)
-			{
-				return true;
-			}
+            public bool Check(int bytes, BandwidthPriority priority)
+            {
+                return true;
+            }
 
-			public void AdjustForAck()
-			{
-			}
+            public void AdjustForAck()
+            {
+            }
 
-			public void AdjustForRetry()
-			{
-			}
+            public void AdjustForRetry()
+            {
+            }
 
-			public int GetSendWindowSize()
-			{
-				return 30;
-			}
+            public int GetSendWindowSize()
+            {
+                return 30;
+            }
 
-			public void GetInfo(StringBuilder sb)
-			{
-				sb?.Append("(no limit)");
-			}
+            public void GetInfo(StringBuilder sb)
+            {
+                sb?.Append("(no limit)");
+            }
 
-			#endregion
-		}
-	}
+            #endregion
+        }
+    }
 }

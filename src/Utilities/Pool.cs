@@ -48,7 +48,7 @@ namespace SS.Utilities
     /// An object pool implementation where the objects are aware of the pool they originated from and can return themselves to it when disposed.
     /// </summary>
     /// <typeparam name="T">The type of object to store in the pool.</typeparam>
-    public class Pool<T> : IPool<T>, IPoolInternal where T : PooledObject, new() 
+    public class Pool<T> : IPool<T>, IPoolInternal where T : PooledObject, new()
     {
         /// <summary>
         /// The default pool. This can be used like a singleton, recommended.
@@ -72,7 +72,7 @@ namespace SS.Utilities
         public Pool()
         {
         }
-        
+
         public T Get()
         {
             if (!_availableBag.TryTake(out T obj) || !obj.TrySetAvailability(false))

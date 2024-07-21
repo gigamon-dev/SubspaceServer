@@ -485,7 +485,7 @@ namespace SS.Matchmaking.Modules
             Span<char> arenaName = stackalloc char[Constants.MaxArenaNameLength];
             if (!Arena.TryCreateArenaName(arenaName, _arenaBaseName, arenaNumber, out int charsWritten))
                 return false;
-            
+
             arenaName = arenaName[..charsWritten];
 
             // Check if there are 2 players available.
@@ -794,7 +794,7 @@ namespace SS.Matchmaking.Modules
             // The idea is to work like a ski lift queue with 1 group line and 1 solo line.
             // Try to take from the group line, and then fill in remaining slots using the solo line.
             public readonly LinkedList<Player> SoloQueue; // TODO: pooling of LinkListNode<Player> objects
-            //public readonly LinkedList<IPlayerGroup> GroupQueue; // insert in order of group size
+                                                          //public readonly LinkedList<IPlayerGroup> GroupQueue; // insert in order of group size
 
             private readonly List<int> _boxIds = new();
 
@@ -1058,15 +1058,15 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public bool HasEnteredArena = false;
 
-			bool IResettable.TryReset()
-			{
-				MatchIdentifier = null;
-				LastShip = null;
-				HasEnteredArena = false;
+            bool IResettable.TryReset()
+            {
+                MatchIdentifier = null;
+                LastShip = null;
+                HasEnteredArena = false;
 
-				return true;
-			}
-		}
+                return true;
+            }
+        }
 
         private record MatchIdentifier(int ArenaNumber, int BoxId); // immutable, value equality
     }

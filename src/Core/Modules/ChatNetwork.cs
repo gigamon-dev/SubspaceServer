@@ -1027,10 +1027,10 @@ namespace SS.Core.Modules
             public ulong BytesSent;
             public ulong BytesReceived;
 
-			#endregion
+            #endregion
 
-			public void Reset()
-			{
+            public void Reset()
+            {
                 if (Socket is not null)
                 {
                     Socket.Close();
@@ -1068,8 +1068,8 @@ namespace SS.Core.Modules
             bool IResettable.TryReset()
             {
                 Reset();
-				return true;
-			}
+                return true;
+            }
         }
 
         private struct OutBuffer

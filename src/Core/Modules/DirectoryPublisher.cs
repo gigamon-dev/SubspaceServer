@@ -231,8 +231,8 @@ namespace SS.Core.Modules
         {
             _logManager.LogM(LogLevel.Drivel, nameof(DirectoryPublisher), "Sending information to directory servers.");
 
-			// Local arenas
-			_arenaManager.GetPopulationSummary(out int globalTotal, out _);
+            // Local arenas
+            _arenaManager.GetPopulationSummary(out int globalTotal, out _);
 
             // Peer arenas
             IPeer peer = _broker.GetInterface<IPeer>();

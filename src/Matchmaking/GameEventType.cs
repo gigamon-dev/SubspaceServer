@@ -28,7 +28,7 @@
         /// <summary>
         /// When a player uses an item (e.g. repel)
         /// </summary>
-        TeamVersus_PlayerUseItem, 
+        TeamVersus_PlayerUseItem,
 
         #endregion
 
@@ -37,7 +37,7 @@
         /// <summary>
         /// When a goal is scored with a ball.
         /// </summary>
-        Ball_Goal =  100,
+        Ball_Goal = 100,
 
         /// <summary>
         /// When a save is made.

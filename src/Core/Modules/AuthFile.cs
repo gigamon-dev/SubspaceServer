@@ -36,11 +36,11 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5", 
+        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5",
             Description = "The algorithm to use for hashing passwords. Supported algorithms include: MD5, SHA256, and SHA512.")]
-        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex", 
+        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex",
             Description = "How password hashes are encoded in the password file. hex|Base64")]
-        [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1", 
+        [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
             Description = "Determines whether to allow players not listed in the password file.")]
         public bool Load(
             ComponentBroker broker,
@@ -312,7 +312,7 @@ namespace SS.Core.Modules
         #region Commands
 
         [CommandHelp(
-            Targets = CommandTarget.None, 
+            Targets = CommandTarget.None,
             Args = "<new password>",
             Description = $"""
                 Changes your local server password. Note that this command only changes
@@ -350,8 +350,8 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None, 
-            Args = "<player name>", 
+            Targets = CommandTarget.None,
+            Args = "<player name>",
             Description = """
                 Adds a player to passwd.conf with no set password. This will allow them
                 to log in when AllowUnknown is set to false, and has no use otherwise.
@@ -378,7 +378,7 @@ namespace SS.Core.Modules
                     _chat.SendMessage(player, $"{parameters} already has a local password set.");
                     return;
                 }
-            } 
+            }
 
             _configManager.SetStr(_pwdFile, "users", parameters.ToString(), "any", $"added by {player.Name} on {DateTime.UtcNow}", true);
             _chat.SendMessage(player, $"Added {parameters} to the allowed player list.");
@@ -534,18 +534,18 @@ namespace SS.Core.Modules
                 _passwordHashLength = value.Length;
             }
 
-			bool IResettable.TryReset()
-			{
-				if (_passwordHashChars is not null)
-				{
-					ArrayPool<char>.Shared.Return(_passwordHashChars, true);
-					_passwordHashChars = null;
-				}
+            bool IResettable.TryReset()
+            {
+                if (_passwordHashChars is not null)
+                {
+                    ArrayPool<char>.Shared.Return(_passwordHashChars, true);
+                    _passwordHashChars = null;
+                }
 
-				_passwordHashLength = 0;
+                _passwordHashLength = 0;
                 return true;
-			}
-		}
+            }
+        }
 
         private enum HashEncoding
         {

@@ -134,7 +134,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-		bool IFileTransfer.SendFile(Player player, Stream stream, ReadOnlySpan<char> filename)
+        bool IFileTransfer.SendFile(Player player, Stream stream, ReadOnlySpan<char> filename)
         {
             if (player is null)
             {
@@ -142,57 +142,57 @@ namespace SS.Core.Modules
                 return false;
             }
 
-			if (stream is null)
-				return false;
+            if (stream is null)
+                return false;
 
-			int fileLength;
+            int fileLength;
 
-			try
-			{
+            try
+            {
                 long length = stream.Length - stream.Position;
 
-				if (length > (int.MaxValue - 17))
-				{
+                if (length > (int.MaxValue - 17))
+                {
                     stream.Dispose();
-					_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). File is too large.");
-					return false;
-				}
+                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). File is too large.");
+                    return false;
+                }
 
-				fileLength = (int)length;
-			}
-			catch (Exception ex)
-			{
-				stream.Dispose();
-				_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error accessing stream. {ex.Message}");
-				return false;
-			}
+                fileLength = (int)length;
+            }
+            catch (Exception ex)
+            {
+                stream.Dispose();
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error accessing stream. {ex.Message}");
+                return false;
+            }
 
-			DownloadDataContext context = s_downloadDataContextPool.Get();
+            DownloadDataContext context = s_downloadDataContextPool.Get();
 
-			try
-			{
-				context.Set(player, stream, filename, null);
-			}
-			catch (Exception ex)
-			{
-				s_downloadDataContextPool.Return(context);
-				stream.Dispose();
-				_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error initializing sized send. {ex.Message}");
-				return false;
-			}
+            try
+            {
+                context.Set(player, stream, filename, null);
+            }
+            catch (Exception ex)
+            {
+                s_downloadDataContextPool.Return(context);
+                stream.Dispose();
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error initializing sized send. {ex.Message}");
+                return false;
+            }
 
-			if (!_network.SendSized(player, fileLength + 17, GetSizedSendData, context))
-			{
-				s_downloadDataContextPool.Return(context);
-				stream.Dispose();
-				_logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error queuing up a sized send.");
-				return false;
-			}
+            if (!_network.SendSized(player, fileLength + 17, GetSizedSendData, context))
+            {
+                s_downloadDataContextPool.Return(context);
+                stream.Dispose();
+                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send file ({filename}). Error queuing up a sized send.");
+                return false;
+            }
 
-			return true;
-		}
+            return true;
+        }
 
-		bool IFileTransfer.RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg)
+        bool IFileTransfer.RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg)
         {
             if (player is null)
                 return false;
@@ -224,7 +224,7 @@ namespace SS.Core.Modules
 
         void IFileTransfer.SetWorkingDirectory(Player player, string path)
         {
-			ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(player);
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
@@ -235,9 +235,9 @@ namespace SS.Core.Modules
 
         string IFileTransfer.GetWorkingDirectory(Player player)
         {
-			ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(player);
 
-			if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
                 return null;
 
             return ud.WorkingDirectory;
@@ -280,7 +280,7 @@ namespace SS.Core.Modules
             {
                 ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
                 ud.FileName = ud.Stream.Name;
-				ud.Stream.Write(data[17..]);
+                ud.Stream.Write(data[17..]);
                 success = true;
             }
             catch (Exception ex)
@@ -349,7 +349,7 @@ namespace SS.Core.Modules
 
         private void GetSizedSendData(DownloadDataContext context, int offset, Span<byte> dataSpan)
         {
-			ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(context);
             ArgumentOutOfRangeException.ThrowIfLessThan(offset, 0);
 
             if (dataSpan.IsEmpty)
@@ -460,22 +460,22 @@ namespace SS.Core.Modules
                 return charCount;
             }
 
-			bool IResettable.TryReset()
-			{
-				Player = null;
+            bool IResettable.TryReset()
+            {
+                Player = null;
 
-				if (Stream is not null)
-				{
-					Stream.Dispose();
-					Stream = null;
-				}
+                if (Stream is not null)
+                {
+                    Stream.Dispose();
+                    Stream = null;
+                }
 
-				_header.AsSpan(1).Clear();
+                _header.AsSpan(1).Clear();
 
-				DeletePath = null;
-				return true;
-			}
-		}
+                DeletePath = null;
+                return true;
+            }
+        }
 
         private class UploadDataContext : IResettable, IDisposable
         {
@@ -546,8 +546,8 @@ namespace SS.Core.Modules
                 UploadedInvoker = null;
             }
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 if (UploadedInvoker is not null)
                 {
                     // We do not want to invoke callbacks when we call Cleanup(...).

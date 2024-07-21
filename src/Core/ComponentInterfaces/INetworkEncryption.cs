@@ -36,21 +36,21 @@ namespace SS.Core.ComponentInterfaces
         void Void(Player player);
     }
 
-	/// <summary>
-	/// Delegate for a handler to a connection init request.
-	/// </summary>
-	/// <param name="remoteAddress">
-	/// The <see cref="SocketAddress"/> the request came from.
-	/// This object can be used to respond by calling <see cref="INetworkEncryption.ReallyRawSend(SocketAddress, ReadOnlySpan{byte}, ListenData)"/>.
-	/// It can also be used to allocate an <see cref="IPEndPoint"/> object 
+    /// <summary>
+    /// Delegate for a handler to a connection init request.
+    /// </summary>
+    /// <param name="remoteAddress">
+    /// The <see cref="SocketAddress"/> the request came from.
+    /// This object can be used to respond by calling <see cref="INetworkEncryption.ReallyRawSend(SocketAddress, ReadOnlySpan{byte}, ListenData)"/>.
+    /// It can also be used to allocate an <see cref="IPEndPoint"/> object 
     /// for calling <see cref="INetworkEncryption.NewConnection(ClientType, IPEndPoint, string, ListenData)"/> 
     /// or to read the IP address and port.
-	/// This object should not be stored or held on to. It is mutable and the Network module reuses it for every datagram received.
-	/// </param>
-	/// <param name="data">The request data.</param>
-	/// <param name="listenData">State info to pass to <see cref="INetworkEncryption.NewConnection(ClientType, IPEndPoint, string, ListenData)"/>.</param>
-	/// <returns>Whether the request was handled. True means processing is done. False means the request will be given to later handlers to process.</returns>
-	public delegate bool ConnectionInitHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData listenData);
+    /// This object should not be stored or held on to. It is mutable and the Network module reuses it for every datagram received.
+    /// </param>
+    /// <param name="data">The request data.</param>
+    /// <param name="listenData">State info to pass to <see cref="INetworkEncryption.NewConnection(ClientType, IPEndPoint, string, ListenData)"/>.</param>
+    /// <returns>Whether the request was handled. True means processing is done. False means the request will be given to later handlers to process.</returns>
+    public delegate bool ConnectionInitHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData listenData);
 
     /// <summary>
     /// Interface with special methods for encryption modules to use to access the network module.
@@ -71,22 +71,22 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>True if the handler was removed. Otherwise, false.</returns>
         bool RemoveConnectionInitHandler(ConnectionInitHandler handler);
 
-		/// <summary>
-		/// Sends data immediately without encryption and without buffering.
-		/// </summary>
-		/// <param name="remoteAddress">The address to send data to.</param>
-		/// <param name="data">The data to send.</param>
-		/// <param name="listenData">Information about which socket to send from.</param>
-		void ReallyRawSend(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData listenData);
+        /// <summary>
+        /// Sends data immediately without encryption and without buffering.
+        /// </summary>
+        /// <param name="remoteAddress">The address to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="listenData">Information about which socket to send from.</param>
+        void ReallyRawSend(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData listenData);
 
-		/// <summary>
-		/// Gets a player object for a new connection.
-		/// </summary>
-		/// <param name="clientType">The type of client the connection is for.</param>
-		/// <param name="remoteEndpoint">The endpoint (IP and port) of the connection.</param>
-		/// <param name="encryptorName">The encryption interface key.</param>
-		/// <param name="listenData">The <see cref="ListenData"/> of the socket that the connection came from.</param>
-		/// <returns>The player object for the connection. <see langword="null"/> if there was an error.</returns>
-		Player NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string encryptorName, ListenData listenData);
-	}
+        /// <summary>
+        /// Gets a player object for a new connection.
+        /// </summary>
+        /// <param name="clientType">The type of client the connection is for.</param>
+        /// <param name="remoteEndpoint">The endpoint (IP and port) of the connection.</param>
+        /// <param name="encryptorName">The encryption interface key.</param>
+        /// <param name="listenData">The <see cref="ListenData"/> of the socket that the connection came from.</param>
+        /// <returns>The player object for the connection. <see langword="null"/> if there was an error.</returns>
+        Player NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string encryptorName, ListenData listenData);
+    }
 }

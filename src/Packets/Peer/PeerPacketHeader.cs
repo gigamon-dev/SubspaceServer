@@ -13,7 +13,7 @@ namespace SS.Packets.Peer
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct PeerPacketHeader(uint password, PeerPacketType type, uint timestamp)
-	{
+    {
         #region Static members
 
         public static readonly int Length = Marshal.SizeOf<PeerPacketHeader>();
@@ -27,9 +27,9 @@ namespace SS.Packets.Peer
         private byte _type = (byte)type;
         public uint _timestamp = LittleEndianConverter.Convert(timestamp);
 
-		#region Helper properties
+        #region Helper properties
 
-		public uint Password
+        public uint Password
         {
             readonly get => LittleEndianConverter.Convert(_password);
             set => _password = LittleEndianConverter.Convert(value);
@@ -37,13 +37,13 @@ namespace SS.Packets.Peer
 
         public PeerPacketType Type
         {
-			readonly get => (PeerPacketType)_type;
+            readonly get => (PeerPacketType)_type;
             set => _type = (byte)value;
         }
 
         public uint Timestamp
         {
-			readonly get => LittleEndianConverter.Convert(_timestamp);
+            readonly get => LittleEndianConverter.Convert(_timestamp);
             set => _timestamp = LittleEndianConverter.Convert(value);
         }
 

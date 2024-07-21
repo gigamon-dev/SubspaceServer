@@ -5,23 +5,23 @@ namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_WarpTo(short x, short y)
-	{
-		#region Static Members
+    {
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<S2C_WarpTo>();
+        public static readonly int Length = Marshal.SizeOf<S2C_WarpTo>();
 
-		#endregion
+        #endregion
 
-		public readonly byte Type = (byte)S2CPacketType.WarpTo;
+        public readonly byte Type = (byte)S2CPacketType.WarpTo;
         private readonly short x = LittleEndianConverter.Convert(x);
         private readonly short y = LittleEndianConverter.Convert(y);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public readonly short X => LittleEndianConverter.Convert(x);
+        public readonly short X => LittleEndianConverter.Convert(x);
 
-		public readonly short Y => LittleEndianConverter.Convert(y);
+        public readonly short Y => LittleEndianConverter.Convert(y);
 
-		#endregion
-	}
+        #endregion
+    }
 }

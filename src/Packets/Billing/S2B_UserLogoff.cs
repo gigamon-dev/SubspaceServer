@@ -5,13 +5,13 @@ namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2B_UserLogoff(
-		int connectionId,
-		ushort disconnectReason,
-		ushort latency,
-		ushort ping,
-		ushort packetlossS2C,
-		ushort packetlossC2S)
-	{
+        int connectionId,
+        ushort disconnectReason,
+        ushort latency,
+        ushort ping,
+        ushort packetlossS2C,
+        ushort packetlossC2S)
+    {
         #region Static Members
 
         /// <summary>
@@ -41,20 +41,20 @@ namespace SS.Packets.Billing
         private readonly ushort packetlossC2S = LittleEndianConverter.Convert(packetlossC2S);
         public PlayerScore Score = default;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public readonly int ConnectionId => LittleEndianConverter.Convert(connectionId);
+        public readonly int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
-		public readonly ushort DisconnectReason => LittleEndianConverter.Convert(disconnectReason);
+        public readonly ushort DisconnectReason => LittleEndianConverter.Convert(disconnectReason);
 
-		public readonly ushort Latency => LittleEndianConverter.Convert(disconnectReason);
+        public readonly ushort Latency => LittleEndianConverter.Convert(disconnectReason);
 
-		public readonly ushort Ping => LittleEndianConverter.Convert(disconnectReason);
+        public readonly ushort Ping => LittleEndianConverter.Convert(disconnectReason);
 
-		public readonly ushort PacketlossS2C => LittleEndianConverter.Convert(disconnectReason);
+        public readonly ushort PacketlossS2C => LittleEndianConverter.Convert(disconnectReason);
 
-		public readonly ushort PacketlossC2S => LittleEndianConverter.Convert(disconnectReason);
+        public readonly ushort PacketlossC2S => LittleEndianConverter.Convert(disconnectReason);
 
-		#endregion
-	}
+        #endregion
+    }
 }

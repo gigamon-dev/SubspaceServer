@@ -69,14 +69,14 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly DefaultObjectPool<List<BrickLocation>> _brickLocationListPool = new(new ListPooledObjectPolicy<BrickLocation>() { InitialCapacity = 8 });
 
-		/// <summary>
-		/// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
-		/// </summary>
-		private readonly DefaultObjectPool<List<BrickData>> _brickDataListPool = new(new ListPooledObjectPolicy<BrickData>() { InitialCapacity = 8 });
+        /// <summary>
+        /// Pool of <see cref="List{T}"/>s for <see cref="BrickData"/>.
+        /// </summary>
+        private readonly DefaultObjectPool<List<BrickData>> _brickDataListPool = new(new ListPooledObjectPolicy<BrickData>() { InitialCapacity = 8 });
 
-		#region Module methods
+        #region Module methods
 
-		public bool Load(
+        public bool Load(
             ComponentBroker broker,
             IArenaManager arenaManager,
             IConfigManager configManager,
@@ -183,7 +183,7 @@ namespace SS.Core.Modules
                 lock (abd.Lock)
                 {
                     ExpireBricks(player.Arena);
-                    
+
                     // Send active bricks to the player.
                     SendToPlayerOrArena(player, null, abd.Bricks, 0);
                 }
@@ -451,7 +451,7 @@ namespace SS.Core.Modules
 
             lock (abd.Lock)
             {
-                while (abd.Bricks.TryPeek(out BrickData brick) 
+                while (abd.Bricks.TryPeek(out BrickData brick)
                     && now >= brick.StartTime + abd.BrickTime)
                 {
                     // TODO: CountBricksAsWalls

@@ -9,16 +9,16 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct C2S_Security
     {
-		#region Static Members
+        #region Static Members
 
-		/// <summary>
-		/// Number of bytes in a packet.
-		/// </summary>
-		/// <remarks>
-		/// This is the minimum # of bytes.
-		/// Continuum sends more data. Presumably for it to do additional checks with subgame?
-		/// </remarks>
-		public static readonly int Length = Marshal.SizeOf<C2S_Security>();
+        /// <summary>
+        /// Number of bytes in a packet.
+        /// </summary>
+        /// <remarks>
+        /// This is the minimum # of bytes.
+        /// Continuum sends more data. Presumably for it to do additional checks with subgame?
+        /// </remarks>
+        public static readonly int Length = Marshal.SizeOf<C2S_Security>();
 
         #endregion
 
@@ -41,87 +41,87 @@ namespace SS.Packets.Game
         private ushort highestPing;
         public byte SlowFrame;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint WeaponCount
-		{
-			readonly get => LittleEndianConverter.Convert(weaponCount);
-			set => weaponCount = LittleEndianConverter.Convert(value);
-		}
+        public uint WeaponCount
+        {
+            readonly get => LittleEndianConverter.Convert(weaponCount);
+            set => weaponCount = LittleEndianConverter.Convert(value);
+        }
 
-		public uint SettingChecksum
-		{
-			readonly get => LittleEndianConverter.Convert(settingChecksum);
-			set => settingChecksum = LittleEndianConverter.Convert(value);
-		}
+        public uint SettingChecksum
+        {
+            readonly get => LittleEndianConverter.Convert(settingChecksum);
+            set => settingChecksum = LittleEndianConverter.Convert(value);
+        }
 
-		public uint ExeChecksum
-		{
-			readonly get => LittleEndianConverter.Convert(exeChecksum);
-			set => exeChecksum = LittleEndianConverter.Convert(value);
-		}
+        public uint ExeChecksum
+        {
+            readonly get => LittleEndianConverter.Convert(exeChecksum);
+            set => exeChecksum = LittleEndianConverter.Convert(value);
+        }
 
-		public uint MapChecksum
-		{
-			readonly get => LittleEndianConverter.Convert(mapChecksum);
-			set => mapChecksum = LittleEndianConverter.Convert(value);
-		}
+        public uint MapChecksum
+        {
+            readonly get => LittleEndianConverter.Convert(mapChecksum);
+            set => mapChecksum = LittleEndianConverter.Convert(value);
+        }
 
-		public uint S2CSlowTotal
-		{
-			readonly get => LittleEndianConverter.Convert(s2CSlowTotal);
-			set => s2CSlowTotal = LittleEndianConverter.Convert(value);
-		}
+        public uint S2CSlowTotal
+        {
+            readonly get => LittleEndianConverter.Convert(s2CSlowTotal);
+            set => s2CSlowTotal = LittleEndianConverter.Convert(value);
+        }
 
-		public uint S2CFastTotal
-		{
-			readonly get => LittleEndianConverter.Convert(s2CFastTotal);
-			set => s2CFastTotal = LittleEndianConverter.Convert(value);
-		}
+        public uint S2CFastTotal
+        {
+            readonly get => LittleEndianConverter.Convert(s2CFastTotal);
+            set => s2CFastTotal = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort S2CSlowCurrent
+        public ushort S2CSlowCurrent
 
-		{
-			readonly get => LittleEndianConverter.Convert(s2CSlowCurrent);
-			set => s2CSlowCurrent = LittleEndianConverter.Convert(value);
-		}
+        {
+            readonly get => LittleEndianConverter.Convert(s2CSlowCurrent);
+            set => s2CSlowCurrent = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort S2CFastCurrent
-		{
-			readonly get => LittleEndianConverter.Convert(s2CFastCurrent);
-			set => s2CFastCurrent = LittleEndianConverter.Convert(value);
-		}
+        public ushort S2CFastCurrent
+        {
+            readonly get => LittleEndianConverter.Convert(s2CFastCurrent);
+            set => s2CFastCurrent = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort Unknown1
-		{
-			readonly get => LittleEndianConverter.Convert(unknown1);
-			set => unknown1 = LittleEndianConverter.Convert(value);
-		}
+        public ushort Unknown1
+        {
+            readonly get => LittleEndianConverter.Convert(unknown1);
+            set => unknown1 = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort LastPing
-		{
-			readonly get => LittleEndianConverter.Convert(lastPing);
-			set => lastPing = LittleEndianConverter.Convert(value);
-		}
-		public ushort AveragePing
-		{
-			readonly get => LittleEndianConverter.Convert(averagePing);
-			set => averagePing = LittleEndianConverter.Convert(value);
-		}
-		public ushort LowestPing
-		{
-			readonly get => LittleEndianConverter.Convert(lowestPing);
-			set => lowestPing = LittleEndianConverter.Convert(value);
-		}
+        public ushort LastPing
+        {
+            readonly get => LittleEndianConverter.Convert(lastPing);
+            set => lastPing = LittleEndianConverter.Convert(value);
+        }
+        public ushort AveragePing
+        {
+            readonly get => LittleEndianConverter.Convert(averagePing);
+            set => averagePing = LittleEndianConverter.Convert(value);
+        }
+        public ushort LowestPing
+        {
+            readonly get => LittleEndianConverter.Convert(lowestPing);
+            set => lowestPing = LittleEndianConverter.Convert(value);
+        }
 
-		public ushort HighestPing
-		{
-			readonly get => LittleEndianConverter.Convert(highestPing);
-			set => highestPing = LittleEndianConverter.Convert(value);
-		}
+        public ushort HighestPing
+        {
+            readonly get => LittleEndianConverter.Convert(highestPing);
+            set => highestPing = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 
     /// <summary>
     /// Packet that the server sends to either:
@@ -132,7 +132,7 @@ namespace SS.Packets.Game
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_Security(uint greenSeed, uint doorSeed, uint timestamp, uint key)
-	{
+    {
         #region Static Members
 
         /// <summary>
@@ -155,50 +155,50 @@ namespace SS.Packets.Game
         {
         }
 
-		#region Helper Properties
+        #region Helper Properties
 
-		/// <summary>
-		/// Seed for greens.
-		/// </summary>
-		public uint GreenSeed
-		{
-			get => LittleEndianConverter.Convert(greenSeed);
-			set => greenSeed = LittleEndianConverter.Convert(value);
-		}
+        /// <summary>
+        /// Seed for greens.
+        /// </summary>
+        public uint GreenSeed
+        {
+            get => LittleEndianConverter.Convert(greenSeed);
+            set => greenSeed = LittleEndianConverter.Convert(value);
+        }
 
-		/// <summary>
-		/// Seed for doors.
-		/// </summary>
-		public uint DoorSeed
-		{
-			get => LittleEndianConverter.Convert(doorSeed);
-			set => doorSeed = LittleEndianConverter.Convert(value);
-		}
+        /// <summary>
+        /// Seed for doors.
+        /// </summary>
+        public uint DoorSeed
+        {
+            get => LittleEndianConverter.Convert(doorSeed);
+            set => doorSeed = LittleEndianConverter.Convert(value);
+        }
 
-		/// <summary>
-		/// Timestamp
-		/// </summary>
-		public uint Timestamp
-		{
-			get => LittleEndianConverter.Convert(timestamp);
-			set => timestamp = LittleEndianConverter.Convert(value);
-		}
+        /// <summary>
+        /// Timestamp
+        /// </summary>
+        public uint Timestamp
+        {
+            get => LittleEndianConverter.Convert(timestamp);
+            set => timestamp = LittleEndianConverter.Convert(value);
+        }
 
-		/// <summary>
-		/// Key for checksum use.
-		/// <para>
-		/// 0 when just syncing a client up (when a player enters an arena).
-		/// </para>
-		/// <para>
-		/// Non-zero for requesting that the client respond to a security check.
-		/// </para>
-		/// </summary>
-		public uint Key
-		{
-			get => LittleEndianConverter.Convert(key);
-			set => key = LittleEndianConverter.Convert(value);
-		}
+        /// <summary>
+        /// Key for checksum use.
+        /// <para>
+        /// 0 when just syncing a client up (when a player enters an arena).
+        /// </para>
+        /// <para>
+        /// Non-zero for requesting that the client respond to a security check.
+        /// </para>
+        /// </summary>
+        public uint Key
+        {
+            get => LittleEndianConverter.Convert(key);
+            set => key = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

@@ -6,7 +6,7 @@ namespace SS.Matchmaking.Callbacks
     /// <summary>
     /// Callback for when a team versus match ends.
     /// </summary>
-    public static  class TeamVersusMatchEndedCallback
+    public static class TeamVersusMatchEndedCallback
     {
         /// <summary>
         /// Delegate for when a team versus match ends.

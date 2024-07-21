@@ -15,7 +15,7 @@ namespace SS.Core
          * - The Subspace game protocol actually represents this as an UInt16.
          * - However, this server stores it as an UInt64. This makes stats for the 'forever' interval (which never are reset) less likely to overflow.
          */
-        public static readonly StatCode<long> KillPoints = new(StatId.KillPoints); 
+        public static readonly StatCode<long> KillPoints = new(StatId.KillPoints);
         public static readonly StatCode<long> FlagPoints = new(StatId.FlagPoints);
         public static readonly StatCode<ulong> Kills = new(StatId.Kills);
         public static readonly StatCode<ulong> Deaths = new(StatId.Deaths);
@@ -115,8 +115,8 @@ namespace SS.Core
         KothGamesWon = 400,
         SpeedGamesWon = 410,
         SpeedPersonalBest, // PersistInterval.Forever only
-        //JackpotGamesWon = 420,
-        //RabbitGamesWon = 430,
+                           //JackpotGamesWon = 420,
+                           //RabbitGamesWon = 430,
 
         //
         // Extended ball stats

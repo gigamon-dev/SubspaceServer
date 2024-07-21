@@ -63,7 +63,7 @@ namespace SS.Core.Modules
             ICapabilityManager capabilityManager,
             IChat chat,
             IClientSettings clientSettings,
-            ICommandManager commandManager, 
+            ICommandManager commandManager,
             IConfigManager configManager,
             ILagCollect lagCollect,
             ILogManager logManager,
@@ -291,13 +291,13 @@ namespace SS.Core.Modules
             return ad.initLockship;
         }
 
-		void IGame.FakePosition(Player player, ref C2S_PositionPacket pos)
-		{
+        void IGame.FakePosition(Player player, ref C2S_PositionPacket pos)
+        {
             ExtraPositionData dummyExtra = new();
-			HandlePositionPacket(player, ref pos, ref dummyExtra, false, true);
-		}
+            HandlePositionPacket(player, ref pos, ref dummyExtra, false, true);
+        }
 
-		void IGame.FakePosition(Player player, ref C2S_PositionPacket pos, ref ExtraPositionData extra)
+        void IGame.FakePosition(Player player, ref C2S_PositionPacket pos, ref ExtraPositionData extra)
         {
             HandlePositionPacket(player, ref pos, ref extra, true, true);
         }
@@ -486,7 +486,7 @@ namespace SS.Core.Modules
                 return false;
 
             bool antiwarped = false;
-            
+
             _playerData.Lock();
 
             try
@@ -606,37 +606,37 @@ namespace SS.Core.Modules
         #endregion
 
         // Flag:FlaggerKillMultiplier is a client setting, so it's in ClientSettingsConfig.cs
-        [ConfigHelp("Misc", "RegionCheckInterval", ConfigScope.Arena, typeof(int), DefaultValue = "100", 
+        [ConfigHelp("Misc", "RegionCheckInterval", ConfigScope.Arena, typeof(int), DefaultValue = "100",
             Description = "How often to check for region enter/exit events (in ticks).")]
-        [ConfigHelp("Misc", "SpecSeeExtra", ConfigScope.Arena, typeof(bool), DefaultValue = "1", 
+        [ConfigHelp("Misc", "SpecSeeExtra", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
             Description = "Whether spectators can see extra data for the person they're spectating.")]
-        [ConfigHelp("Misc", "SpecSeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "All", 
+        [ConfigHelp("Misc", "SpecSeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "All",
             Description = "Whose energy levels spectators can see. The options are the same as for Misc:SeeEnergy, with one addition: 'Spec' means only the player you're spectating.")]
-        [ConfigHelp("Misc", "SeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "None", 
+        [ConfigHelp("Misc", "SeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "None",
             Description = "Whose energy levels everyone can see: 'None' means nobody else's, 'All' is everyone's, 'Team' is only teammates.")]
-        [ConfigHelp("Security", "MaxDeathWithoutFiring", ConfigScope.Arena, typeof(int), DefaultValue = "5", 
+        [ConfigHelp("Security", "MaxDeathWithoutFiring", ConfigScope.Arena, typeof(int), DefaultValue = "5",
             Description = "The number of times a player can die without firing a weapon before being placed in spectator mode.")]
         [ConfigHelp("Misc", "NoSafeAntiwarp", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Disables antiwarp on players in safe zones.")]
-        [ConfigHelp("Misc", "WarpTresholdDelta", ConfigScope.Arena, typeof(int), DefaultValue = "320", 
+        [ConfigHelp("Misc", "WarpTresholdDelta", ConfigScope.Arena, typeof(int), DefaultValue = "320",
             Description = "The amount of change in a players position (in pixels) that is considered a warp (only while he is flashing).")]
         [ConfigHelp("Misc", "CheckFastBombing", ConfigScope.Arena, typeof(CheckFastBombing), DefaultValue = "0",
             Description = "Fast bombing detection, can be a combination (sum) of the following:  1 - Send sysop alert when fastbombing is detected, 2 - Filter out fastbombs, 4 - Kick fastbombing player off.")]
         [ConfigHelp("Misc", "FastBombingThreshold", ConfigScope.Arena, typeof(int), DefaultValue = "30",
             Description = "Tuning for fast bomb detection. A bomb/mine is considered to be fast bombing if delay between 2 bombs/mines is less than <ship>:BombFireDelay - Misc:FastBombingThreshold.")]
-        [ConfigHelp("Prize", "DontShareThor", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
+        [ConfigHelp("Prize", "DontShareThor", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether Thor greens don't go to the whole team.")]
         [ConfigHelp("Prize", "DontShareBurst", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether Burst greens don't go to the whole team.")]
         [ConfigHelp("Prize", "DontShareBrick", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether Brick greens don't go to the whole team.")]
-        [ConfigHelp("Net", "BulletPixels", ConfigScope.Arena, typeof(int), DefaultValue = "1500", 
+        [ConfigHelp("Net", "BulletPixels", ConfigScope.Arena, typeof(int), DefaultValue = "1500",
             Description = "How far away to always send bullets (in pixels).")]
         [ConfigHelp("Net", "WeaponPixels", ConfigScope.Arena, typeof(int), DefaultValue = "2000",
             Description = "How far away to always weapons (in pixels).")]
         [ConfigHelp("Net", "PositionExtraPixels", ConfigScope.Arena, typeof(int), DefaultValue = "8000",
             Description = "How far away to to send positions of players on radar (in pixels).")]
-        [ConfigHelp("Net", "AntiwarpSendPercent", ConfigScope.Arena, typeof(int), DefaultValue = "5", 
+        [ConfigHelp("Net", "AntiwarpSendPercent", ConfigScope.Arena, typeof(int), DefaultValue = "5",
             Description = "Percent of position packets with antiwarp enabled to send to the whole arena.")]
         // Note: Toggle:AntiwarpPixels is a client setting, so it's [ConfigHelp] is in ClientSettingsConfig.cs
         // Note: Kill:EnterDelay is a client setting, so it's [ConfigHelp] is in ClientSettingsConfig.cs
@@ -820,7 +820,7 @@ namespace SS.Core.Modules
 
                 pd.LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
             }
-            else if(action == PlayerAction.EnterGame)
+            else if (action == PlayerAction.EnterGame)
             {
                 if (player.Ship != ShipType.Spec)
                 {
@@ -975,13 +975,13 @@ namespace SS.Core.Modules
 
         private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-			if (data.Length != C2S_PositionPacket.Length && data.Length != C2S_PositionPacket.LengthWithExtra)
+            if (data.Length != C2S_PositionPacket.Length && data.Length != C2S_PositionPacket.LengthWithExtra)
             {
-				_logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad position packet (length={data.Length}).");
-				return;
-			}
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad position packet (length={data.Length}).");
+                return;
+            }
 
-			ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
+            ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
 
             if (data.Length >= C2S_PositionPacket.LengthWithExtra)
             {
@@ -1050,7 +1050,7 @@ namespace SS.Core.Modules
                 }
 
                 // Warp
-                if(((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Flash) == PlayerPositionStatus.Flash
+                if (((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Flash) == PlayerPositionStatus.Flash
                     && !isFake
                     && player.Ship != ShipType.Spec
                     && player.Ship == pd.PlayerPostitionPacket_LastShip
@@ -1112,8 +1112,8 @@ namespace SS.Core.Modules
                 int y1 = pos.Y;
 
                 // update region-based stuff once in a while, for real players only
-                if (isNewer 
-                    && !isFake 
+                if (isNewer
+                    && !isFake
                     && (now - pd.lastRgnCheck) >= ad.RegionCheckTime)
                 {
                     UpdateRegions(player, (short)(x1 >> 4), (short)(y1 >> 4));
@@ -1170,7 +1170,7 @@ namespace SS.Core.Modules
 
                 // this is the weapons ignore hook.
                 // also ignore weapons based on region
-                if ((_prng.Rand() < pd.ignoreWeapons) 
+                if ((_prng.Rand() < pd.ignoreWeapons)
                     || pd.MapRegionNoWeapons)
                 {
                     pos.Weapon.Type = WeaponCodes.Null;
@@ -1202,7 +1202,7 @@ namespace SS.Core.Modules
 
                 // by default, send unreliable droppable packets. 
                 // weapons get a higher priority.
-                NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Droppable | 
+                NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Droppable |
                     (pos.Weapon.Type != WeaponCodes.Null ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
 
                 // there are several reasons to send a weapon packet (05) instead of just a position one (28)
@@ -1220,7 +1220,7 @@ namespace SS.Core.Modules
                 // TODO: a way for the server to keep track of where mines are currently placed so that it can replay packets to players that enter the arena? or does something like this exist already?
 
                 // send mines to everyone
-                if ((pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb) 
+                if ((pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb)
                     && pos.Weapon.Alternate)
                 {
                     sendToAll = true;
@@ -1244,7 +1244,7 @@ namespace SS.Core.Modules
 
                 // send safe zone enters to everyone, reliably
                 // TODO: why? proposed send damage protocol? what about safe zone exits?
-                if (((pos.Status & PlayerPositionStatus.Safezone) != 0) 
+                if (((pos.Status & PlayerPositionStatus.Safezone) != 0)
                     && ((player.Position.Status & PlayerPositionStatus.Safezone) == 0))
                 {
                     sendToAll = true;
@@ -1588,7 +1588,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            
+
             IFreqManager fm = arena.GetInterface<IFreqManager>();
             if (fm is not null)
             {
@@ -1809,7 +1809,7 @@ namespace SS.Core.Modules
                 return;
 
             Arena arena = player.Arena;
-            if(arena == null)
+            if (arena == null)
                 return;
 
             short oldFreq = player.Freq;
@@ -1831,7 +1831,7 @@ namespace SS.Core.Modules
             // him with callback
             if (player.IsStandard)
                 _net.SendWithCallback(player, data, ResetDuringChange);
-                
+
             // everyone else
             _net.SendToArena(arena, player, data, NetSendFlags.Reliable);
             _chatNetwork?.SendToArena(arena, null, $"SHIPFREQCHANGE:{player.Name}:{player.Ship:D}:{freq:D}");
@@ -1863,7 +1863,7 @@ namespace SS.Core.Modules
 
             lock (_freqshipmtx)
             {
-                if(pd.expires != null)
+                if (pd.expires != null)
                     if (DateTime.UtcNow > pd.expires)
                     {
                         pd.lockship = false;
@@ -1872,8 +1872,8 @@ namespace SS.Core.Modules
                     }
             }
         }
-        
-        [ConfigHelp("Prize", "UseTeamkillPrize", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
+
+        [ConfigHelp("Prize", "UseTeamkillPrize", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
         [ConfigHelp("Prize", "TeamkillPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
@@ -2014,7 +2014,7 @@ namespace SS.Core.Modules
             NotifyKill(killer, player, points, flagTransferCount, green);
 
             if (points > 0)
-            {                
+            {
                 if (killer.Packet.FlagsCarried > 0
                     && ad.FlaggerKillMultiplier > 0)
                 {
@@ -2076,48 +2076,48 @@ namespace SS.Core.Modules
             _chatNetwork?.SendToArena(killer.Arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
-		private void Packet_Green(Player player, Span<byte> data, NetReceiveFlags flags)
-		{
-			if (player == null)
-				return;
-
-			if (data.Length != C2S_Green.Length)
-			{
-				_logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad green packet (length={data.Length}).");
-				return;
-			}
-
-			if (player.Status != PlayerState.Playing)
-				return;
-
-			Arena arena = player.Arena;
-			if (arena == null)
-				return;
-
-			if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
-				return;
-
-			ref C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
-			Prize prize = c2s.Prize;
-
-			// don't forward non-shared prizes
-			if (!(prize == Prize.Thor && (ad.PersonalGreen & PersonalGreen.Thor) == PersonalGreen.Thor)
-				&& !(prize == Prize.Burst && (ad.PersonalGreen & PersonalGreen.Burst) == PersonalGreen.Burst)
-				&& !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
-			{
-				S2C_Green s2c = new(ref c2s, (short)player.Id);
-				_net.SendToArena(arena, player, ref s2c, NetSendFlags.Unreliable);
-			}
-
-			FireGreenEvent(arena, player, c2s.X, c2s.Y, prize);
-		}
-
-		private void FireGreenEvent(Arena arena, Player player, int x, int y, Prize prize)
+        private void Packet_Green(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if(player == null)
+            if (player == null)
                 return;
 
-            if(arena != null)
+            if (data.Length != C2S_Green.Length)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad green packet (length={data.Length}).");
+                return;
+            }
+
+            if (player.Status != PlayerState.Playing)
+                return;
+
+            Arena arena = player.Arena;
+            if (arena == null)
+                return;
+
+            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+                return;
+
+            ref C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
+            Prize prize = c2s.Prize;
+
+            // don't forward non-shared prizes
+            if (!(prize == Prize.Thor && (ad.PersonalGreen & PersonalGreen.Thor) == PersonalGreen.Thor)
+                && !(prize == Prize.Burst && (ad.PersonalGreen & PersonalGreen.Burst) == PersonalGreen.Burst)
+                && !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
+            {
+                S2C_Green s2c = new(ref c2s, (short)player.Id);
+                _net.SendToArena(arena, player, ref s2c, NetSendFlags.Unreliable);
+            }
+
+            FireGreenEvent(arena, player, c2s.X, c2s.Y, prize);
+        }
+
+        private void FireGreenEvent(Arena arena, Player player, int x, int y, Prize prize)
+        {
+            if (player == null)
+                return;
+
+            if (arena != null)
                 GreenCallback.Fire(arena, player, x, y, prize);
             else
                 GreenCallback.Fire(_broker, player, x, y, prize);
@@ -2196,7 +2196,7 @@ namespace SS.Core.Modules
                 if (to == null
                     || to == player
                     || to.Status != PlayerState.Playing
-                    || player.Arena != to.Arena 
+                    || player.Arena != to.Arena
                     || player.Freq != to.Freq)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Tried to attach to bad pid {pid2}.");
@@ -2209,20 +2209,20 @@ namespace SS.Core.Modules
 
         private void Packet_TurretKickoff(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-			if (data.Length != 1)
-			{
-				_logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad turret kickoff packet (length={data.Length}).");
-				return;
-			}
+            if (data.Length != 1)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad turret kickoff packet (length={data.Length}).");
+                return;
+            }
 
-			if (player == null)
+            if (player == null)
                 return;
 
             if (player.Status != PlayerState.Playing)
                 return;
 
             Arena arena = player.Arena;
-            if(arena == null)
+            if (arena == null)
                 return;
 
             S2C_TurretKickoff packet = new((short)player.Id);
@@ -2615,8 +2615,8 @@ namespace SS.Core.Modules
             /// </summary>
             public ServerTick? LastBomb;
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 pos = new();
                 speccing = null;
                 S2CWeaponSent = 0;

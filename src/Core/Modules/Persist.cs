@@ -48,16 +48,16 @@ namespace SS.Core.Modules
         private const int DefaultMaxRecordLength = 4096;
         private static int _maxRecordLength = DefaultMaxRecordLength;
 
-		private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
+        private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
 
         public Persist()
         {
             _mainloopWorkItem_ExecuteCallbacksAndDispose = MainloopWorkItem_ExecuteCallbacksAndDispose;
-		}
+        }
 
-		#region Module memebers
+        #region Module memebers
 
-		[ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
+        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
             Description = "The interval at which all persistent data is synced to the database.")]
         [ConfigHelp("Persist", "MaxRecordLength", ConfigScope.Global, typeof(int), DefaultValue = "4096",
             Description = "The maximum # of bytes to store per record.")]

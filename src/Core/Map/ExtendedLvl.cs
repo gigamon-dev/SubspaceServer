@@ -10,11 +10,11 @@ using System.Text;
 
 namespace SS.Core.Map
 {
-	/// <summary>
-	/// For reading the Extended lvl format.
-	/// Extended means it may contain extra metadata such as regions and attributes.
-	/// </summary>
-	public class ExtendedLvl : BasicLvl
+    /// <summary>
+    /// For reading the Extended lvl format.
+    /// Extended means it may contain extra metadata such as regions and attributes.
+    /// </summary>
+    public class ExtendedLvl : BasicLvl
     {
         /// <summary>
         /// Maximum size in bytes that a metadata chunk can be.
@@ -31,7 +31,7 @@ namespace SS.Core.Map
         /// chunk type --> data of the chunk
         /// </summary>
         private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new MultiDictionary<uint, ReadOnlyMemory<byte>>(); // using multi because many chunks will have the same type
-        
+
         /// <summary>
         /// Extended LVL attributes:
         /// attribute name --> attribute value
@@ -168,7 +168,7 @@ namespace SS.Core.Map
                         // has metadata
                         ReadChunks(
                             va,
-							MetadataHeader.Length,
+                            MetadataHeader.Length,
                             metadataHeader.TotalSize - MetadataHeader.Length,
                             ProcessNonBackwardsCompatibleMapChunk);
 
@@ -290,7 +290,7 @@ namespace SS.Core.Map
                 }
                 memberOfSet.Add(newRegionSet);
             }
-            
+
             return true;
         }
 
@@ -300,10 +300,10 @@ namespace SS.Core.Map
             long length,
             Action<MemoryMappedViewAccessor, uint, long, int> processChunkCallback)
         {
-			ArgumentNullException.ThrowIfNull(accessor);
-			ArgumentNullException.ThrowIfNull(processChunkCallback);
+            ArgumentNullException.ThrowIfNull(accessor);
+            ArgumentNullException.ThrowIfNull(processChunkCallback);
 
-			while (length >= ChunkHeader.Length)
+            while (length >= ChunkHeader.Length)
             {
                 // first check the chunk header
                 accessor.Read(position, out ChunkHeader chunkHeader);
@@ -346,12 +346,12 @@ namespace SS.Core.Map
             MemoryMappedViewAccessor accessor,
             uint chunkType,
             long position,
-            int length, 
+            int length,
             bool backwardsCompatible)
         {
-			ArgumentNullException.ThrowIfNull(accessor);
+            ArgumentNullException.ThrowIfNull(accessor);
 
-			if (chunkType == MapMetadataChunkType.ATTR)
+            if (chunkType == MapMetadataChunkType.ATTR)
             {
                 byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
 
@@ -388,9 +388,9 @@ namespace SS.Core.Map
                 MapRegion region = new MapRegion();
 
                 ReadChunks(
-                    accessor, 
-                    position, 
-                    length, 
+                    accessor,
+                    position,
+                    length,
                     (va, chunkType, position, length) => region.ProcessRegionChunk(va, chunkType, position, length, AddError));
 
                 AddRegion(region);

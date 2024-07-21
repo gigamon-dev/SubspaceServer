@@ -23,7 +23,7 @@ namespace SS.Core
         /// used to determine the default arena users should be sent to
         /// </summary>
         [ConfigHelp("Listen", "ConnectAs", ConfigScope.Global, typeof(string),
-            Description = 
+            Description =
             "This setting allows you to treat clients differently depending on which port they connect to. It serves as a " +
             "virtual server identifier for the rest of the server. The standard arena placement module will use this as the name of " +
             "a default arena to put clients who connect through this port in.")]

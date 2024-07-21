@@ -6,9 +6,9 @@ namespace SS.Packets
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct SizedHeader(int size)
     {
-		#region Static Members
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<SizedHeader>();
+        public static readonly int Length = Marshal.SizeOf<SizedHeader>();
 
         #endregion
 
@@ -16,9 +16,9 @@ namespace SS.Packets
         public readonly byte T2 = 0x0A;
         private readonly int size = LittleEndianConverter.Convert(size);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public int Size => LittleEndianConverter.Convert(size);
+        public int Size => LittleEndianConverter.Convert(size);
 
         #endregion
     }

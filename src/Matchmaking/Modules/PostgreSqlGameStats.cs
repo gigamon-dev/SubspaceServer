@@ -18,7 +18,7 @@ namespace SS.Matchmaking.Modules
         private IConfigManager _configManager;
         private ILogManager _logManager;
         private InterfaceRegistrationToken<IGameStatsRepository> _iGameStatsRepositoryToken;
-        
+
         private NpgsqlDataSource _dataSource;
         private readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount });
 

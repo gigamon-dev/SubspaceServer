@@ -5,23 +5,23 @@ namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2C_PrizeReceive(short count, Prize prize)
-	{
-		#region Static Members
+    {
+        #region Static Members
 
-		public static readonly int Length = Marshal.SizeOf<S2C_PrizeReceive>();
+        public static readonly int Length = Marshal.SizeOf<S2C_PrizeReceive>();
 
-		#endregion
+        #endregion
 
-		public readonly byte Type = (byte)S2CPacketType.PrizeRecv;
+        public readonly byte Type = (byte)S2CPacketType.PrizeRecv;
         private readonly short count = LittleEndianConverter.Convert(count);
         private readonly short prize = LittleEndianConverter.Convert((short)prize);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public readonly short Count => LittleEndianConverter.Convert(count);
+        public readonly short Count => LittleEndianConverter.Convert(count);
 
-		public readonly Prize Prize => (Prize)LittleEndianConverter.Convert(prize);
+        public readonly Prize Prize => (Prize)LittleEndianConverter.Convert(prize);
 
-		#endregion
-	}
+        #endregion
+    }
 }

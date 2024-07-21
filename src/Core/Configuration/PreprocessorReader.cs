@@ -40,8 +40,8 @@ namespace SS.Core.Configuration
 
         public PreprocessorReader(
             IConfFileProvider fileProvider,
-            ConfFile baseFile, 
-            IConfigLogger logger) 
+            ConfFile baseFile,
+            IConfigLogger logger)
         {
             if (baseFile == null)
                 throw new ArgumentNullException(nameof(baseFile));

@@ -24,7 +24,7 @@ namespace SS.Core.Modules
 
         #region Module methods
 
-        [ConfigHelp("Log", "FileFlushPeriod", ConfigScope.Global, typeof(int), DefaultValue = "10", 
+        [ConfigHelp("Log", "FileFlushPeriod", ConfigScope.Global, typeof(int), DefaultValue = "10",
             Description = "How often to flush the log file to disk (in minutes).")]
         public bool Load(
             ComponentBroker broker,
@@ -85,7 +85,7 @@ namespace SS.Core.Modules
         {
             if (!_logManager.FilterLog(in logEntry, "log_file"))
                 return;
-            
+
             lock (_lockObj)
             {
                 if (_streamWriter is null)
@@ -161,7 +161,7 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Log", "DatedLogsPath", ConfigScope.Global, typeof(string), DefaultValue = "log", 
+        [ConfigHelp("Log", "DatedLogsPath", ConfigScope.Global, typeof(string), DefaultValue = "log",
             Description = "Path of the folder to store logs.")]
         private void ReopenLog()
         {

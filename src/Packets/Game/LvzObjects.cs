@@ -64,10 +64,10 @@ namespace SS.Packets.Game
         /// This is the inverse of the actual bitfield, which is a flag that tells if it's disabled.
         /// However, it's more understandable from a user persepective to be exposed like this.
         /// </remarks>
-        public bool IsEnabled 
+        public bool IsEnabled
         {
             get => (BitField & IsDisabledMask) == 0;
-            set => BitField = (short)((BitField & ~IsDisabledMask) | (value ? 0x0000: 0x8000 ));
+            set => BitField = (short)((BitField & ~IsDisabledMask) | (value ? 0x0000 : 0x8000));
         }
 
         #endregion

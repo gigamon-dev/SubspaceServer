@@ -29,15 +29,15 @@ namespace SS.Packets.Billing
         /// </summary>
         public static readonly int LengthWithoutScore;
 
-		/// <summary>
-		/// # of bytes with a <see cref="PlayerScore"/> (not included in the <see cref="B2S_UserLogin"/> struct).
-		/// </summary>
-		public static readonly int LengthWithScore;
+        /// <summary>
+        /// # of bytes with a <see cref="PlayerScore"/> (not included in the <see cref="B2S_UserLogin"/> struct).
+        /// </summary>
+        public static readonly int LengthWithScore;
 
-		static B2S_UserLogin()
+        static B2S_UserLogin()
         {
-			LengthWithoutScore = Marshal.SizeOf<B2S_UserLogin>();
-			LengthWithScore = LengthWithoutScore + PlayerScore.Length;
+            LengthWithoutScore = Marshal.SizeOf<B2S_UserLogin>();
+            LengthWithScore = LengthWithoutScore + PlayerScore.Length;
         }
 
         #endregion
@@ -53,12 +53,12 @@ namespace SS.Packets.Billing
         private readonly uint Unused0;
         private readonly uint userId;
         private readonly uint Unused1;
-		// Optionally followed by a PlayerScore struct for when the result is B2SUserLoginResult.Ok. Purposely not included here.
-		//public PlayerScore Score;
+        // Optionally followed by a PlayerScore struct for when the result is B2SUserLoginResult.Ok. Purposely not included here.
+        //public PlayerScore Score;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public B2SUserLoginResult Result => (B2SUserLoginResult)result;
+        public B2SUserLoginResult Result => (B2SUserLoginResult)result;
 
         public int ConnectionId => LittleEndianConverter.Convert(connectionId);
 
@@ -66,60 +66,60 @@ namespace SS.Packets.Billing
 
         public uint UserId => LittleEndianConverter.Convert(userId);
 
-		#endregion
+        #endregion
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(Length)]
-		public struct NameInlineArray
-		{
-			public const int Length = 24;
+        [InlineArray(Length)]
+        public struct NameInlineArray
+        {
+            public const int Length = 24;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
 
-		[InlineArray(Length)]
-		public struct SquadInlineArray
-		{
-			public const int Length = 24;
+        [InlineArray(Length)]
+        public struct SquadInlineArray
+        {
+            public const int Length = 24;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
 
         #endregion
     }
 
-	[StructLayout(LayoutKind.Sequential, Pack = 1)]
-	public readonly struct FirstLogin
-	{
-		private readonly ushort year;
-		private readonly ushort month;
-		private readonly ushort day;
-		private readonly ushort hour;
-		private readonly ushort minute;
-		private readonly ushort second;
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public readonly struct FirstLogin
+    {
+        private readonly ushort year;
+        private readonly ushort month;
+        private readonly ushort day;
+        private readonly ushort hour;
+        private readonly ushort minute;
+        private readonly ushort second;
 
-		public DateTime? ToDateTime()
-		{
-			if (year == 0 && month == 0 && day == 0)
-			{
-				// The biller might send all zeros. Consider that to be null.
-				return null;
-			}
-			else
-			{
-				return new(
-					LittleEndianConverter.Convert(year),
-					LittleEndianConverter.Convert(month),
-					LittleEndianConverter.Convert(day),
-					LittleEndianConverter.Convert(hour),
-					LittleEndianConverter.Convert(minute),
-					LittleEndianConverter.Convert(second));
-			}
-		}
-	}
+        public DateTime? ToDateTime()
+        {
+            if (year == 0 && month == 0 && day == 0)
+            {
+                // The biller might send all zeros. Consider that to be null.
+                return null;
+            }
+            else
+            {
+                return new(
+                    LittleEndianConverter.Convert(year),
+                    LittleEndianConverter.Convert(month),
+                    LittleEndianConverter.Convert(day),
+                    LittleEndianConverter.Convert(hour),
+                    LittleEndianConverter.Convert(minute),
+                    LittleEndianConverter.Convert(second));
+            }
+        }
+    }
 }

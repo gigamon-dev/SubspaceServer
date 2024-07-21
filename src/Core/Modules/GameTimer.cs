@@ -120,7 +120,7 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<duration>", 
+            Args = "<duration>",
             Description = "Sets the arena timer. Not for arenas using a Misc:TimedGame.")]
         private void Command_timer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -271,7 +271,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Misc", "TimerWarnings", ConfigScope.Arena, typeof(string), 
+        [ConfigHelp("Misc", "TimerWarnings", ConfigScope.Arena, typeof(string),
             Description = "Comma delimited list defining when notifications should be sent to the arena.\n" +
             "Values are in seconds, indicating the remaining time. E.g. a value of \"10,30\" means send\n" +
             "notifications when when 10 seconds remain and when 30 seconds remain.")]

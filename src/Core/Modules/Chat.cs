@@ -42,7 +42,7 @@ namespace SS.Core.Modules
         private const char ModChatChar = '\\';
 
         private ComponentBroker _broker;
-       
+
         // required dependencies
         private IArenaManager _arenaManager;
         private ICapabilityManager _capabilityManager;
@@ -302,7 +302,7 @@ namespace SS.Core.Modules
         }
 
         void IChat.SendArenaMessage(Arena arena, ref StringBuilderBackedInterpolatedStringHandler handler)
-        {            
+        {
             try
             {
                 ((IChat)this).SendArenaMessage(arena, ChatSound.None, handler.StringBuilder);
@@ -498,10 +498,10 @@ namespace SS.Core.Modules
 
                     Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(text)];
                     ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
-					chatPacket.Type = (byte)S2CPacketType.Chat;
-					chatPacket.ChatType = (byte)ChatMessageType.RemotePrivate;
-					chatPacket.Sound = (byte)sound;
-					chatPacket.PlayerId = -1;
+                    chatPacket.Type = (byte)S2CPacketType.Chat;
+                    chatPacket.ChatType = (byte)ChatMessageType.RemotePrivate;
+                    chatPacket.Sound = (byte)sound;
+                    chatPacket.PlayerId = -1;
                     int length = ChatPacket.SetMessage(chatBytes, text);
 
                     _network.SendToSet(set, chatBytes[..length], NetSendFlags.Reliable);
@@ -527,7 +527,7 @@ namespace SS.Core.Modules
 
         ChatMask IChat.GetArenaChatMask(Arena arena)
         {
-            if(arena is null)
+            if (arena is null)
                 return new ChatMask();
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -735,7 +735,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Chat", "RestrictChat", ConfigScope.Arena, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Chat", "RestrictChat", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "This specifies an initial chat mask for the arena. Don't use this unless you know what you're doing.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -770,15 +770,15 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-			// Ideally we would check for len > ChatPacket.MaxLength (255 bytes), but Continuum seems to have a bug.
-			// It allows sending typing > 250 characters and sends a chat packet larger than the max (up to 261 bytes),
+            // Ideally we would check for len > ChatPacket.MaxLength (255 bytes), but Continuum seems to have a bug.
+            // It allows sending typing > 250 characters and sends a chat packet larger than the max (up to 261 bytes),
             // though the text is null-terminated in the proper spot (limiting the message to 250 characters),
             // but with seemingly garbage data in the remaining bytes.
             // So, we'll allow 261, but only actually read up to the actual 250 characters.
 
-			if (data.Length < ChatPacket.MinLength
+            if (data.Length < ChatPacket.MinLength
                 || data.Length > 261) // Note: for some reason ASSS checks if > 500 instead
-			{
+            {
                 _logManager.LogP(LogLevel.Malicious, nameof(Chat), player, $"Bad chat packet (length={data.Length}).");
                 return;
             }
@@ -985,8 +985,8 @@ namespace SS.Core.Modules
             {
                 pd.MessageCount++;
 
-                if (pd.MessageCount >= _cfg.FloodLimit 
-                    &&  _cfg.FloodLimit > 0 
+                if (pd.MessageCount >= _cfg.FloodLimit
+                    && _cfg.FloodLimit > 0
                     && !_capabilityManager.HasCapability(player, Constants.Capabilities.CanSpam))
                 {
                     pd.MessageCount >>= 1;
@@ -1025,12 +1025,12 @@ namespace SS.Core.Modules
 
             if (_network is not null)
             {
-				Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(message)];
-				ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
-				chatPacket.Type = (byte)S2CPacketType.Chat;
-				chatPacket.ChatType = (byte)type;
-				chatPacket.Sound = (byte)sound;
-				chatPacket.PlayerId = from is not null ? (short)from.Id : (short)-1;
+                Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(message)];
+                ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
+                chatPacket.Type = (byte)S2CPacketType.Chat;
+                chatPacket.ChatType = (byte)type;
+                chatPacket.Sound = (byte)sound;
+                chatPacket.PlayerId = from is not null ? (short)from.Id : (short)-1;
                 int length = ChatPacket.SetMessage(chatBytes, message);
 
                 _network.SendToSet(set, chatBytes[..length], NetSendFlags.Reliable);
@@ -1215,7 +1215,7 @@ namespace SS.Core.Modules
                     RunCommands(text, player, target, sound);
                 }
             }
-            else if(Ok(player, type))
+            else if (Ok(player, type))
             {
                 _playerData.Lock();
 
@@ -1432,12 +1432,12 @@ namespace SS.Core.Modules
             if (type == ChatMessageType.ModChat)
                 type = ChatMessageType.SysopWarning;
 
-			Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(msg)];
-			ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
-			chatPacket.Type = (byte)S2CPacketType.Chat;
-			chatPacket.ChatType = (byte)type;
-			chatPacket.Sound = (byte)sound;
-			chatPacket.PlayerId = (short)fromPid;
+            Span<byte> chatBytes = stackalloc byte[ChatPacket.GetPacketByteCount(msg)];
+            ref ChatPacket chatPacket = ref MemoryMarshal.AsRef<ChatPacket>(chatBytes);
+            chatPacket.Type = (byte)S2CPacketType.Chat;
+            chatPacket.ChatType = (byte)type;
+            chatPacket.Sound = (byte)sound;
+            chatPacket.PlayerId = (short)fromPid;
 
             HashSet<Player> filteredSet = _objectPoolManager.PlayerSetPool.Get();
 
@@ -1458,15 +1458,15 @@ namespace SS.Core.Modules
                 {
                     if (_network is not null)
                     {
-						int length = ChatPacket.SetMessage(chatBytes, msg);
-						_network.SendToSet(set, chatBytes[..length], flags);
-					}
+                        int length = ChatPacket.SetMessage(chatBytes, msg);
+                        _network.SendToSet(set, chatBytes[..length], flags);
+                    }
 
-					if (_chatNetwork is not null && ctype is not null)
-					{
-						_chatNetwork.SendToSet(set, $"MSG:{ctype}:{player.Name}:{msg[chatNetOffset..]}");
-					}
-				}
+                    if (_chatNetwork is not null && ctype is not null)
+                    {
+                        _chatNetwork.SendToSet(set, $"MSG:{ctype}:{player.Name}:{msg[chatNetOffset..]}");
+                    }
+                }
 
                 if (filteredSet.Count > 0)
                 {
@@ -1480,8 +1480,8 @@ namespace SS.Core.Modules
                         if (_network is not null)
                         {
                             int length = ChatPacket.SetMessage(chatBytes, filteredMsg);
-							_network.SendToSet(filteredSet, chatBytes[..length], flags);
-						}
+                            _network.SendToSet(filteredSet, chatBytes[..length], flags);
+                        }
 
                         if (_chatNetwork is not null && ctype is not null)
                         {
@@ -1521,7 +1521,7 @@ namespace SS.Core.Modules
 
             ArenaData ad = null;
             player.Arena?.TryGetExtraData(_adKey, out ad);
-            
+
             ChatMask mask;
 
             lock (pd.Lock)
@@ -1676,17 +1676,17 @@ namespace SS.Core.Modules
 
             public void Reset()
             {
-				lock (Lock)
-				{
-					Mask.Clear();
-					Expires = null;
-					MessageCount = 0;
-					LastCheck = DateTime.UtcNow;
-				}
-			}
+                lock (Lock)
+                {
+                    Mask.Clear();
+                    Expires = null;
+                    MessageCount = 0;
+                    LastCheck = DateTime.UtcNow;
+                }
+            }
 
-			bool IResettable.TryReset()
-			{
+            bool IResettable.TryReset()
+            {
                 Reset();
                 return true;
             }

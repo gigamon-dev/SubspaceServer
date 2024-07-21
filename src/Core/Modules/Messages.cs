@@ -69,7 +69,7 @@ namespace SS.Core.Modules
 
         #region Callbacks
 
-        [ConfigHelp("Misc", "GreetMessage", ConfigScope.Arena, typeof(string), 
+        [ConfigHelp("Misc", "GreetMessage", ConfigScope.Arena, typeof(string),
             Description = "The message to send to each player on entering the arena.")]
         [ConfigHelp("Misc", "PeriodicMessage0", ConfigScope.Arena, typeof(string),
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
@@ -194,14 +194,14 @@ namespace SS.Core.Modules
             public readonly List<PeriodicMessage> PeriodicMessageList = new(10);
             public int MinuteCount;
 
-			public bool TryReset()
-			{
-				GreetMessage = null;
-				PeriodicMessageList.Clear();
-				MinuteCount = 0;
+            public bool TryReset()
+            {
+                GreetMessage = null;
+                PeriodicMessageList.Clear();
+                MinuteCount = 0;
                 return true;
-			}
-		}
+            }
+        }
 
         #endregion
     }

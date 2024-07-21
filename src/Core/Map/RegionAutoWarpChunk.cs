@@ -10,20 +10,20 @@ namespace SS.Core.Map
 
         public static readonly int Length = Marshal.SizeOf<RegionAutoWarpChunk>();
 
-		#endregion
+        #endregion
 
-		private readonly short x = LittleEndianConverter.Convert(x);
-		private readonly short y = LittleEndianConverter.Convert(y);
-		// This can be followed by an optional 16 bytes containing the destination arena name.
-		// If the warp does not cross arenas it can be excluded.
-		// Therefore, it's not included in this struct, but read separately.
+        private readonly short x = LittleEndianConverter.Convert(x);
+        private readonly short y = LittleEndianConverter.Convert(y);
+        // This can be followed by an optional 16 bytes containing the destination arena name.
+        // If the warp does not cross arenas it can be excluded.
+        // Therefore, it's not included in this struct, but read separately.
 
-		#region Helpers
+        #region Helpers
 
-		public short X => LittleEndianConverter.Convert(x);
+        public short X => LittleEndianConverter.Convert(x);
 
-		public short Y => LittleEndianConverter.Convert(y);
+        public short Y => LittleEndianConverter.Convert(y);
 
-		#endregion
-	}
+        #endregion
+    }
 }

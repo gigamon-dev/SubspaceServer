@@ -9,9 +9,9 @@ namespace SS.Core.Map.Lvz
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct ObjectSectionHeader
     {
-		#region Static Members
+        #region Static Members
 
-		public const uint CLV1 = 0x31564c43;
+        public const uint CLV1 = 0x31564c43;
         public const uint CLV2 = 0x32564c43;
 
         public static readonly int Length = Marshal.SizeOf<ObjectSectionHeader>();
@@ -19,15 +19,15 @@ namespace SS.Core.Map.Lvz
         #endregion
 
         private readonly uint type;
-		private readonly uint objectCount;
-		private readonly uint imageCount;
+        private readonly uint objectCount;
+        private readonly uint imageCount;
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint Type => LittleEndianConverter.Convert(type);
+        public uint Type => LittleEndianConverter.Convert(type);
 
         public uint ObjectCount => LittleEndianConverter.Convert(objectCount);
-        
+
         public uint ImageCount => LittleEndianConverter.Convert(imageCount);
 
         #endregion

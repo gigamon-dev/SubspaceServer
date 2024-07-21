@@ -129,7 +129,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Callbacks
 
-        [ConfigHelp("Kill", "FixedKillReward", ConfigScope.Arena, typeof(int), DefaultValue = "-1", 
+        [ConfigHelp("Kill", "FixedKillReward", ConfigScope.Arena, typeof(int), DefaultValue = "-1",
             Description = "If -1 use the bounty of the killed player to calculate kill reward. Otherwise use this fixed value.")]
         [ConfigHelp("Kill", "FlagMinimumBounty", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The minimum bounty the killing player must have to get any bonus kill points for flags transferred, carried or owned.")]
@@ -137,7 +137,7 @@ namespace SS.Core.Modules.Scoring
             Description = "The number of extra points to give for each flag a killed player " +
             "was carrying.Note that the flags don't actually have to be " +
             "transferred to the killer to be counted here.")]
-        [ConfigHelp("Kill", "PointsPerCarriedFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Kill", "PointsPerCarriedFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "The number of extra points to give for each flag the killing " +
             "player is carrying.Note that flags that were transfered to " +
             "the killer as part of the kill are counted here, so adjust " +

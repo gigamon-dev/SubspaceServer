@@ -4,17 +4,17 @@ using SS.Utilities.ObjectPool;
 
 namespace SS.Matchmaking
 {
-	/// <summary>
-	/// Provides calculations to track multiple time ranges such that it tells how much additional time is added for each added time range, 
-	/// taking into consideration the existing ranges.
-	/// </summary>
-	/// <remarks>
-	/// The main goal of this is to assist in tracking EMP bomb shutdown times, especially in the scenario where they may overlap.
-	/// This way, when calculating damage for the EMP shutdown times, no time period is counted more than once.
-	/// </remarks>
-	public class TickRangeCalculator
+    /// <summary>
+    /// Provides calculations to track multiple time ranges such that it tells how much additional time is added for each added time range, 
+    /// taking into consideration the existing ranges.
+    /// </summary>
+    /// <remarks>
+    /// The main goal of this is to assist in tracking EMP bomb shutdown times, especially in the scenario where they may overlap.
+    /// This way, when calculating damage for the EMP shutdown times, no time period is counted more than once.
+    /// </remarks>
+    public class TickRangeCalculator
     {
-        private static readonly ObjectPool<LinkedListNode<TickRange>> s_tickRangeLinkedListNodePool = 
+        private static readonly ObjectPool<LinkedListNode<TickRange>> s_tickRangeLinkedListNodePool =
             new DefaultObjectPool<LinkedListNode<TickRange>>(new LinkedListNodePooledObjectPolicy<TickRange>(), 128);
 
         /// <summary>
@@ -67,7 +67,7 @@ namespace SS.Matchmaking
                     // Expand the end of the range if needed, combining any other ranges that overlap.
                     return total + ExpandRangeIfNeeded(node, end);
                 }
-                
+
                 // No overlap. The new range comes after the current one.
                 // Move on to the next existing range.
                 node = node.Next;

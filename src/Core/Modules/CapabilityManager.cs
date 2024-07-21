@@ -37,7 +37,7 @@ namespace SS.Core.Modules
         private PlayerDataKey<PlayerData> _pdkey;
         private readonly DefaultObjectPool<PlayerData> _playerDataPool = new(new DefaultPooledObjectPolicy<PlayerData>(), Constants.TargetPlayerCount);
 
-		private ConfigHandle _groupDefConfHandle;
+        private ConfigHandle _groupDefConfHandle;
         private ConfigHandle _staffConfHandle;
 
         private const string Group_Default = "default";
@@ -402,13 +402,13 @@ namespace SS.Core.Modules
             /// </summary>
             public GroupSource Source;
 
-			bool IResettable.TryReset()
-			{
-				Group = Group_Default;
-				Source = GroupSource.Default;
-				return true;
-			}
-		}
+            bool IResettable.TryReset()
+            {
+                Group = Group_Default;
+                Source = GroupSource.Default;
+                return true;
+            }
+        }
 
         #endregion
     }

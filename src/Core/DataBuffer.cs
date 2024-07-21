@@ -1,5 +1,5 @@
-﻿using System;
-using SS.Utilities;
+﻿using SS.Utilities;
+using System;
 
 namespace SS.Core
 {

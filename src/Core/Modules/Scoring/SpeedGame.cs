@@ -226,7 +226,7 @@ namespace SS.Core.Modules.Scoring
                     if (!_arenaPlayerStats.TryGetStat(otherPlayer, StatCodes.KillPoints, PersistInterval.Game, out long otherKillPoints))
                         continue; // shouldn't happen
 
-                    _chat.SendMessage(player, $"#{i+1} {otherKillPoints,6} {otherPlayer.Name}");
+                    _chat.SendMessage(player, $"#{i + 1} {otherKillPoints,6} {otherPlayer.Name}");
                 }
             }
         }
@@ -480,7 +480,7 @@ namespace SS.Core.Modules.Scoring
 
                 return -1;
             }
-            
+
             if (index == -1)
             {
                 // not ranked yet
@@ -567,8 +567,8 @@ namespace SS.Core.Modules.Scoring
 
             public readonly List<Player> Rank = new();
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 Settings = default;
                 GameState = GameState.Stopped;
                 StartAfter = null;

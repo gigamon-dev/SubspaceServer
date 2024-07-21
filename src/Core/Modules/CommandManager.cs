@@ -891,7 +891,7 @@ namespace SS.Core.Modules
 
             public void Set(ReadOnlySpan<char> value)
             {
-                if (Array is not null 
+                if (Array is not null
                     && (value.IsEmpty || Array.Length < value.Length))
                 {
                     ArrayPool<char>.Shared.Return(Array);

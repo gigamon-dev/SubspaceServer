@@ -26,9 +26,9 @@ namespace SS.Core.Modules.Enforcers
         #region Module members
 
         public bool Load(
-            ComponentBroker broker, 
+            ComponentBroker broker,
             IArenaManager arenaManager,
-            IConfigManager configManager, 
+            IConfigManager configManager,
             IObjectPoolManager objectPoolManager)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
@@ -76,7 +76,7 @@ namespace SS.Core.Modules.Enforcers
 
         #region IFreqManagerEnforcerAdvisor
 
-        [ConfigHelp("Legalship", "ArenaMask", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "255", 
+        [ConfigHelp("Legalship", "ArenaMask", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "255",
             Description = "The ship mask of allowed ships in the arena. 1=warbird, 2=javelin, etc.")]
         [ConfigHelp("Legalship", "Freq0Mask", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "255",
             Description = "The ship mask of allowed ships for freq 0. Ships must also be allowed on the arena mask. You can define a mask for any freq (FreqXMask).")]
@@ -161,7 +161,7 @@ namespace SS.Core.Modules.Enforcers
         private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
-            
+
             // settings
             public ShipMask? ArenaMask = null;
             public Dictionary<short, ShipMask> FreqMasks = new();

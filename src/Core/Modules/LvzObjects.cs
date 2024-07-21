@@ -46,7 +46,7 @@ namespace SS.Core.Modules
         {
             _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
             _objectDataRead = ObjectDataRead;
-		}
+        }
 
         #region Module members
 
@@ -446,7 +446,7 @@ namespace SS.Core.Modules
             int i = 0;
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> token;
-            while (i < set.Length 
+            while (i < set.Length
                 && (token = remaining.GetToken(' ', out remaining)).Length > 0)
             {
                 bool enabled;
@@ -458,7 +458,7 @@ namespace SS.Core.Modules
                 else
                     continue;
 
-                if (!short.TryParse(token[1..], out short id) || id  < 0)
+                if (!short.TryParse(token[1..], out short id) || id < 0)
                     continue;
 
                 set[i++] = new LvzObjectToggle(id, !enabled);
@@ -516,7 +516,7 @@ namespace SS.Core.Modules
                         return true;
                     }
                 }
-                
+
                 coord = 0;
                 offset = ScreenOffset.Normal;
                 return false;
@@ -890,42 +890,42 @@ namespace SS.Core.Modules
             }
         }
 
-		private void ThreadPoolWork_InitializeArena(Arena arena)
-		{
-			if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
-				return;
+        private void ThreadPoolWork_InitializeArena(Arena arena)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                return;
 
-			foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
-			{
-				try
-				{
-					LvzReader.ReadObjects(fileInfo.Filename, _objectDataRead, ad);
-				}
-				catch (Exception ex)
-				{
-					_logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
-				}
-			}
+            foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
+            {
+                try
+                {
+                    LvzReader.ReadObjects(fileInfo.Filename, _objectDataRead, ad);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
+                }
+            }
 
-			_arenaManager.UnholdArena(arena);
-		}
+            _arenaManager.UnholdArena(arena);
+        }
 
-		private void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan, ArenaData ad)
-		{
-			lock (ad.Lock)
-			{
-				foreach (ref readonly ObjectData objectData in objectDataSpan)
-				{
-					LvzData lvzData = _lvzDataObjectPool.Get();
-					lvzData.Off = true;
-					lvzData.Current = lvzData.Default = objectData;
+        private void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan, ArenaData ad)
+        {
+            lock (ad.Lock)
+            {
+                foreach (ref readonly ObjectData objectData in objectDataSpan)
+                {
+                    LvzData lvzData = _lvzDataObjectPool.Get();
+                    lvzData.Off = true;
+                    lvzData.Current = lvzData.Default = objectData;
 
-					ad.List.Add(lvzData);
-				}
-			}
-		}
+                    ad.List.Add(lvzData);
+                }
+            }
+        }
 
-		private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
         {
             if (action == PlayerAction.EnterArena)
             {
@@ -937,7 +937,7 @@ namespace SS.Core.Modules
                 else if (_capabilityManager.HasCapability(player, Constants.Capabilities.BroadcastBot))
                     pd.Permission = BroadcastAuthorization.Bot;
             }
-            else if(action == PlayerAction.EnterGame)
+            else if (action == PlayerAction.EnterGame)
             {
                 ((ILvzObjects)this).SendState(player);
             }
@@ -1053,14 +1053,14 @@ namespace SS.Core.Modules
             public ObjectData Default = default;
             public ObjectData Current = default;
 
-			bool IResettable.TryReset()
-			{
-				Off = true;
-				Default = default;
-				Current = default;
-				return true;
-			}
-		}
+            bool IResettable.TryReset()
+            {
+                Off = true;
+                Default = default;
+                Current = default;
+                return true;
+            }
+        }
 
         private class ArenaData : IResettable
         {

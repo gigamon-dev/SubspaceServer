@@ -1,10 +1,10 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using SS.Utilities.ObjectPool;
+using System;
+using System.Collections.Generic;
 
 namespace SS.Core.Modules
 {
@@ -62,7 +62,7 @@ namespace SS.Core.Modules
 
         #region IArenaPlace Members
 
-        [ConfigHelp("General", "DesiredPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "15", 
+        [ConfigHelp("General", "DesiredPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "15",
             Description = """
                 The limit at which the server will try to create a new public arena for incoming players.
                 This setting works in conjunction with the General:PublicArenas global.conf setting.
@@ -139,7 +139,7 @@ namespace SS.Core.Modules
             LoadPubNames();
         }
 
-        [ConfigHelp("General", "PublicArenas", ConfigScope.Global, typeof(string), 
+        [ConfigHelp("General", "PublicArenas", ConfigScope.Global, typeof(string),
             Description = """
             A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested.
             Allowed delimiters include: ' ' (space), ',', ':', and ';'.

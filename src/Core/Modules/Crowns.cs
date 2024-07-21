@@ -219,8 +219,8 @@ namespace SS.Core.Modules
 
             ICrownsBehavior behavior = arena.GetInterface<ICrownsBehavior>() ?? this;
 
-			try
-			{
+            try
+            {
                 behavior.CrownExpired(player);
             }
             finally
@@ -314,6 +314,6 @@ namespace SS.Core.Modules
             S2C_CrownTimer packet = new(add, timeSpan);
             _network.SendToOne(player, ref packet, NetSendFlags.Reliable);
             return true;
-        }        
+        }
     }
 }

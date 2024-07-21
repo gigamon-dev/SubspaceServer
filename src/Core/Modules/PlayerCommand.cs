@@ -67,7 +67,7 @@ namespace SS.Core.Modules
 
         public PlayerCommand()
         {
-            foreach(FieldInfo fieldInfo in typeof(PlayerCommand).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            foreach (FieldInfo fieldInfo in typeof(PlayerCommand).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
             {
                 if (fieldInfo.FieldType.IsInterface
                     && fieldInfo.FieldType.IsAssignableTo(typeof(IComponentInterface))
@@ -1098,8 +1098,8 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None, 
-            Args = null, 
+            Targets = CommandTarget.None,
+            Args = null,
             Description = "Displays the arena owner.")]
         private void Command_owner(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -2698,7 +2698,7 @@ namespace SS.Core.Modules
             {
                 _chat.SendMessage(player, $"{targetPlayer.Name} is in group {_groupManager.GetGroup(targetPlayer)}.");
             }
-            else if(target.Type == TargetType.Arena)
+            else if (target.Type == TargetType.Arena)
             {
                 _chat.SendMessage(player, $"You are in group {_groupManager.GetGroup(player)}.");
             }
@@ -2738,7 +2738,7 @@ namespace SS.Core.Modules
                 else if (token.Equals("-a", StringComparison.OrdinalIgnoreCase))
                     global = false;
                 else groupName = token;
-            }            
+            }
 
             if (groupName.IsWhiteSpace())
                 return;
@@ -2813,7 +2813,7 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, "You must specify a group name and password.");
                 return;
             }
-            
+
             ReadOnlySpan<char> groupName = parameters[..index];
             ReadOnlySpan<char> passwordSpan = parameters[(index + 1)..];
 
@@ -2879,7 +2879,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_find(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (target.Type != TargetType.Arena 
+            if (target.Type != TargetType.Arena
                 || parameters.IsWhiteSpace())
             {
                 return;
@@ -3006,7 +3006,7 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Arena,
-            Args = "see description", 
+            Args = "see description",
             Description = """
                 Modifies the chat mask for the target player, or if no target, for the
                 current arena. The arguments must all be of the form
@@ -3059,7 +3059,7 @@ namespace SS.Core.Modules
                 {
                     bool isRestricted = token[0] == '-';
                     ReadOnlySpan<char> chatType = token[1..];
-                    
+
                     if (MemoryExtensions.Equals(chatType, "all", StringComparison.OrdinalIgnoreCase))
                         all = true;
 
@@ -3153,7 +3153,7 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<arena name>", 
+            Args = "<arena name>",
             Description = "Lists the players in the given arena.")]
         private void Command_listarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -3301,7 +3301,7 @@ namespace SS.Core.Modules
                 return;
 
             MemoryStream stream = new();
-            
+
             // Create the image of the map.
             try
             {
@@ -3452,7 +3452,7 @@ namespace SS.Core.Modules
                 if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
                     return;
 
-                if (flagInfo.State != FlagState.OnMap 
+                if (flagInfo.State != FlagState.OnMap
                     || !carryFlagGame.TrySetFlagNeuted(arena, flagId))
                 {
                     _chat.SendMessage(player, $"Flag {flagId} could not be neuted.");
@@ -3518,7 +3518,7 @@ namespace SS.Core.Modules
                 {
                     ReadOnlySpan<char> xStr = remaining.GetToken(" ,", out remaining);
                     if (!short.TryParse(xStr, out short x)
-                        || x < 0 
+                        || x < 0
                         || x > 1023)
                     {
                         _chat.SendMessage(player, "Invalid x-coordinate.");
@@ -3527,7 +3527,7 @@ namespace SS.Core.Modules
 
                     remaining = remaining.TrimStart(" ,");
                     if (!short.TryParse(remaining, out short y)
-                        || y < 0 
+                        || y < 0
                         || y > 1023)
                     {
                         _chat.SendMessage(player, "Invalid y-coordinate.");
@@ -3845,7 +3845,7 @@ namespace SS.Core.Modules
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None, 
+            Targets = CommandTarget.None,
             Description = "Displays stats about server internals, including information about garbage collection and object pooling.")]
         private void Command_serverstats(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -3876,7 +3876,7 @@ namespace SS.Core.Modules
             {
                 _objectPoolManager.StringBuilderPool.Return(sb);
             }
-            
+
             //
             // Object Pooling stats
             //
@@ -3997,15 +3997,15 @@ namespace SS.Core.Modules
             /// </summary>
             public bool IsCurrent { get; set; }
 
-			bool IResettable.TryReset()
-			{
-				ArenaName = "";
-				IsRemote = false;
-				PlayerCount = 0;
-				IsCurrent = false;
+            bool IResettable.TryReset()
+            {
+                ArenaName = "";
+                IsRemote = false;
+                PlayerCount = 0;
+                IsCurrent = false;
                 return true;
-			}
-		}
+            }
+        }
 
         private class ArenaListItemComparer : IComparer<ArenaListItem>
         {

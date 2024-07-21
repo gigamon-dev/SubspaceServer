@@ -341,15 +341,15 @@ namespace SS.Core.Modules
             return FindZone(address);
         }
 
-		IPeerZone IPeer.FindZone(SocketAddress address)
-		{
-			if (!_rwLock.IsReadLockHeld)
-				throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
+        IPeerZone IPeer.FindZone(SocketAddress address)
+        {
+            if (!_rwLock.IsReadLockHeld)
+                throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
 
-			return FindZone(address);
-		}
+            return FindZone(address);
+        }
 
-		IPeerArena IPeer.FindArena(ReadOnlySpan<char> arenaName, bool remote)
+        IPeerArena IPeer.FindArena(ReadOnlySpan<char> arenaName, bool remote)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
@@ -605,14 +605,14 @@ namespace SS.Core.Modules
                             _rwLock.EnterWriteLock();
                             try
                             {
-								peerZone.Arenas.RemoveAt(i);
-								peerZone.ArenaLookup.Remove(peerArena.Name.RemoteName, out _);
-							}
+                                peerZone.Arenas.RemoveAt(i);
+                                peerZone.ArenaLookup.Remove(peerArena.Name.RemoteName, out _);
+                            }
                             finally
                             {
                                 _rwLock.ExitWriteLock();
                             }
-                            
+
                             CleanupPeerArena(peerArena);
                         }
                     }
@@ -724,11 +724,11 @@ namespace SS.Core.Modules
                     uint id = BinaryPrimitives.ReadUInt32LittleEndian(payload);
                     payload = payload[4..];
 
-					//
-					// Arena Name
-					//
+                    //
+                    // Arena Name
+                    //
 
-					ReadOnlySpan<byte> remoteNameBytes = payload.SliceNullTerminated();
+                    ReadOnlySpan<byte> remoteNameBytes = payload.SliceNullTerminated();
                     if (remoteNameBytes.IsEmpty)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(Peer), $"Zone peer {peerZone.Config.IPEndPoint} sent us a player list with an empty arena name.");
@@ -775,7 +775,7 @@ namespace SS.Core.Modules
                                 break; // end of player list
                             }
 
-							ReadOnlySpan<byte> playerNameBytes = payload.SliceNullTerminated();
+                            ReadOnlySpan<byte> playerNameBytes = payload.SliceNullTerminated();
                             if (playerNameBytes.Length + 1 > payload.Length || payload[playerNameBytes.Length] != 0x00)
                             {
                                 // not null terminated
@@ -828,7 +828,7 @@ namespace SS.Core.Modules
                             break; // end of player list
                         }
 
-						ReadOnlySpan<byte> playerNameBytes = payload.SliceNullTerminated();
+                        ReadOnlySpan<byte> playerNameBytes = payload.SliceNullTerminated();
                         if (playerNameBytes.Length + 1 > payload.Length || payload[playerNameBytes.Length] != 0x00)
                         {
                             // not null terminated
@@ -869,7 +869,7 @@ namespace SS.Core.Modules
                 payload = payload[1..].SliceNullTerminated();
                 if (payload.IsEmpty)
                     return;
-                
+
                 Span<char> text = stackalloc char[Math.Min(ChatPacket.MaxMessageChars, StringUtils.DefaultEncoding.GetCharCount(payload))];
                 if (text.IsEmpty)
                     return;
@@ -908,7 +908,7 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Peer0", "Address", ConfigScope.Global, typeof(string), 
+        [ConfigHelp("Peer0", "Address", ConfigScope.Global, typeof(string),
             Description = "Send and receive peer packets to/from this IP address.")]
         [ConfigHelp("Peer0", "Port", ConfigScope.Global, typeof(ushort),
             Description = "Send and receive peer packets to/from this UDP port.")]
@@ -986,11 +986,11 @@ namespace SS.Core.Modules
                     uint hash = 0xDEADBEEF;
                     string password = _configManager.GetStr(_configManager.Global, peerSection, "Password");
                     if (!string.IsNullOrWhiteSpace(password))
-					{
-						hash = GetHash(password);
-					}
+                    {
+                        hash = GetHash(password);
+                    }
 
-					PeerZone peerZone = new(
+                    PeerZone peerZone = new(
                         new PeerZoneConfig()
                         {
                             Id = i,
@@ -1061,8 +1061,8 @@ namespace SS.Core.Modules
 
                     if (!_peerDictionary.TryAdd(peerZone.Config.SocketAddress, peerZone))
                     {
-						_logManager.LogM(LogLevel.Warn, nameof(Peer), $"Zone peer {i} at {peerZone.Config.IPEndPoint} is a duplicate. Check the config.");
-					}
+                        _logManager.LogM(LogLevel.Warn, nameof(Peer), $"Zone peer {i} at {peerZone.Config.IPEndPoint} is a duplicate. Check the config.");
+                    }
 
                     _logManager.LogM(LogLevel.Info, nameof(Peer), $"Zone peer {i} at {peerZone.Config.IPEndPoint} (player {(peerZone.Config.SendPlayerList ? "list" : "count")})");
                 }
@@ -1076,28 +1076,28 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(MainloopTimer_RemoveStaleArenas, 10000, 10000, null);
 
 
-			static uint GetHash(string password)
-			{
-				int numBytes = StringUtils.DefaultEncoding.GetByteCount(password);
-				byte[] byteArray = null;
-				Span<byte> byteSpan = numBytes <= 1024
-					? stackalloc byte[numBytes]
-					: (byteArray = ArrayPool<byte>.Shared.Rent(StringUtils.DefaultEncoding.GetByteCount(password)));
+            static uint GetHash(string password)
+            {
+                int numBytes = StringUtils.DefaultEncoding.GetByteCount(password);
+                byte[] byteArray = null;
+                Span<byte> byteSpan = numBytes <= 1024
+                    ? stackalloc byte[numBytes]
+                    : (byteArray = ArrayPool<byte>.Shared.Rent(StringUtils.DefaultEncoding.GetByteCount(password)));
 
-				try
-				{
-					numBytes = StringUtils.DefaultEncoding.GetBytes(password, byteSpan);
-					return ~Crc32.HashToUInt32(byteSpan[..numBytes]);
-				}
-				finally
-				{
-					if (byteArray is not null)
-					{
-						ArrayPool<byte>.Shared.Return(byteArray);
-					}
-				}
-			}
-		}
+                try
+                {
+                    numBytes = StringUtils.DefaultEncoding.GetBytes(password, byteSpan);
+                    return ~Crc32.HashToUInt32(byteSpan[..numBytes]);
+                }
+                finally
+                {
+                    if (byteArray is not null)
+                    {
+                        ArrayPool<byte>.Shared.Return(byteArray);
+                    }
+                }
+            }
+        }
 
         private void CleanupPeerZone(PeerZone peerZone)
         {
@@ -1106,7 +1106,7 @@ namespace SS.Core.Modules
 
             peerZone.Config.Arenas.Clear();
 
-            foreach(PeerArenaName peerArenaName in peerZone.Config.RenamedArenas)
+            foreach (PeerArenaName peerArenaName in peerZone.Config.RenamedArenas)
             {
                 _peerArenaNamePool.Return(peerArenaName);
             }
@@ -1224,7 +1224,7 @@ namespace SS.Core.Modules
         private void SendMessageToPeer(PeerPacketType packetType, byte messageType, ReadOnlySpan<char> message)
         {
             Span<byte> packet = stackalloc byte[PeerPacketHeader.Length + 1 + Math.Min(ChatPacket.MaxMessageBytes, message.Length + 1)];
-            
+
             ref PeerPacketHeader header = ref MemoryMarshal.AsRef<PeerPacketHeader>(packet);
 
             // Fields of the header that are the same for all peer zones.
@@ -1401,12 +1401,12 @@ namespace SS.Core.Modules
                 IsCaseChange = LocalName.Equals(RemoteName, StringComparison.OrdinalIgnoreCase) && !LocalName.Equals(RemoteName, StringComparison.Ordinal);
             }
 
-			bool IResettable.TryReset()
-			{
-				SetNames("", "");
+            bool IResettable.TryReset()
+            {
+                SetNames("", "");
                 return true;
-			}
-		}
+            }
+        }
 
         private class PeerArena : IPeerArena, IResettable
         {
@@ -1427,30 +1427,30 @@ namespace SS.Core.Modules
 
             int IPeerArena.PlayerCount => Players.Count;
 
-			bool IResettable.TryReset()
-			{
-				Id = 0;
-				LocalId = 0;
-				Name = null; // this should have already been cleared and object returned to the pool
-				IsConfigured = false;
-				IsRelay = false;
-				LastUpdate = default;
-				Players.Clear();
+            bool IResettable.TryReset()
+            {
+                Id = 0;
+                LocalId = 0;
+                Name = null; // this should have already been cleared and object returned to the pool
+                IsConfigured = false;
+                IsRelay = false;
+                LastUpdate = default;
+                Players.Clear();
 
-				return true;
-			}
-		}
+                return true;
+            }
+        }
 
         private class ArenaData : IResettable
         {
             public uint Id { get; set; } = 0;
 
-			bool IResettable.TryReset()
-			{
-				Id = 0;
-				return true;
-			}
-		}
+            bool IResettable.TryReset()
+            {
+                Id = 0;
+                return true;
+            }
+        }
 
         #endregion
     }

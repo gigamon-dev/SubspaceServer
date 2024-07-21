@@ -823,19 +823,19 @@ namespace SS.Core.Modules
         [ConfigHelp("Soccer", "BallCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-8",
             Description = "The number of balls in this arena.")]
         // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
-        [ConfigHelp("Soccer", "SpawnX[N]", ConfigScope.Arena, typeof(int), 
+        [ConfigHelp("Soccer", "SpawnX[N]", ConfigScope.Arena, typeof(int),
             Description = "The X coordinate that the ball spawns at (in tiles). " +
             "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
             "If there are more balls than spawn settings defined, later balls will repeat the spawns in order. " +
             "For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second. " +
             "If only part of a spawn is undefined, that part will default to the first spawn's setting.")]
-        [ConfigHelp("Soccer", "SpawnY[N]", ConfigScope.Arena, typeof(int), 
+        [ConfigHelp("Soccer", "SpawnY[N]", ConfigScope.Arena, typeof(int),
             Description = "The Y coordinate that the ball spawns at (in tiles). " +
             "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
             "If there are more balls than spawn settings defined, later balls will repeat the spawns in order. " +
             "For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second. " +
             "If only part of a spawn is undefined, that part will default to the first spawn's setting.")]
-        [ConfigHelp("Soccer", "SpawnRadius[N]", ConfigScope.Arena, typeof(int), 
+        [ConfigHelp("Soccer", "SpawnRadius[N]", ConfigScope.Arena, typeof(int),
             Description = "How far from the spawn center the ball can spawn (in tiles). " +
             "N is omitted from the first setting. N can be from 1 to 7 for subsequent settings. " +
             "If there are more balls than spawn settings defined, later balls will repeat the spawns in order. " +
@@ -843,9 +843,9 @@ namespace SS.Core.Modules
             "If only part of a spawn is undefined, that part will default to the first spawn's setting.")]
         [ConfigHelp("Soccer", "SendTime", ConfigScope.Arena, typeof(int), DefaultValue = "100", Range = "25-500",
             Description = "How often the server sends ball positions (in ticks).")]
-        [ConfigHelp("Soccer", "GoalDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0", 
+        [ConfigHelp("Soccer", "GoalDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "How long after a goal before the ball appears (in ticks).")]
-        [ConfigHelp("Soccer", "AllowGoalByDeath", ConfigScope.Arena, typeof(bool), DefaultValue = "0", 
+        [ConfigHelp("Soccer", "AllowGoalByDeath", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether a goal is scored if a player dies while carrying the ball on a goal tile.")]
         [ConfigHelp("Soccer", "KillerIgnorePassDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "How much 'pass delay' should be trimmed off for someone killing a ball carrier.")]
@@ -875,7 +875,7 @@ namespace SS.Core.Modules
                     spawns[i].X = _configManager.GetInt(arena.Cfg, "Soccer", $"SpawnX{i}", -1);
                     spawns[i].Y = _configManager.GetInt(arena.Cfg, "Soccer", $"SpawnY{i}", -1);
 
-                    if(spawns[i].X == -1  && spawns[i].Y == -1)
+                    if (spawns[i].X == -1 && spawns[i].Y == -1)
                     {
                         break;
                     }
@@ -886,7 +886,7 @@ namespace SS.Core.Modules
                     {
                         spawns[i].X = spawns[0].X;
                     }
-                    else if(spawns[i].Y == -1)
+                    else if (spawns[i].Y == -1)
                     {
                         spawns[i].Y = spawns[0].Y;
                     }

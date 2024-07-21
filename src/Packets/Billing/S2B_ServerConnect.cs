@@ -8,7 +8,7 @@ namespace SS.Packets.Billing
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct S2B_ServerConnect(uint serverId, uint groupId, uint scoreId, ReadOnlySpan<char> serverName, ushort port, ReadOnlySpan<char> password)
-	{
+    {
         #region Static members
 
         /// <summary>
@@ -26,50 +26,50 @@ namespace SS.Packets.Billing
         private readonly ushort port = LittleEndianConverter.Convert(port);
         public readonly PasswordInlineArray Password = new(password);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public uint ServerId => LittleEndianConverter.Convert(serverId);
+        public uint ServerId => LittleEndianConverter.Convert(serverId);
 
-		public uint GroupId => LittleEndianConverter.Convert(groupId);
+        public uint GroupId => LittleEndianConverter.Convert(groupId);
 
-		public uint ScoreId => LittleEndianConverter.Convert(scoreId);
+        public uint ScoreId => LittleEndianConverter.Convert(scoreId);
 
-		public ushort Port => LittleEndianConverter.Convert(port);
+        public ushort Port => LittleEndianConverter.Convert(port);
 
-		#endregion
+        #endregion
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(Length)]
-		public struct ServerNameInlineArray
-		{
-			public const int Length = 126;
+        [InlineArray(Length)]
+        public struct ServerNameInlineArray
+        {
+            public const int Length = 126;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public ServerNameInlineArray(ReadOnlySpan<char> value)
-			{
-				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
-			}
-		}
+            public ServerNameInlineArray(ReadOnlySpan<char> value)
+            {
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+            }
+        }
 
-		[InlineArray(Length)]
-		public struct PasswordInlineArray
-		{
-			public const int Length = 32;
+        [InlineArray(Length)]
+        public struct PasswordInlineArray
+        {
+            public const int Length = 32;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-			public PasswordInlineArray(ReadOnlySpan<char> value)
-			{
-				StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
-			}
-		}
+            public PasswordInlineArray(ReadOnlySpan<char> value)
+            {
+                StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length - 1));
+            }
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

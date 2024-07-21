@@ -160,8 +160,8 @@ namespace SS.Core
         public static bool TryGetPlayerTarget(this ITarget target, out Player player)
         {
             if (target != null
-                && target.Type == TargetType.Player 
-                && target is IPlayerTarget playerTarget 
+                && target.Type == TargetType.Player
+                && target is IPlayerTarget playerTarget
                 && playerTarget.Player != null)
             {
                 player = playerTarget.Player;

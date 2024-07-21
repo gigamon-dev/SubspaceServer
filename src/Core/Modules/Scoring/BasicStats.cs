@@ -169,7 +169,7 @@ namespace SS.Core.Modules.Scoring
                 {
                     foreach (Player player in _playerData.Players)
                     {
-                        if(player.Arena == arena
+                        if (player.Arena == arena
                             && player.Status == PlayerState.Playing
                             && player.Ship != ShipType.Spec)
                         {

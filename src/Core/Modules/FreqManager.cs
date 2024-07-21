@@ -65,7 +65,7 @@ namespace SS.Core.Modules
         {
             if (!broker.UnregisterAdvisor(ref _iFreqEnforcerAdvisorRegistrationToken))
                 return false;
-            
+
             if (broker.UnregisterInterface(ref _iFreqManagerRegistrationToken) != 0)
                 return false;
 
@@ -460,7 +460,7 @@ namespace SS.Core.Modules
                     {
                         if (isBrokerBalancer)
                             arena.ReleaseInterface(ref balancer);
-                    } 
+                    }
                 }
             }
         }
@@ -515,7 +515,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    
+
                     foreach (Player p in _playerData.Players)
                     {
                         if (p.Arena == arena
@@ -574,8 +574,8 @@ namespace SS.Core.Modules
                 {
                     foreach (Freq freq in ad.Freqs)
                     {
-						_freqPool.Return(freq);
-					}
+                        _freqPool.Return(freq);
+                    }
                     ad.Freqs.Clear();
                 }
             }
@@ -655,7 +655,7 @@ namespace SS.Core.Modules
                 return;
 
             _playerData.Lock(); // TODO: review this lock
-            
+
             try
             {
                 // TODO: module level lock
@@ -1151,12 +1151,12 @@ namespace SS.Core.Modules
                 IsBalancedAgainst = false;
             }
 
-			bool IResettable.TryReset()
-			{
+            bool IResettable.TryReset()
+            {
                 Reset();
                 return true;
-			}
-		}
+            }
+        }
 
         #endregion
     }

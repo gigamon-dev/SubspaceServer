@@ -67,33 +67,33 @@ namespace SS.Core.ComponentInterfaces
         //Sized = 0x08, // sized has its own delegate, so don't need to include this here
     }
 
-	/// <summary>
-	/// Delegate for a handler to an incoming regular packet.
-	/// </summary>
-	/// <param name="player">The player that sent the packet.</param>
-	/// <param name="data">The buffer containing the packet data that was received.</param>
-	/// <param name="flags">Flags indicating how the data was received.</param>
-	public delegate void PacketHandler(Player player, Span<byte> data, NetReceiveFlags flags);
+    /// <summary>
+    /// Delegate for a handler to an incoming regular packet.
+    /// </summary>
+    /// <param name="player">The player that sent the packet.</param>
+    /// <param name="data">The buffer containing the packet data that was received.</param>
+    /// <param name="flags">Flags indicating how the data was received.</param>
+    public delegate void PacketHandler(Player player, Span<byte> data, NetReceiveFlags flags);
 
-	/// <summary>
-	/// Delegate for a handler to an incoming sized data packet.
-	/// </summary>
-	/// <remarks>
-	/// This is invoked for each fragment of the data received as sized data packets.
-	/// It is also invoked when the transfer is complete, which can be because all data was 
-	/// sucessfully received or the because the transfer was cancelled.
-	/// </remarks>
-	/// <param name="player">The player that sent the packet.</param>
-	/// <param name="data">The buffer containing the packet data that was received.</param>
-	/// <param name="offset">
-	/// Starting position of the data being transmitted.
-	/// -1 indicates that the transfer was cancelled.
-	/// </param>
-	/// <param name="totalLength">
-	/// Overall size of the transfer in bytes.
-	/// -1 indicates that the transfer was cancelled.
-	/// </param>
-	public delegate void SizedPacketHandler(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
+    /// <summary>
+    /// Delegate for a handler to an incoming sized data packet.
+    /// </summary>
+    /// <remarks>
+    /// This is invoked for each fragment of the data received as sized data packets.
+    /// It is also invoked when the transfer is complete, which can be because all data was 
+    /// sucessfully received or the because the transfer was cancelled.
+    /// </remarks>
+    /// <param name="player">The player that sent the packet.</param>
+    /// <param name="data">The buffer containing the packet data that was received.</param>
+    /// <param name="offset">
+    /// Starting position of the data being transmitted.
+    /// -1 indicates that the transfer was cancelled.
+    /// </param>
+    /// <param name="totalLength">
+    /// Overall size of the transfer in bytes.
+    /// -1 indicates that the transfer was cancelled.
+    /// </param>
+    public delegate void SizedPacketHandler(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
     /// Delegate for a callback when the send of a reliable packet completes.
@@ -102,34 +102,34 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
     public delegate void ReliableDelegate(Player player, bool success);
 
-	/// <summary>
-	/// Delegate for a callback when the send of a reliable packet completes.
-	/// The callback includes a parameter for state.
-	/// </summary>
-	/// <typeparam name="T">The type of state object.</typeparam>
-	/// <param name="player">The player the packet was being sent to.</param>
-	/// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
-	/// <param name="state">The state object.</param>
-	public delegate void ReliableDelegate<T>(Player player, bool success, T state);
+    /// <summary>
+    /// Delegate for a callback when the send of a reliable packet completes.
+    /// The callback includes a parameter for state.
+    /// </summary>
+    /// <typeparam name="T">The type of state object.</typeparam>
+    /// <param name="player">The player the packet was being sent to.</param>
+    /// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
+    /// <param name="state">The state object.</param>
+    public delegate void ReliableDelegate<T>(Player player, bool success, T state);
 
-	/// <summary>
-	/// Delegate for retrieving data to be sent out as sized data.
-	/// </summary>
-	/// <remarks>
-	/// This is invoked to get data for an outgoing sized data transfer.
+    /// <summary>
+    /// Delegate for retrieving data to be sent out as sized data.
+    /// </summary>
+    /// <remarks>
+    /// This is invoked to get data for an outgoing sized data transfer.
     /// It will be called multiple times, to grab chunks of the data.
     /// These chunks are then broken down into fragments and sent using size data packets.
     /// It is also invoked invoked when the transfer is complete, either because all of the
     /// data was retrieved or because the transfer was cancelled.
-	/// </remarks>
-	/// <typeparam name="T">The type of the argument for passing state.</typeparam>
-	/// <param name="state">The state to pass (provides a way to identify the data to retrieve).</param>
-	/// <param name="offset">The starting position of the data to retrieve.</param>
-	/// <param name="dataSpan">
-	/// The buffer to fill with data. 
-	/// An empty span indicates the end of a transfer and can be used to perform any necessary cleanup.
-	/// </param>
-	public delegate void GetSizedSendDataDelegate<T>(T state, int offset, Span<byte> dataSpan);
+    /// </remarks>
+    /// <typeparam name="T">The type of the argument for passing state.</typeparam>
+    /// <param name="state">The state to pass (provides a way to identify the data to retrieve).</param>
+    /// <param name="offset">The starting position of the data to retrieve.</param>
+    /// <param name="dataSpan">
+    /// The buffer to fill with data. 
+    /// An empty span indicates the end of a transfer and can be used to perform any necessary cleanup.
+    /// </param>
+    public delegate void GetSizedSendDataDelegate<T>(T state, int offset, Span<byte> dataSpan);
 
     public interface IReadOnlyNetStats
     {
@@ -170,22 +170,22 @@ namespace SS.Core.ComponentInterfaces
     {
         public ulong PacketsSent;
         public ulong PacketsReceived;
-		public ulong ReliablePacketsSent;
-		public ulong ReliablePacketsReceived;
-		public ulong BytesSent;
+        public ulong ReliablePacketsSent;
+        public ulong ReliablePacketsReceived;
+        public ulong BytesSent;
         public ulong BytesReceived;
 
         /// <inheritdoc cref="Modules.Network.ConnData.RelDups" path="/summary"/>>
         public ulong RelDups;
 
-		/// <inheritdoc cref="Modules.Network.ConnData.AckDups" path="/summary"/>>
-		public ulong AckDups;
+        /// <inheritdoc cref="Modules.Network.ConnData.AckDups" path="/summary"/>>
+        public ulong AckDups;
 
-		/// <inheritdoc cref="Modules.Network.ConnData.Retries" path="/summary"/>>
-		public ulong Retries;
+        /// <inheritdoc cref="Modules.Network.ConnData.Retries" path="/summary"/>>
+        public ulong Retries;
 
-		/// <inheritdoc cref="Modules.Network.ConnData.PacketsDropped" path="/summary"/>>
-		public ulong PacketsDropped;
+        /// <inheritdoc cref="Modules.Network.ConnData.PacketsDropped" path="/summary"/>>
+        public ulong PacketsDropped;
 
         public string EncryptorName;
 
@@ -268,59 +268,59 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flags">Flags specifying options for the send.</param>
         void SendToTarget<TData>(ITarget target, ref TData data, NetSendFlags flags) where TData : struct;
 
-		/// <summary>
-		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
-		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
-		/// </summary>
-		/// <remarks>
-		/// The <paramref name="callback"/> is executed on the mainloop thread.
-		/// </remarks>
-		/// <param name="player">The player to send data to.</param>
-		/// <param name="data">The data to send.</param>
-		/// <param name="callback">The callback to invoke after the data has been sent.</param>
-		void SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback);
-
-		/// <summary>
-		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
-		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
-		/// </summary>
-		/// <remarks>
-		/// The <paramref name="callback"/> is executed on the mainloop thread.
-		/// </remarks>
-		/// <typeparam name="TData">The type of data packet to send.</typeparam>
-		/// <param name="player">The player to send data to.</param>
-		/// <param name="data">The data to send.</param>
-		/// <param name="callback">The callback to invoke after the data has been sent.</param>
-		void SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback) where TData : struct;
-
-		/// <summary>
-		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
-		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
-		/// </summary>
-		/// <remarks>
+        /// <summary>
+        /// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+        /// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+        /// </summary>
+        /// <remarks>
         /// The <paramref name="callback"/> is executed on the mainloop thread.
         /// </remarks>
-		/// <typeparam name="TState">The type of argument used in the callback.</typeparam>
-		/// <param name="player">The player to send data to.</param>
-		/// <param name="data">The data to send.</param>
-		/// <param name="callback">The callback to invoke after the data has been sent.</param>
-		/// <param name="state">The state to pass when invoking the callback.</param>
-		void SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState state);
+        /// <param name="player">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        void SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback);
 
-		/// <summary>
-		/// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
-		/// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
-		/// </summary>
-		/// <remarks>
-		/// The <paramref name="callback"/> is executed on the mainloop thread.
-		/// </remarks>
-		/// <typeparam name="TData">The type of data packet to send.</typeparam>
-		/// <typeparam name="TState">The type of argument used in the callback.</typeparam>
-		/// <param name="player">The player to send data to.</param>
-		/// <param name="data">The data to send.</param>
-		/// <param name="callback">The callback to invoke after the data has been sent.</param>
-		/// <param name="state">The state to pass when invoking the callback.</param>
-		void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state) where TData : struct;
+        /// <summary>
+        /// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+        /// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+        /// </summary>
+        /// <remarks>
+        /// The <paramref name="callback"/> is executed on the mainloop thread.
+        /// </remarks>
+        /// <typeparam name="TData">The type of data packet to send.</typeparam>
+        /// <param name="player">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        void SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback) where TData : struct;
+
+        /// <summary>
+        /// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+        /// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+        /// </summary>
+        /// <remarks>
+        /// The <paramref name="callback"/> is executed on the mainloop thread.
+        /// </remarks>
+        /// <typeparam name="TState">The type of argument used in the callback.</typeparam>
+        /// <param name="player">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        /// <param name="state">The state to pass when invoking the callback.</param>
+        void SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState state);
+
+        /// <summary>
+        /// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
+        /// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
+        /// </summary>
+        /// <remarks>
+        /// The <paramref name="callback"/> is executed on the mainloop thread.
+        /// </remarks>
+        /// <typeparam name="TData">The type of data packet to send.</typeparam>
+        /// <typeparam name="TState">The type of argument used in the callback.</typeparam>
+        /// <param name="player">The player to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        /// <param name="state">The state to pass when invoking the callback.</param>
+        void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state) where TData : struct;
 
         /// <summary>
         /// Queues up a job to send 'sized' data to a player.
@@ -352,20 +352,20 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="handler">The handler to unregister.</param>
         void RemovePacket(C2SPacketType packetType, PacketHandler handler);
 
-		/// <summary>
-		/// To register a handler for a sized packet.
-		/// <remarks>This is used for receiving file uploads.  Includes voices (wave messages in macros).</remarks>
-		/// </summary>
-		/// <param name="packetType">The type of packet to register.</param>
-		/// <param name="handler">The handler to register.</param>
-		void AddSizedPacket(C2SPacketType packetType, SizedPacketHandler handler);
+        /// <summary>
+        /// To register a handler for a sized packet.
+        /// <remarks>This is used for receiving file uploads.  Includes voices (wave messages in macros).</remarks>
+        /// </summary>
+        /// <param name="packetType">The type of packet to register.</param>
+        /// <param name="handler">The handler to register.</param>
+        void AddSizedPacket(C2SPacketType packetType, SizedPacketHandler handler);
 
-		/// <summary>
-		/// To unregister a handler for a sized packet.
-		/// </summary>
-		/// <param name="packetType">The type of packet to unregister.</param>
-		/// <param name="handler">The handler to unregister.</param>
-		void RemoveSizedPacket(C2SPacketType packetType, SizedPacketHandler handler);
+        /// <summary>
+        /// To unregister a handler for a sized packet.
+        /// </summary>
+        /// <param name="packetType">The type of packet to unregister.</param>
+        /// <param name="handler">The handler to unregister.</param>
+        void RemoveSizedPacket(C2SPacketType packetType, SizedPacketHandler handler);
 
         /// <summary>
         /// Gets statistics about the Network module.
@@ -381,13 +381,13 @@ namespace SS.Core.ComponentInterfaces
         /// <exception cref="ArgumentNullException"><paramref name="player"/> is null.</exception>
         void GetConnectionStats(Player player, ref NetConnectionStats stats);
 
-		/// <summary>
-		/// Gets how long it has been since a packet was received from a specified player.
-		/// </summary>
-		/// <param name="player">The player to check.</param>
-		/// <returns>The <see cref="TimeSpan"/> since the last packet was received.</returns>
-		/// <exception cref="ArgumentNullException"><paramref name="player"/> is null.</exception>
-		TimeSpan GetLastReceiveTimeSpan(Player player);
+        /// <summary>
+        /// Gets how long it has been since a packet was received from a specified player.
+        /// </summary>
+        /// <param name="player">The player to check.</param>
+        /// <returns>The <see cref="TimeSpan"/> since the last packet was received.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="player"/> is null.</exception>
+        TimeSpan GetLastReceiveTimeSpan(Player player);
 
         /// <summary>
         /// Gets the endpoint (IP Address and port) and connectAs that the server is listening on for game clients.

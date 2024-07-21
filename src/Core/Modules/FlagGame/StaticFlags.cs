@@ -95,7 +95,7 @@ namespace SS.Core.Modules.FlagGame
                     _persist.UnregisterPersistentData(_persistRegistration);
 
                 broker.ReleaseInterface(ref _persist);
-            }   
+            }
 
             _arenaManager.FreeArenaData(ref _adKey);
 
@@ -200,13 +200,13 @@ namespace SS.Core.Modules.FlagGame
 
             return true;
         }
-        
+
         bool IStaticFlagGame.TryGetFlagOwner(Arena arena, short flagId, out short owner)
         {
-            if (arena == null 
+            if (arena == null
                 || !arena.TryGetExtraData(_adKey, out ArenaData ad)
                 || ad.Flags == null
-                || flagId < 0 
+                || flagId < 0
                 || flagId >= ad.Flags.Length)
             {
                 owner = default;
@@ -242,7 +242,7 @@ namespace SS.Core.Modules.FlagGame
             TrySendSingleFlagUpdateToArena(arena, ad, flagId, ref flagData, DateTime.UtcNow);
             return true;
         }
-        
+
         #endregion
 
         #region Packet handlers

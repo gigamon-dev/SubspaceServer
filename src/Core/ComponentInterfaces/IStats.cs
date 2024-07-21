@@ -13,7 +13,7 @@ namespace SS.Core.ComponentInterfaces
     /// The purpose of it is to help protect against mismatching a StatId and its type.
     /// The idea being, you keep a static class containing your StatCodes, similar to the <see cref="StatCodes"/> class.
     /// </remarks>
-    public struct StatCode<T> where T: struct
+    public struct StatCode<T> where T : struct
     {
         public int StatId { get; private set; }
 

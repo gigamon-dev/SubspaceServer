@@ -389,7 +389,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
                 else if (playerData.PendingGroups.Count == 1)
-                { 
+                {
                     group = playerData.PendingGroups.First();
                 }
                 else
@@ -716,7 +716,8 @@ namespace SS.Matchmaking.Modules
             // Remove any pending invites.
             if (wasLeader && group.PendingMembers.Count > 0)
             {
-                PlayerGroupPendingRemovedReason pendingRemovedReason = reason switch {
+                PlayerGroupPendingRemovedReason pendingRemovedReason = reason switch
+                {
                     PlayerGroupMemberRemovedReason.Disconnect => PlayerGroupPendingRemovedReason.InviterDisconnect,
                     PlayerGroupMemberRemovedReason.Disband => PlayerGroupPendingRemovedReason.Disband,
                     PlayerGroupMemberRemovedReason.Leave or PlayerGroupMemberRemovedReason.Kick or _ => PlayerGroupPendingRemovedReason.InviterCancel,
@@ -921,15 +922,15 @@ namespace SS.Matchmaking.Modules
                 return PendingMembers.Remove(player);
             }
 
-			bool IResettable.TryReset()
-			{
-				Leader = null;
-				Members.Clear();
-				PendingMembers.Clear();
+            bool IResettable.TryReset()
+            {
+                Leader = null;
+                Members.Clear();
+                PendingMembers.Clear();
 
                 return true;
-			}
-		}
+            }
+        }
 
         private class PlayerData : IResettable
         {
@@ -943,13 +944,13 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public readonly HashSet<PlayerGroup> PendingGroups = new();
 
-			bool IResettable.TryReset()
-			{
-				Group = null;
-				PendingGroups.Clear();
+            bool IResettable.TryReset()
+            {
+                Group = null;
+                PendingGroups.Clear();
 
-				return true;
-			}
-		}
+                return true;
+            }
+        }
     }
 }

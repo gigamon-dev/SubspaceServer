@@ -9,12 +9,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_MapFilename
     {
-		#region Constants
+        #region Constants
 
-		/// <summary>
-		/// The maximum # of lvz files a <see cref="S2C_MapFilename"/> packet can represent.
-		/// </summary>
-		public const int MaxLvzFiles = 16;
+        /// <summary>
+        /// The maximum # of lvz files a <see cref="S2C_MapFilename"/> packet can represent.
+        /// </summary>
+        public const int MaxLvzFiles = 16;
 
         /// <summary>
         /// The maximum # of files (lvl and lvz files) a <see cref="S2C_MapFilename"/> packet can represent.
@@ -31,17 +31,17 @@ namespace SS.Packets.Game
             Type = (byte)S2CPacketType.MapFilename;
         }
 
-		#region Methods
+        #region Methods
 
-		/// <summary>
-		/// Sets file info for the original, non-continuum version of the packet, 
-		/// which doesn't include <see cref="File.Size"/> and can only contain 1 entry, the .lvl file.
-		/// This is for VIE clients (non-bot) that don't support the continuum version of the packet (.lvl file only).
-		/// </summary>
-		/// <param name="fileName">The .lvl file name.</param>
-		/// <param name="checksum">The checksum of the file.</param>
-		/// <returns>Number of bytes for the packet.</returns>
-		public int SetFileInfo(string fileName, uint checksum)
+        /// <summary>
+        /// Sets file info for the original, non-continuum version of the packet, 
+        /// which doesn't include <see cref="File.Size"/> and can only contain 1 entry, the .lvl file.
+        /// This is for VIE clients (non-bot) that don't support the continuum version of the packet (.lvl file only).
+        /// </summary>
+        /// <param name="fileName">The .lvl file name.</param>
+        /// <param name="checksum">The checksum of the file.</param>
+        /// <returns>Number of bytes for the packet.</returns>
+        public int SetFileInfo(string fileName, uint checksum)
         {
             if (string.IsNullOrWhiteSpace(fileName))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
@@ -78,24 +78,24 @@ namespace SS.Packets.Game
             return 1 + ((fileIndex + 1) * File.Length);
         }
 
-		#endregion
+        #endregion
 
-		#region Types
+        #region Types
 
-		[StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct File
         {
-			#region Constants
+            #region Constants
 
             /// <summary>
             /// The # of bytes, including the size (Continuum).
             /// </summary>
-			public const int Length = 24;
+            public const int Length = 24;
 
             /// <summary>
             /// The # of bytes, without the size (VIE).
             /// </summary>
-			public const int LengthWithoutSize = 20;
+            public const int LengthWithoutSize = 20;
 
             #endregion
 
@@ -103,48 +103,48 @@ namespace SS.Packets.Game
             private uint checksum;
             private uint size; // Continuum only
 
-			#region Helper Properties
+            #region Helper Properties
 
-			public uint Checksum
+            public uint Checksum
             {
                 get => LittleEndianConverter.Convert(checksum);
                 set => checksum = LittleEndianConverter.Convert(value);
             }
 
-			public uint Size
+            public uint Size
             {
                 get => LittleEndianConverter.Convert(size);
                 set => size = LittleEndianConverter.Convert(value);
             }
 
-			#endregion
+            #endregion
 
-			#region Inline Array Types
+            #region Inline Array Types
 
-			[InlineArray(Length)]
-			public struct FileNameInlineArray
-			{
-				public const int Length = 16;
+            [InlineArray(Length)]
+            public struct FileNameInlineArray
+            {
+                public const int Length = 16;
 
-				[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-				[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-				private byte _element0;
+                [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+                [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+                private byte _element0;
 
-				public void Set(ReadOnlySpan<char> value)
-				{
-					StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
-				}
-			}
+                public void Set(ReadOnlySpan<char> value)
+                {
+                    StringUtils.WriteNullPaddedString(this, value.TruncateForEncodedByteLimit(Length), false);
+                }
+            }
 
             #endregion
         }
 
-		[InlineArray(MaxFiles)]
-		public struct FilesInlineArray
+        [InlineArray(MaxFiles)]
+        public struct FilesInlineArray
         {
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private File _element0;
-		}
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private File _element0;
+        }
 
         #endregion
     }

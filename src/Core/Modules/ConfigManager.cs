@@ -58,7 +58,7 @@ namespace SS.Core.Modules
         #region Module members
 
         public bool Load(
-            ComponentBroker broker, 
+            ComponentBroker broker,
             IMainloop mainloop,
             IServerTimer serverTimer)
         {
@@ -114,7 +114,7 @@ namespace SS.Core.Modules
 
         #region Timers
 
-        [ConfigHelp("Config", "FlushDirtyValuesInterval", ConfigScope.Global,  typeof(int), DefaultValue = "500", 
+        [ConfigHelp("Config", "FlushDirtyValuesInterval", ConfigScope.Global, typeof(int), DefaultValue = "500",
             Description = "How often to write modified config settings back to disk (in ticks).")]
         [ConfigHelp("Config", "CheckModifiedFilesInterval", ConfigScope.Global, typeof(int), DefaultValue = "1500",
             Description = "How often to check for modified config files on disk (in ticks).")]
@@ -303,10 +303,10 @@ namespace SS.Core.Modules
         ConfigHandle IConfigManager.OpenConfigFile(string arena, string name)
         {
             return OpenConfigFile(
-                arena, 
-                name, 
+                arena,
+                name,
                 (documentInfo) => documentInfo.CreateHandle(
-                    arena is not null ? ConfigScope.Arena : ConfigScope.Global, 
+                    arena is not null ? ConfigScope.Arena : ConfigScope.Global,
                     name));
         }
 
@@ -324,8 +324,8 @@ namespace SS.Core.Modules
         ConfigHandle IConfigManager.OpenConfigFile<TState>(string arena, string name, ConfigChangedDelegate<TState> changedCallback, TState state)
         {
             return OpenConfigFile(
-                arena, 
-                name, 
+                arena,
+                name,
                 (documentInfo) => documentInfo.CreateHandle(
                     arena is not null ? ConfigScope.Arena : ConfigScope.Global,
                     name,
@@ -438,7 +438,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(handle));
 
             if (handle is not DocumentHandle documentHandle)
-                throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));    
+                throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
 
             if (documentHandle.DocumentInfo is not null)
             {
@@ -726,7 +726,7 @@ namespace SS.Core.Modules
 
             public DocumentHandle CreateHandle(ConfigScope scope, string fileName)
             {
-                DocumentHandle handle = new(this, scope, fileName,  null);
+                DocumentHandle handle = new(this, scope, fileName, null);
 
                 lock (_lockObj)
                 {

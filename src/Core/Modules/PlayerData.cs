@@ -57,16 +57,16 @@ namespace SS.Core.Modules
         private readonly Action<Player> _mainloopWork_FireNewPlayerCallback;
         private readonly Action<Player> _mainloopWork_CompleteFreePlayer;
 
-		public PlayerData()
+        public PlayerData()
         {
             _mainloopWork_FireNewPlayerCallback = MainloopWork_FireNewPlayerCallback;
             _mainloopWork_CompleteFreePlayer = MainloopWork_CompleteFreePlayer;
-		}
+        }
 
-		#region Module Members
+        #region Module Members
 
-		public bool Load(
-            ComponentBroker broker, 
+        public bool Load(
+            ComponentBroker broker,
             ILogManager logManager,
             IMainloop mainloop)
         {
@@ -165,12 +165,12 @@ namespace SS.Core.Modules
             return player;
         }
 
-		private void MainloopWork_FireNewPlayerCallback(Player player)
-		{
-			NewPlayerCallback.Fire(Broker, player, true);
-		}
+        private void MainloopWork_FireNewPlayerCallback(Player player)
+        {
+            NewPlayerCallback.Fire(Broker, player, true);
+        }
 
-		void IPlayerData.FreePlayer(Player player)
+        void IPlayerData.FreePlayer(Player player)
         {
             if (player is null)
                 return;
@@ -196,42 +196,42 @@ namespace SS.Core.Modules
             }
         }
 
-		private void MainloopWork_CompleteFreePlayer(Player player)
-		{
-			// First, execute callbacks.
-			// This allows other modules to perform cleanup, including their extra player data.
-			NewPlayerCallback.Fire(Broker, player, false);
+        private void MainloopWork_CompleteFreePlayer(Player player)
+        {
+            // First, execute callbacks.
+            // This allows other modules to perform cleanup, including their extra player data.
+            NewPlayerCallback.Fire(Broker, player, false);
 
-			// Next, do the "freeing".
-			WriteLock();
+            // Next, do the "freeing".
+            WriteLock();
 
-			try
-			{
-				if (!_playersBeingFreed.Remove(player))
-					return;
+            try
+            {
+                if (!_playersBeingFreed.Remove(player))
+                    return;
 
-				// Remove the extra player data.
-				foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
-				{
-					if (player.TryRemoveExtraData(keyId, out object data))
-					{
-						factory.Return(data);
-					}
-				}
+                // Remove the extra player data.
+                foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
+                {
+                    if (player.TryRemoveExtraData(keyId, out object data))
+                    {
+                        factory.Return(data);
+                    }
+                }
 
-				// Reset the player's data back to their initial values.
-				player.Initialize();
+                // Reset the player's data back to their initial values.
+                player.Initialize();
 
-				// Add the player to the queue, "freeing" it to be reused after a configured amount of time.
-				_freePlayersQueue.Enqueue(new FreePlayerInfo(player));
-			}
-			finally
-			{
-				WriteUnlock();
-			}
-		}
+                // Add the player to the queue, "freeing" it to be reused after a configured amount of time.
+                _freePlayersQueue.Enqueue(new FreePlayerInfo(player));
+            }
+            finally
+            {
+                WriteUnlock();
+            }
+        }
 
-		void IPlayerData.KickPlayer(Player player)
+        void IPlayerData.KickPlayer(Player player)
         {
             if (player is null)
                 return;
@@ -316,10 +316,10 @@ namespace SS.Core.Modules
 
         void IPlayerData.TargetToSet(ITarget target, HashSet<Player> set, Predicate<Player> predicate)
         {
-			ArgumentNullException.ThrowIfNull(target);
-			ArgumentNullException.ThrowIfNull(set);
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(set);
 
-			switch (target.Type)
+            switch (target.Type)
             {
                 case TargetType.Player:
                     if (target.TryGetPlayerTarget(out Player targetPlayer) && (predicate is null || predicate(targetPlayer)))
@@ -395,25 +395,25 @@ namespace SS.Core.Modules
 
         PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(IPooledObjectPolicy<T> policy) where T : class
         {
-			ArgumentNullException.ThrowIfNull(policy);
+            ArgumentNullException.ThrowIfNull(policy);
 
-			// It's the policy's job to clear/reset an object when it's returned to the pool.
-			return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
+            // It's the policy's job to clear/reset an object when it's returned to the pool.
+            return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(_poolProvider, policy)));
         }
 
-		PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(ObjectPool<T> pool) where T : class
+        PlayerDataKey<T> IPlayerData.AllocatePlayerData<T>(ObjectPool<T> pool) where T : class
         {
-			ArgumentNullException.ThrowIfNull(pool);
+            ArgumentNullException.ThrowIfNull(pool);
 
-			// It's the policy's job to clear/reset an object when it's returned to the pool.
-			return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(pool)));
-		}
+            // It's the policy's job to clear/reset an object when it's returned to the pool.
+            return new PlayerDataKey<T>(AllocatePlayerData(() => new CustomPooledExtraDataFactory<T>(pool)));
+        }
 
-		private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
+        private int AllocatePlayerData(Func<ExtraDataFactory> createExtraDataFactoryFunc)
         {
-			ArgumentNullException.ThrowIfNull(createExtraDataFactoryFunc);
+            ArgumentNullException.ThrowIfNull(createExtraDataFactoryFunc);
 
-			WriteLock();
+            WriteLock();
 
             try
             {
@@ -426,7 +426,7 @@ namespace SS.Core.Modules
                 // Find the next available extra data key.
                 for (keyId = 1; keyId <= _extraDataRegistrations.Keys.Count; keyId++)
                 {
-                    if (_extraDataRegistrations.Keys[keyId-1] != keyId)
+                    if (_extraDataRegistrations.Keys[keyId - 1] != keyId)
                         break;
                 }
 
@@ -505,7 +505,7 @@ namespace SS.Core.Modules
         #region Helper Types
 
         private readonly struct FreePlayerInfo(Player player)
-		{
+        {
             /// <summary>
             /// The time the associated player object (predominantly its Id) will be available.
             /// </summary>
@@ -515,8 +515,8 @@ namespace SS.Core.Modules
             /// The player object
             /// </summary>
             public readonly Player Player = player;
-		}
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

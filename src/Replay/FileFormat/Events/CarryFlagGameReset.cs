@@ -8,7 +8,7 @@ namespace SS.Replay.FileFormat.Events
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct CarryFlagGameReset(ServerTick ticks, short freq, int points)
-	{
+    {
         #region Static members
 
         public static readonly int Length = Marshal.SizeOf<CarryFlagGameReset>();
@@ -19,20 +19,20 @@ namespace SS.Replay.FileFormat.Events
         private short freq = LittleEndianConverter.Convert(freq);
         private int points = LittleEndianConverter.Convert(points);
 
-		#region Helper properties
+        #region Helper properties
 
-		public short Freq
-		{
-			readonly get => LittleEndianConverter.Convert(freq);
-			set => freq = LittleEndianConverter.Convert(value);
-		}
+        public short Freq
+        {
+            readonly get => LittleEndianConverter.Convert(freq);
+            set => freq = LittleEndianConverter.Convert(value);
+        }
 
-		public int Points
-		{
-			readonly get => LittleEndianConverter.Convert(points);
-			set => points = LittleEndianConverter.Convert(value);
-		}
+        public int Points
+        {
+            readonly get => LittleEndianConverter.Convert(points);
+            set => points = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
-	}
+        #endregion
+    }
 }

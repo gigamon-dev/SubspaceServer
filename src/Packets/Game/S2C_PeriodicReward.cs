@@ -8,7 +8,7 @@ namespace SS.Packets.Game
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public readonly struct PeriodicRewardItem(short freq, short points)
-	{
+    {
         #region Static members
 
         public static readonly int Length = Marshal.SizeOf<PeriodicRewardItem>();
@@ -18,12 +18,12 @@ namespace SS.Packets.Game
         private readonly short freq = LittleEndianConverter.Convert(freq);
         private readonly short points = LittleEndianConverter.Convert(points);
 
-		#region Helper Properties
+        #region Helper Properties
 
-		public short Freq => LittleEndianConverter.Convert(freq);
+        public short Freq => LittleEndianConverter.Convert(freq);
 
-		public short Points => LittleEndianConverter.Convert(points);
+        public short Points => LittleEndianConverter.Convert(points);
 
-		#endregion
-	}
+        #endregion
+    }
 }

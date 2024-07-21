@@ -140,7 +140,7 @@ namespace SS.Core.Modules.Enforcers
 
         #region Callbacks
 
-        [ConfigHelp("Misc", "ShipChangeInterval", ConfigScope.Arena, typeof(int), DefaultValue = "500", 
+        [ConfigHelp("Misc", "ShipChangeInterval", ConfigScope.Arena, typeof(int), DefaultValue = "500",
             Description = "The allowable interval between player ship changes, in ticks.")]
         [ConfigHelp("Misc", "AntiwarpShipChange", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
             Description = "Whether to prevent players without flags from changing ships while antiwarped.")]

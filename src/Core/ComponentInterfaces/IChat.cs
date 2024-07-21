@@ -15,62 +15,62 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// arena messages (in green)
         /// </summary>
-        Arena = 0, 
+        Arena = 0,
 
         /// <summary>
         /// macros as public arena chat
         /// </summary>
-        PubMacro = 1, 
+        PubMacro = 1,
 
         /// <summary>
         /// public arena chat
         /// </summary>
-        Pub = 2, 
+        Pub = 2,
 
         /// <summary>
         /// team message
         /// </summary>
-        Freq = 3, 
+        Freq = 3,
 
         /// <summary>
         /// enemy team messages
         /// </summary>
-        EnemyFreq = 4, 
+        EnemyFreq = 4,
 
         /// <summary>
         /// within-arena private messages
         /// </summary>
-        Private = 5, 
+        Private = 5,
 
         /// <summary>
         /// cross-arena or cross-zone private messages
         /// </summary>
-        RemotePrivate = 7, 
+        RemotePrivate = 7,
 
         /// <summary>
         /// red sysop warning text
         /// </summary>
-        SysopWarning = 8, 
+        SysopWarning = 8,
 
         /// <summary>
         /// chat channel messages
         /// </summary>
-        Chat = 9, 
+        Chat = 9,
 
         /// <summary>
         /// moderator chat messages (internal only)
         /// </summary>
-        ModChat = 10, 
+        ModChat = 10,
 
         /// <summary>
         /// msgs that function as commands (internal only)
         /// </summary>
-        Command = 11, 
+        Command = 11,
 
         /// <summary>
         /// commands that go to the biller (internal only)
         /// </summary>
-        BillerCommand = 12, 
+        BillerCommand = 12,
     }
 
     /// <summary>

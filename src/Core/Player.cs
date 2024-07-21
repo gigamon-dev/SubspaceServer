@@ -58,22 +58,22 @@ namespace SS.Core
         /// <summary>
         /// Client type is unknown
         /// </summary>
-        Unknown, 
+        Unknown,
 
         /// <summary>
         /// Fake client (autoturret, etc)
         /// </summary>
-        Fake, 
+        Fake,
 
         /// <summary>
         /// SubSpace client
         /// </summary>
-        VIE, 
+        VIE,
 
         /// <summary>
         /// Continuum client
         /// </summary>
-        Continuum, 
+        Continuum,
 
         /// <summary>
         /// ASSS ChatNet client

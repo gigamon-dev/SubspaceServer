@@ -46,68 +46,68 @@ namespace SS.Packets.Game
             set => macId = LittleEndianConverter.Convert(value);
         }
 
-		public ushort TimeZoneBias
-		{
-			readonly get => LittleEndianConverter.Convert(timeZoneBias);
-			set => timeZoneBias = LittleEndianConverter.Convert(value);
-		}
-
-		public ushort CVersion
+        public ushort TimeZoneBias
         {
-			readonly get => LittleEndianConverter.Convert(cVersion);
+            readonly get => LittleEndianConverter.Convert(timeZoneBias);
+            set => timeZoneBias = LittleEndianConverter.Convert(value);
+        }
+
+        public ushort CVersion
+        {
+            readonly get => LittleEndianConverter.Convert(cVersion);
             set => cVersion = LittleEndianConverter.Convert(value);
         }
 
-		public uint D2
-		{
-			readonly get => LittleEndianConverter.Convert(d2);
-			set => d2 = LittleEndianConverter.Convert(value);
-		}
+        public uint D2
+        {
+            readonly get => LittleEndianConverter.Convert(d2);
+            set => d2 = LittleEndianConverter.Convert(value);
+        }
 
-		#endregion
+        #endregion
 
-		#region Inline Array Types
+        #region Inline Array Types
 
-		[InlineArray(Length)]
-		public struct NameInlineArray
-		{
-			public const int Length = 32;
+        [InlineArray(Length)]
+        public struct NameInlineArray
+        {
+            public const int Length = 32;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
             public void Clear()
             {
                 ((Span<byte>)this).Clear();
             }
-		}
+        }
 
-		[InlineArray(Length)]
-		public struct PasswordInlineArray
-		{
-			public const int Length = 32;
-
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-
-			public void Clear()
-			{
-				((Span<byte>)this).Clear();
-			}
-		}
-
-		[InlineArray(Length)]
-		private struct UnusedInlineArray
+        [InlineArray(Length)]
+        public struct PasswordInlineArray
         {
-			public const int Length = 12;
+            public const int Length = 32;
 
-			[SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
-			[SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
-			private byte _element0;
-		}
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
 
-		#endregion
-	}
+            public void Clear()
+            {
+                ((Span<byte>)this).Clear();
+            }
+        }
+
+        [InlineArray(Length)]
+        private struct UnusedInlineArray
+        {
+            public const int Length = 12;
+
+            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
+            [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
+            private byte _element0;
+        }
+
+        #endregion
+    }
 }

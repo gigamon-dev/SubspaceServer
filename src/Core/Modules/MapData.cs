@@ -88,11 +88,11 @@ namespace SS.Core.Modules
 
             return PathUtil.FindFileOnPath(
                 isLvl ? Constants.LvlSearchPaths : Constants.LvzSearchPaths,
-                mapName, 
+                mapName,
                 arena.BaseName);
         }
 
-        [ConfigHelp("General", "LevelFiles", ConfigScope.Arena, typeof(string), 
+        [ConfigHelp("General", "LevelFiles", ConfigScope.Arena, typeof(string),
             "The list of lvz files for the arena. LevelFiles1 through LevelFiles15 are also supported.")]
         IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
         {
@@ -456,7 +456,7 @@ namespace SS.Core.Modules
 
         void IMapData.SaveImage(Arena arena, string path)
         {
-			ArgumentNullException.ThrowIfNull(arena);
+            ArgumentNullException.ThrowIfNull(arena);
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
@@ -474,29 +474,29 @@ namespace SS.Core.Modules
             }
         }
 
-		void IMapData.SaveImage(Arena arena, Stream stream, ReadOnlySpan<char> imageFormat)
+        void IMapData.SaveImage(Arena arena, Stream stream, ReadOnlySpan<char> imageFormat)
         {
             ArgumentNullException.ThrowIfNull(arena);
-			ArgumentNullException.ThrowIfNull(stream);
+            ArgumentNullException.ThrowIfNull(stream);
 
-			if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-				throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                throw new Exception("missing lvl data");
 
-			ad.Lock.EnterReadLock();
+            ad.Lock.EnterReadLock();
 
-			try
-			{
-				ad.Lvl.SaveImage(stream, imageFormat);
-			}
-			finally
-			{
-				ad.Lock.ExitReadLock();
-			}
-		}
+            try
+            {
+                ad.Lvl.SaveImage(stream, imageFormat);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
 
-		#endregion
+        #endregion
 
-		private async void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena == null)
                 return;

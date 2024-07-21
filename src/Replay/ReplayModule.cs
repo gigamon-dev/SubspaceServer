@@ -280,7 +280,7 @@ namespace SS.Replay
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
                 return;
 
-            if (   (type == ChatMessageType.Arena && ad.Settings.RecordArenaChat)
+            if ((type == ChatMessageType.Arena && ad.Settings.RecordArenaChat)
                 || (type == ChatMessageType.Pub && ad.Settings.RecordPublicChat)
                 || (type == ChatMessageType.PubMacro && ad.Settings.RecordPublicMacroChat)
                 || (type == ChatMessageType.Freq && (freq == arena.SpecFreq ? ad.Settings.RecordSpecChat : ad.Settings.RecordTeamChat)))
@@ -774,10 +774,10 @@ namespace SS.Replay
 
             //void QueueBricks(Arena arena, ArenaData ad)
             //{
-                // TODO: this will require changes to the Bricks module:
-                // - a way to get the current bricks
-                // - a callback to record when brick(s) are placed
-                // - a way to set bricks (with earlier timestamps) --> playback
+            // TODO: this will require changes to the Bricks module:
+            // - a way to get the current bricks
+            // - a callback to record when brick(s) are placed
+            // - a way to set bricks (with earlier timestamps) --> playback
             //}
 
             void QueueFlagInfo(Arena arena, ArenaData ad)
@@ -1185,7 +1185,7 @@ namespace SS.Replay
                     {
                         DoPlayback(arena, path);
                         _mainloop.QueueMainWorkItem(MainloopWorkitem_EndPlayback, arena);
-                    }, 
+                    },
                     TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach);
 
                 return true;
@@ -1743,7 +1743,7 @@ namespace SS.Replay
                             ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
 
                             ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)enter.Name).SliceNullTerminated();
-                            Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)+1];
+                            Span<char> name = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes) + 1];
                             name[0] = '~';
                             int decodedByteCount = StringUtils.DefaultEncoding.GetChars(nameBytes, name[1..]);
                             Debug.Assert(decodedByteCount == nameBytes.Length);
@@ -1840,7 +1840,7 @@ namespace SS.Replay
                                     return;
                                 }
 
-                                if (   (chat.Type == ChatMessageType.Pub && ad.Settings.PlaybackPublicChat)
+                                if ((chat.Type == ChatMessageType.Pub && ad.Settings.PlaybackPublicChat)
                                     || (chat.Type == ChatMessageType.PubMacro && ad.Settings.PlaybackPublicMacroChat)
                                     || (chat.Type == ChatMessageType.Freq && (player.Freq == arena.SpecFreq ? ad.Settings.PlaybackSpecChat : ad.Settings.PlaybackTeamChat)))
                                 {
@@ -2499,8 +2499,8 @@ namespace SS.Replay
             /// </summary>
             public readonly object Lock = new();
 
-			public bool TryReset()
-			{
+            public bool TryReset()
+            {
                 lock (Lock)
                 {
                     Settings = default;

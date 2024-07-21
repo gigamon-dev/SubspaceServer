@@ -19,14 +19,14 @@ namespace SS.Core.Modules
         #region IModule Members
 
         public bool Load(
-            ComponentBroker broker, 
-            IArenaManager arenaManager, 
+            ComponentBroker broker,
+            IArenaManager arenaManager,
             IGame game,
             IPrng prng)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
-            _prng = prng?? throw new ArgumentNullException(nameof(prng));
+            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             MapRegionCallback.Register(broker, Callback_MapRegion);
             return true;
