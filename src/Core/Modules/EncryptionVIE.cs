@@ -17,7 +17,7 @@ namespace SS.Core.Modules
     {
         public const string InterfaceIdentifier = "enc-vie";
 
-        private INetworkEncryption _networkEncryption;
+        private IRawNetwork _rawNetwork;
         private IPlayerData _playerData;
         private InterfaceRegistrationToken<IEncrypt> _iEncryptToken;
         private InterfaceRegistrationToken<IClientEncrypt> _iClientEncryptToken;
@@ -28,14 +28,14 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            INetworkEncryption networkEncryption,
+            IRawNetwork rawNetwork,
             IPlayerData playerData)
         {
-            _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
+            _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _pdKey = playerData.AllocatePlayerData<EncData>();
-            _networkEncryption.AppendConnectionInitHandler(ProcessConnectionInit);
+            _rawNetwork.AppendConnectionInitHandler(ProcessConnectionInit);
             _iEncryptToken = broker.RegisterInterface<IEncrypt>(this, InterfaceIdentifier);
             _iClientEncryptToken = broker.RegisterInterface<IClientEncrypt>(this, InterfaceIdentifier);
 
@@ -50,7 +50,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iClientEncryptToken) != 0)
                 return false;
 
-            if (!_networkEncryption.RemoveConnectionInitHandler(ProcessConnectionInit))
+            if (!_rawNetwork.RemoveConnectionInitHandler(ProcessConnectionInit))
                 return false;
 
             _playerData.FreePlayerData(ref _pdKey);
@@ -164,13 +164,13 @@ namespace SS.Core.Modules
             }
 
             IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
-            Player player = _networkEncryption.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
+            Player player = _rawNetwork.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
 
             if (player is null)
             {
                 // no slots left?
                 Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
-                _networkEncryption.ReallyRawSend(remoteAddress, disconnect, ld);
+                _rawNetwork.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }
 
@@ -184,7 +184,7 @@ namespace SS.Core.Modules
 
             // send the response
             ConnectionInitResponsePacket response = new(key);
-            _networkEncryption.ReallyRawSend(remoteAddress, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
+            _rawNetwork.ReallyRawSend(remoteAddress, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
 
             return true;
         }

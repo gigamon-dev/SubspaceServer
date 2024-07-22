@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class EncryptionNull : IModule
     {
-        private INetworkEncryption _networkEncryption;
+        private IRawNetwork _rawNetwork;
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct ConnectionInitResponsePacket
@@ -33,18 +33,18 @@ namespace SS.Core.Modules
         #region IModule Members
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "ComponentBroker is a required parameter for the module to load even though it is not used.")]
-        public bool Load(ComponentBroker broker, INetworkEncryption networkEncryption)
+        public bool Load(ComponentBroker broker, IRawNetwork rawNetwork)
         {
-            _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
+            _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
 
-            _networkEncryption.AppendConnectionInitHandler(Callback_ConnectionInit);
+            _rawNetwork.AppendConnectionInitHandler(Callback_ConnectionInit);
 
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
-            if (!_networkEncryption.RemoveConnectionInitHandler(Callback_ConnectionInit))
+            if (!_rawNetwork.RemoveConnectionInitHandler(Callback_ConnectionInit))
                 return false;
 
             return true;
@@ -82,19 +82,19 @@ namespace SS.Core.Modules
 
             // get connection (null means no encryption)
             IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
-            Player player = _networkEncryption.NewConnection(type, remoteEndpoint, null, ld);
+            Player player = _rawNetwork.NewConnection(type, remoteEndpoint, null, ld);
 
             if (player is null)
             {
                 // no slots left?
                 Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
-                _networkEncryption.ReallyRawSend(remoteAddress, disconnect, ld);
+                _rawNetwork.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }
 
             // respond, sending back the key without change means no encryption, both to 1.34 and cont
             ConnectionInitResponsePacket response = new(packet.Key);
-            _networkEncryption.ReallyRawSend(remoteAddress, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
+            _rawNetwork.ReallyRawSend(remoteAddress, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)), ld);
 
             return true;
         }

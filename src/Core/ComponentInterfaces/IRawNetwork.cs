@@ -3,59 +3,44 @@ using System.Net;
 
 namespace SS.Core.ComponentInterfaces
 {
-    /// <summary>
-    /// Interface for a service that can encrypt and decrypt data for players.
-    /// </summary>
-    public interface IEncrypt : IComponentInterface
-    {
-        /// <summary>
-        /// Encrypts data for a player.
-        /// </summary>
-        /// <remarks>Data is encrypted in place.</remarks>
-        /// <param name="player">The player encrypting data for.</param>
-        /// <param name="data">The buffer to encrypt.  This is guaranteed to be larger than <paramref name="length"/> by at least 3 bytes.</param>
-        /// <param name="length">The # of bytes to encrypt within <paramref name="data"/>.</param>
-        /// <returns>length of the resulting data</returns>
-        int Encrypt(Player player, Span<byte> data, int length);
-
-        /// <summary>
-        /// Decrypts data for a player.
-        /// </summary>
-        /// <remarks>Data is encrypted in place.</remarks>
-        /// <param name="player">The player decrypting data for.</param>
-        /// <param name="data">The buffer to decrypt.  This is guaranteed to be larger than <paramref name="length"/> by at least 3 bytes.</param>
-        /// <param name="length">The # of bytes to decrypt within <paramref name="data"/>.</param>
-        /// <returns>length of the resulting data</returns>
-        int Decrypt(Player player, Span<byte> data, int length);
-
-        /// <summary>
-        /// Called when encryption info for a player is no longer needed (e.g. the player disconnects).
-        /// This allows for cleanup to be done, if needed.
-        /// </summary>
-        /// <param name="player">The player to cleanup for.</param>
-        void Void(Player player);
-    }
 
     /// <summary>
     /// Delegate for a handler to a connection init request.
     /// </summary>
     /// <param name="remoteAddress">
     /// The <see cref="SocketAddress"/> the request came from.
-    /// This object can be used to respond by calling <see cref="INetworkEncryption.ReallyRawSend(SocketAddress, ReadOnlySpan{byte}, ListenData)"/>.
+    /// This object can be used to respond by calling <see cref="IRawNetwork.ReallyRawSend(SocketAddress, ReadOnlySpan{byte}, ListenData)"/>.
     /// It can also be used to allocate an <see cref="IPEndPoint"/> object 
-    /// for calling <see cref="INetworkEncryption.NewConnection(ClientType, IPEndPoint, string, ListenData)"/> 
+    /// for calling <see cref="IRawNetwork.NewConnection(ClientType, IPEndPoint, string, ListenData)"/> 
     /// or to read the IP address and port.
     /// This object should not be stored or held on to. It is mutable and the Network module reuses it for every datagram received.
     /// </param>
     /// <param name="data">The request data.</param>
-    /// <param name="listenData">State info to pass to <see cref="INetworkEncryption.NewConnection(ClientType, IPEndPoint, string, ListenData)"/>.</param>
+    /// <param name="listenData">State info to pass to <see cref="IRawNetwork.NewConnection(ClientType, IPEndPoint, string, ListenData)"/>.</param>
     /// <returns>Whether the request was handled. True means processing is done. False means the request will be given to later handlers to process.</returns>
     public delegate bool ConnectionInitHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData listenData);
 
     /// <summary>
-    /// Interface with special methods for encryption modules to use to access the network module.
+    /// Delegate for a handler to an incoming peer packet.
     /// </summary>
-    public interface INetworkEncryption : IComponentInterface
+    /// <param name="remoteAddress">The address the packet came from.</param>
+    /// <param name="data">The data of the packet.</param>
+    /// <returns>
+    /// <see langword="true"/> if the packet was successfully handled.
+    /// <see langword="false"/> if the packet was ignored.
+    /// </returns>
+    public delegate bool PeerPacketHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data);
+
+    /// <summary>
+    /// Interface that provides special methods to the network module.
+    /// </summary>
+    /// <remarks>
+    /// In most cases, the <see cref="INetwork"/> interface is what should be used.
+    /// This interface is for when low-level UDP network functionality is required:
+    /// mainly the encryption modules which handle connection init packets, 
+    /// and the peer module which handles peer packets.
+    /// </remarks>
+    public interface IRawNetwork : IComponentInterface
     {
         /// <summary>
         /// Adds a handler to the end of the connection init pipeline.
@@ -70,6 +55,20 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="handler">The handler to remove.</param>
         /// <returns>True if the handler was removed. Otherwise, false.</returns>
         bool RemoveConnectionInitHandler(ConnectionInitHandler handler);
+
+        /// <summary>
+        /// Registers a handler for peer packets.
+        /// </summary>
+        /// <param name="handler">The handler to register.</param>
+        /// <returns><see langword="true"/> if the handler was registered. Otherwise, <see langword="false"/>.</returns>
+        bool RegisterPeerPacketHandler(PeerPacketHandler handler);
+
+        /// <summary>
+        /// Unregisters a previously registered handler for peer packets.
+        /// </summary>
+        /// <param name="handler">The handler to unregister</param>
+        /// <returns><see langword="true"/> if the handler was unregistered. Otherwise, <see langword="false"/>.</returns>
+        bool UnregisterPeerPacketHandler(PeerPacketHandler handler);
 
         /// <summary>
         /// Sends data immediately without encryption and without buffering.

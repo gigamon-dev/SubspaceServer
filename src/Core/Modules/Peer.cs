@@ -44,7 +44,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IMainloopTimer _mainloopTimer;
         private INetwork _network;
-        private INetworkEncryption _networkEncryption;
+        private IRawNetwork _rawNetwork;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IRedirect _redirect;
@@ -83,7 +83,7 @@ namespace SS.Core.Modules
             ILogManager logManager,
             IMainloopTimer mainloopTimer,
             INetwork network,
-            INetworkEncryption networkEncryption,
+            IRawNetwork rawNetwork,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IRedirect redirect)
@@ -94,13 +94,13 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _network = network ?? throw new ArgumentNullException(nameof(network));
-            _networkEncryption = networkEncryption ?? throw new ArgumentNullException(nameof(networkEncryption));
+            _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _redirect = redirect ?? throw new ArgumentNullException(nameof(redirect));
 
             _arenaDataKey = _arenaManager.AllocateArenaData<ArenaData>();
-            _networkEncryption.AppendConnectionInitHandler(ConnectionInitHandler);
+            _rawNetwork.RegisterPeerPacketHandler(ProcessPeerPacket);
             _iPeerToken = broker.RegisterInterface<IPeer>(this);
 
             ReadConfig();
@@ -111,7 +111,7 @@ namespace SS.Core.Modules
         public bool Unload(ComponentBroker broker)
         {
             broker.UnregisterInterface(ref _iPeerToken);
-            _networkEncryption.RemoveConnectionInitHandler(ConnectionInitHandler);
+            _rawNetwork.UnregisterPeerPacketHandler(ProcessPeerPacket);
             _arenaManager.FreeArenaData(ref _arenaDataKey);
             return true;
         }
@@ -539,7 +539,7 @@ namespace SS.Core.Modules
                 ref PeerPacketHeader header = ref MemoryMarshal.AsRef<PeerPacketHeader>(peerZone.PlayerListBuffer);
                 header = new(peerZone.Config.PasswordHash, PeerPacketType.PlayerList, ServerTick.Now);
 
-                _networkEncryption.ReallyRawSend(peerZone.Config.SocketAddress, peerZone.PlayerListBuffer.AsSpan(0, pos), listenData);
+                _rawNetwork.ReallyRawSend(peerZone.Config.SocketAddress, peerZone.PlayerListBuffer.AsSpan(0, pos), listenData);
 
                 static void AppendArenaIdToBuffer(ref byte[] buffer, ref int pos, uint arenaId)
                 {
@@ -584,7 +584,7 @@ namespace SS.Core.Modules
                     BinaryPrimitives.WriteUInt16LittleEndian(packet[PeerPacketHeader.Length..], (ushort)total);
                 }
 
-                _networkEncryption.ReallyRawSend(peerZone.Config.SocketAddress, packet, listenData);
+                _rawNetwork.ReallyRawSend(peerZone.Config.SocketAddress, packet, listenData);
             }
         }
 
@@ -628,7 +628,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool ConnectionInitHandler(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
+        bool ProcessPeerPacket(SocketAddress remoteAddress, ReadOnlySpan<byte> data)
         {
             if (data.Length < PeerPacketHeader.Length || data[0] != 0x00 || data[1] != 0x01 || data[6] != 0x0FF)
             {
@@ -646,19 +646,19 @@ namespace SS.Core.Modules
                 if (peerZone is null)
                 {
                     _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but this address has not been configured.");
-                    return true;
+                    return false;
                 }
 
                 if (peerZone.Config.PasswordHash != packetHeader.Password)
                 {
                     _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but the password is incorrect.");
-                    return true;
+                    return false;
                 }
 
                 if (peerZone.Config.SendOnly)
                 {
                     _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but this peer is configured as SendOnly.");
-                    return true;
+                    return false;
                 }
 
                 // TODO: Review this timestamp logic. Why not just check if it's newer?
@@ -1273,7 +1273,7 @@ namespace SS.Core.Modules
                     // Field that is specific to a peer zone.
                     header.Password = peerZone.Config.PasswordHash;
 
-                    _networkEncryption.ReallyRawSend(peerZone.Config.SocketAddress, packet, listenData);
+                    _rawNetwork.ReallyRawSend(peerZone.Config.SocketAddress, packet, listenData);
                 }
             }
             finally

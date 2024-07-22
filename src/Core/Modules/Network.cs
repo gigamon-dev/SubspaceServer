@@ -2,6 +2,7 @@ using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Packets;
 using SS.Packets.Game;
+using SS.Packets.Peer;
 using SS.Utilities;
 using SS.Utilities.Collections;
 using SS.Utilities.ObjectPool;
@@ -38,7 +39,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkEncryption, INetworkClient, IDisposable
+    public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkClient, IRawNetwork, IDisposable
     {
         private ComponentBroker _broker;
         private IBandwidthLimiterProvider _bandwithLimiterProvider;
@@ -51,7 +52,7 @@ namespace SS.Core.Modules
         private IPrng _prng;
         private InterfaceRegistrationToken<INetwork> _iNetworkToken;
         private InterfaceRegistrationToken<INetworkClient> _iNetworkClientToken;
-        private InterfaceRegistrationToken<INetworkEncryption> _iNetworkEncryptionToken;
+        private InterfaceRegistrationToken<IRawNetwork> _iRawNetworkToken;
 
         private Pool<SubspaceBuffer> _bufferPool;
         private Pool<BigReceive> _bigReceivePool;
@@ -144,6 +145,8 @@ namespace SS.Core.Modules
         /// </remarks>
         private readonly List<ConnectionInitHandler> _connectionInitHandlers = new();
         private readonly ReaderWriterLockSlim _connectionInitLock = new(LockRecursionPolicy.NoRecursion);
+
+        private PeerPacketHandler _peerPacketHandler;
 
         private const int MICROSECONDS_PER_MILLISECOND = 1000;
 
@@ -316,7 +319,7 @@ namespace SS.Core.Modules
 
             _iNetworkToken = broker.RegisterInterface<INetwork>(this);
             _iNetworkClientToken = broker.RegisterInterface<INetworkClient>(this);
-            _iNetworkEncryptionToken = broker.RegisterInterface<INetworkEncryption>(this);
+            _iRawNetworkToken = broker.RegisterInterface<IRawNetwork>(this);
             return true;
 
 
@@ -563,7 +566,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iNetworkClientToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface(ref _iNetworkEncryptionToken) != 0)
+            if (broker.UnregisterInterface(ref _iRawNetworkToken) != 0)
                 return false;
 
             // stop threads
@@ -604,9 +607,9 @@ namespace SS.Core.Modules
 
         #endregion
 
-        #region INetworkEncryption Members
+        #region IRawNetwork Members
 
-        void INetworkEncryption.AppendConnectionInitHandler(ConnectionInitHandler handler)
+        void IRawNetwork.AppendConnectionInitHandler(ConnectionInitHandler handler)
         {
             ArgumentNullException.ThrowIfNull(handler);
 
@@ -622,7 +625,7 @@ namespace SS.Core.Modules
             }
         }
 
-        bool INetworkEncryption.RemoveConnectionInitHandler(ConnectionInitHandler handler)
+        bool IRawNetwork.RemoveConnectionInitHandler(ConnectionInitHandler handler)
         {
             ArgumentNullException.ThrowIfNull(handler);
 
@@ -638,7 +641,29 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetworkEncryption.ReallyRawSend(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
+        bool IRawNetwork.RegisterPeerPacketHandler(PeerPacketHandler handler)
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+
+            if (_peerPacketHandler is not null)
+                return false;
+
+            _peerPacketHandler = handler;
+            return true;
+        }
+
+        bool IRawNetwork.UnregisterPeerPacketHandler(PeerPacketHandler handler)
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+
+            if (_peerPacketHandler != handler)
+                return false;
+
+            _peerPacketHandler = null;
+            return true;
+        }
+
+        void IRawNetwork.ReallyRawSend(SocketAddress remoteAddress, ReadOnlySpan<byte> data, ListenData ld)
         {
             ArgumentNullException.ThrowIfNull(remoteAddress);
             ArgumentNullException.ThrowIfNull(ld);
@@ -669,7 +694,7 @@ namespace SS.Core.Modules
             Interlocked.Increment(ref _globalStats.PacketsSent);
         }
 
-        Player INetworkEncryption.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string encryptorName, ListenData listenData)
+        Player IRawNetwork.NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string encryptorName, ListenData listenData)
         {
             ArgumentNullException.ThrowIfNull(remoteEndpoint);
             ArgumentNullException.ThrowIfNull(listenData);
@@ -1734,23 +1759,33 @@ namespace SS.Core.Modules
                 }
 
                 Span<byte> data = _receiveBuffer.AsSpan(0, bytesReceived);
-                bool isConnectionInitPacket = IsConnectionInitPacket(data);
 
-                // TODO: Add some type of denial of service / flood detection for bad packet sizes? block by ip/port?
-                // TODO: Add some type of denial of service / flood detection for repeated connection init attempts over a threshold? block by ip/port?
+                // TODO: Add some type of denial of service / flood detection for bad packet sizes? repeated connection init attempts over a threshold? block by ip/port?  How to tell if it's through a SOCKS proxy?
 
-                // TODO: Distinguish between actual connection init packets and peer packets by checking if the remote endpoint (IP + port) is from a configured peer.
-                // Connection init packets should be normal sized game packets, <= Constants.MaxPacket.
-                // Peer packets can be much larger than game packets.
-
-                if (isConnectionInitPacket && bytesReceived > Constants.MaxConnInitPacket)
+                if (data.Length >= PeerPacketHeader.Length && data[0] == 0x00 && data[1] == 0x01 && data[6] == 0x0FF)
                 {
-                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a connection init packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
+                    // Received what appears to be a peer packet.
+                    if (_peerPacketHandler is null)
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Received a peer packet ({bytesReceived} bytes) from {receivedAddress}, but peer functionality is not enabled.");
+                        return;
+                    }
+
+                    if (bytesReceived > Constants.MaxPeerPacket)
+                    {
+                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a peer packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
+                        return;
+                    }
+
+                    _peerPacketHandler(receivedAddress, data);
                     return;
                 }
-                else if (!isConnectionInitPacket && bytesReceived > Constants.MaxPacket)
+
+                bool isConnectionInitPacket = IsConnectionInitPacket(data);
+
+                if (bytesReceived > Constants.MaxPacket)
                 {
-                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a game packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
+                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"Received a {(isConnectionInitPacket ? "connection init" : "game")} packet that is too large ({bytesReceived} bytes) from {receivedAddress}.");
                     return;
                 }
 
@@ -1760,7 +1795,7 @@ namespace SS.Core.Modules
 
                 if (!_playerConnections.TryGetValue(receivedAddress, out Player player))
                 {
-                    // this might be a new connection. make sure it's really a connection init packet
+                    // This might be a new connection. Make sure it's really a connection init packet.
                     if (isConnectionInitPacket)
                     {
                         ProcessConnectionInit(receivedAddress, data, ld);
@@ -1785,21 +1820,21 @@ namespace SS.Core.Modules
 
                 if (isConnectionInitPacket)
                 {
-                    // here, we have a connection init, but it's from a
-                    // player we've seen before. there are a few scenarios:
+                    // Here, we have a connection init, but it's from a
+                    // player we've seen before. There are a few scenarios:
                     if (player.Status == PlayerState.Connected)
                     {
-                        // if the player is in PlayerState.Connected, it means that
+                        // If the player is in PlayerState.Connected, it means that
                         // the connection init response got dropped on the
-                        // way to the client. we have to resend it.
+                        // way to the client. We have to resend it.
                         ProcessConnectionInit(receivedAddress, data, ld);
                     }
                     else
                     {
-                        // otherwise, he probably just lagged off or his
-                        // client crashed. ideally, we'd postpone this
+                        // Otherwise, he probably just lagged off or his
+                        // client crashed. Ideally, we'd postpone this
                         // packet, initiate a logout procedure, and then
-                        // process it. we can't do that right now, so drop
+                        // process it. We can't do that right now, so drop
                         // the packet, initiate the logout, and hope that
                         // the client re-sends it soon. 
                         _playerData.KickPlayer(player);
@@ -1808,9 +1843,9 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                // we shouldn't get packets in this state, but it's harmless if we do
                 if (player.Status >= PlayerState.LeavingZone || player.WhenLoggedIn >= PlayerState.LeavingZone)
                 {
+                    // The player is on their way out, ignore it.
                     return;
                 }
 
@@ -4507,38 +4542,78 @@ namespace SS.Core.Modules
         /// <summary>
         /// A specialized data buffer which keeps track of what connection it is for and other useful info.
         /// </summary>
-        private class SubspaceBuffer : DataBuffer
+        private sealed class SubspaceBuffer : PooledObject
         {
+            /// <summary>
+            /// The actual buffer for storing data.
+            /// </summary>
+            public readonly byte[] Bytes = new byte[Constants.MaxPacket];
+
+            /// <summary>
+            /// The number of bytes used in <see cref="Bytes"/>.
+            /// </summary>
+            public int NumBytes;
+
+            #region Fields for general use
+
+            /// <summary>
+            /// The connection the data is for.
+            /// </summary>
             public ConnData Conn;
 
+            /// <summary>
+            /// Flags for data to be sent.
+            /// </summary>
             public NetSendFlags SendFlags;
+
+            /// <summary>
+            /// Flags for received data.
+            /// </summary>
             public NetReceiveFlags ReceiveFlags;
 
+            #endregion
+
+            #region Fields for outgoing reliable data
+
+            /// <summary>
+            /// Timestamp that the packet was last sent.
+            /// </summary>
             public long? LastTryTimestamp;
+
+            /// <summary>
+            /// The number of times the data was sent.
+            /// </summary>
             public byte Tries;
+
+            /// <summary>
+            /// A linked list of callbacks to invoke when the send is complete (successfully sent and ACK'd or cancelled).
+            /// </summary>
             public IReliableCallbackInvoker CallbackInvoker;
 
-            public SubspaceBuffer() : base(Constants.MaxPacket + 4) // The extra 4 bytes are to give room for VIE encryption logic to write past.
+            #endregion
+
+            protected override void Dispose(bool isDisposing)
             {
-            }
-
-            public override void Clear()
-            {
-                Conn = null;
-
-                SendFlags = NetSendFlags.None;
-                ReceiveFlags = NetReceiveFlags.None;
-
-                LastTryTimestamp = null;
-                Tries = 0;
-
-                if (CallbackInvoker is not null)
+                if (isDisposing)
                 {
-                    CallbackInvoker.Dispose();
-                    CallbackInvoker = null;
+                    Array.Clear(Bytes, 0, Bytes.Length);
+                    NumBytes = 0;
+
+                    Conn = null;
+                    SendFlags = NetSendFlags.None;
+                    ReceiveFlags = NetReceiveFlags.None;
+
+                    LastTryTimestamp = null;
+                    Tries = 0;
+
+                    if (CallbackInvoker is not null)
+                    {
+                        CallbackInvoker.Dispose();
+                        CallbackInvoker = null;
+                    }
                 }
 
-                base.Clear();
+                base.Dispose(isDisposing); // returns this object to its pool
             }
         }
 

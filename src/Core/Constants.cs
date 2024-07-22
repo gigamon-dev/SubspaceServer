@@ -90,9 +90,9 @@ namespace SS.Core
         public const int MaxGroupedPacketItemLength = byte.MaxValue; // Grouped packets use a single byte for the item length.
 
         /// <summary>
-        /// Maximum size for receiving packets (due to the size of a "Connection Init" packets).
+        /// Maximum # of bytes to allow for receiving peer packets.
         /// </summary>
-        public const int MaxConnInitPacket = 2048;
+        public const int MaxPeerPacket = 2048;
 
         /// <summary>
         /// Maximum size of a "big packet" in bytes.
