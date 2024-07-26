@@ -703,28 +703,35 @@ It is crucial that any logic processed on the mainloop thread not block executio
 
 > `IMainloop.IsMainloop` can be used to check whether you're on the mainloop thread.
 
-> **Design note:** It is also possible to use `Task`, `Task<T>`, and `async` / `await`. However, keep in mind that `Task` and `Task<T>` are reference types allocated on the heap. Therefore, much of the server's logic stays away from this to reduce allocations and potential garbage collections.
-
 When on a worker thread use `IMainloop.QueueMainWorkItem` to transition execution back to the mainloop thread. You should switch back to the mainloop thread if your logic needs to access the interface of another component, as most modules expect to only be called on the mainloop thread. However, there are exceptions. The following are safe to call from worker threads: 
 - `ILogManager` Log methods
 - `IChat` Send methods
 - `INetwork` Send methods
 - TODO: Add better documentation on thread-safe interface methods.
 
-### Synchronization
-The server executes a lot of logic on the mainloop thread. This is a trick that it uses to synchronize logic rather than have to deal with locking to protect data shared between multiple threads. If only the mainloop thread ever accesses a piece of data, then it's not shared data and therefore no locking is required. On top of that fact, the mainloop acts as the defining order of the game state. It simply executes queued work items and timers in their proper order. The order that they are processed is the order that it considers things to have occured.
+### async/await
+The Task asynchronous programming model with `async` / `await` can be used as well. The mainloop thread has a custom `SynchronizationContext` which allows execution to resume on the mainloop thread after an `await`. As normal, you can use [ConfigureAwait](https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.task.configureawait) to control it.
 
-When data is shared between multiple threads, standard synchronization techniques must be used, such as locking. `Player` and `Arena` objects are the two most common types used thoughout the server. Multiple threads read and write to these objects. The `IPlayerData` interface and `IArenaManager` interface each expose collections of `Player` and `Arena` objects respectively. For synchronization, these interfaces provide Lock and Unlock methods that need to be called while accessing the collections.
+> You might notice that internally, the server itself does not make much use of async/await. This is because: much of the server's logic was based directly off of ASSS, much the server was made before async/await existed, and it aims for zero allocations (see [Performance, allocations, and garbage collection](#performance-allocations-and-garbage-collection)) . As such, when the server needs to do work asynchronously, it mostly uses the callback pattern. That is, a method that does work asynchronously takes in a delegate as a parameter, such that the delegate will be executed on the mainloop thread when the operation is complete.
+
+Be careful of shared data (e.g. Player or Arena objects) when using async/await. If your method is executing on the mainloop thread (the usual case) and you have a reference to a Player object, after an `await`, the Player object may no longer be in the same state if the `await` completed asynchronously. For example, the Player could disconnect by the time the code after the await is executed.
+
+DO feel free to use async/await. The [TeamVersusMatch module](../src/Matchmaking/Modules/TeamVersusMatch.cs) is example that uses it.
+
+### Synchronization
+When data is shared between multiple threads, standard synchronization techniques must be used, such as locking. `Player` and `Arena` objects are the most common types of shared data used thoughout the server. Multiple threads read and write to these objects. The `IPlayerData` interface and `IArenaManager` interface each expose collections of `Player` and `Arena` objects respectively. For synchronization, these interfaces provide Lock and Unlock methods that need to be called while accessing the collections.
 
 > The server uses the Lock and Unlock methods of the `IPlayerData` and `IArenaManager` interfaces to synchronize not just access to the collections, but also that of certain data within the `Player` and `Arena` objects. For example, `Player.Status`.
 
+The server executes a lot of logic on the mainloop thread and use the mainloop work queue as a form of synchronization. The mainloop acts as the defining order of the game state. It simply executes queued work items and timers in their proper order. The order that they are processed in is the order that things are considered to have occured. The major state changes to `Player` and `Arena` objects are executed in mainloop timers. In other words, the major `Player` and `Arena` state changes are executed on the mainloop thread. That means, if your code also executes on the mainloop thread, it's *mostly* safe to assume that that no critical changes are being made to the state of Player or Arena objects that you have a reference to.
+
 ## Performance, allocations, and garbage collection
-It is very easy to allocate memory on the heap in .NET. However, those allocations come at a cost. When the references to that memory go out of scope, it's up to the garbage collector to clean up. Garbage collection takes time. In a real-time video game, having a delay can be very bad. Yes, this is the server-side, but any delay is going to seen as lag. Therefore, memory allocations and garbage collection are of a concern.
+It is very easy to allocate memory on the heap in .NET. However, those allocations come at a cost. When the references to that memory go out of scope, it's up to the garbage collector to clean up. Garbage collection takes time. In a real-time video game, having a delay can be very bad. Yes, this is the server-side, but any delay is going to seen as lag. Therefore, memory allocations and garbage collection are still a concern to be aware of.
 
 ## String allocations
-It is highly recommended that when writing code for the server, that attention be made to not allocate strings when possible. A lot of effort has been put into reducing allocations of string objects. In fact, the main remaining places that string objects are allocated are: player names and arena names.
+It is highly recommended that when writing code for the server, that attention be made to not allocate strings when possible. A lot of effort has been put into reducing allocations of string objects. The few remaining places that allocate string objects are: player names, squad names, and arena names. Though, they are pooled to reduce the need to allocate. This was a design decision to make it easier to use those names, rather than have to deal with passing around mutable buffers of characters.
 
-The server extensively uses `Span<char>` and `ReadOnlySpan<char>` throughout, many times in conjuction with `stackalloc`. For example, even when a chat packet is received, no string objects are allocated to process it.
+The server extensively uses `Span<char>` and `ReadOnlySpan<char>`, many times in conjuction with `stackalloc`. For example, even when a chat packet is received, no string objects are allocated to process it.
 
 Additionally, `IChat` and `ILogManager` provide method overloads with interpolated string handlers. Underneath the scenes, the interpolated string handlers use pooled `StringBuilder` objects. Therefore, when you call those methods with an interpolated string, there are no string allocations.
 
@@ -736,9 +743,9 @@ Object pooling is a technique in which objects can be reused. The basic idea beh
 > **Fun fact:** ASSS does pooling too, even though it is in C which doesn't have garbage collection. The ASSS 'net' module keeps a pool of data buffers, so that it doesn't need to allocate memory every time it needs to send or receive data.
 
 ### Microsoft.Extensions.ObjectPool
-The Microsoft.Extensions.ObjectPool NuGet package provides a very useful implementation of object pooling. It is used extensively in the server. However, keep in mind, the pools that Microsoft.Extensions.ObjectPool provides is not ideal for every use case. The pooling functionality Microsoft.Extensions.ObjectPool contains is geared toward short-term object use. That is, for scenarios where an object is used for a very short time, and then returned back to the pool. 
+The Microsoft.Extensions.ObjectPool NuGet package provides a very useful implementation of object pooling. It is used extensively in the server. 
 
-Out of the box, the pools Microsoft.Extensions.ObjectPool provides are not a good match for use cases where objects may be held for extended periods of time, such as a producer-consumer queue where hundreds or thousands of objects may be held up waiting to be processed, and eventually to be released. To cover this scenario, the `SS.Utilities` assembly contains an implementation, `NonTransientObjectPool<T>`. It is a very simple implementation which uses a `System.Collection.Concurrent.ConcurrentBag<T>`. This implementation may not be the best solution possible, but it gets the job done.
+The `SS.Utilities.ObjectPool` namespace adds some pooled object policies for commonly used types: `Dictionary<TKey,TValue>`, `HashSet<T>`, `LinkedListNode<T>`, and `List<T>`.
 
 ### Objects aware of their pool
 In certain scenarios, it makes sense that an object itself keeps track of the pool it originated from, and have the ability to return itself to that pool. For this type of scenario, the `SS.Utilities` assembly contains the `PooledObject` class and associated `Pool` class. `PooledObject` implements the `IDisposable` interface. When disposed, the object returns itself to its originating pool.
@@ -747,9 +754,11 @@ In certain scenarios, it makes sense that an object itself keeps track of the po
 
 ### ObjectPoolManager
 
-Rather than having to create your own pools, the `IObjectPoolManager` interface of the `ObjectPoolManager` module provides access to pools for certain types that may be useful.
+Rather than having to create your own pools, the `IObjectPoolManager` interface of the `ObjectPoolManager` module provides pools for certain types that may be useful:
 - StringBuilderPool: A pool of `StringBuilder` objects.
 - PlayerSetPool: A pool of `HashSet<Player>` objects. Useful whenever you need to keep track of a set of `Player` objects.
+- ArenaSetPool: A pool of `HashSet<Arena>` objects. Useful when you need to keep track of a set of `Arena` objects.
+- NameHashSetPool: A pool of `HashSet<string>` objects that are case-insensitive. Useful if you need to store player names or arena names.
 
 ### Object Pooling of Per-Player Data and Per-Arena Data
 The per-player data and per-arena data APIs support object pooling too. This can be done in two ways: by implementing the `Microsoft.Extensions.ObjectPool.IResettable` interface OR by using the `IPooledObjectPolicy<T>` overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods.

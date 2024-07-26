@@ -146,7 +146,7 @@ This document provides an overview of the various server parts and their relatio
 | Imapnewsdl | SS.Core.ComponentInterfaces.IMapNewsDownload | |
 | Imodman | SS.Core.ComponentInterfaces.IModuleManager | |
 | Inet_client | SS.Core.ComponentInterfaces.INetworkClient | |
-| Inet | SS.Core.ComponentInterfaces.INetwork<br>SS.Core.ComponentInterfaces.INetworkEncryption | |
+| Inet | SS.Core.ComponentInterfaces.INetwork<br>SS.Core.ComponentInterfaces.IRawNetwork | |
 | Iobjects | SS.Core.ComponentInterfaces.ILvzObjects | |
 | Iobscene | SS.Core.ComponentInterfaces.IObscene | |
 | Ioptparser | n/a | |
