@@ -96,19 +96,19 @@ namespace SS.Core.ComponentInterfaces
     public delegate void SizedPacketHandler(Player player, ReadOnlySpan<byte> data, int offset, int totalLength);
 
     /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes.
+    /// Delegate for a callback when the send of a reliable data completes.
     /// </summary>
-    /// <param name="player">The player the packet was being sent to.</param>
-    /// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
+    /// <param name="player">The player the data was being sent to.</param>
+    /// <param name="success">Whether the data was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
     public delegate void ReliableDelegate(Player player, bool success);
 
     /// <summary>
-    /// Delegate for a callback when the send of a reliable packet completes.
+    /// Delegate for a callback when the send of a reliable data completes.
     /// The callback includes a parameter for state.
     /// </summary>
     /// <typeparam name="T">The type of state object.</typeparam>
-    /// <param name="player">The player the packet was being sent to.</param>
-    /// <param name="success">Whether the packet was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
+    /// <param name="player">The player the data was being sent to.</param>
+    /// <param name="success">Whether the data was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
     /// <param name="state">The state object.</param>
     public delegate void ReliableDelegate<T>(Player player, bool success, T state);
 

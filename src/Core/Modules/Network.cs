@@ -56,7 +56,8 @@ namespace SS.Core.Modules
 
         private Pool<SubspaceBuffer> _bufferPool;
         private Pool<BigReceive> _bigReceivePool;
-        private Pool<ReliablePlayerCallbackInvoker> _reliableCallbackInvokerPool;
+        private Pool<ReliablePlayerCallbackInvoker> _reliablePlayerCallbackInvokerPool;
+        private Pool<ReliableClientConnectionCallbackInvoker> _reliableClientConnectionCallbackInvokerPool;
         private Pool<ReliableConnectionCallbackInvoker> _reliableConnectionCallbackInvokerPool;
         private ObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
         private readonly DefaultObjectPool<LinkedListNode<ISizedSendData>> _sizedSendDataNodePool = new(new LinkedListNodePooledObjectPolicy<ISizedSendData>(), Constants.TargetPlayerCount);
@@ -98,7 +99,7 @@ namespace SS.Core.Modules
         /// Synchronized with <see cref="_clientConnectionsLock"/>.
         /// </remarks>
         private readonly Dictionary<SocketAddress, NetClientConnection> _clientConnections = new();
-        private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.NoRecursion);
+        private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private delegate void CorePacketHandler(Span<byte> data, ConnData conn, NetReceiveFlags flags);
 
@@ -281,7 +282,8 @@ namespace SS.Core.Modules
 
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
             _bigReceivePool = objectPoolManager.GetPool<BigReceive>();
-            _reliableCallbackInvokerPool = objectPoolManager.GetPool<ReliablePlayerCallbackInvoker>();
+            _reliablePlayerCallbackInvokerPool = objectPoolManager.GetPool<ReliablePlayerCallbackInvoker>();
+            _reliableClientConnectionCallbackInvokerPool = objectPoolManager.GetPool<ReliableClientConnectionCallbackInvoker>();
             _reliableConnectionCallbackInvokerPool = objectPoolManager.GetPool<ReliableConnectionCallbackInvoker>();
             _bufferNodePool = new DefaultObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>(), Constants.TargetPlayerCount * _config.MaxOutlistSize);
 
@@ -498,10 +500,7 @@ namespace SS.Core.Modules
         {
             ReadOnlySpan<byte> disconnectSpan = [0x00, 0x07];
 
-            //
-            // Disconnect all clients nicely
-            //
-
+            // Disconnect all players.
             _playerData.Lock();
 
             try
@@ -528,23 +527,22 @@ namespace SS.Core.Modules
                 _playerData.Unlock();
             }
 
-            //
-            // And disconnect our client connections
-            //
-
+            // Disconnect all client connections.
             _clientConnectionsLock.EnterWriteLock();
 
             try
             {
-                foreach (NetClientConnection cc in _clientConnections.Values)
+                foreach (NetClientConnection clientConnection in _clientConnections.Values)
                 {
-                    SendRaw(cc.ConnData, disconnectSpan);
-                    cc.Handler.Disconnected();
+                    SendRaw(clientConnection.ConnData, disconnectSpan);
 
-                    if (cc.Encryptor is not null)
+                    clientConnection.Status = ClientConnectionStatus.Disconnected;
+                    clientConnection.Handler.Disconnected();
+
+                    if (clientConnection.Encryptor is not null)
                     {
-                        cc.Encryptor.Void(cc);
-                        broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
+                        clientConnection.Encryptor.Void(clientConnection);
+                        broker.ReleaseInterface(ref clientConnection.Encryptor, clientConnection.EncryptorName);
                     }
                 }
 
@@ -848,9 +846,12 @@ namespace SS.Core.Modules
 
         void INetwork.SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback)
         {
-            ReliablePlayerCallbackInvoker invoker = _reliableCallbackInvokerPool.Get();
+            ReliablePlayerCallbackInvoker invoker = _reliablePlayerCallbackInvokerPool.Get();
             invoker.SetCallback(callback, ReliableCallbackExecutionOption.Mainloop);
-            SendWithCallback(player, data, invoker);
+            if (!SendWithCallback(player, data, invoker))
+            {
+                invoker.Dispose();
+            }
         }
 
         void INetwork.SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback)
@@ -862,7 +863,10 @@ namespace SS.Core.Modules
         {
             ReliablePlayerCallbackInvoker<TState> invoker = _objectPoolManager.GetPool<ReliablePlayerCallbackInvoker<TState>>().Get();
             invoker.SetCallback(callback, state, ReliableCallbackExecutionOption.Mainloop);
-            SendWithCallback(player, data, invoker);
+            if (!SendWithCallback(player, data, invoker))
+            {
+                invoker.Dispose();
+            }
         }
 
         void INetwork.SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state)
@@ -1116,9 +1120,9 @@ namespace SS.Core.Modules
                 }
             }
 
-            NetClientConnection cc = new(remoteEndpoint, _clientSocket, handler, encryptor, iClientEncryptName, _bandwithLimiterProvider.New(), _config.ClientConnectionReliableReceiveWindowSize);
+            NetClientConnection clientConnection = new(remoteEndpoint, _clientSocket, handler, encryptor, iClientEncryptName, _bandwithLimiterProvider.New(), _config.ClientConnectionReliableReceiveWindowSize);
 
-            encryptor?.Initialze(cc);
+            encryptor?.Initialze(clientConnection);
 
             bool added;
 
@@ -1126,7 +1130,7 @@ namespace SS.Core.Modules
 
             try
             {
-                added = _clientConnections.TryAdd(cc.ConnData.RemoteAddress, cc);
+                added = _clientConnections.TryAdd(clientConnection.ConnData.RemoteAddress, clientConnection);
             }
             finally
             {
@@ -1140,49 +1144,64 @@ namespace SS.Core.Modules
             }
 
             ConnectionInitPacket packet = new((int)(_prng.Get32() | 0x80000000), 1);
-            SendRaw(cc.ConnData, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)));
+            SendRaw(clientConnection.ConnData, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)));
 
-            return cc;
+            return clientConnection;
         }
 
-        void INetworkClient.SendPacket(ClientConnection cc, ReadOnlySpan<byte> data, NetSendFlags flags)
+        void INetworkClient.SendPacket(ClientConnection connection, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
-            ArgumentNullException.ThrowIfNull(cc);
+            ArgumentNullException.ThrowIfNull(connection);
 
-            if (cc is not NetClientConnection ncc)
-                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+            if (connection is not NetClientConnection clientConnection)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            SendToOne(ncc.ConnData, data, flags);
+            SendToOne(clientConnection.ConnData, data, flags);
         }
 
-        void INetworkClient.SendPacket<T>(ClientConnection cc, ref T data, NetSendFlags flags)
+        void INetworkClient.SendPacket<T>(ClientConnection connection, ref T data, NetSendFlags flags)
         {
-            ArgumentNullException.ThrowIfNull(cc);
+            ArgumentNullException.ThrowIfNull(connection);
 
-            if (cc is not NetClientConnection ncc)
-                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+            if (connection is not NetClientConnection clientConnection)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            ((INetworkClient)this).SendPacket(cc, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetworkClient)this).SendPacket(connection, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
-        void INetworkClient.DropConnection(ClientConnection cc)
+        void INetworkClient.SendWithCallback(ClientConnection connection, ReadOnlySpan<byte> data, ClientReliableCallback callback)
         {
-            ArgumentNullException.ThrowIfNull(cc);
+            ArgumentNullException.ThrowIfNull(connection);
 
-            if (cc is not NetClientConnection ncc)
-                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+            if (connection is not NetClientConnection clientConnection)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            DropConnection(ncc);
+            ReliableClientConnectionCallbackInvoker invoker = _reliableClientConnectionCallbackInvokerPool.Get();
+            invoker.SetCallback(callback, ReliableCallbackExecutionOption.Mainloop);
+            if (!SendWithCallback(clientConnection, data, invoker))
+            {
+                invoker.Dispose();
+            }
         }
 
-        void INetworkClient.GetConnectionStats(ClientConnection cc, ref NetConnectionStats stats)
+        void INetworkClient.DropConnection(ClientConnection connection)
         {
-            ArgumentNullException.ThrowIfNull(cc);
+            ArgumentNullException.ThrowIfNull(connection);
 
-            if (cc is not NetClientConnection ncc)
-                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(cc));
+            if (connection is not NetClientConnection clientConnection)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            GetConnectionStats(ncc.ConnData, ref stats);
+            SetDisconnecting(clientConnection);
+        }
+
+        void INetworkClient.GetConnectionStats(ClientConnection connection, ref NetConnectionStats stats)
+        {
+            ArgumentNullException.ThrowIfNull(connection);
+
+            if (connection is not NetClientConnection clientConnection)
+                throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
+
+            GetConnectionStats(clientConnection.ConnData, ref stats);
         }
 
         #endregion
@@ -1198,9 +1217,26 @@ namespace SS.Core.Modules
                 return;
 
             if (conn.ClientConnection is not null)
+            {
+                _clientConnectionsLock.EnterWriteLock();
+                try
+                {
+                    if (conn.ClientConnection.Status != ClientConnectionStatus.Connecting)
+                        return;
+
+                    conn.ClientConnection.Status = ClientConnectionStatus.Connected;
+                }
+                finally
+                {
+                    _clientConnectionsLock.ExitWriteLock();
+                }
+
                 conn.ClientConnection.Handler.Connected();
+            }
             else if (conn.Player is not null)
+            {
                 _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Got key response packet.");
+            }
         }
 
         private void CorePacket_Reliable(Span<byte> data, ConnData conn, NetReceiveFlags flags)
@@ -1255,7 +1291,10 @@ namespace SS.Core.Modules
                 if (canProcess)
                 {
                     // It's ready to be processed. Queue it to be processed by the RelThread.
-                    _relQueue.TryEnqueue(conn);
+                    if (_relQueue.TryEnqueue(conn))
+                    {
+                        Interlocked.Increment(ref conn.ProcessingHolds);
+                    }
                 }
             }
             else
@@ -1437,9 +1476,7 @@ namespace SS.Core.Modules
             }
             else if (conn.ClientConnection is not null)
             {
-                conn.ClientConnection.Handler.Disconnected();
-                // TODO: This sends an extra 00 07 to the client that should probably go away. 
-                DropConnection(conn.ClientConnection);
+                SetDisconnecting(conn.ClientConnection);
             }
         }
 
@@ -1525,19 +1562,19 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        EndSized(conn.Player, false);
+                        EndSizedReceive(conn.Player, false);
                     }
                 }
 
                 if (conn.SizedRecv.TotalLength != size)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Length mismatch in sized packet.");
-                    EndSized(conn.Player, false);
+                    EndSizedReceive(conn.Player, false);
                 }
                 else if ((conn.SizedRecv.Offset + data.Length) > size)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Sized packet overflow.");
-                    EndSized(conn.Player, false);
+                    EndSizedReceive(conn.Player, false);
                 }
                 else
                 {
@@ -1546,7 +1583,7 @@ namespace SS.Core.Modules
                     conn.SizedRecv.Offset += data.Length;
 
                     if (conn.SizedRecv.Offset >= size)
-                        EndSized(conn.Player, true); // sized receive is complete
+                        EndSizedReceive(conn.Player, true); // sized receive is complete
                 }
             }
         }
@@ -1601,7 +1638,7 @@ namespace SS.Core.Modules
             {
                 lock (conn.BigLock)
                 {
-                    EndSized(conn.Player, false);
+                    EndSizedReceive(conn.Player, false);
                 }
             }
         }
@@ -1818,70 +1855,90 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (isConnectionInitPacket)
+                PlayerState status;
+                PlayerState whenLoggedIn;
+                _playerData.Lock();
+                try
                 {
-                    // Here, we have a connection init, but it's from a
-                    // player we've seen before. There are a few scenarios:
-                    if (player.Status == PlayerState.Connected)
+                    status = player.Status;
+                    whenLoggedIn = player.WhenLoggedIn;
+
+                    if (status > PlayerState.TimeWait)
                     {
-                        // If the player is in PlayerState.Connected, it means that
-                        // the connection init response got dropped on the
-                        // way to the client. We have to resend it.
-                        ProcessConnectionInit(receivedAddress, data, ld);
-                    }
-                    else
-                    {
-                        // Otherwise, he probably just lagged off or his
-                        // client crashed. Ideally, we'd postpone this
-                        // packet, initiate a logout procedure, and then
-                        // process it. We can't do that right now, so drop
-                        // the packet, initiate the logout, and hope that
-                        // the client re-sends it soon. 
-                        _playerData.KickPlayer(player);
-                    }
-
-                    return;
-                }
-
-                if (player.Status >= PlayerState.LeavingZone || player.WhenLoggedIn >= PlayerState.LeavingZone)
-                {
-                    // The player is on their way out, ignore it.
-                    return;
-                }
-
-                if (player.Status > PlayerState.TimeWait)
-                {
-                    _logManager.LogM(LogLevel.Warn, nameof(Network), $"[pid={player.Id}] Packet received from bad state {player.Status}.");
-
-                    // don't set lastpkt time here
-                    return;
-                }
-
-                Interlocked.Exchange(ref conn.LastReceiveTimestamp, Stopwatch.GetTimestamp());
-                Interlocked.Add(ref conn.BytesReceived, (ulong)bytesReceived);
-                Interlocked.Increment(ref conn.PacketsReceived);
-                Interlocked.Add(ref _globalStats.BytesReceived, (ulong)bytesReceived);
-                Interlocked.Increment(ref _globalStats.PacketsReceived);
-
-                if (conn.Encryptor is not null)
-                {
-                    bytesReceived = conn.Encryptor.Decrypt(player, _receiveBuffer, bytesReceived);
-
-                    if (bytesReceived <= 0)
-                    {
-                        // bad crc, or something
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[pid={player.Id}] Failure decrypting packet.");
+                        _logManager.LogP(LogLevel.Warn, nameof(Network), player, $"Packet received from bad state {status}.");
                         return;
                     }
 
-                    data = _receiveBuffer.AsSpan(0, bytesReceived);
+                    if (status >= PlayerState.LeavingZone || whenLoggedIn >= PlayerState.LeavingZone)
+                    {
+                        // The player is on their way out, ignore it.
+                        return;
+                    }
 
-#if CFG_DUMP_RAW_PACKETS
-                    DumpPk($"DECRYPTED GAME DATA: {bytesReceived} bytes", data);
-#endif
+                    Interlocked.Increment(ref conn.ProcessingHolds);
+                }
+                finally
+                {
+                    _playerData.Unlock();
                 }
 
-                ProcessBuffer(conn, data, NetReceiveFlags.None);
+                try
+                {
+                    if (isConnectionInitPacket)
+                    {
+                        // Here, we have a connection init, but it's from a
+                        // player we've seen before. There are a few scenarios:
+                        if (status == PlayerState.Connected)
+                        {
+                            // If the player is in PlayerState.Connected, it means that
+                            // the connection init response got dropped on the
+                            // way to the client. We have to resend it.
+                            ProcessConnectionInit(receivedAddress, data, ld);
+                        }
+                        else
+                        {
+                            // Otherwise, he probably just lagged off or his
+                            // client crashed. Ideally, we'd postpone this
+                            // packet, initiate a logout procedure, and then
+                            // process it. We can't do that right now, so drop
+                            // the packet, initiate the logout, and hope that
+                            // the client re-sends it soon. 
+                            _playerData.KickPlayer(player);
+                        }
+
+                        return;
+                    }
+
+                    Interlocked.Exchange(ref conn.LastReceiveTimestamp, Stopwatch.GetTimestamp());
+                    Interlocked.Add(ref conn.BytesReceived, (ulong)bytesReceived);
+                    Interlocked.Increment(ref conn.PacketsReceived);
+                    Interlocked.Add(ref _globalStats.BytesReceived, (ulong)bytesReceived);
+                    Interlocked.Increment(ref _globalStats.PacketsReceived);
+
+                    if (conn.Encryptor is not null)
+                    {
+                        bytesReceived = conn.Encryptor.Decrypt(player, _receiveBuffer, bytesReceived);
+
+                        if (bytesReceived <= 0)
+                        {
+                            // bad crc, or something
+                            _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[pid={player.Id}] Failure decrypting packet.");
+                            return;
+                        }
+
+                        data = _receiveBuffer.AsSpan(0, bytesReceived);
+
+#if CFG_DUMP_RAW_PACKETS
+                        DumpPk($"DECRYPTED GAME DATA: {bytesReceived} bytes", data);
+#endif
+                    }
+
+                    ProcessBuffer(conn, data, NetReceiveFlags.None);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref conn.ProcessingHolds);
+                }
 
 
                 static bool IsConnectionInitPacket(ReadOnlySpan<byte> data)
@@ -2204,12 +2261,22 @@ namespace SS.Core.Modules
 
                 bool found;
                 NetClientConnection clientConnection;
+                ConnData conn = null;
 
                 _clientConnectionsLock.EnterReadLock();
 
                 try
                 {
                     found = _clientConnections.TryGetValue(receivedAddress, out clientConnection);
+
+                    if (found)
+                    {
+                        if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
+                            return;
+
+                        conn = clientConnection.ConnData;
+                        Interlocked.Increment(ref conn.ProcessingHolds);
+                    }
                 }
                 finally
                 {
@@ -2222,32 +2289,37 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                ConnData conn = clientConnection.ConnData;
-
-                Interlocked.Exchange(ref conn.LastReceiveTimestamp, Stopwatch.GetTimestamp());
-                Interlocked.Add(ref conn.BytesReceived, (ulong)bytesReceived);
-                Interlocked.Increment(ref conn.PacketsReceived);
-                Interlocked.Add(ref _globalStats.BytesReceived, (ulong)bytesReceived);
-                Interlocked.Increment(ref _globalStats.PacketsReceived);
-
-                if (clientConnection.Encryptor is not null)
+                try
                 {
-                    bytesReceived = clientConnection.Encryptor.Decrypt(clientConnection, _receiveBuffer, bytesReceived);
+                    Interlocked.Exchange(ref conn.LastReceiveTimestamp, Stopwatch.GetTimestamp());
+                    Interlocked.Add(ref conn.BytesReceived, (ulong)bytesReceived);
+                    Interlocked.Increment(ref conn.PacketsReceived);
+                    Interlocked.Add(ref _globalStats.BytesReceived, (ulong)bytesReceived);
+                    Interlocked.Increment(ref _globalStats.PacketsReceived);
 
-                    if (bytesReceived < 1)
+                    if (clientConnection.Encryptor is not null)
                     {
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) Failed to decrypt packet.");
-                        return;
-                    }
+                        bytesReceived = clientConnection.Encryptor.Decrypt(clientConnection, _receiveBuffer, bytesReceived);
 
-                    data = _receiveBuffer.AsSpan(0, bytesReceived);
+                        if (bytesReceived < 1)
+                        {
+                            _logManager.LogM(LogLevel.Malicious, nameof(Network), "(client connection) Failed to decrypt packet.");
+                            return;
+                        }
+
+                        data = _receiveBuffer.AsSpan(0, bytesReceived);
 
 #if CFG_DUMP_RAW_PACKETS
-                    DumpPk($"DECRYPTED CLIENT DATA: {bytesReceived} bytes", data);
+                        DumpPk($"DECRYPTED CLIENT DATA: {bytesReceived} bytes", data);
 #endif
-                }
+                    }
 
-                ProcessBuffer(conn, data, NetReceiveFlags.None);
+                    ProcessBuffer(conn, data, NetReceiveFlags.None);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref conn.ProcessingHolds);
+                }
             }
         }
 
@@ -2262,7 +2334,11 @@ namespace SS.Core.Modules
 
             while (_stopToken.IsCancellationRequested == false)
             {
-                // first send outgoing packets (players)
+                //
+                // Players
+                //
+
+                // Send outgoing packets.
                 _playerData.Lock();
 
                 try
@@ -2297,7 +2373,7 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                // process lagouts and timewait
+                // Process lagouts and disconnects
                 _playerData.Lock();
                 long now = Stopwatch.GetTimestamp();
                 try
@@ -2307,7 +2383,14 @@ namespace SS.Core.Modules
                         if (player.Status >= PlayerState.Connected
                             && IsOurs(player))
                         {
-                            ProcessLagouts(player, now, toKick, toFree);
+                            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                                return;
+
+                            if (ProcessLagout(player, conn, now))
+                                toKick.Add(player);
+                            
+                            if (ProcessDisconnect(player, conn))
+                                toFree.Add(player);
                         }
                     }
                 }
@@ -2316,7 +2399,7 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                // now kick the ones we needed to above
+                // Kick the players that lagged out.
                 if (toKick.Count > 0)
                 {
                     foreach (Player player in toKick)
@@ -2327,79 +2410,119 @@ namespace SS.Core.Modules
                     toKick.Clear();
                 }
 
-                // and free ...
+                // Free the players that have been disconnected.
                 if (toFree.Count > 0)
                 {
                     foreach (Player player in toFree)
                     {
-                        if (!player.TryGetExtraData(_connKey, out ConnData conn))
-                            continue;
-
-                        // one more time, just to be sure
-                        ClearBuffers(player);
-
-                        _bandwithLimiterProvider.Free(conn.BandwidthLimiter);
-                        conn.BandwidthLimiter = null;
-
                         _playerData.FreePlayer(player);
                     }
 
                     toFree.Clear();
                 }
 
-                // outgoing packets and lagouts for client connections
+                //
+                // Client connections
+                //
+
                 now = Stopwatch.GetTimestamp();
 
                 _clientConnectionsLock.EnterUpgradeableReadLock();
 
                 try
                 {
-                    foreach (NetClientConnection cc in _clientConnections.Values)
+                    foreach (NetClientConnection clientConnection in _clientConnections.Values)
                     {
-                        ConnData conn = cc.ConnData;
-                        bool hitMaxRetries;
+                        ConnData conn = clientConnection.ConnData;
 
-                        lock (conn.OutLock)
-                        {
-                            SendOutgoing(conn, ref packetGrouper);
-                            hitMaxRetries = conn.HitMaxRetries;
-                        }
+                        bool hitMaxRetries = false;
+                        bool hitMaxOutlist = false;
 
-                        if (hitMaxRetries)
+                        // Send outgoing.
+                        if (clientConnection.Status >= ClientConnectionStatus.Connected 
+                            && clientConnection.Status < ClientConnectionStatus.Disconnecting)
                         {
-                            _logManager.LogM(LogLevel.Warn, nameof(Network), "Client connection hit max retries.");
-                            toDrop.Add(cc);
-                        }
-                        else
-                        {
-                            // Check whether it's been too long since we received a packet.
-                            // Use a limit of 10 seconds for new connections; otherwise a limit of 65 seconds.
-                            TimeSpan limit = Interlocked.Read(ref conn.PacketsReceived) > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
-                            TimeSpan actual = Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastReceiveTimestamp), now);
-
-                            if (actual > limit)
+                            lock (conn.OutLock)
                             {
-                                _logManager.LogM(LogLevel.Warn, nameof(Network), $"Client connection hit no-data time limit {actual} > {limit}.");
-                                toDrop.Add(cc);
+                                SendOutgoing(conn, ref packetGrouper);
+
+                                hitMaxRetries = conn.HitMaxRetries;
+                                hitMaxOutlist = conn.HitMaxOutlist;
+                            }
+                        }
+
+                        // Check drop conditions (ordered to disconnect or lag out).
+                        TimeSpan noDataLimit = Interlocked.Read(ref conn.PacketsReceived) > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
+                        if (clientConnection.Status == ClientConnectionStatus.Disconnecting || hitMaxRetries || hitMaxOutlist || Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastReceiveTimestamp), now) > noDataLimit)
+                        {
+                            if (TearDownConnection(conn))
+                            {
+                                string reason;
+                                if (clientConnection.Status == ClientConnectionStatus.Disconnecting)
+                                    reason = "command";
+                                else if (hitMaxRetries)
+                                    reason = "too many reliable retries";
+                                else if (hitMaxOutlist)
+                                    reason = "too many outgoing packets";
+                                else
+                                    reason = "no data";
+
+                                _logManager.LogM(LogLevel.Info, nameof(Network), $"Client connection dropped due to {reason}.");
+                                toDrop.Add(clientConnection);
                             }
                         }
                     }
 
-                    // drop any connections that need to be dropped
+                    // Drop any connections that need to be dropped.
                     if (toDrop.Count > 0)
                     {
-                        foreach (NetClientConnection cc in toDrop)
+                        foreach (NetClientConnection clientConnection in toDrop)
                         {
-                            cc.Handler.Disconnected();
-                            DropConnection(cc);
-                        }
+                            bool removed;
 
-                        toDrop.Clear();
+                            _clientConnectionsLock.EnterWriteLock();
+
+                            try
+                            {
+                                removed = _clientConnections.Remove(clientConnection.ConnData.RemoteAddress);
+                            }
+                            finally
+                            {
+                                _clientConnectionsLock.ExitWriteLock();
+                            }
+
+                            if (removed)
+                            {
+                                ReadOnlySpan<byte> disconnectSpan = [0x00, 0x07];
+                                SendRaw(clientConnection.ConnData, disconnectSpan);
+                            }
+
+                            IClientEncrypt encryptor = clientConnection.Encryptor;
+                            if (encryptor is not null)
+                            {
+                                clientConnection.Encryptor = null;
+                                encryptor.Void(clientConnection);
+                                _broker.ReleaseInterface(ref encryptor, clientConnection.EncryptorName);
+                            }
+
+                            clientConnection.Status = ClientConnectionStatus.Disconnected;
+                        }
                     }
                 }
                 finally
                 {
                     _clientConnectionsLock.ExitUpgradeableReadLock();
+                }
+
+                if (toDrop.Count > 0)
+                {
+                    foreach (NetClientConnection clientConnection in toDrop)
+                    {
+                        // Tell the handler it's disconnected.
+                        clientConnection.Handler.Disconnected();
+                    }
+
+                    toDrop.Clear();
                 }
 
                 if (_stopToken.IsCancellationRequested)
@@ -2436,27 +2559,29 @@ namespace SS.Core.Modules
                 _lagCollect.RelStats(player, in rld);
             }
 
-            // call with player status locked
-            void ProcessLagouts(Player player, long now, List<Player> toKick, List<Player> toFree)
+            bool ProcessLagout(Player player, ConnData conn, long now)
             {
                 ArgumentNullException.ThrowIfNull(player);
-                ArgumentNullException.ThrowIfNull(toKick);
-                ArgumentNullException.ThrowIfNull(toFree);
+                ArgumentNullException.ThrowIfNull(conn);
 
-                if (!player.TryGetExtraData(_connKey, out ConnData conn))
-                    return;
+                bool hitMaxRetries;
+                bool hitMaxOutlist;
 
-                TimeSpan diff = Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastReceiveTimestamp), now);
+                lock (conn.OutLock)
+                {
+                    hitMaxRetries = conn.HitMaxRetries;
+                    hitMaxOutlist = conn.HitMaxOutlist;
+                }
 
                 // Process lagouts
                 if (player.WhenLoggedIn == PlayerState.Uninitialized // acts as flag to prevent dups
                     && player.Status < PlayerState.LeavingZone // don't kick them if they're already on the way out
-                    && (diff > _config.DropTimeout || conn.HitMaxRetries || conn.HitMaxOutlist)) // these three are our kicking conditions, for now
+                    && (hitMaxRetries || hitMaxOutlist || Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastReceiveTimestamp), now) > _config.DropTimeout))
                 {
                     string reason;
-                    if (conn.HitMaxRetries)
+                    if (hitMaxRetries)
                         reason = "too many reliable retries";
-                    else if (conn.HitMaxOutlist)
+                    else if (hitMaxOutlist)
                         reason = "too many outgoing packets";
                     else
                         reason = "no data";
@@ -2484,132 +2609,174 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    _logManager.LogM(LogLevel.Info, nameof(Network), $"[{player.Name}] [pid={player.Id}] Player kicked for {reason}.");
-
-                    toKick.Add(player);
+                    _logManager.LogP(LogLevel.Info, nameof(Network), player, $"Kicked for {reason}.");
+                    return true;
                 }
 
-                // Process disconnects (timewait state)
-                if (player.Status == PlayerState.TimeWait)
-                {
-                    bool hasSizedSend;
-                    bool cancelledSizeSend = false;
-
-                    lock (conn.SizedSendLock)
-                    {
-                        LinkedListNode<ISizedSendData> node = conn.SizedSends.First;
-                        hasSizedSend = node is not null;
-
-                        // Make sure that all sized sends are cancelled.
-                        while (node is not null)
-                        {
-                            LinkedListNode<ISizedSendData> next = node.Next;
-
-                            ISizedSendData ssd = node.Value;
-                            if (!ssd.IsCancellationRequested)
-                            {
-                                ssd.Cancel(false);
-                                cancelledSizeSend = true;
-                            }
-
-                            node = node.Next;
-                        }
-                    }
-
-                    if (cancelledSizeSend)
-                    {
-                        // Make sure the connection is in the sized send queue to be processed.
-                        _sizedSendQueue.TryEnqueue(conn);
-                    }
-
-                    if (hasSizedSend)
-                    {
-                        // Wait for the SizedSendThread to process the sized send(s).
-                        // On a later iteration the sized sends will be gone.
-                        return;
-                    }
-
-                    // finally, send disconnection packet
-                    Span<byte> disconnectSpan = [0x00, 0x07];
-                    SendRaw(conn, disconnectSpan);
-
-                    // clear all our buffers
-                    lock (conn.BigLock)
-                    {
-                        EndSized(player, false);
-                    }
-
-                    ClearBuffers(player);
-
-                    // tell encryption to forget about him
-                    if (conn.Encryptor is not null)
-                    {
-                        conn.Encryptor.Void(player);
-                        _broker.ReleaseInterface(ref conn.Encryptor, conn.EncryptorName);
-                    }
-
-                    // log message
-                    _logManager.LogM(LogLevel.Info, nameof(Network), $"[{player.Name}] [pid={player.Id}] Disconnected.");
-
-                    if (_playerConnections.TryRemove(conn.RemoteAddress, out _) == false)
-                        _logManager.LogM(LogLevel.Error, nameof(Network), "Established connection not in hash table.");
-
-                    toFree.Add(player);
-                }
+                return false;
             }
 
-            void ClearBuffers(Player player)
+            bool ProcessDisconnect(Player player, ConnData conn)
             {
-                if (player is null || !player.TryGetExtraData(_connKey, out ConnData conn))
-                    return;
+                ArgumentNullException.ThrowIfNull(player);
+                ArgumentNullException.ThrowIfNull(conn);
 
-                lock (conn.OutLock)
+                if (player.Status != PlayerState.TimeWait)
                 {
-                    // unsent reliable outgoing queue
-                    ClearOutgoingQueue(conn.UnsentRelOutList);
+                    // Not in a state to disconnect.
+                    return false;
+                }
 
-                    // regular outgoing queues
-                    for (int i = 0; i < conn.OutList.Length; i++)
+                // The player should be disconnected. Try to tear down the connection.
+                if (!TearDownConnection(conn))
+                {
+                    // The connection is still in use. We'll try again on the next go around.
+                    return false;
+                }
+
+                if (_playerConnections.TryRemove(conn.RemoteAddress, out _))
+                {
+                    // Send disconnection packet.
+                    Span<byte> disconnectSpan = [0x00, 0x07];
+                    SendRaw(conn, disconnectSpan);
+                }
+
+                // Cleanup encryption.
+                if (conn.Encryptor is not null)
+                {
+                    conn.Encryptor.Void(player);
+                    _broker.ReleaseInterface(ref conn.Encryptor, conn.EncryptorName);
+                }
+
+                _logManager.LogP(LogLevel.Info, nameof(Network), player, $"Disconnected.");
+                return true;
+            }
+
+            bool TearDownConnection(ConnData conn)
+            {
+                bool hasSizedSend;
+                bool cancelledSizeSend = false;
+
+                lock (conn.SizedSendLock)
+                {
+                    LinkedListNode<ISizedSendData> node = conn.SizedSends.First;
+                    hasSizedSend = node is not null;
+
+                    // Make sure that all sized sends are cancelled.
+                    while (node is not null)
                     {
-                        ClearOutgoingQueue(conn.OutList[i]);
+                        LinkedListNode<ISizedSendData> next = node.Next;
+
+                        ISizedSendData ssd = node.Value;
+                        if (!ssd.IsCancellationRequested)
+                        {
+                            ssd.Cancel(false);
+                            cancelledSizeSend = true;
+                        }
+
+                        node = node.Next;
                     }
                 }
 
-                // There should be no sized sends when this method is called.
-                // The SizedSendThread should have already cleaned it up, since we waited.
-#if DEBUG
-                lock (conn.SizedSendLock)
+                if (cancelledSizeSend)
                 {
-                    Debug.Assert(conn.SizedSends.Count == 0);
+                    // Make sure the connection is in the sized send queue to be processed.
+                    _sizedSendQueue.TryEnqueue(conn);
                 }
+
+                if (hasSizedSend)
+                {
+                    // Wait for the SizedSendThread to process the sized send(s).
+                    // On a later iteration the sized sends will be gone.
+                    return false;
+                }
+
+                // Clear all our buffers
+                // Note: This also clears the outgoing reliable queue (unsent and outlist).
+                // If any had async reliable callbacks, they'll get queued, and we'll wait until they're complete (notice the next check we do on ConnData.ProcessingHolds).
+                ClearBuffers(conn);
+
+                if (Interlocked.CompareExchange(ref conn.ProcessingHolds, 0, 0) != 0)
+                {
+                    // There is ongoing processing for the connection on another thread or queued async work that needs to complete.
+                    // Wait for the processing to finish. On a later iteration it should be over.
+                    return false;
+                }
+
+                if (conn.BandwidthLimiter is not null)
+                {
+                    _bandwithLimiterProvider.Free(conn.BandwidthLimiter);
+                    conn.BandwidthLimiter = null;
+                }
+
+                return true;
+
+
+                void ClearBuffers(ConnData conn)
+                {
+                    if (conn is null)
+                        return;
+
+                    Player player = conn.Player;
+                    if (player is not null)
+                    {
+                        lock (conn.BigLock)
+                        {
+                            EndSizedReceive(player, false);
+                        }
+                    }
+
+                    lock (conn.OutLock)
+                    {
+                        // unsent reliable outgoing queue
+                        ClearOutgoingQueue(conn.UnsentRelOutList);
+
+                        // regular outgoing queues
+                        for (int i = 0; i < conn.OutList.Length; i++)
+                        {
+                            ClearOutgoingQueue(conn.OutList[i]);
+                        }
+                    }
+
+                    // There should be no sized sends when this method is called.
+                    // The SizedSendThread should have already cleaned it up, since we waited.
+#if DEBUG
+                    lock (conn.SizedSendLock)
+                    {
+                        Debug.Assert(conn.SizedSends.Count == 0);
+                    }
 #endif
 
-                // now clear out the connection's incoming rel buffer
-                lock (conn.ReliableLock)
-                {
-                    conn.ReliableBuffer.Reset();
-                }
-
-                // and remove from relible signaling queue
-                _relQueue.Remove(conn);
-
-                void ClearOutgoingQueue(LinkedList<SubspaceBuffer> outlist)
-                {
-                    LinkedListNode<SubspaceBuffer> nextNode;
-                    for (LinkedListNode<SubspaceBuffer> node = outlist.First; node is not null; node = nextNode)
+                    // now clear out the connection's incoming rel buffer
+                    lock (conn.ReliableLock)
                     {
-                        nextNode = node.Next;
+                        conn.ReliableBuffer.Reset();
+                    }
 
-                        SubspaceBuffer b = node.Value;
-                        if (b.CallbackInvoker is not null)
+                    // and remove from reliable signaling queue
+                    if (_relQueue.Remove(conn))
+                    {
+                        Interlocked.Decrement(ref conn.ProcessingHolds);
+                    }
+
+                    void ClearOutgoingQueue(LinkedList<SubspaceBuffer> outlist)
+                    {
+                        LinkedListNode<SubspaceBuffer> nextNode;
+                        for (LinkedListNode<SubspaceBuffer> node = outlist.First; node is not null; node = nextNode)
                         {
-                            ExecuteReliableCallback(b.CallbackInvoker, conn, false);
-                            b.CallbackInvoker = null;
-                        }
+                            nextNode = node.Next;
 
-                        outlist.Remove(node);
-                        _bufferNodePool.Return(node);
-                        b.Dispose();
+                            SubspaceBuffer b = node.Value;
+                            if (b.CallbackInvoker is not null)
+                            {
+                                ExecuteReliableCallback(b.CallbackInvoker, conn, false);
+                                b.CallbackInvoker = null;
+                            }
+
+                            outlist.Remove(node);
+                            _bufferNodePool.Return(node);
+                            b.Dispose();
+                        }
                     }
                 }
             }
@@ -2901,57 +3068,101 @@ namespace SS.Core.Modules
                         break;
                     }
 
-                    if (!Monitor.TryEnter(conn.ReliableProcessingLock))
-                    {
-                        // Another RelThread is already processing the connection.
-                        continue;
-                    }
-
                     try
                     {
-                        // Only process a limited # of packets so that one connection doesn't hog all the processing time.
-                        int limit = conn.ReliableBuffer.Capacity; // Never modified, so ok to read outside of the ReliableLock.
-                        int processedCount = 0;
-
-                        do
+                        Player player = conn.Player;
+                        if (player is not null)
                         {
-                            SubspaceBuffer buffer;
-
-                            // Get the next buffer to process.
-                            lock (conn.ReliableLock)
+                            _playerData.Lock();
+                            try
                             {
-                                if (!conn.ReliableBuffer.TryGetNext(out _, out buffer))
+                                if (player.Status >= PlayerState.LeavingZone)
+                                    continue;
+                            }
+                            finally
+                            {
+                                _playerData.Unlock();
+                            }
+                        }
+                        else
+                        {
+                            NetClientConnection clientConnection = conn.ClientConnection;
+                            if (clientConnection is not null)
+                            {
+                                _clientConnectionsLock.EnterReadLock();
+                                try
                                 {
-                                    // Nothing left to process.
-                                    break;
+                                    if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
+                                        continue;
+                                }
+                                finally
+                                {
+                                    _clientConnectionsLock.ExitReadLock();
                                 }
                             }
-
-                            // Process it.
-                            ProcessBuffer(conn, new Span<byte>(buffer.Bytes, ReliableHeader.Length, buffer.NumBytes - ReliableHeader.Length), buffer.ReceiveFlags);
-                            buffer.Dispose();
                         }
-                        while (++processedCount <= limit);
+
+                        if (!Monitor.TryEnter(conn.ReliableProcessingLock))
+                        {
+                            // Another RelThread is already processing the connection.
+                            continue;
+                        }
+
+                        try
+                        {
+                            // Only process a limited # of packets so that one connection doesn't hog all the processing time.
+                            int limit = conn.ReliableBuffer.Capacity; // Never modified, so ok to read outside of the ReliableLock.
+                            int processedCount = 0;
+
+                            do
+                            {
+                                SubspaceBuffer buffer;
+
+                                // Get the next buffer to process.
+                                lock (conn.ReliableLock)
+                                {
+                                    if (!conn.ReliableBuffer.TryGetNext(out _, out buffer))
+                                    {
+                                        // Nothing left to process.
+                                        break;
+                                    }
+                                }
+
+                                // Process it.
+                                using (buffer)
+                                {
+                                    ProcessBuffer(conn, new Span<byte>(buffer.Bytes, ReliableHeader.Length, buffer.NumBytes - ReliableHeader.Length), buffer.ReceiveFlags);
+                                }
+                            }
+                            while (++processedCount <= limit);
+                        }
+                        finally
+                        {
+                            Monitor.Exit(conn.ReliableProcessingLock);
+                        }
+
+                        // If there is more work, make sure the connection gets processed again.
+                        bool requeue = false;
+
+                        lock (conn.ReliableLock)
+                        {
+                            if (conn.ReliableBuffer.HasNext())
+                            {
+                                requeue = true;
+                            }
+                        }
+
+                        if (requeue)
+                        {
+                            if (_relQueue.TryEnqueue(conn))
+                            {
+                                Interlocked.Increment(ref conn.ProcessingHolds);
+                            }
+                        }
                     }
                     finally
                     {
-                        Monitor.Exit(conn.ReliableProcessingLock);
-                    }
-
-                    // If there is more work, make sure the connection gets processed again.
-                    bool requeue = false;
-
-                    lock (conn.ReliableLock)
-                    {
-                        if (conn.ReliableBuffer.HasNext())
-                        {
-                            requeue = true;
-                        }
-                    }
-
-                    if (requeue)
-                    {
-                        _relQueue.TryEnqueue(conn);
+                        Interlocked.Decrement(ref conn.ProcessingHolds);
                     }
                 }
             }
@@ -3350,7 +3561,12 @@ namespace SS.Core.Modules
                 data.CopyTo(buffer.Bytes);
                 buffer.NumBytes = data.Length;
 
-                _mainloop.QueueMainWorkItem(_mainloopWork_CallPacketHandlers, buffer); // The workitem disposes the buffer.
+                Interlocked.Increment(ref conn.ProcessingHolds);
+                if (!_mainloop.QueueMainWorkItem(_mainloopWork_CallPacketHandlers, buffer)) // The workitem disposes the buffer.
+                {
+                    Interlocked.Decrement(ref conn.ProcessingHolds);
+                    buffer.Dispose();
+                }
             }
             else
             {
@@ -3376,59 +3592,101 @@ namespace SS.Core.Modules
                 if (conn is null)
                     return;
 
-                CallPacketHandlers(conn, buffer.Bytes.AsSpan(0, buffer.NumBytes), buffer.ReceiveFlags);
+                try
+                {
+                    Player player = conn.Player;
+                    if (player is not null)
+                    {
+                        // Check if the player is on their way out.
+                        _playerData.Lock();
+                        try
+                        {
+                            if (player.Status >= PlayerState.LeavingZone)
+                                return;
+                        }
+                        finally
+                        {
+                            _playerData.Unlock();
+                        }
+                    }
+                    else
+                    {
+                        NetClientConnection clientConnection = conn.ClientConnection;
+                        if (clientConnection is not null)
+                        {
+                            // Check if the client connection is on their way out.
+                            _clientConnectionsLock.EnterReadLock();
+                            try
+                            {
+                                if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
+                                    return;
+                            }
+                            finally
+                            {
+                                _clientConnectionsLock.ExitReadLock();
+                            }
+                        }
+                    }
+
+                    CallPacketHandlers(conn, buffer.Bytes.AsSpan(0, buffer.NumBytes), buffer.ReceiveFlags);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref conn.ProcessingHolds);
+                }
             }
             finally
             {
                 buffer.Dispose();
             }
-        }
 
-        private void CallPacketHandlers(ConnData conn, Span<byte> data, NetReceiveFlags flags)
-        {
-            ArgumentNullException.ThrowIfNull(conn);
-            ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
 
-            byte packetType = data[0];
-
-            if (conn.Player is not null)
+            void CallPacketHandlers(ConnData conn, Span<byte> data, NetReceiveFlags flags)
             {
-                // player connection
-                PacketHandler handler = null;
+                ArgumentNullException.ThrowIfNull(conn);
+                ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
 
-                if (packetType < _handlers.Length)
-                    handler = _handlers[packetType];
+                byte packetType = data[0];
 
-                if (handler is null)
+                if (conn.Player is not null)
                 {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No handler for packet type 0x{packetType:X2}.");
-                    return;
-                }
+                    // player connection
+                    PacketHandler handler = null;
 
-                try
-                {
-                    handler(conn.Player, data, flags);
+                    if (packetType < _handlers.Length)
+                        handler = _handlers[packetType];
+
+                    if (handler is null)
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No handler for packet type 0x{packetType:X2}.");
+                        return;
+                    }
+
+                    try
+                    {
+                        handler(conn.Player, data, flags);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                    }
                 }
-                catch (Exception ex)
+                else if (conn.ClientConnection is not null)
                 {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                    // client connection
+                    try
+                    {
+                        conn.ClientConnection.Handler.HandlePacket(data, flags);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                    }
                 }
-            }
-            else if (conn.ClientConnection is not null)
-            {
-                // client connection
-                try
+                else
                 {
-                    conn.ClientConnection.Handler.HandlePacket(data, flags);
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No player or client connection, but got packet type [0x{packetType:X2}] of length {data.Length}.");
                 }
-                catch (Exception ex)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
-                }
-            }
-            else
-            {
-                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No player or client connection, but got packet type [0x{packetType:X2}] of length {data.Length}.");
             }
         }
 
@@ -3597,24 +3855,41 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendWithCallback(Player player, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
+        private bool SendWithCallback(Player player, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
         {
             ArgumentNullException.ThrowIfNull(player);
             ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
             ArgumentNullException.ThrowIfNull(callbackInvoker);
 
             if (!IsOurs(player))
-                return;
+                return false;
 
             if (!player.TryGetExtraData(_connKey, out ConnData conn))
-                return;
+                return false;
 
             // we can't handle big packets here
             Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
 
             lock (conn.OutLock)
             {
-                SendOrBufferPacket(conn, data, NetSendFlags.Reliable, callbackInvoker);
+                return SendOrBufferPacket(conn, data, NetSendFlags.Reliable, callbackInvoker);
+            }
+        }
+
+        private bool SendWithCallback(NetClientConnection clientConnection, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
+        {
+            ArgumentNullException.ThrowIfNull(clientConnection);
+            ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
+            ArgumentNullException.ThrowIfNull(callbackInvoker);
+
+            ConnData conn = clientConnection.ConnData;
+
+            // we can't handle big packets here
+            Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
+
+            lock (conn.OutLock)
+            {
+                return SendOrBufferPacket(conn, data, NetSendFlags.Reliable, callbackInvoker);
             }
         }
 
@@ -3634,51 +3909,81 @@ namespace SS.Core.Modules
             int length = data.Length;
 
             Player player = conn.Player;
-
-#if CFG_DUMP_RAW_PACKETS
-            if (player is not null)
-                DumpPk($"SEND: {length} bytes to {player.Id}", data);
-            else if (conn.ClientConnection is not null)
-                DumpPk($"SEND: {length} bytes to client connection {conn.ClientConnection.ServerEndpoint}", data);
-#endif
-
-            Span<byte> encryptedBuffer = stackalloc byte[Constants.MaxPacket + 4];
-            data.CopyTo(encryptedBuffer);
-
-            if (player is not null && conn.Encryptor is not null)
-            {
-                length = conn.Encryptor.Encrypt(player, encryptedBuffer, length);
-            }
-            else if (conn.ClientConnection is not null && conn.ClientConnection.Encryptor is not null)
-            {
-                length = conn.ClientConnection.Encryptor.Encrypt(conn.ClientConnection, encryptedBuffer, length);
-            }
-
-            if (length == 0)
-                return;
-
-            encryptedBuffer = encryptedBuffer[..length];
-
-#if CFG_DUMP_RAW_PACKETS
-            if (player is not null)
-                DumpPk($"SEND: {length} bytes to pid {player.Id} (after encryption)", encryptedBuffer);
-            else if (conn.ClientConnection is not null)
-                DumpPk($"SEND: {length} bytes to client connection {conn.ClientConnection.ServerEndpoint} (after encryption)", encryptedBuffer);
-#endif
+            NetClientConnection clientConnection = conn.ClientConnection;
 
             try
             {
-                conn.SendSocket.SendTo(encryptedBuffer, SocketFlags.None, conn.RemoteAddress);
+                if (player is not null)
+                {
+                    _playerData.Lock();
+
+                    if (player.Status == PlayerState.Uninitialized)
+                        return;
+                }
+                else if (clientConnection is not null)
+                {
+                    _clientConnectionsLock.EnterReadLock();
+
+                    if (clientConnection.Status == ClientConnectionStatus.Disconnected)
+                        return;
+                }
+
+#if CFG_DUMP_RAW_PACKETS
+                if (player is not null)
+                    DumpPk($"SEND: {length} bytes to {player.Id}", data);
+                else if (conn.ClientConnection is not null)
+                    DumpPk($"SEND: {length} bytes to client connection {conn.ClientConnection.ServerEndpoint}", data);
+#endif
+
+                Span<byte> encryptedBuffer = stackalloc byte[Constants.MaxPacket + 4];
+                data.CopyTo(encryptedBuffer);
+
+                if (player is not null && conn.Encryptor is not null)
+                {
+                    length = conn.Encryptor.Encrypt(player, encryptedBuffer, length);
+                }
+                else if (conn.ClientConnection is not null && conn.ClientConnection.Encryptor is not null)
+                {
+                    length = conn.ClientConnection.Encryptor.Encrypt(conn.ClientConnection, encryptedBuffer, length);
+                }
+
+                if (length == 0)
+                    return;
+
+                encryptedBuffer = encryptedBuffer[..length];
+
+#if CFG_DUMP_RAW_PACKETS
+                if (player is not null)
+                    DumpPk($"SEND: {length} bytes to pid {player.Id} (after encryption)", encryptedBuffer);
+                else if (conn.ClientConnection is not null)
+                    DumpPk($"SEND: {length} bytes to client connection {conn.ClientConnection.ServerEndpoint} (after encryption)", encryptedBuffer);
+#endif
+
+                try
+                {
+                    conn.SendSocket.SendTo(encryptedBuffer, SocketFlags.None, conn.RemoteAddress);
+                }
+                catch (SocketException ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {conn.RemoteEndpoint} with socket {conn.SendSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {conn.RemoteEndpoint} with socket {conn.SendSocket.LocalEndPoint}. {ex}");
+                    return;
+                }
             }
-            catch (SocketException ex)
+            finally
             {
-                _logManager.LogM(LogLevel.Error, nameof(Network), $"SocketException with error code {ex.ErrorCode} when sending to {conn.RemoteEndpoint} with socket {conn.SendSocket.LocalEndPoint}. {ex}");
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(Network), $"Exception when sending to {conn.RemoteEndpoint} with socket {conn.SendSocket.LocalEndPoint}. {ex}");
-                return;
+                if (player is not null)
+                {
+                    _playerData.Unlock();
+                }
+                else if (clientConnection is not null)
+                {
+                    _clientConnectionsLock.ExitReadLock();
+                }
             }
 
             Interlocked.Add(ref conn.BytesSent, (ulong)length);
@@ -3715,104 +4020,138 @@ namespace SS.Core.Modules
             if (len < 1)
                 throw new ArgumentOutOfRangeException(nameof(data), "Length must be at least 1.");
 
-            bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
+            Player player = conn.Player;
+            NetClientConnection clientConnection = conn.ClientConnection;
 
-            //
-            // Check some conditions that should be true and would normally be caught when developing in debug mode.
-            //
-
-            // OutLock should be held before calling this method.
-            Debug.Assert(Monitor.IsEntered(conn.OutLock));
-
-            // data has to be able to fit (a reliable packet has an additional header, so account for that too)
-            Debug.Assert((isReliable && len <= Constants.MaxPacket - ReliableHeader.Length) || (!isReliable && len <= Constants.MaxPacket));
-
-            // you can't buffer already-reliable packets
-            Debug.Assert(!(len >= 2 && data[0] == 0x00 && data[1] == 0x03));
-
-            // reliable packets can't be droppable
-            Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
-
-            // If there's a callback, then it must be reliable.
-            Debug.Assert(callbackInvoker is null || (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable);
-
-            //
-            // Determine the priority.
-            //
-
-            BandwidthPriority pri;
-
-            if ((flags & NetSendFlags.Ack) == NetSendFlags.Ack)
+            try
             {
-                pri = BandwidthPriority.Ack;
-            }
-            else if (isReliable)
-            {
-                pri = BandwidthPriority.Reliable;
-            }
-            else
-            {
-                // figure out priority (ignoring the reliable, droppable, and urgent flags)
-                pri = ((int)flags & 0x70) switch
+                if (player is not null)
                 {
-                    (int)NetSendFlags.PriorityN1 & 0x70 => BandwidthPriority.UnreliableLow,
-                    (int)NetSendFlags.PriorityP4 & 0x70 or (int)NetSendFlags.PriorityP5 & 0x70 => BandwidthPriority.UnreliableHigh,
-                    _ => BandwidthPriority.Unreliable,
-                };
-            }
+                    _playerData.Lock();
 
-            // update global stats based on requested priority
-            Interlocked.Add(ref _globalStats.PriorityStats[(int)pri], (ulong)len);
-
-            //
-            // Check if it can be sent immediately instead of being buffered.
-            //
-
-            // try the fast path
-            if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
-            {
-                // urgent and not reliable
-                if (conn.BandwidthLimiter.Check(len + _config.PerPacketOverhead, pri))
+                    // Don't send or buffer data if the player is being disconnected.
+                    if (player.Status >= PlayerState.TimeWait)
+                        return false;
+                }
+                else if (clientConnection is not null)
                 {
-                    SendRaw(conn, data);
-                    return true;
+                    _clientConnectionsLock.EnterReadLock();
+
+                    // Send or buffer data only if connected.
+                    if(clientConnection.Status != ClientConnectionStatus.Connected)
+                        return false;
+                }
+
+                bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
+
+                //
+                // Check some conditions that should be true and would normally be caught when developing in debug mode.
+                //
+
+                // OutLock should be held before calling this method.
+                Debug.Assert(Monitor.IsEntered(conn.OutLock));
+
+                // data has to be able to fit (a reliable packet has an additional header, so account for that too)
+                Debug.Assert((isReliable && len <= Constants.MaxPacket - ReliableHeader.Length) || (!isReliable && len <= Constants.MaxPacket));
+
+                // you can't buffer already-reliable packets
+                Debug.Assert(!(len >= 2 && data[0] == 0x00 && data[1] == 0x03));
+
+                // reliable packets can't be droppable
+                Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
+
+                // If there's a callback, then it must be reliable.
+                Debug.Assert(callbackInvoker is null || (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable);
+
+                //
+                // Determine the priority.
+                //
+
+                BandwidthPriority pri;
+
+                if ((flags & NetSendFlags.Ack) == NetSendFlags.Ack)
+                {
+                    pri = BandwidthPriority.Ack;
+                }
+                else if (isReliable)
+                {
+                    pri = BandwidthPriority.Reliable;
                 }
                 else
                 {
-                    if ((flags & NetSendFlags.Droppable) == NetSendFlags.Droppable)
+                    // figure out priority (ignoring the reliable, droppable, and urgent flags)
+                    pri = ((int)flags & 0x70) switch
                     {
-                        Interlocked.Increment(ref conn.PacketsDropped);
-                        return false;
+                        (int)NetSendFlags.PriorityN1 & 0x70 => BandwidthPriority.UnreliableLow,
+                        (int)NetSendFlags.PriorityP4 & 0x70 or (int)NetSendFlags.PriorityP5 & 0x70 => BandwidthPriority.UnreliableHigh,
+                        _ => BandwidthPriority.Unreliable,
+                    };
+                }
+
+                // update global stats based on requested priority
+                Interlocked.Add(ref _globalStats.PriorityStats[(int)pri], (ulong)len);
+
+                //
+                // Check if it can be sent immediately instead of being buffered.
+                //
+
+                // try the fast path
+                if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
+                {
+                    // urgent and not reliable
+                    if (conn.BandwidthLimiter.Check(len + _config.PerPacketOverhead, pri))
+                    {
+                        SendRaw(conn, data);
+                        return true;
+                    }
+                    else
+                    {
+                        if ((flags & NetSendFlags.Droppable) == NetSendFlags.Droppable)
+                        {
+                            Interlocked.Increment(ref conn.PacketsDropped);
+                            return false;
+                        }
                     }
                 }
+
+                //
+                // Buffer the packet.
+                //
+
+                SubspaceBuffer buf = _bufferPool.Get();
+                buf.Conn = conn;
+                buf.LastTryTimestamp = null;
+                buf.Tries = 0;
+                buf.CallbackInvoker = callbackInvoker;
+                buf.SendFlags = flags;
+                buf.NumBytes = len;
+                data.CopyTo(buf.Bytes);
+
+                LinkedListNode<SubspaceBuffer> node = _bufferNodePool.Get();
+                node.Value = buf;
+
+                if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
+                {
+                    conn.UnsentRelOutList.AddLast(node);
+                }
+                else
+                {
+                    conn.OutList[(int)pri].AddLast(node);
+                }
+
+                return true;
             }
-
-            //
-            // Buffer the packet.
-            //
-
-            SubspaceBuffer buf = _bufferPool.Get();
-            buf.Conn = conn;
-            buf.LastTryTimestamp = null;
-            buf.Tries = 0;
-            buf.CallbackInvoker = callbackInvoker;
-            buf.SendFlags = flags;
-            buf.NumBytes = len;
-            data.CopyTo(buf.Bytes);
-
-            LinkedListNode<SubspaceBuffer> node = _bufferNodePool.Get();
-            node.Value = buf;
-
-            if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
+            finally
             {
-                conn.UnsentRelOutList.AddLast(node);
+                if (player is not null)
+                {
+                    _playerData.Unlock();
+                }
+                else if (clientConnection is not null)
+                {
+                    _clientConnectionsLock.ExitReadLock();
+                }
             }
-            else
-            {
-                conn.OutList[(int)pri].AddLast(node);
-            }
-
-            return true;
         }
 
         private void ExecuteReliableCallback(IReliableCallbackInvoker callbackInvoker, ConnData conn, bool success)
@@ -3820,45 +4159,38 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(callbackInvoker);
             ArgumentNullException.ThrowIfNull(conn);
 
-            // TOOD: fix callbacks that are processed asynchronously getting executed after disconnection
-
             do
             {
                 IReliableCallbackInvoker next = callbackInvoker.Next;
 
+                InvokeReliableCallbackWork work = new()
+                {
+                    CallbackInvoker = callbackInvoker,
+                    ConnData = conn,
+                    Success = success,
+                };
+
                 switch (callbackInvoker.ExecutionOption)
                 {
                     case ReliableCallbackExecutionOption.Synchronous:
-                        InvokeReliableCallback(
-                            new InvokeReliableCallbackWork()
-                            {
-                                CallbackInvoker = callbackInvoker,
-                                ConnData = conn,
-                                Success = success,
-                            });
+                        InvokeReliableCallback(work);
                         break;
 
                     case ReliableCallbackExecutionOption.ThreadPool:
-                        _mainloop.QueueThreadPoolWorkItem(
-                            InvokeReliableCallback,
-                            new InvokeReliableCallbackWork()
-                            {
-                                CallbackInvoker = callbackInvoker,
-                                ConnData = conn,
-                                Success = success,
-                            });
+                        Interlocked.Increment(ref conn.ProcessingHolds);
+                        if (!_mainloop.QueueThreadPoolWorkItem(AsyncInvokeReliableCallback, work))
+                        {
+                            Interlocked.Decrement(ref conn.ProcessingHolds);
+                        }
                         break;
 
                     case ReliableCallbackExecutionOption.Mainloop:
                     default:
-                        _mainloop.QueueMainWorkItem(
-                            InvokeReliableCallback,
-                            new InvokeReliableCallbackWork()
-                            {
-                                CallbackInvoker = callbackInvoker,
-                                ConnData = conn,
-                                Success = success,
-                            });
+                        Interlocked.Increment(ref conn.ProcessingHolds);
+                        if (!_mainloop.QueueMainWorkItem(AsyncInvokeReliableCallback, work))
+                        {
+                            Interlocked.Decrement(ref conn.ProcessingHolds);
+                        }
                         break;
                 }
 
@@ -3871,9 +4203,29 @@ namespace SS.Core.Modules
             {
                 using (work.CallbackInvoker)
                 {
-                    if (work.ConnData is not null)
+                    ConnData conn = work.ConnData;
+                    if (conn is null)
+                        return;
+
+                    work.CallbackInvoker?.Invoke(conn, work.Success);
+                }
+            }
+
+            static void AsyncInvokeReliableCallback(InvokeReliableCallbackWork work)
+            {
+                using (work.CallbackInvoker)
+                {
+                    ConnData conn = work.ConnData;
+                    if (conn is null)
+                        return;
+
+                    try
                     {
-                        work.CallbackInvoker.Invoke(work.ConnData, work.Success);
+                        work.CallbackInvoker?.Invoke(conn, work.Success);
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref conn.ProcessingHolds);
                     }
                 }
             }
@@ -3885,7 +4237,7 @@ namespace SS.Core.Modules
         /// <remarks>Call with <see cref="ConnData.BigLock"/> locked.</remarks>
         /// <param name="player"></param>
         /// <param name="success"></param>
-        private void EndSized(Player player, bool success)
+        private void EndSizedReceive(Player player, bool success)
         {
             if (player is null)
                 return;
@@ -3910,34 +4262,21 @@ namespace SS.Core.Modules
             }
         }
 
-        private void DropConnection(NetClientConnection cc)
+        private void SetDisconnecting(NetClientConnection clientConnection)
         {
-            if (cc is null)
-                return;
-
-            bool removed;
+            ArgumentNullException.ThrowIfNull(clientConnection);
 
             _clientConnectionsLock.EnterWriteLock();
-
             try
             {
-                removed = _clientConnections.Remove(cc.ConnData.RemoteAddress);
+                if (clientConnection.Status < ClientConnectionStatus.Disconnecting)
+                {
+                    clientConnection.Status = ClientConnectionStatus.Disconnecting;
+                }
             }
             finally
             {
                 _clientConnectionsLock.ExitWriteLock();
-            }
-
-            if (removed)
-            {
-                ReadOnlySpan<byte> disconnectSpan = [0x00, 0x07];
-                SendRaw(cc.ConnData, disconnectSpan);
-            }
-
-            if (cc.Encryptor is not null)
-            {
-                cc.Encryptor.Void(cc);
-                _broker.ReleaseInterface(ref cc.Encryptor, cc.EncryptorName);
             }
         }
 
@@ -3978,7 +4317,7 @@ namespace SS.Core.Modules
             {
                 lock (conn.OutLock)
                 {
-                    conn.BandwidthLimiter.GetInfo(stats.BandwidthLimitInfo);
+                    conn.BandwidthLimiter?.GetInfo(stats.BandwidthLimitInfo);
                 }
             }
         }
@@ -4274,7 +4613,7 @@ namespace SS.Core.Modules
             /// When set to true, it means the connection should be dropped.
             /// </summary>
             /// <remarks>
-            /// Synchronized using <see cref="OutLock"/>, though only used by the <see cref="SendThread"/>.
+            /// Synchronized using <see cref="OutLock"/>.
             /// </remarks>
             public bool HitMaxOutlist;
 
@@ -4358,6 +4697,21 @@ namespace SS.Core.Modules
             /// Lock object for synchronizing processing of incoming big data and incoming sized data
             /// </summary>
             public readonly object BigLock = new();
+
+            /// <summary>
+            /// A count of ongoing processing occuring, including any asynchronous work queued.
+            /// </summary>
+            /// <remarks>
+            /// This is synchronized using <see cref="Interlocked"/> in combination with locking to prevent state changes
+            /// (of <see cref="Player.Status"/> or <see cref="NetClientConnection.Status"/>) during critical increments of this value (from 0 to 1).
+            /// When this value is incremented from 0 to 1, the connection is guaranteed to not be in a status that meets the disconnect criteria.
+            /// To ensure the status doesn't change while the value is being incremented, a lock is held during the increment.
+            /// For players, the global player data lock is held.
+            /// For client connections, the <see cref="_clientConnectionsLock"/> is held.
+            /// This way, it is impossible for the count to change from 0 to 1 after the status is changed to meet the disconnect criteria.
+            /// In places where this value is guaranteed to already be > 0, the value is simply incremented without the need for holding a lock.
+            /// </remarks>
+            public int ProcessingHolds;
 
             /// <summary>
             /// Initializes a new instance of the <see cref="ConnData"/> class with a specified length for the incoming reliable data buffer.
@@ -4530,13 +4884,27 @@ namespace SS.Core.Modules
                 EncryptorName = encryptorName;
             }
 
-            public ConnData ConnData { get; private init; }
+            public ConnData ConnData { get; }
 
             public IClientEncrypt Encryptor;
 
-            public string EncryptorName { get; private init; }
+            public string EncryptorName { get; }
 
             public IPEndPoint ServerEndpoint => ConnData.RemoteEndpoint;
+
+            /// <summary>
+            /// The status of the client connection.
+            /// </summary>
+            /// <remarks>Synchronized using <see cref="_clientConnectionsLock"/>.</remarks>
+            public ClientConnectionStatus Status;
+        }
+
+        public enum ClientConnectionStatus
+        {
+            Connecting,
+            Connected,
+            Disconnecting,
+            Disconnected,
         }
 
         /// <summary>
@@ -4671,7 +5039,7 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// A reliable callback invoker that wraps calling a delegate.
+        /// A reliable callback invoker that wraps calling a delegate for a <see cref="ConnData"/>.
         /// </summary>
         private class ReliableConnectionCallbackInvoker : PooledObject, IReliableCallbackInvoker
         {
@@ -4714,7 +5082,7 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// A reliable callback invoker that wraps calling a delegate for a player.
+        /// A reliable callback invoker that wraps calling a delegate for a <see cref="Player"/>.
         /// </summary>
         private class ReliablePlayerCallbackInvoker : PooledObject, IReliableCallbackInvoker
         {
@@ -4760,7 +5128,7 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// A reliable callback invoker that wraps calling a delegate for a player with an extra state argument of type <typeparamref name="T"/>.
+        /// A reliable callback invoker that wraps calling a delegate for a <see cref="Player"/> with an extra state argument of type <typeparamref name="T"/>.
         /// </summary>
         /// <typeparam name="T">The type of state to pass to the callback.</typeparam>
         private class ReliablePlayerCallbackInvoker<T> : PooledObject, IReliableCallbackInvoker
@@ -4801,6 +5169,52 @@ namespace SS.Core.Modules
                 {
                     _callback = null;
                     _state = default;
+                    ExecutionOption = ReliableCallbackExecutionOption.Mainloop;
+                    Next = null;
+                }
+
+                base.Dispose(isDisposing);
+            }
+        }
+
+        /// <summary>
+        /// A reliable callback invoker that wraps calling a delegate for a <see cref="ClientConnection"/>.
+        /// </summary>
+        private class ReliableClientConnectionCallbackInvoker : PooledObject, IReliableCallbackInvoker
+        {
+            private ClientReliableCallback _callback;
+
+            public void SetCallback(ClientReliableCallback callback, ReliableCallbackExecutionOption executionOption)
+            {
+                if (!Enum.IsDefined(executionOption))
+                    throw new InvalidEnumArgumentException(nameof(executionOption), (int)executionOption, typeof(ReliableCallbackExecutionOption));
+
+                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                ExecutionOption = executionOption;
+            }
+
+            #region IReliableDelegateInvoker Members
+
+            public void Invoke(ConnData connData, bool success)
+            {
+                ClientConnection clientConnection = connData.ClientConnection;
+                if (clientConnection is not null)
+                {
+                    _callback(clientConnection, success);
+                }
+            }
+
+            public ReliableCallbackExecutionOption ExecutionOption { get; private set; } = ReliableCallbackExecutionOption.Mainloop;
+
+            public IReliableCallbackInvoker Next { get; set; }
+
+            #endregion
+
+            protected override void Dispose(bool isDisposing)
+            {
+                if (isDisposing)
+                {
+                    _callback = null;
                     ExecutionOption = ReliableCallbackExecutionOption.Mainloop;
                     Next = null;
                 }

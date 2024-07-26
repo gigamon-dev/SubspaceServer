@@ -188,6 +188,8 @@ namespace SS.Core.Modules
                     return;
 
                 // Queue the player to be freed.
+                // Note: Queueing it to run on the mainloop thread also has the beneficial side effect
+                // of allowing any other already queued mainloop work items on the player to complete first.
                 _mainloop.QueueMainWorkItem(_mainloopWork_CompleteFreePlayer, player);
             }
             finally

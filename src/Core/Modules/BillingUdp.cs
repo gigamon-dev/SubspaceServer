@@ -8,10 +8,10 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -52,9 +52,12 @@ namespace SS.Core.Modules
 
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private bool _loadPublicPlayerScores;
-        private bool _savePublicPlayerScores;
-        private TimeSpan _retryTimeSpan;
+        // Config settings
+        private bool _cfgLoadPublicPlayerScores;
+        private bool _cfgSavePublicPlayerScores;
+        private TimeSpan _cfgRetryTimeSpan;
+        private int _cfgMaxConcurrentBannerUpload;
+
         private int _pendingAuths;
         private int _interruptedAuths;
         private DateTime? _interruptedAuthsDampTime;
@@ -63,8 +66,18 @@ namespace SS.Core.Modules
         private DateTime _lastEvent;
         private byte[] _identity = null;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
-        private DateTime? _bannerLastSendTime;
+        private int _bannerUploadPendingCount = 0;
         private readonly object _lockObj = new();
+
+        // Cached delegates
+        private readonly ClientReliableCallback _mainloop_ReliableCallback_ServerDisconnect;
+        private readonly ClientReliableCallback _mainloop_ReliableCallback_BannerComplete;
+
+        public BillingUdp()
+        {
+            _mainloop_ReliableCallback_ServerDisconnect = Mainloop_ReliableCallback_ServerDisconnect;
+            _mainloop_ReliableCallback_BannerComplete = Mainloop_ReliableCallback_BannerComplete;
+        }
 
         #region Module methods
 
@@ -106,9 +119,10 @@ namespace SS.Core.Modules
 
             _network.AddPacket(C2SPacketType.RegData, Packet_RegData);
 
-            _loadPublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "LoadPublicPlayerScores", 0) != 0;
-            _savePublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "SavePublicPlayerScores", 1) != 0;
-            _retryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", 180));
+            _cfgLoadPublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "LoadPublicPlayerScores", 0) != 0;
+            _cfgSavePublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "SavePublicPlayerScores", 1) != 0;
+            _cfgRetryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", 180));
+            _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", 5);
 
             _mainloopTimer.SetTimer(MainloopTimer_DoWork, 100, 100, null);
             _pendingAuths = _interruptedAuths = 0;
@@ -137,7 +151,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
 
-            DropConnection(BillingState.Disabled);
+            DropConnection(BillingState.Disabled, false);
 
             _commandManager.RemoveCommand("usage", Command_usage);
             _commandManager.RemoveCommand("userid", Command_userid);
@@ -426,9 +440,15 @@ namespace SS.Core.Modules
 
         void IClientConnectionHandler.Disconnected()
         {
-            _cc = null;
-            _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Lost connection to user database server (auto-retry in {_retryTimeSpan.TotalSeconds} seconds).");
-            DropConnection(BillingState.Retry);
+            lock (_lockObj)
+            {
+                _cc = null;
+
+                if (_state != BillingState.Disabled)
+                {
+                    DropConnection(BillingState.Retry, true);
+                }
+            }
         }
 
         #endregion
@@ -481,7 +501,7 @@ namespace SS.Core.Modules
                     if (string.IsNullOrWhiteSpace(ipAddressStr))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "No Billing:IP set. User database connectivity disabled.");
-                        DropConnection(BillingState.Disabled);
+                        DropConnection(BillingState.Disabled, true);
                     }
                     else
                     {
@@ -546,20 +566,31 @@ namespace SS.Core.Modules
                         _interruptedAuthsDampTime = now;
                     }
 
-                    // Banner upload (limit to sending 1 banner every .2 seconds)
-                    if (_bannerUploadDictionary.Count > 1 && (_bannerLastSendTime == null || (now - _bannerLastSendTime.Value).TotalMilliseconds > 200))
+                    // Banner upload
+                    while (_bannerUploadDictionary.Count > 0 
+                        && Interlocked.CompareExchange(ref _bannerUploadPendingCount, 0, 0) < _cfgMaxConcurrentBannerUpload)
                     {
                         // Send one, doesn't matter which.
-                        KeyValuePair<int, S2B_UserBanner> kvp = _bannerUploadDictionary.First();
-                        _bannerUploadDictionary.Remove(kvp.Key);
-                        S2B_UserBanner packet = kvp.Value;
-                        _networkClient.SendPacket(_cc, ref packet, NetSendFlags.Reliable);
-                        _bannerLastSendTime = now;
+                        int? playerId = null;
+
+                        foreach (KeyValuePair<int, S2B_UserBanner> kvp in _bannerUploadDictionary)
+                        {
+                            playerId = kvp.Key;
+                            S2B_UserBanner packet = kvp.Value;
+                            _networkClient.SendWithCallback(_cc, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), _mainloop_ReliableCallback_BannerComplete);
+                            Interlocked.Increment(ref _bannerUploadPendingCount);
+                            break;
+                        }
+
+                        if (playerId is not null)
+                        {
+                            _bannerUploadDictionary.Remove(playerId.Value);
+                        }
                     }
                 }
                 else if (_state == BillingState.Retry)
                 {
-                    if (DateTime.UtcNow - _lastEvent > _retryTimeSpan)
+                    if (DateTime.UtcNow - _lastEvent > _cfgRetryTimeSpan)
                         _state = BillingState.NoSocket;
                 }
             }
@@ -595,7 +626,7 @@ namespace SS.Core.Modules
                 {
                     if (playerData.LoadedScore != null)
                     {
-                        if (_loadPublicPlayerScores && _arenaPlayerStats is not null)
+                        if (_cfgLoadPublicPlayerScores && _arenaPlayerStats is not null)
                         {
                             _arenaPlayerStats.SetStat(player, StatCodes.KillPoints, PersistInterval.Reset, playerData.LoadedScore.Value.Points);
                             _arenaPlayerStats.SetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, playerData.LoadedScore.Value.FlagPoints);
@@ -607,7 +638,7 @@ namespace SS.Core.Modules
                         playerData.LoadedScore = null;
                     }
                 }
-                else if (action == PlayerAction.LeaveArena && arena.IsPublic && _savePublicPlayerScores && _arenaPlayerStats is not null)
+                else if (action == PlayerAction.LeaveArena && arena.IsPublic && _cfgSavePublicPlayerScores && _arenaPlayerStats is not null)
                 {
                     if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out long killPoints))
                         killPoints = 0;
@@ -664,7 +695,7 @@ namespace SS.Core.Modules
 
                     ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
 
-                    if (_savePublicPlayerScores && playerData.SavedScore != null)
+                    if (_cfgSavePublicPlayerScores && playerData.SavedScore != null)
                     {
                         packet.Score = playerData.SavedScore.Value;
                         _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
@@ -842,7 +873,7 @@ namespace SS.Core.Modules
             {
                 if (parameters.Equals("drop", StringComparison.OrdinalIgnoreCase))
                 {
-                    DropConnection(BillingState.Disabled);
+                    DropConnection(BillingState.Disabled, true);
                     _chat.SendMessage(player, "User database connection disabled.");
                 }
                 else if (parameters.Equals("connect", StringComparison.OrdinalIgnoreCase))
@@ -1145,7 +1176,7 @@ namespace SS.Core.Modules
             _logManager.LogM(LogLevel.Info, nameof(BillingUdp), "Logged in to user database server.");
         }
 
-        private void DropConnection(BillingState newState)
+        private void DropConnection(BillingState newState, bool asyncDisconnect)
         {
             // Only announce if changing from LoggedIn
             if (_state == BillingState.LoggedIn)
@@ -1174,15 +1205,45 @@ namespace SS.Core.Modules
             // Close the client connection
             if (_cc is not null)
             {
-                // Ideally this would be sent reliably, but reliable packets won't get sent after DropConnection.
                 ReadOnlySpan<byte> disconnect = [(byte)S2BPacketType.ServerDisconnect];
-                _networkClient.SendPacket(_cc, disconnect, NetSendFlags.PriorityP5);
-                _networkClient.DropConnection(_cc);
-                _cc = null;
+
+                if (asyncDisconnect)
+                {
+                    // Send the billing server disconnect packet and then finally drop the connection only after the packet is ACK'd.
+                    _networkClient.SendWithCallback(_cc, disconnect, _mainloop_ReliableCallback_ServerDisconnect);
+                }
+                else
+                {
+                    // Ideally this would be sent reliably, but we can't wait for a response,
+                    // and INetworkClient.DropConnection cancels the send of any data that may be left in the outgoing queues.
+                    _networkClient.SendPacket(_cc, disconnect, NetSendFlags.PriorityP5); // P5 includes urgent flag
+                    _networkClient.DropConnection(_cc);
+                }
             }
 
             _state = newState;
             _lastEvent = DateTime.UtcNow;
+
+            if (_state == BillingState.Retry)
+            {
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Lost connection to user database server (auto-retry in {_cfgRetryTimeSpan.TotalSeconds} seconds).");
+            }
+        }
+
+        private void Mainloop_ReliableCallback_ServerDisconnect(ClientConnection connection, bool success)
+        {
+            if (success)
+            {
+                if (_cc is not null)
+                {
+                    _networkClient.DropConnection(_cc);
+                }
+            }
+        }
+
+        private void Mainloop_ReliableCallback_BannerComplete(ClientConnection connection, bool success)
+        {
+            Interlocked.Decrement(ref _bannerUploadPendingCount);
         }
 
         #region B2S packet handlers
@@ -1224,7 +1285,7 @@ namespace SS.Core.Modules
                 playerData.BillingUserId = packet.UserId;
 
                 // Note: ASSS has this commented out, but here we provide a config setting.
-                if (_loadPublicPlayerScores && data.Length >= B2S_UserLogin.LengthWithScore)
+                if (_cfgLoadPublicPlayerScores && data.Length >= B2S_UserLogin.LengthWithScore)
                 {
                     ref PlayerScore score = ref MemoryMarshal.AsRef<PlayerScore>(data[B2S_UserLogin.LengthWithoutScore..]);
                     playerData.LoadedScore = score;

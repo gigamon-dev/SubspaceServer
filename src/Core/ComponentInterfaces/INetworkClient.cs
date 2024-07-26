@@ -6,17 +6,12 @@ namespace SS.Core.ComponentInterfaces
     /// <summary>
     /// Represents a connection that is acting as a client communicating to a server using the Subspace 'core' protocol.
     /// </summary>
-    public abstract class ClientConnection
+    public abstract class ClientConnection(IClientConnectionHandler handler)
     {
-        protected ClientConnection(IClientConnectionHandler handler)
-        {
-            Handler = handler ?? throw new ArgumentNullException(nameof(handler));
-        }
-
         /// <summary>
         /// The handler for the client connection.
         /// </summary>
-        public IClientConnectionHandler Handler { get; private init; }
+        public IClientConnectionHandler Handler { get; } = handler ?? throw new ArgumentNullException(nameof(handler));
 
         #region Extra Data
 
@@ -121,6 +116,13 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
+    /// Delegate for a callback when the send of reliable data completes.
+    /// </summary>
+    /// <param name="connection">The connection the data was being sent to.</param>
+    /// <param name="success">Whether the data was sucessfully sent. <see langword="true"/> if an ACK was received. <see langword="false"/> if the send was cancelled out.</param>
+    public delegate void ClientReliableCallback(ClientConnection connection, bool success);
+
+    /// <summary>
     /// Interface of a service that provides the ability to act as a client communicating to a server using the Subspace 'core' protocol.
     /// </summary>
     /// <remarks>
@@ -146,31 +148,46 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sends data to the server.
         /// </summary>
-        /// <param name="cc">The connection from <see cref="MakeClientConnection"/></param>
+        /// <param name="connection">The connection from <see cref="MakeClientConnection"/></param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags indicating how the data should be sent.</param>
-        void SendPacket(ClientConnection cc, ReadOnlySpan<byte> data, NetSendFlags flags);
+        void SendPacket(ClientConnection connection, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// Sends data to the server.
         /// </summary>
         /// <typeparam name="T">The type of struct containing data to send.</typeparam>
-        /// <param name="cc">The connection from <see cref="MakeClientConnection"/></param>
+        /// <param name="connection">The connection from <see cref="MakeClientConnection"/></param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags indicating how the data should be sent.</param>
-        void SendPacket<T>(ClientConnection cc, ref T data, NetSendFlags flags) where T : struct;
+        void SendPacket<T>(ClientConnection connection, ref T data, NetSendFlags flags) where T : struct;
 
         /// <summary>
-        /// Disconnects from the server.
+        /// Reliably sends <paramref name="data"/> to a <paramref name="connection"/> and invokes a <paramref name="callback"/> 
+        /// after receiving an ACK (successfully sent) or cancelling out (e.g. disconnect, lagout, etc.).
         /// </summary>
-        /// <param name="cc">The connection from <see cref="MakeClientConnection"/></param>
-        void DropConnection(ClientConnection cc);
+        /// <remarks>
+        /// The <paramref name="callback"/> is executed on the mainloop thread.
+        /// </remarks>
+        /// <param name="connection">The connection to send data to.</param>
+        /// <param name="data">The data to send.</param>
+        /// <param name="callback">The callback to invoke after the data has been sent.</param>
+        void SendWithCallback(ClientConnection connection, ReadOnlySpan<byte> data, ClientReliableCallback callback);
+
+        /// <summary>
+        /// Initiates the disconnection of a connection.
+        /// </summary>
+        /// <remarks>
+        /// When the disconnection completes, <see cref="IClientConnectionHandler.Disconnected"/> will be invoked.
+        /// </remarks>
+        /// <param name="connection">The connection from <see cref="MakeClientConnection"/></param>
+        void DropConnection(ClientConnection connection);
 
         /// <summary>
         /// Gets statistics about the connection.
         /// </summary>
-        /// <param name="cc">The connection from <see cref="MakeClientConnection"/></param>
+        /// <param name="connection">The connection from <see cref="MakeClientConnection"/></param>
         /// <param name="stats">The object to populate with statistics.</param>
-        void GetConnectionStats(ClientConnection cc, ref NetConnectionStats stats);
+        void GetConnectionStats(ClientConnection connection, ref NetConnectionStats stats);
     }
 }
