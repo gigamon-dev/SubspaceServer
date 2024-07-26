@@ -1231,11 +1231,18 @@ namespace SS.Core.Modules
                     _clientConnectionsLock.ExitWriteLock();
                 }
 
-                conn.ClientConnection.Handler.Connected();
+                _mainloop.QueueMainWorkItem(MainloopWork_ClientConnectionHandlerConnected, conn.ClientConnection);
             }
             else if (conn.Player is not null)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Got key response packet.");
+            }
+
+
+            // Local helper function for calling the client connection handler on the mainloop thread
+            static void MainloopWork_ClientConnectionHandlerConnected(NetClientConnection clientConnection)
+            {
+                clientConnection?.Handler.Connected();
             }
         }
 
@@ -2519,7 +2526,7 @@ namespace SS.Core.Modules
                     foreach (NetClientConnection clientConnection in toDrop)
                     {
                         // Tell the handler it's disconnected.
-                        clientConnection.Handler.Disconnected();
+                        _mainloop.QueueMainWorkItem(MainloopWork_ClientConnectionHandlerDisconnected, clientConnection);
                     }
 
                     toDrop.Clear();
@@ -2535,6 +2542,13 @@ namespace SS.Core.Modules
                 // How to tell how long until a player's bandwidth limits pass a threshold that allows sending more?
                 // Need to investigate bandwidth limiting logic before deciding on this.
                 Thread.Sleep(10); // 1/100 second
+
+
+                // Local helper function for calling the client connection handler on the mainloop thread
+                static void MainloopWork_ClientConnectionHandlerDisconnected(NetClientConnection clientConnection)
+                {
+                    clientConnection?.Handler.Disconnected();
+                }
             }
 
             void SubmitRelStats(Player player)

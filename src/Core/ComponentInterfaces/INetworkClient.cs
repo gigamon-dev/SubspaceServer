@@ -140,7 +140,10 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="address">The IP address of the server to connect to.</param>
         /// <param name="port">The port of the server to connect to.</param>
-        /// <param name="handler">The handler for the connection that will handle what to do when it's connected, data is received, or it's disconnected.</param>
+        /// <param name="handler">
+        /// The handler for the connection that will handle what to do when it's connected, data is received, or it's disconnected.
+        /// <para>All calls to the handler are guaranteed to be executed on the mainloop thread.</para>
+        /// </param>
         /// <param name="encryptorName">The name of the encryptor (<see cref="IClientEncrypt"/>) to use for the connection.</param>
         /// <returns>The connection.</returns>
         ClientConnection MakeClientConnection(string address, int port, IClientConnectionHandler handler, string encryptorName);
