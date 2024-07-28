@@ -62,6 +62,7 @@ namespace SS.Core.Modules
         private ObjectPool<LinkedListNode<SubspaceBuffer>> _bufferNodePool;
         private readonly DefaultObjectPool<LinkedListNode<ISizedSendData>> _sizedSendDataNodePool = new(new LinkedListNodePooledObjectPolicy<ISizedSendData>(), Constants.TargetPlayerCount);
         private static readonly DefaultObjectPool<LinkedListNode<ConnData>> s_connDataNodePool = new(new LinkedListNodePooledObjectPolicy<ConnData>(), Constants.TargetPlayerCount * 2);
+        private static DefaultObjectPool<ClientConnection> _clientConnectionPool;
 
         /// <summary>
         /// Config settings.
@@ -81,7 +82,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// per player data key to ConnData
         /// </summary>
-        private PlayerDataKey<ConnData> _connKey;
+        private PlayerDataKey<PlayerConnection> _connKey;
 
         /// <summary>
         /// Dictionary of known player connections.
@@ -98,7 +99,7 @@ namespace SS.Core.Modules
         /// <remarks>
         /// Synchronized with <see cref="_clientConnectionsLock"/>.
         /// </remarks>
-        private readonly Dictionary<SocketAddress, NetClientConnection> _clientConnections = new();
+        private readonly Dictionary<SocketAddress, ClientConnection> _clientConnections = new();
         private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private delegate void CorePacketHandler(Span<byte> data, ConnData conn, NetReceiveFlags flags);
@@ -278,7 +279,7 @@ namespace SS.Core.Modules
 
             _config.Load(configManager);
 
-            _connKey = _playerData.AllocatePlayerData(new ConnDataPooledObjectPolicy(_config.PlayerReliableReceiveWindowSize));
+            _connKey = _playerData.AllocatePlayerData(new PlayerConnectionPooledObjectPolicy(_config.PlayerReliableReceiveWindowSize));
 
             _bufferPool = objectPoolManager.GetPool<SubspaceBuffer>();
             _bigReceivePool = objectPoolManager.GetPool<BigReceive>();
@@ -286,6 +287,7 @@ namespace SS.Core.Modules
             _reliableClientConnectionCallbackInvokerPool = objectPoolManager.GetPool<ReliableClientConnectionCallbackInvoker>();
             _reliableConnectionCallbackInvokerPool = objectPoolManager.GetPool<ReliableConnectionCallbackInvoker>();
             _bufferNodePool = new DefaultObjectPool<LinkedListNode<SubspaceBuffer>>(new LinkedListNodePooledObjectPolicy<SubspaceBuffer>(), Constants.TargetPlayerCount * _config.MaxOutlistSize);
+            _clientConnectionPool = new DefaultObjectPool<ClientConnection>(new ClientConnectionPooledObjectPolicy(_config.ClientConnectionReliableReceiveWindowSize), Constants.TargetClientConnectionCount);
 
             if (!InitializeSockets())
                 return false;
@@ -509,7 +511,7 @@ namespace SS.Core.Modules
                 {
                     if (IsOurs(player))
                     {
-                        if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                        if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                             continue;
 
                         SendRaw(conn, disconnectSpan);
@@ -532,9 +534,9 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (NetClientConnection clientConnection in _clientConnections.Values)
+                foreach (ClientConnection clientConnection in _clientConnections.Values)
                 {
-                    SendRaw(clientConnection.ConnData, disconnectSpan);
+                    SendRaw(clientConnection, disconnectSpan);
 
                     clientConnection.Status = ClientConnectionStatus.Disconnected;
                     clientConnection.Handler.Disconnected();
@@ -544,6 +546,13 @@ namespace SS.Core.Modules
                         clientConnection.Encryptor.Void(clientConnection);
                         broker.ReleaseInterface(ref clientConnection.Encryptor, clientConnection.EncryptorName);
                     }
+
+                    if (clientConnection.BandwidthLimiter is not null)
+                    {
+                        _bandwithLimiterProvider.Free(clientConnection.BandwidthLimiter);
+                    }
+
+                    _clientConnectionPool.Return(clientConnection);
                 }
 
                 _clientConnections.Clear();
@@ -579,7 +588,7 @@ namespace SS.Core.Modules
             _mainloop.WaitForMainWorkItemDrain();
 
             Array.Clear(_handlers, 0, _handlers.Length);
-            Array.Clear(_nethandlers, 0, _nethandlers.Length); // for some reason ASSS doesn't clear this?
+            Array.Clear(_nethandlers, 0, _nethandlers.Length);
             Array.Clear(_sizedhandlers, 0, _sizedhandlers.Length);
 
             _relQueue.Clear();
@@ -725,7 +734,7 @@ namespace SS.Core.Modules
 
             player = _playerData.NewPlayer(clientType);
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
             {
                 _logManager.LogP(LogLevel.Error, nameof(Network), player, $"NewConnection created a new player, but ConnData not found.");
                 return null;
@@ -914,7 +923,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 return false;
 
             _playerData.Lock();
@@ -1039,7 +1048,7 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(player);
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 return;
 
             GetConnectionStats(conn, ref stats);
@@ -1049,7 +1058,7 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(player);
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 return TimeSpan.Zero;
 
             return Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastReceiveTimestamp));
@@ -1096,33 +1105,22 @@ namespace SS.Core.Modules
 
         #region INetworkClient Members
 
-        ClientConnection INetworkClient.MakeClientConnection(string address, int port, IClientConnectionHandler handler, string iClientEncryptName)
+        IClientConnection INetworkClient.MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(address);
+            ArgumentNullException.ThrowIfNull(endPoint);
             ArgumentNullException.ThrowIfNull(handler);
-
-            if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
-                throw new ArgumentOutOfRangeException(nameof(port));
-
-            if (!IPAddress.TryParse(address, out IPAddress ipAddress))
-                throw new ArgumentException("Unable to parse as an IP address.", nameof(address));
-
-            IPEndPoint remoteEndpoint = new(ipAddress, port);
+            ArgumentException.ThrowIfNullOrWhiteSpace(encryptorName);
 
             IClientEncrypt encryptor = null;
-            if (!string.IsNullOrWhiteSpace(iClientEncryptName))
+            encryptor = _broker.GetInterface<IClientEncrypt>(encryptorName);
+            if (encryptor is null)
             {
-                encryptor = _broker.GetInterface<IClientEncrypt>(iClientEncryptName);
-                if (encryptor is null)
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to find an {nameof(IClientEncrypt)} named {iClientEncryptName}.");
-                    return null;
-                }
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to find an {nameof(IClientEncrypt)} named '{encryptorName}'.");
+                return null;
             }
 
-            NetClientConnection clientConnection = new(remoteEndpoint, _clientSocket, handler, encryptor, iClientEncryptName, _bandwithLimiterProvider.New(), _config.ClientConnectionReliableReceiveWindowSize);
-
-            encryptor?.Initialze(clientConnection);
+            ClientConnection clientConnection = _clientConnectionPool.Get();
+            clientConnection.Initialize(endPoint, _clientSocket, handler, encryptor, encryptorName, _bandwithLimiterProvider.New());
 
             bool added;
 
@@ -1130,7 +1128,7 @@ namespace SS.Core.Modules
 
             try
             {
-                added = _clientConnections.TryAdd(clientConnection.ConnData.RemoteAddress, clientConnection);
+                added = _clientConnections.TryAdd(clientConnection.RemoteAddress, clientConnection);
             }
             finally
             {
@@ -1139,41 +1137,49 @@ namespace SS.Core.Modules
 
             if (!added)
             {
-                _logManager.LogM(LogLevel.Error, nameof(Network), $"Attempt to make a client connection to {remoteEndpoint} when one already exists.");
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Attempt to make a client connection to {endPoint} when one already exists.");
+
+                clientConnection.Encryptor.Void(clientConnection);
+                _broker.ReleaseInterface(ref clientConnection.Encryptor, clientConnection.EncryptorName);
+
+                _bandwithLimiterProvider.Free(clientConnection.BandwidthLimiter);
+                clientConnection.BandwidthLimiter = null;
+
+                _clientConnectionPool.Return(clientConnection);
                 return null;
             }
 
             ConnectionInitPacket packet = new((int)(_prng.Get32() | 0x80000000), 1);
-            SendRaw(clientConnection.ConnData, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)));
+            SendRaw(clientConnection, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1)));
 
             return clientConnection;
         }
 
-        void INetworkClient.SendPacket(ClientConnection connection, ReadOnlySpan<byte> data, NetSendFlags flags)
+        void INetworkClient.SendPacket(IClientConnection connection, ReadOnlySpan<byte> data, NetSendFlags flags)
         {
             ArgumentNullException.ThrowIfNull(connection);
 
-            if (connection is not NetClientConnection clientConnection)
+            if (connection is not ClientConnection clientConnection)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            SendToOne(clientConnection.ConnData, data, flags);
+            SendToOne(clientConnection, data, flags);
         }
 
-        void INetworkClient.SendPacket<T>(ClientConnection connection, ref T data, NetSendFlags flags)
+        void INetworkClient.SendPacket<T>(IClientConnection connection, ref T data, NetSendFlags flags)
         {
             ArgumentNullException.ThrowIfNull(connection);
 
-            if (connection is not NetClientConnection clientConnection)
+            if (connection is not ClientConnection clientConnection)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            ((INetworkClient)this).SendPacket(connection, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetworkClient)this).SendPacket(clientConnection, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
         }
 
-        void INetworkClient.SendWithCallback(ClientConnection connection, ReadOnlySpan<byte> data, ClientReliableCallback callback)
+        void INetworkClient.SendWithCallback(IClientConnection connection, ReadOnlySpan<byte> data, ClientReliableCallback callback)
         {
             ArgumentNullException.ThrowIfNull(connection);
 
-            if (connection is not NetClientConnection clientConnection)
+            if (connection is not ClientConnection clientConnection)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
             ReliableClientConnectionCallbackInvoker invoker = _reliableClientConnectionCallbackInvokerPool.Get();
@@ -1184,24 +1190,24 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetworkClient.DropConnection(ClientConnection connection)
+        void INetworkClient.DropConnection(IClientConnection connection)
         {
             ArgumentNullException.ThrowIfNull(connection);
 
-            if (connection is not NetClientConnection clientConnection)
+            if (connection is not ClientConnection clientConnection)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
             SetDisconnecting(clientConnection);
         }
 
-        void INetworkClient.GetConnectionStats(ClientConnection connection, ref NetConnectionStats stats)
+        void INetworkClient.GetConnectionStats(IClientConnection connection, ref NetConnectionStats stats)
         {
             ArgumentNullException.ThrowIfNull(connection);
 
-            if (connection is not NetClientConnection clientConnection)
+            if (connection is not ClientConnection clientConnection)
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
-            GetConnectionStats(clientConnection.ConnData, ref stats);
+            GetConnectionStats(clientConnection, ref stats);
         }
 
         #endregion
@@ -1216,31 +1222,31 @@ namespace SS.Core.Modules
             if (data.Length != 6)
                 return;
 
-            if (conn.ClientConnection is not null)
+            if (conn is ClientConnection clientConnection)
             {
                 _clientConnectionsLock.EnterWriteLock();
                 try
                 {
-                    if (conn.ClientConnection.Status != ClientConnectionStatus.Connecting)
+                    if (clientConnection.Status != ClientConnectionStatus.Connecting)
                         return;
 
-                    conn.ClientConnection.Status = ClientConnectionStatus.Connected;
+                    clientConnection.Status = ClientConnectionStatus.Connected;
                 }
                 finally
                 {
                     _clientConnectionsLock.ExitWriteLock();
                 }
 
-                _mainloop.QueueMainWorkItem(MainloopWork_ClientConnectionHandlerConnected, conn.ClientConnection);
+                _mainloop.QueueMainWorkItem(MainloopWork_ClientConnectionHandlerConnected, clientConnection);
             }
-            else if (conn.Player is not null)
+            else if (conn is PlayerConnection playerConnection)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Got key response packet.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Network), playerConnection.Player, "Got key response packet.");
             }
 
 
             // Local helper function for calling the client connection handler on the mainloop thread
-            static void MainloopWork_ClientConnectionHandlerConnected(NetClientConnection clientConnection)
+            static void MainloopWork_ClientConnectionHandlerConnected(ClientConnection clientConnection)
             {
                 clientConnection?.Handler.Connected();
             }
@@ -1314,9 +1320,9 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    if (conn.Player is not null)
-                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"[{conn.Player.Name}] [pid={conn.Player.Id}] Reliable packet with too big delta (current:{currentSequenceNum} received:{sn}).");
-                    else
+                    if (conn is PlayerConnection playerConnection)
+                        _logManager.LogP(LogLevel.Drivel, nameof(Network), playerConnection.Player, $"Reliable packet with too big delta (current:{currentSequenceNum} received:{sn}).");
+                    else if (conn is ClientConnection)
                         _logManager.LogM(LogLevel.Drivel, nameof(Network), $"(client connection) Reliable packet with too big delta (current:{currentSequenceNum} received:{sn}).");
 
                     // just drop it
@@ -1426,9 +1432,13 @@ namespace SS.Core.Modules
                 Interlocked.Increment(ref conn.AckDups);
             }
 
-            if (rtt.HasValue && _lagCollect is not null && conn.Player is not null)
+            if (rtt.HasValue && _lagCollect is not null && conn is PlayerConnection playerConnection)
             {
-                _lagCollect.RelDelay(conn.Player, rtt.Value);
+                Player player = playerConnection.Player;
+                if (player is not null)
+                {
+                    _lagCollect.RelDelay(player, rtt.Value);
+                }
             }
         }
 
@@ -1452,8 +1462,12 @@ namespace SS.Core.Modules
                 SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)));
 
                 // submit data to lagdata
-                if (_lagCollect is not null && conn.Player is not null)
+                if (_lagCollect is not null && conn is PlayerConnection playerConnection)
                 {
+                    Player player = playerConnection.Player;
+                    if (player is null)
+                        return;
+
                     TimeSyncData timeSyncData = new()
                     {
                         ServerPacketsReceived = Interlocked.Read(ref conn.PacketsReceived),
@@ -1464,7 +1478,7 @@ namespace SS.Core.Modules
                         ClientTime = clientTime,
                     };
 
-                    _lagCollect.TimeSync(conn.Player, in timeSyncData);
+                    _lagCollect.TimeSync(player, in timeSyncData);
                 }
             }
         }
@@ -1477,13 +1491,17 @@ namespace SS.Core.Modules
             if (data.Length != 2)
                 return;
 
-            if (conn.Player is not null)
+            if (conn is PlayerConnection playerConnection)
             {
-                _playerData.KickPlayer(conn.Player);
+                Player player = playerConnection.Player;
+                if (player is not null)
+                {
+                    _playerData.KickPlayer(player);
+                }
             }
-            else if (conn.ClientConnection is not null)
+            else if (conn is ClientConnection clientConnection)
             {
-                SetDisconnecting(conn.ClientConnection);
+                SetDisconnecting(clientConnection);
             }
         }
 
@@ -1507,9 +1525,9 @@ namespace SS.Core.Modules
                 if (!bigReceive.IsOverflow // not already overflowed
                     & bigReceive.Append(data[2..], flags)) // data only, header removed
                 {
-                    if (conn.Player is not null)
-                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, $"Ignoring big data (> {Constants.MaxBigPacket}).");
-                    else if (conn.ClientConnection is not null)
+                    if (conn is PlayerConnection playerConnection)
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), playerConnection.Player, $"Ignoring big data (> {Constants.MaxBigPacket}).");
+                    else if (conn is ClientConnection)
                         _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Ignoring big data (> {Constants.MaxBigPacket}).");
                 };
 
@@ -1522,9 +1540,9 @@ namespace SS.Core.Modules
 
                 if (bigReceive.IsOverflow)
                 {
-                    if (conn.Player is not null)
-                        _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, $"Ignored {bigReceive.Length} bytes of big data (> {Constants.MaxBigPacket}).");
-                    else if (conn.ClientConnection is not null)
+                    if (conn is PlayerConnection playerConnection)
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), playerConnection.Player, $"Ignored {bigReceive.Length} bytes of big data (> {Constants.MaxBigPacket}).");
+                    else if (conn is ClientConnection)
                         _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Ignored {bigReceive.Length} bytes of big data (> {Constants.MaxBigPacket}).");
                 }
                 else
@@ -1555,7 +1573,11 @@ namespace SS.Core.Modules
             lock (conn.BigLock)
             {
                 // only handle sized packets for player connections, not client connections
-                if (conn.Player is null)
+                if (conn is not PlayerConnection playerConnection)
+                    return;
+
+                Player player = playerConnection.Player;
+                if (player is null)
                     return;
 
                 if (conn.SizedRecv.Offset == 0)
@@ -1569,28 +1591,28 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        EndSizedReceive(conn.Player, false);
+                        EndSizedReceive(player, false);
                     }
                 }
 
                 if (conn.SizedRecv.TotalLength != size)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Length mismatch in sized packet.");
-                    EndSizedReceive(conn.Player, false);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Network), player, "Length mismatch in sized packet.");
+                    EndSizedReceive(player, false);
                 }
                 else if ((conn.SizedRecv.Offset + data.Length) > size)
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Network), conn.Player, "Sized packet overflow.");
-                    EndSizedReceive(conn.Player, false);
+                    _logManager.LogP(LogLevel.Malicious, nameof(Network), player, "Sized packet overflow.");
+                    EndSizedReceive(player, false);
                 }
                 else
                 {
-                    _sizedhandlers[conn.SizedRecv.Type]?.Invoke(conn.Player, data, conn.SizedRecv.Offset, size);
+                    _sizedhandlers[conn.SizedRecv.Type]?.Invoke(player, data, conn.SizedRecv.Offset, size);
 
                     conn.SizedRecv.Offset += data.Length;
 
                     if (conn.SizedRecv.Offset >= size)
-                        EndSizedReceive(conn.Player, true); // sized receive is complete
+                        EndSizedReceive(player, true); // sized receive is complete
                 }
             }
         }
@@ -1641,11 +1663,15 @@ namespace SS.Core.Modules
             if (data.Length != 2)
                 return;
 
-            if (conn.Player is not null)
+            if (conn is PlayerConnection playerConnection)
             {
+                Player player = playerConnection.Player;
+                if (player is null)
+                    return;
+
                 lock (conn.BigLock)
                 {
-                    EndSizedReceive(conn.Player, false);
+                    EndSizedReceive(player, false);
                 }
             }
         }
@@ -1682,7 +1708,10 @@ namespace SS.Core.Modules
             if (data.Length < 2)
                 return;
 
-            Player player = conn.Player;
+            if (conn is not PlayerConnection playerConnection)
+                return;
+
+            Player player = playerConnection.Player;
             if (player is null)
                 return;
 
@@ -1857,7 +1886,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 {
                     return;
                 }
@@ -2267,8 +2296,7 @@ namespace SS.Core.Modules
 #endif
 
                 bool found;
-                NetClientConnection clientConnection;
-                ConnData conn = null;
+                ClientConnection clientConnection;
 
                 _clientConnectionsLock.EnterReadLock();
 
@@ -2280,9 +2308,8 @@ namespace SS.Core.Modules
                     {
                         if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
                             return;
-
-                        conn = clientConnection.ConnData;
-                        Interlocked.Increment(ref conn.ProcessingHolds);
+                        
+                        Interlocked.Increment(ref clientConnection.ProcessingHolds);
                     }
                 }
                 finally
@@ -2298,9 +2325,9 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    Interlocked.Exchange(ref conn.LastReceiveTimestamp, Stopwatch.GetTimestamp());
-                    Interlocked.Add(ref conn.BytesReceived, (ulong)bytesReceived);
-                    Interlocked.Increment(ref conn.PacketsReceived);
+                    Interlocked.Exchange(ref clientConnection.LastReceiveTimestamp, Stopwatch.GetTimestamp());
+                    Interlocked.Add(ref clientConnection.BytesReceived, (ulong)bytesReceived);
+                    Interlocked.Increment(ref clientConnection.PacketsReceived);
                     Interlocked.Add(ref _globalStats.BytesReceived, (ulong)bytesReceived);
                     Interlocked.Increment(ref _globalStats.PacketsReceived);
 
@@ -2321,11 +2348,11 @@ namespace SS.Core.Modules
 #endif
                     }
 
-                    ProcessBuffer(conn, data, NetReceiveFlags.None);
+                    ProcessBuffer(clientConnection, data, NetReceiveFlags.None);
                 }
                 finally
                 {
-                    Interlocked.Decrement(ref conn.ProcessingHolds);
+                    Interlocked.Decrement(ref clientConnection.ProcessingHolds);
                 }
             }
         }
@@ -2337,7 +2364,7 @@ namespace SS.Core.Modules
 
             List<Player> toKick = new(Constants.TargetPlayerCount);
             List<Player> toFree = new(Constants.TargetPlayerCount);
-            List<NetClientConnection> toDrop = new();
+            List<ClientConnection> toDrop = new();
 
             while (_stopToken.IsCancellationRequested == false)
             {
@@ -2356,7 +2383,7 @@ namespace SS.Core.Modules
                             && player.Status < PlayerState.TimeWait
                             && IsOurs(player))
                         {
-                            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                                 continue;
 
                             if (Monitor.TryEnter(conn.OutLock))
@@ -2390,7 +2417,7 @@ namespace SS.Core.Modules
                         if (player.Status >= PlayerState.Connected
                             && IsOurs(player))
                         {
-                            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                                 return;
 
                             if (ProcessLagout(player, conn, now))
@@ -2438,10 +2465,8 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    foreach (NetClientConnection clientConnection in _clientConnections.Values)
+                    foreach (ClientConnection clientConnection in _clientConnections.Values)
                     {
-                        ConnData conn = clientConnection.ConnData;
-
                         bool hitMaxRetries = false;
                         bool hitMaxOutlist = false;
 
@@ -2449,20 +2474,20 @@ namespace SS.Core.Modules
                         if (clientConnection.Status >= ClientConnectionStatus.Connected 
                             && clientConnection.Status < ClientConnectionStatus.Disconnecting)
                         {
-                            lock (conn.OutLock)
+                            lock (clientConnection.OutLock)
                             {
-                                SendOutgoing(conn, ref packetGrouper);
+                                SendOutgoing(clientConnection, ref packetGrouper);
 
-                                hitMaxRetries = conn.HitMaxRetries;
-                                hitMaxOutlist = conn.HitMaxOutlist;
+                                hitMaxRetries = clientConnection.HitMaxRetries;
+                                hitMaxOutlist = clientConnection.HitMaxOutlist;
                             }
                         }
 
                         // Check drop conditions (ordered to disconnect or lag out).
-                        TimeSpan noDataLimit = Interlocked.Read(ref conn.PacketsReceived) > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
-                        if (clientConnection.Status == ClientConnectionStatus.Disconnecting || hitMaxRetries || hitMaxOutlist || Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastReceiveTimestamp), now) > noDataLimit)
+                        TimeSpan noDataLimit = Interlocked.Read(ref clientConnection.PacketsReceived) > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
+                        if (clientConnection.Status == ClientConnectionStatus.Disconnecting || hitMaxRetries || hitMaxOutlist || Stopwatch.GetElapsedTime(Interlocked.Read(ref clientConnection.LastReceiveTimestamp), now) > noDataLimit)
                         {
-                            if (TearDownConnection(conn))
+                            if (TearDownConnection(clientConnection))
                             {
                                 string reason;
                                 if (clientConnection.Status == ClientConnectionStatus.Disconnecting)
@@ -2483,7 +2508,7 @@ namespace SS.Core.Modules
                     // Drop any connections that need to be dropped.
                     if (toDrop.Count > 0)
                     {
-                        foreach (NetClientConnection clientConnection in toDrop)
+                        foreach (ClientConnection clientConnection in toDrop)
                         {
                             bool removed;
 
@@ -2491,7 +2516,7 @@ namespace SS.Core.Modules
 
                             try
                             {
-                                removed = _clientConnections.Remove(clientConnection.ConnData.RemoteAddress);
+                                removed = _clientConnections.Remove(clientConnection.RemoteAddress);
                             }
                             finally
                             {
@@ -2501,7 +2526,7 @@ namespace SS.Core.Modules
                             if (removed)
                             {
                                 ReadOnlySpan<byte> disconnectSpan = [0x00, 0x07];
-                                SendRaw(clientConnection.ConnData, disconnectSpan);
+                                SendRaw(clientConnection, disconnectSpan);
                             }
 
                             IClientEncrypt encryptor = clientConnection.Encryptor;
@@ -2523,7 +2548,7 @@ namespace SS.Core.Modules
 
                 if (toDrop.Count > 0)
                 {
-                    foreach (NetClientConnection clientConnection in toDrop)
+                    foreach (ClientConnection clientConnection in toDrop)
                     {
                         // Tell the handler it's disconnected.
                         _mainloop.QueueMainWorkItem(MainloopWork_ClientConnectionHandlerDisconnected, clientConnection);
@@ -2545,9 +2570,10 @@ namespace SS.Core.Modules
 
 
                 // Local helper function for calling the client connection handler on the mainloop thread
-                static void MainloopWork_ClientConnectionHandlerDisconnected(NetClientConnection clientConnection)
+                static void MainloopWork_ClientConnectionHandlerDisconnected(ClientConnection clientConnection)
                 {
                     clientConnection?.Handler.Disconnected();
+                    _clientConnectionPool.Return(clientConnection);
                 }
             }
 
@@ -2559,7 +2585,7 @@ namespace SS.Core.Modules
                 if (_lagCollect is null)
                     return;
 
-                if (!player.TryGetExtraData(_connKey, out ConnData conn))
+                if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                     return;
 
                 ReliableLagData rld = new()
@@ -2573,7 +2599,7 @@ namespace SS.Core.Modules
                 _lagCollect.RelStats(player, in rld);
             }
 
-            bool ProcessLagout(Player player, ConnData conn, long now)
+            bool ProcessLagout(Player player, PlayerConnection conn, long now)
             {
                 ArgumentNullException.ThrowIfNull(player);
                 ArgumentNullException.ThrowIfNull(conn);
@@ -2630,7 +2656,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            bool ProcessDisconnect(Player player, ConnData conn)
+            bool ProcessDisconnect(Player player, PlayerConnection conn)
             {
                 ArgumentNullException.ThrowIfNull(player);
                 ArgumentNullException.ThrowIfNull(conn);
@@ -2655,7 +2681,7 @@ namespace SS.Core.Modules
                     SendRaw(conn, disconnectSpan);
                 }
 
-                // Cleanup encryption.
+                // Cleanup encryptor.
                 if (conn.Encryptor is not null)
                 {
                     conn.Encryptor.Void(player);
@@ -2723,6 +2749,8 @@ namespace SS.Core.Modules
                     conn.BandwidthLimiter = null;
                 }
 
+                // NOTE: The encryptor can't be removed yet since the disconnect packet still needs to be sent.
+
                 return true;
 
 
@@ -2731,12 +2759,15 @@ namespace SS.Core.Modules
                     if (conn is null)
                         return;
 
-                    Player player = conn.Player;
-                    if (player is not null)
+                    if (conn is PlayerConnection playerConnection)
                     {
-                        lock (conn.BigLock)
+                        Player player = playerConnection.Player;
+                        if (player is not null)
                         {
-                            EndSizedReceive(player, false);
+                            lock (conn.BigLock)
+                            {
+                                EndSizedReceive(player, false);
+                            }
                         }
                     }
 
@@ -3084,9 +3115,12 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        Player player = conn.Player;
-                        if (player is not null)
+                        if (conn is PlayerConnection playerConnection)
                         {
+                            Player player = playerConnection.Player;
+                            if (player is null)
+                                continue;
+
                             _playerData.Lock();
                             try
                             {
@@ -3098,21 +3132,17 @@ namespace SS.Core.Modules
                                 _playerData.Unlock();
                             }
                         }
-                        else
+                        else if (conn is ClientConnection clientConnection)
                         {
-                            NetClientConnection clientConnection = conn.ClientConnection;
-                            if (clientConnection is not null)
+                            _clientConnectionsLock.EnterReadLock();
+                            try
                             {
-                                _clientConnectionsLock.EnterReadLock();
-                                try
-                                {
-                                    if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
-                                        continue;
-                                }
-                                finally
-                                {
-                                    _clientConnectionsLock.ExitReadLock();
-                                }
+                                if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
+                                    continue;
+                            }
+                            finally
+                            {
+                                _clientConnectionsLock.ExitReadLock();
                             }
                         }
 
@@ -3232,10 +3262,8 @@ namespace SS.Core.Modules
                 // Process until there are no items left in the queue or we're told to stop.
                 while (!_stopToken.IsCancellationRequested)
                 {
-                    ConnData conn;
-
                     // Try to dequeue.
-                    if (!_sizedSendQueue.TryDequeue(out conn))
+                    if (!_sizedSendQueue.TryDequeue(out ConnData conn))
                     {
                         // No work to do.
                         break;
@@ -3266,7 +3294,14 @@ namespace SS.Core.Modules
                 //
                 // The global player data read lock is taken to access the Player.Status and held to prevent the status from changing while processing.
 
-                Player player = conn.Player;
+                Player player = null;
+                if (conn is PlayerConnection playerConnection)
+                {
+                    player = playerConnection.Player;
+                    if (player is null)
+                        return false;
+                }
+
                 bool queuedData = false;
 
                 while (true)
@@ -3472,7 +3507,13 @@ namespace SS.Core.Modules
                 if (conn is null)
                     return;
 
-                Player player = conn.Player;
+                Player player = null;
+                if (conn is PlayerConnection playerConnection)
+                {
+                    player = playerConnection.Player;
+                    if (player is null)
+                        return;
+                }
 
                 if (player is not null)
                 {
@@ -3556,11 +3597,11 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    if (conn.Player is not null)
+                    if (conn is PlayerConnection playerConnection)
                     {
-                        _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[{conn.Player.Name}] [pid={conn.Player.Id}] Unknown network subtype {t2}.");
+                        _logManager.LogP(LogLevel.Malicious, nameof(Network), playerConnection.Player, $"Unknown network subtype {t2}.");
                     }
-                    else if (conn.ClientConnection is not null)
+                    else if (conn is ClientConnection)
                     {
                         _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Unknown network subtype {t2}.");
                     }
@@ -3584,11 +3625,11 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (conn.Player is not null)
+                if (conn is PlayerConnection playerConnection)
                 {
-                    _logManager.LogM(LogLevel.Malicious, nameof(Network), $"[{conn.Player.Name}] [pid={conn.Player.Id}] Unknown packet type {t1}.");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Network), playerConnection.Player, $"Unknown packet type {t1}.");
                 }
-                else if (conn.ClientConnection is not null)
+                else if (conn is ClientConnection)
                 {
                     _logManager.LogM(LogLevel.Malicious, nameof(Network), $"(client connection) Unknown packet type {t1}.");
                 }
@@ -3602,16 +3643,25 @@ namespace SS.Core.Modules
 
             try
             {
+                if (buffer.NumBytes < 1)
+                    return;
+
                 ConnData conn = buffer.Conn;
                 if (conn is null)
                     return;
 
+                Span<byte> data = buffer.Bytes.AsSpan(0, buffer.NumBytes);
+                byte packetType = data[0];
+
                 try
                 {
-                    Player player = conn.Player;
-                    if (player is not null)
+                    if (conn is PlayerConnection playerConnection)
                     {
-                        // Check if the player is on their way out.
+                        Player player = playerConnection.Player;
+                        if (player is null)
+                            return;
+
+                        // Check if the player is on the way out.
                         _playerData.Lock();
                         try
                         {
@@ -3622,27 +3672,56 @@ namespace SS.Core.Modules
                         {
                             _playerData.Unlock();
                         }
+
+                        // Call the handler.
+                        PacketHandler handler = null;
+
+                        if (packetType < _handlers.Length)
+                            handler = _handlers[packetType];
+
+                        if (handler is null)
+                        {
+                            _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"No handler for packet type 0x{packetType:X2}.");
+                            return;
+                        }
+
+                        try
+                        {
+                            handler(player, data, buffer.ReceiveFlags);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logManager.LogP(LogLevel.Error, nameof(Network), player, $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                        }
+                    }
+                    else if (conn is ClientConnection clientConnection)
+                    {
+                        // Check if the client connection is on the way out.
+                        _clientConnectionsLock.EnterReadLock();
+                        try
+                        {
+                            if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
+                                return;
+                        }
+                        finally
+                        {
+                            _clientConnectionsLock.ExitReadLock();
+                        }
+
+                        // Call the handler.
+                        try
+                        {
+                            clientConnection.Handler.HandlePacket(data, buffer.ReceiveFlags);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                        }
                     }
                     else
                     {
-                        NetClientConnection clientConnection = conn.ClientConnection;
-                        if (clientConnection is not null)
-                        {
-                            // Check if the client connection is on their way out.
-                            _clientConnectionsLock.EnterReadLock();
-                            try
-                            {
-                                if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
-                                    return;
-                            }
-                            finally
-                            {
-                                _clientConnectionsLock.ExitReadLock();
-                            }
-                        }
+                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Unknown connection type, but got packet type [0x{packetType:X2}] of length {data.Length}.");
                     }
-
-                    CallPacketHandlers(conn, buffer.Bytes.AsSpan(0, buffer.NumBytes), buffer.ReceiveFlags);
                 }
                 finally
                 {
@@ -3652,55 +3731,6 @@ namespace SS.Core.Modules
             finally
             {
                 buffer.Dispose();
-            }
-
-
-            void CallPacketHandlers(ConnData conn, Span<byte> data, NetReceiveFlags flags)
-            {
-                ArgumentNullException.ThrowIfNull(conn);
-                ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
-
-                byte packetType = data[0];
-
-                if (conn.Player is not null)
-                {
-                    // player connection
-                    PacketHandler handler = null;
-
-                    if (packetType < _handlers.Length)
-                        handler = _handlers[packetType];
-
-                    if (handler is null)
-                    {
-                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No handler for packet type 0x{packetType:X2}.");
-                        return;
-                    }
-
-                    try
-                    {
-                        handler(conn.Player, data, flags);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
-                    }
-                }
-                else if (conn.ClientConnection is not null)
-                {
-                    // client connection
-                    try
-                    {
-                        conn.ClientConnection.Handler.HandlePacket(data, flags);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
-                    }
-                }
-                else
-                {
-                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"No player or client connection, but got packet type [0x{packetType:X2}] of length {data.Length}.");
-                }
             }
         }
 
@@ -3812,7 +3842,7 @@ namespace SS.Core.Modules
             if (!IsOurs(player))
                 return;
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 return;
 
             SendToOne(conn, data, flags);
@@ -3878,7 +3908,7 @@ namespace SS.Core.Modules
             if (!IsOurs(player))
                 return false;
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 return false;
 
             // we can't handle big packets here
@@ -3890,20 +3920,18 @@ namespace SS.Core.Modules
             }
         }
 
-        private bool SendWithCallback(NetClientConnection clientConnection, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
+        private bool SendWithCallback(ClientConnection clientConnection, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
         {
             ArgumentNullException.ThrowIfNull(clientConnection);
             ArgumentOutOfRangeException.ThrowIfLessThan(data.Length, 1, nameof(data));
             ArgumentNullException.ThrowIfNull(callbackInvoker);
 
-            ConnData conn = clientConnection.ConnData;
-
             // we can't handle big packets here
             Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
 
-            lock (conn.OutLock)
+            lock (clientConnection.OutLock)
             {
-                return SendOrBufferPacket(conn, data, NetSendFlags.Reliable, callbackInvoker);
+                return SendOrBufferPacket(clientConnection, data, NetSendFlags.Reliable, callbackInvoker);
             }
         }
 
@@ -3922,8 +3950,15 @@ namespace SS.Core.Modules
 
             int length = data.Length;
 
-            Player player = conn.Player;
-            NetClientConnection clientConnection = conn.ClientConnection;
+            PlayerConnection playerConnection = conn as PlayerConnection;
+            ClientConnection clientConnection = conn as ClientConnection;
+            Player player = null;
+            if (playerConnection is not null)
+            {
+                player = playerConnection.Player;
+                if (player is null)
+                    return;
+            }
 
             try
             {
@@ -3945,20 +3980,20 @@ namespace SS.Core.Modules
 #if CFG_DUMP_RAW_PACKETS
                 if (player is not null)
                     DumpPk($"SEND: {length} bytes to {player.Id}", data);
-                else if (conn.ClientConnection is not null)
-                    DumpPk($"SEND: {length} bytes to client connection {conn.ClientConnection.ServerEndpoint}", data);
+                else if (clientConnection is not null)
+                    DumpPk($"SEND: {length} bytes to client connection {conn.RemoteEndpoint}", data);
 #endif
 
                 Span<byte> encryptedBuffer = stackalloc byte[Constants.MaxPacket + 4];
                 data.CopyTo(encryptedBuffer);
 
-                if (player is not null && conn.Encryptor is not null)
+                if (playerConnection is not null && playerConnection.Encryptor is not null)
                 {
-                    length = conn.Encryptor.Encrypt(player, encryptedBuffer, length);
+                    length = playerConnection.Encryptor.Encrypt(player, encryptedBuffer, length);
                 }
-                else if (conn.ClientConnection is not null && conn.ClientConnection.Encryptor is not null)
+                else if (clientConnection is not null && clientConnection.Encryptor is not null)
                 {
-                    length = conn.ClientConnection.Encryptor.Encrypt(conn.ClientConnection, encryptedBuffer, length);
+                    length = clientConnection.Encryptor.Encrypt(clientConnection, encryptedBuffer, length);
                 }
 
                 if (length == 0)
@@ -3969,8 +4004,8 @@ namespace SS.Core.Modules
 #if CFG_DUMP_RAW_PACKETS
                 if (player is not null)
                     DumpPk($"SEND: {length} bytes to pid {player.Id} (after encryption)", encryptedBuffer);
-                else if (conn.ClientConnection is not null)
-                    DumpPk($"SEND: {length} bytes to client connection {conn.ClientConnection.ServerEndpoint} (after encryption)", encryptedBuffer);
+                else if (clientConnection is not null)
+                    DumpPk($"SEND: {length} bytes to client connection {conn.RemoteEndpoint} (after encryption)", encryptedBuffer);
 #endif
 
                 try
@@ -4034,14 +4069,18 @@ namespace SS.Core.Modules
             if (len < 1)
                 throw new ArgumentOutOfRangeException(nameof(data), "Length must be at least 1.");
 
-            Player player = conn.Player;
-            NetClientConnection clientConnection = conn.ClientConnection;
+            PlayerConnection playerConnection = conn as PlayerConnection;
+            ClientConnection clientConnection = conn as ClientConnection;
 
             try
             {
-                if (player is not null)
+                if (playerConnection is not null)
                 {
                     _playerData.Lock();
+
+                    Player player = playerConnection.Player;
+                    if (player is null)
+                        return false;
 
                     // Don't send or buffer data if the player is being disconnected.
                     if (player.Status >= PlayerState.TimeWait)
@@ -4052,7 +4091,7 @@ namespace SS.Core.Modules
                     _clientConnectionsLock.EnterReadLock();
 
                     // Send or buffer data only if connected.
-                    if(clientConnection.Status != ClientConnectionStatus.Connected)
+                    if (clientConnection.Status != ClientConnectionStatus.Connected)
                         return false;
                 }
 
@@ -4157,7 +4196,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                if (player is not null)
+                if (playerConnection is not null)
                 {
                     _playerData.Unlock();
                 }
@@ -4256,7 +4295,7 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            if (!player.TryGetExtraData(_connKey, out ConnData conn))
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
                 return;
 
             if (conn.SizedRecv.Offset != 0)
@@ -4276,7 +4315,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SetDisconnecting(NetClientConnection clientConnection)
+        private void SetDisconnecting(ClientConnection clientConnection)
         {
             ArgumentNullException.ThrowIfNull(clientConnection);
 
@@ -4315,16 +4354,7 @@ namespace SS.Core.Modules
             stats.Retries = Interlocked.Read(ref conn.Retries);
             stats.PacketsDropped = Interlocked.Read(ref conn.PacketsDropped);
 
-            // Encryptor
-            if (conn.Player is not null && conn.Encryptor is not null)
-            {
-                stats.EncryptorName = conn.EncryptorName;
-            }
-            else if (conn.ClientConnection is not null && conn.ClientConnection.Encryptor is not null)
-            {
-                stats.EncryptorName = conn.ClientConnection.EncryptorName;
-            }
-
+            stats.EncryptorName = conn.EncryptorName;
             stats.IPEndPoint = conn.RemoteEndpoint;
 
             if (stats.BandwidthLimitInfo is not null)
@@ -4390,33 +4420,10 @@ namespace SS.Core.Modules
         #region Helper types
 
         /// <summary>
-        /// Data for a known connection.
+        /// Base class for a connection.
         /// </summary>
-        /// <remarks>
-        /// This can can be a connection for a:
-        /// <list type="bullet">
-        ///     <item>
-        ///         <term><see cref="SS.Core.Player"/></term>
-        ///         <description>A client that connected to us, the server. In this case, the object is per-player data.</description>
-        ///     </item>
-        ///     <item>
-        ///         <term><see cref="NetClientConnection"/></term>
-        ///         <description>A connection to another server, where we are acting as a client. For example, a connection to a billing server.</description>
-        ///     </item>
-        /// </list>
-        /// </remarks>
-        private sealed class ConnData : IResettable, IDisposable
+        private abstract class ConnData : IResettable, IDisposable
         {
-            /// <summary>
-            /// The player this connection is for, or <see langword="null"/> for a client connection.
-            /// </summary>
-            public Player Player;
-
-            /// <summary>
-            /// The client this is a part of, or <see langword="null"/> for a player connection.
-            /// </summary>
-            public NetClientConnection ClientConnection;
-
             /// <summary>
             /// The remote address to communicate with.
             /// </summary>
@@ -4431,27 +4438,14 @@ namespace SS.Core.Modules
             /// Which socket to use when sending.
             /// </summary>
             /// <remarks>
-            /// For <see cref="SS.Core.Player"/>s, this is a game socket.
-            /// For <see cref="ComponentInterfaces.ClientConnection"/>s, this is the client socket.
+            /// For <see cref="PlayerConnection"/>s, this is a game socket.
+            /// For <see cref="ClientConnection"/>s, this is the client socket.
             /// </remarks>
             public Socket SendSocket;
 
             /// <summary>
-            /// For encrypting and decrypting data for the connection.
+            /// The name of the encryptor interface.
             /// </summary>
-            /// <remarks>
-            /// Only for <see cref="SS.Core.Player"/> connections.
-            /// For client connections, the equivalent is <see cref="NetClientConnection.Encryptor"/>, accessible through <see cref="ClientConnection"/>.
-            /// </remarks>
-            public IEncrypt Encryptor;
-
-            /// <summary>
-            /// The name of the IEncrypt interface for <see cref="Encryptor"/>.
-            /// </summary>
-            /// <remarks>
-            /// Only for player connections.
-            /// For client connections, the equivalent is <see cref="NetClientConnection.EncryptorName"/>, accessible through <see cref="ClientConnection"/>.
-            /// </remarks>
             public string EncryptorName;
 
             /// <summary>
@@ -4717,7 +4711,7 @@ namespace SS.Core.Modules
             /// </summary>
             /// <remarks>
             /// This is synchronized using <see cref="Interlocked"/> in combination with locking to prevent state changes
-            /// (of <see cref="Player.Status"/> or <see cref="NetClientConnection.Status"/>) during critical increments of this value (from 0 to 1).
+            /// (of <see cref="Player.Status"/> or <see cref="ClientConnection.Status"/>) during critical increments of this value (from 0 to 1).
             /// When this value is incremented from 0 to 1, the connection is guaranteed to not be in a status that meets the disconnect criteria.
             /// To ensure the status doesn't change while the value is being incremented, a lock is held during the increment.
             /// For players, the global player data lock is held.
@@ -4731,7 +4725,7 @@ namespace SS.Core.Modules
             /// Initializes a new instance of the <see cref="ConnData"/> class with a specified length for the incoming reliable data buffer.
             /// </summary>
             /// <param name="reliableBufferLength">The length of the incoming reliable data buffer.</param>
-            public ConnData(int reliableBufferLength)
+            protected ConnData(int reliableBufferLength)
             {
                 OutList = new LinkedList<SubspaceBuffer>[(int)Enum.GetValues<BandwidthPriority>().Max() + 1];
 
@@ -4743,12 +4737,8 @@ namespace SS.Core.Modules
                 ReliableBuffer = new(reliableBufferLength);
             }
 
-            public void Initalize(IEncrypt encryptor, string encryptorName, IBandwidthLimiter bandwidthLimiter)
+            protected void Initialize()
             {
-                Encryptor = encryptor;
-                EncryptorName = encryptorName;
-                BandwidthLimiter = bandwidthLimiter ?? throw new ArgumentNullException(nameof(bandwidthLimiter));
-
                 Interlocked.Exchange(ref LastReceiveTimestamp, Stopwatch.GetTimestamp());
 
                 Interlocked.Exchange(ref SizedSendQueuedCount, 0);
@@ -4772,10 +4762,8 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool TryReset()
+            public virtual bool TryReset()
             {
-                Player = null;
-                ClientConnection = null;
                 RemoteAddress = null;
                 RemoteEndpoint = null;
                 SendSocket = null;
@@ -4792,7 +4780,6 @@ namespace SS.Core.Modules
                 Interlocked.Exchange(ref Retries, 0);
                 Interlocked.Exchange(ref PacketsDropped, 0);
 
-                Encryptor = null;
                 EncryptorName = null;
 
                 lock (BigLock)
@@ -4849,22 +4836,64 @@ namespace SS.Core.Modules
                 return true;
             }
 
+            protected virtual void Dispose(bool isDisposing)
+            {
+                if (isDisposing)
+                {
+                    TryReset();
+                }
+            }
+
             public void Dispose()
             {
-                TryReset();
+                Dispose(true);
             }
         }
 
-        private class ConnDataPooledObjectPolicy(int reliableBufferLengthj) : IPooledObjectPolicy<ConnData>
+        /// <summary>
+        /// Represents a connection for a <see cref="Player"/> that is connected to us, the server.
+        /// </summary>
+        /// <param name="reliableBufferLength"></param>
+        private sealed class PlayerConnection(int reliableBufferLength) : ConnData(reliableBufferLength)
+        {
+            /// <summary>
+            /// The player this connection is for.
+            /// </summary>
+            public Player Player;
+
+            /// <summary>
+            /// For encrypting and decrypting data for the connection.
+            /// </summary>
+            public IEncrypt Encryptor;
+
+            public void Initalize(IEncrypt encryptor, string encryptorName, IBandwidthLimiter bandwidthLimiter)
+            {
+                Initialize();
+
+                Encryptor = encryptor;
+                EncryptorName = encryptorName;
+                BandwidthLimiter = bandwidthLimiter ?? throw new ArgumentNullException(nameof(bandwidthLimiter));
+            }
+
+            public override bool TryReset()
+            {
+                Player = null;
+                Encryptor = null;
+
+                return base.TryReset();
+            }
+        }
+
+        private class PlayerConnectionPooledObjectPolicy(int reliableBufferLengthj) : IPooledObjectPolicy<PlayerConnection>
         {
             private readonly int _reliableBufferLength = reliableBufferLengthj;
 
-            public ConnData Create()
+            public PlayerConnection Create()
             {
-                return new ConnData(_reliableBufferLength);
+                return new PlayerConnection(_reliableBufferLength);
             }
 
-            public bool Return(ConnData obj)
+            public bool Return(PlayerConnection obj)
             {
                 if (obj is null)
                     return false;
@@ -4874,43 +4903,95 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// Represents a connection to a server where this side is acting as the client.
+        /// Represents a connection to a server where this side is acting as the client. For example, a connection to a billing server.
         /// </summary>
-        private class NetClientConnection : ClientConnection
+        private sealed class ClientConnection(int reliableBufferLength) : ConnData(reliableBufferLength), IClientConnection
         {
-            public NetClientConnection(
+            public void Initialize(
                 IPEndPoint remoteEndpoint,
                 Socket socket,
                 IClientConnectionHandler handler,
                 IClientEncrypt encryptor,
                 string encryptorName,
-                IBandwidthLimiter bwLimit,
-                int reliableBufferLength) : base(handler)
+                IBandwidthLimiter bandwidthLimiter)
             {
-                ConnData = new ConnData(reliableBufferLength);
-                ConnData.ClientConnection = this;
-                ConnData.RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
-                ConnData.RemoteAddress = remoteEndpoint.Serialize();
-                ConnData.SendSocket = socket ?? throw new ArgumentNullException(nameof(socket));
-                ConnData.Initalize(null, null, bwLimit);
+                Initialize();
 
+                Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+                RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
+                RemoteAddress = remoteEndpoint.Serialize();
+                SendSocket = socket ?? throw new ArgumentNullException(nameof(socket));
                 Encryptor = encryptor;
                 EncryptorName = encryptorName;
+                BandwidthLimiter = bandwidthLimiter;
+                Status = ClientConnectionStatus.Connecting;
+
+                Encryptor.Initialize(this);
             }
 
-            public ConnData ConnData { get; }
+            /// <summary>
+            /// The handler for the client connection.
+            /// </summary>
+            public IClientConnectionHandler Handler { get; private set; }
 
+            /// <summary>
+            /// For encrypting and decrypting data for the connection.
+            /// </summary>
             public IClientEncrypt Encryptor;
-
-            public string EncryptorName { get; }
-
-            public IPEndPoint ServerEndpoint => ConnData.RemoteEndpoint;
 
             /// <summary>
             /// The status of the client connection.
             /// </summary>
             /// <remarks>Synchronized using <see cref="_clientConnectionsLock"/>.</remarks>
             public ClientConnectionStatus Status;
+
+            #region Extra Data
+
+            private readonly ConcurrentDictionary<Type, object> _extraData = new();
+
+            public bool TryAddExtraData<T>(T value) where T : class
+            {
+                return _extraData.TryAdd(typeof(T), value);
+            }
+
+            public bool TryGetExtraData<T>(out T value) where T : class
+            {
+                if (_extraData.TryGetValue(typeof(T), out object obj))
+                {
+                    value = obj as T;
+                    return true;
+                }
+                else
+                {
+                    value = default;
+                    return false;
+                }
+            }
+
+            public bool TryRemoveExtraData<T>(out T value) where T : class
+            {
+                if (_extraData.TryRemove(typeof(T), out object obj))
+                {
+                    value = obj as T;
+                    return true;
+                }
+                else
+                {
+                    value = default;
+                    return false;
+                }
+            }
+
+            #endregion
+
+            public override bool TryReset()
+            {
+                Handler = null;
+                Encryptor = null;
+                Status = ClientConnectionStatus.Disconnected;
+
+                return base.TryReset();
+            }
         }
 
         public enum ClientConnectionStatus
@@ -4919,6 +5000,24 @@ namespace SS.Core.Modules
             Connected,
             Disconnecting,
             Disconnected,
+        }
+
+        private class ClientConnectionPooledObjectPolicy(int reliableBufferLengthj) : IPooledObjectPolicy<ClientConnection>
+        {
+            private readonly int _reliableBufferLength = reliableBufferLengthj;
+
+            public ClientConnection Create()
+            {
+                return new ClientConnection(_reliableBufferLength);
+            }
+
+            public bool Return(ClientConnection obj)
+            {
+                if (obj is null)
+                    return false;
+
+                return obj.TryReset();
+            }
         }
 
         /// <summary>
@@ -5115,10 +5214,13 @@ namespace SS.Core.Modules
 
             public void Invoke(ConnData connData, bool success)
             {
-                Player player = connData.Player;
-                if (player is not null)
+                if (connData is PlayerConnection playerConnection)
                 {
-                    _callback?.Invoke(player, success);
+                    Player player = playerConnection.Player;
+                    if (player is not null)
+                    {
+                        _callback?.Invoke(player, success);
+                    }
                 }
             }
 
@@ -5164,10 +5266,13 @@ namespace SS.Core.Modules
 
             public void Invoke(ConnData connData, bool success)
             {
-                Player player = connData.Player;
-                if (player is not null)
+                if (connData is PlayerConnection playerConnection)
                 {
-                    _callback?.Invoke(player, success, _state);
+                    Player player = playerConnection.Player;
+                    if (player is not null)
+                    {
+                        _callback?.Invoke(player, success, _state);
+                    }
                 }
             }
 
@@ -5192,7 +5297,7 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// A reliable callback invoker that wraps calling a delegate for a <see cref="ClientConnection"/>.
+        /// A reliable callback invoker that wraps calling a delegate for an <see cref="IClientConnection"/>.
         /// </summary>
         private class ReliableClientConnectionCallbackInvoker : PooledObject, IReliableCallbackInvoker
         {
@@ -5211,8 +5316,7 @@ namespace SS.Core.Modules
 
             public void Invoke(ConnData connData, bool success)
             {
-                ClientConnection clientConnection = connData.ClientConnection;
-                if (clientConnection is not null)
+                if (connData is IClientConnection clientConnection)
                 {
                     _callback(clientConnection, success);
                 }

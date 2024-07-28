@@ -61,8 +61,8 @@ namespace SS.Core.Modules
         private int _pendingAuths;
         private int _interruptedAuths;
         private DateTime? _interruptedAuthsDampTime;
-        private BillingState _state;
-        private ClientConnection _cc;
+        private BillingState _state = BillingState.NoSocket;
+        private IClientConnection _cc;
         private DateTime _lastEvent;
         private byte[] _identity = null;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
@@ -72,11 +72,13 @@ namespace SS.Core.Modules
         // Cached delegates
         private readonly ClientReliableCallback _mainloop_ReliableCallback_ServerDisconnect;
         private readonly ClientReliableCallback _mainloop_ReliableCallback_BannerComplete;
+        private readonly BillingFallbackDoneDelegate<Player> _fallbackDone;
 
         public BillingUdp()
         {
             _mainloop_ReliableCallback_ServerDisconnect = Mainloop_ReliableCallback_ServerDisconnect;
             _mainloop_ReliableCallback_BannerComplete = Mainloop_ReliableCallback_BannerComplete;
+            _fallbackDone = FallbackDone;
         }
 
         #region Module methods
@@ -151,7 +153,10 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
 
-            DropConnection(BillingState.Disabled, false);
+            lock (_lockObj)
+            {
+                DropConnection(BillingState.Disabled, false);
+            }
 
             _commandManager.RemoveCommand("usage", Command_usage);
             _commandManager.RemoveCommand("userid", Command_userid);
@@ -207,32 +212,40 @@ namespace SS.Core.Modules
 
         bool IBilling.TryGetUserId(Player player, out uint userId)
         {
-            if (player is null
-                || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
-                || !playerData.IsKnownToBiller)
+            if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData playerData))
             {
-                userId = default;
-                return false;
+                lock (_lockObj)
+                {
+                    if (playerData.IsKnownToBiller)
+                    {
+                        userId = playerData.BillingUserId;
+                        return true;
+                    }
+                }
             }
 
-            userId = playerData.BillingUserId;
-            return true;
+            userId = default;
+            return false;
         }
 
         bool IBilling.TryGetUsage(Player player, out TimeSpan usage, out DateTime? firstLoginTimestamp)
         {
-            if (player is null
-                || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
-                || !playerData.IsKnownToBiller)
+            if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData playerData))
             {
-                usage = default;
-                firstLoginTimestamp = default;
-                return false;
+                lock(_lockObj)
+                {
+                    if (playerData.IsKnownToBiller)
+                    {
+                        usage = playerData.Usage;
+                        firstLoginTimestamp = playerData.FirstLogin;
+                        return true;
+                    }
+                }
             }
 
-            usage = playerData.Usage;
-            firstLoginTimestamp = playerData.FirstLogin;
-            return true;
+            usage = default;
+            firstLoginTimestamp = default;
+            return false;
         }
 
         #endregion
@@ -256,91 +269,94 @@ namespace SS.Core.Modules
 
             ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
 
-            // default to false
-            playerData.IsKnownToBiller = false;
-
-            // hold onto the state so that we can use it when authentication is complete
-            playerData.AuthRequest = authRequest;
-
-            if (_state == BillingState.LoggedIn)
+            lock (_lockObj)
             {
-                if (_pendingAuths < 15 && _interruptedAuths < 20)
+                // default to false
+                playerData.IsKnownToBiller = false;
+
+                // hold onto the state so that we can use it when authentication is complete
+                playerData.AuthRequest = authRequest;
+
+                if (_state == BillingState.LoggedIn)
                 {
-                    uint ipAddress = 0;
-                    Span<byte> ipBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ipAddress, 1));
-                    if (!player.IPAddress.TryWriteBytes(ipBytes, out int bytesWritten))
+                    if (_pendingAuths < 15 && _interruptedAuths < 20)
                     {
-                        FallbackDone(player, BillingFallbackResult.NotFound);
-                        return;
-                    }
-
-                    ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
-                    Span<byte> packetBytes = stackalloc byte[S2B_UserLogin.Length + S2B_UserLogin_ClientExtraData.Length];
-                    ref S2B_UserLogin packet = ref MemoryMarshal.AsRef<S2B_UserLogin>(packetBytes);
-                    packet = new(
-                        loginPacket.Flags,
-                        ipAddress,
-                        loginPacket.Name,
-                        loginPacket.Password,
-                        player.Id,
-                        loginPacket.MacId,
-                        loginPacket.TimeZoneBias,
-                        loginPacket.CVersion);
-
-                    if (!extraBytes.IsEmpty)
-                    {
-                        // There is extra data at the end of the login packet.
-                        // For Continuum, it's the ContId field of the login packet.
-                        if (extraBytes.Length > S2B_UserLogin_ClientExtraData.Length)
+                        uint ipAddress = 0;
+                        Span<byte> ipBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ipAddress, 1));
+                        if (!player.IPAddress.TryWriteBytes(ipBytes, out int bytesWritten))
                         {
-                            extraBytes = extraBytes[..S2B_UserLogin_ClientExtraData.Length];
+                            FallbackDone(player, BillingFallbackResult.NotFound);
+                            return;
                         }
 
-                        ref S2B_UserLogin_ClientExtraData clientExtraData = ref MemoryMarshal.AsRef<S2B_UserLogin_ClientExtraData>(packetBytes[S2B_UserLogin.Length..]);
-                        extraBytes.CopyTo(clientExtraData);
-                    }
+                        ReadOnlySpan<byte> extraBytes = authRequest.ExtraBytes;
+                        Span<byte> packetBytes = stackalloc byte[S2B_UserLogin.Length + S2B_UserLogin_ClientExtraData.Length];
+                        ref S2B_UserLogin packet = ref MemoryMarshal.AsRef<S2B_UserLogin>(packetBytes);
+                        packet = new(
+                            loginPacket.Flags,
+                            ipAddress,
+                            loginPacket.Name,
+                            loginPacket.Password,
+                            player.Id,
+                            loginPacket.MacId,
+                            loginPacket.TimeZoneBias,
+                            loginPacket.CVersion);
 
-                    _networkClient.SendPacket(_cc, packetBytes[..(S2B_UserLogin.Length + extraBytes.Length)], NetSendFlags.Reliable);
-                    playerData.IsKnownToBiller = true;
-                    _pendingAuths++;
+                        if (!extraBytes.IsEmpty)
+                        {
+                            // There is extra data at the end of the login packet.
+                            // For Continuum, it's the ContId field of the login packet.
+                            if (extraBytes.Length > S2B_UserLogin_ClientExtraData.Length)
+                            {
+                                extraBytes = extraBytes[..S2B_UserLogin_ClientExtraData.Length];
+                            }
+
+                            ref S2B_UserLogin_ClientExtraData clientExtraData = ref MemoryMarshal.AsRef<S2B_UserLogin_ClientExtraData>(packetBytes[S2B_UserLogin.Length..]);
+                            extraBytes.CopyTo(clientExtraData);
+                        }
+
+                        _networkClient.SendPacket(_cc, packetBytes[..(S2B_UserLogin.Length + extraBytes.Length)], NetSendFlags.Reliable);
+                        playerData.IsKnownToBiller = true;
+                        _pendingAuths++;
+                    }
+                    else
+                    {
+                        // Tell the user to try again later.                    
+                        authRequest.Result.Code = AuthCode.ServerBusy;
+                        authRequest.Result.Authenticated = false;
+                        authRequest.Done();
+
+                        playerData.AuthRequest = null;
+                        _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Too many pending auths, try again later.");
+                    }
+                }
+                else if (_billingFallback is not null)
+                {
+                    // Biller isn't connected, use fallback.
+                    ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)loginPacket.Name).SliceNullTerminated();
+                    Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                    int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
+                    Debug.Assert(nameSpan.Length == decodedCharCount);
+
+                    ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)loginPacket.Password).SliceNullTerminated();
+                    Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
+                    decodedCharCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+                    Debug.Assert(passwordSpan.Length == decodedCharCount);
+
+                    try
+                    {
+                        _billingFallback.Check(player, nameSpan, passwordSpan, _fallbackDone, player);
+                    }
+                    finally
+                    {
+                        passwordSpan.Clear();
+                    }
                 }
                 else
                 {
-                    // Tell the user to try again later.                    
-                    authRequest.Result.Code = AuthCode.ServerBusy;
-                    authRequest.Result.Authenticated = false;
-                    authRequest.Done();
-
-                    playerData.AuthRequest = null;
-                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Too many pending auths, try again later.");
+                    // act like not found in fallback
+                    FallbackDone(player, BillingFallbackResult.NotFound);
                 }
-            }
-            else if (_billingFallback is not null)
-            {
-                // Biller isn't connected, use fallback.
-                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)loginPacket.Name).SliceNullTerminated();
-                Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
-                Debug.Assert(nameSpan.Length == decodedCharCount);
-
-                ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)loginPacket.Password).SliceNullTerminated();
-                Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
-                decodedCharCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
-                Debug.Assert(passwordSpan.Length == decodedCharCount);
-
-                try
-                {
-                    _billingFallback.Check(player, nameSpan, passwordSpan, FallbackDone, player);
-                }
-                finally
-                {
-                    passwordSpan.Clear();
-                }
-            }
-            else
-            {
-                // act like not found in fallback
-                FallbackDone(player, BillingFallbackResult.NotFound);
             }
         }
 
@@ -498,37 +514,61 @@ namespace SS.Core.Modules
                     string ipAddressStr = _configManager.GetStr(_configManager.Global, "Billing", "IP");
                     int port = _configManager.GetInt(_configManager.Global, "Billing", "Port", 1850);
 
+                    if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid Billing:Port (Min={IPEndPoint.MinPort}, Max={IPEndPoint.MaxPort}, Actual={port}). User database connectivity disabled.");
+                        DropConnection(BillingState.Disabled, true);
+                        return true;
+                    }
+
                     if (string.IsNullOrWhiteSpace(ipAddressStr))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "No Billing:IP set. User database connectivity disabled.");
                         DropConnection(BillingState.Disabled, true);
+                        return true;
                     }
-                    else
+
+                    if (!IPAddress.TryParse(ipAddressStr, out IPAddress ipAddress))
                     {
-                        // TODO: change to pass in an IPEndPoint or leave it like this?
-                        try
-                        {
-                            _cc = _networkClient.MakeClientConnection(ipAddressStr, port, this, EncryptionVIE.InterfaceIdentifier);
-                        }
-                        catch (Exception ex)
-                        {
-                            _cc = null;
-                            _state = BillingState.Disabled; // an exception means it was a serious problem and we shouldn't retry
-                            _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Unable to make client connection. {ex}");
-                        }
-
-                        if (_cc is not null)
-                        {
-                            _state = BillingState.Connecting;
-                            _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Connecting to user database server at {ipAddressStr}:{port}.");
-                        }
-                        else if (_state != BillingState.Disabled)
-                        {
-                            _state = BillingState.Retry;
-                        }
-
-                        _lastEvent = DateTime.UtcNow;
+                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Invalid Billing:IP. Unable to parse as an IP address. User database connectivity disabled.");
+                        DropConnection(BillingState.Disabled, true);
+                        return true;
                     }
+
+                    IPEndPoint billerEndpoint;
+                    try
+                    {
+                        billerEndpoint = new(ipAddress, port);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid Billing:IP and Billing:Port combination. {ex.Message} User database connectivity disabled.");
+                        DropConnection(BillingState.Disabled, true);
+                        return true;
+                    }
+                    
+                    try
+                    {
+                        _cc = _networkClient.MakeClientConnection(billerEndpoint, this, EncryptionVIE.InterfaceIdentifier);
+                    }
+                    catch (Exception ex)
+                    {
+                        _cc = null;
+                        _state = BillingState.Disabled; // an exception means it was a serious problem and we shouldn't retry
+                        _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Unable to make client connection. {ex}");
+                    }
+
+                    if (_cc is not null)
+                    {
+                        _state = BillingState.Connecting;
+                        _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Connecting to user database server at {ipAddress}:{port}.");
+                    }
+                    else if (_state != BillingState.Disabled)
+                    {
+                        _state = BillingState.Retry;
+                    }
+
+                    _lastEvent = DateTime.UtcNow;
                 }
                 else if (_state == BillingState.Connecting)
                 {
@@ -715,74 +755,71 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (!playerData.IsKnownToBiller)
-                return;
-
-            if (type == ChatMessageType.Chat)
+            lock (_lockObj)
             {
-                Span<byte> packetBytes = stackalloc byte[S2B_UserChannelChat.MaxLength];
-                ref S2B_UserChannelChat packet = ref MemoryMarshal.AsRef<S2B_UserChannelChat>(packetBytes);
-                packet = new(player.Id);
-                ReadOnlySpan<char> channel = message.GetToken(';', out ReadOnlySpan<char> remaining);
+                if (!playerData.IsKnownToBiller)
+                    return;
 
-                // Note that this supports a channel name in place of the usual channel number.
-                // e.g., ;foo;this is a message to the foo channel
-                // Most billers probably don't support this feature yet.
-                if (!channel.IsEmpty
-                    && StringUtils.DefaultEncoding.GetByteCount(channel) < S2B_UserChannelChat.ChannelInlineArray.Length // < to allow for the null-terminator
-                    && remaining.Length > 0) // found ;
+                if (type == ChatMessageType.Chat)
                 {
-                    packet.Channel.Set(channel);
-                    message = remaining[1..]; // skip the ;
-                }
-                else
-                {
-                    packet.Channel.Set("1");
-                }
+                    Span<byte> packetBytes = stackalloc byte[S2B_UserChannelChat.MaxLength];
+                    ref S2B_UserChannelChat packet = ref MemoryMarshal.AsRef<S2B_UserChannelChat>(packetBytes);
+                    packet = new(player.Id);
+                    ReadOnlySpan<char> channel = message.GetToken(';', out ReadOnlySpan<char> remaining);
 
-                int length = S2B_UserChannelChat.SetText(packetBytes, message);
+                    // Note that this supports a channel name in place of the usual channel number.
+                    // e.g., ;foo;this is a message to the foo channel
+                    // Most billers probably don't support this feature yet.
+                    if (!channel.IsEmpty
+                        && StringUtils.DefaultEncoding.GetByteCount(channel) < S2B_UserChannelChat.ChannelInlineArray.Length // < to allow for the null-terminator
+                        && remaining.Length > 0) // found ;
+                    {
+                        packet.Channel.Set(channel);
+                        message = remaining[1..]; // skip the ;
+                    }
+                    else
+                    {
+                        packet.Channel.Set("1");
+                    }
 
-                lock (_lockObj)
-                {
+                    int length = S2B_UserChannelChat.SetText(packetBytes, message);
+
                     _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
                 }
-            }
-            else if (type == ChatMessageType.RemotePrivate && toPlayer is null) // remote private message to a player not on the server
-            {
-                Span<byte> packetBytes = stackalloc byte[S2B_UserPrivateChat.MaxLength];
-                ref S2B_UserPrivateChat packet = ref MemoryMarshal.AsRef<S2B_UserPrivateChat>(packetBytes);
-                packet = new(
-                    -1, // for some odd reason ConnectionID >= 0 indicates global broadcast message
-                    1,
-                    2,
-                    (byte)sound);
-
-                ReadOnlySpan<char> toName = message.GetToken(':', out ReadOnlySpan<char> remaining);
-                if (toName.IsEmpty || remaining.Length < 1)
+                else if (type == ChatMessageType.RemotePrivate && toPlayer is null) // remote private message to a player not on the server
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), player, "Malformed remote private message");
-                }
-                else
-                {
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                    int bytesWritten;
+                    Span<byte> packetBytes = stackalloc byte[S2B_UserPrivateChat.MaxLength];
+                    ref S2B_UserPrivateChat packet = ref MemoryMarshal.AsRef<S2B_UserPrivateChat>(packetBytes);
+                    packet = new(
+                        -1, // for some odd reason ConnectionID >= 0 indicates global broadcast message
+                        1,
+                        2,
+                        (byte)sound);
 
-                    try
+                    ReadOnlySpan<char> toName = message.GetToken(':', out ReadOnlySpan<char> remaining);
+                    if (toName.IsEmpty || remaining.Length < 1)
                     {
-                        sb.Append($":{toName}:({player.Name})>{remaining[1..]}");
-
-                        Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserPrivateChat.MaxTextChars, sb.Length)];
-                        sb.CopyTo(0, textBuffer, textBuffer.Length);
-
-                        bytesWritten = S2B_UserPrivateChat.SetText(packetBytes, textBuffer);
+                        _logManager.LogP(LogLevel.Malicious, nameof(BillingUdp), player, "Malformed remote private message");
                     }
-                    finally
+                    else
                     {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
-                    }
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        int bytesWritten;
 
-                    lock (_lockObj)
-                    {
+                        try
+                        {
+                            sb.Append($":{toName}:({player.Name})>{remaining[1..]}");
+
+                            Span<char> textBuffer = stackalloc char[Math.Min(S2B_UserPrivateChat.MaxTextChars, sb.Length)];
+                            sb.CopyTo(0, textBuffer, textBuffer.Length);
+
+                            bytesWritten = S2B_UserPrivateChat.SetText(packetBytes, textBuffer);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
+
                         _networkClient.SendPacket(_cc, packetBytes[..bytesWritten], NetSendFlags.Reliable);
                     }
                 }
@@ -967,37 +1004,38 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (!playerData.IsKnownToBiller)
-                return;
-
-            if (target.Type != TargetType.Arena)
-            {
-                _logManager.LogP(LogLevel.Drivel, nameof(BillingUdp), player, $"Unknown command with bad target: '{line}'.");
-                return;
-            }
-
-            if (_chat.GetPlayerChatMask(player).IsRestricted(ChatMessageType.BillerCommand))
-                return;
-
-            Span<byte> packetBytes = stackalloc byte[S2B_UserCommand.MaxLength];
-            ref S2B_UserCommand packet = ref MemoryMarshal.AsRef<S2B_UserCommand>(packetBytes);
-            packet = new(player.Id);
-            int length;
-
-            if (line.StartsWith("chat=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("chat ", StringComparison.OrdinalIgnoreCase))
-            {
-                length = RewriteChatCommand(player, line, packetBytes);
-            }
-            else
-            {
-                // Write the command prepended with the question mark.
-                length = S2B_UserCommand.SetText(packetBytes, line, true);
-            }
-
             lock (_lockObj)
             {
+                if (!playerData.IsKnownToBiller)
+                    return;
+
+                if (target.Type != TargetType.Arena)
+                {
+                    _logManager.LogP(LogLevel.Drivel, nameof(BillingUdp), player, $"Unknown command with bad target: '{line}'.");
+                    return;
+                }
+
+                if (_chat.GetPlayerChatMask(player).IsRestricted(ChatMessageType.BillerCommand))
+                    return;
+
+                Span<byte> packetBytes = stackalloc byte[S2B_UserCommand.MaxLength];
+                ref S2B_UserCommand packet = ref MemoryMarshal.AsRef<S2B_UserCommand>(packetBytes);
+                packet = new(player.Id);
+                int length;
+
+                if (line.StartsWith("chat=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("chat ", StringComparison.OrdinalIgnoreCase))
+                {
+                    length = RewriteChatCommand(player, line, packetBytes);
+                }
+                else
+                {
+                    // Write the command prepended with the question mark.
+                    length = S2B_UserCommand.SetText(packetBytes, line, true);
+                }
+
                 _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
             }
+            
 
             [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, typeof(string), Description = "Comma separated staff chat list.")]
             [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to staff chats.")]
@@ -1110,58 +1148,61 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
                 return;
 
-            if (playerData.AuthRequest is null)
+            lock (_lockObj)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Unexpected billing fallback response.");
-                return;
+                if (playerData.AuthRequest is null)
+                {
+                    _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Unexpected billing fallback response.");
+                    return;
+                }
+
+                IAuthResult result = playerData.AuthRequest.Result;
+
+                if (fallbackResult == BillingFallbackResult.Match)
+                {
+                    // Correct password, player is ok and authenticated.
+                    result.Code = AuthCode.OK;
+                    result.Authenticated = true;
+
+                    ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
+                    Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+                    int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
+                    Debug.Assert(nameChars.Length == decodedCharCount);
+                    result.SetName(nameChars);
+                    result.SetSendName(nameChars);
+
+                    result.SetSquad("");
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: authenticated.");
+                }
+                else if (fallbackResult == BillingFallbackResult.NotFound)
+                {
+                    // Add ^ in front of name and accept as unathenticated.
+                    result.Code = AuthCode.OK;
+                    result.Authenticated = false;
+
+                    ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
+                    int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
+                    Span<char> nameChars = stackalloc char[1 + charCount];
+                    nameChars[0] = '^';
+                    int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
+                    Debug.Assert(charCount == decodedCharCount);
+                    result.SetName(nameChars);
+                    result.SetSendName(nameChars);
+
+                    result.SetSquad("");
+                    playerData.IsKnownToBiller = false;
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: no entry for this player.");
+                }
+                else // Mismatch or anything else
+                {
+                    result.Code = AuthCode.BadPassword;
+                    result.Authenticated = false;
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: invalid password.");
+                }
+
+                playerData.AuthRequest.Done();
+                playerData.AuthRequest = null;
             }
-
-            IAuthResult result = playerData.AuthRequest.Result;
-
-            if (fallbackResult == BillingFallbackResult.Match)
-            {
-                // Correct password, player is ok and authenticated.
-                result.Code = AuthCode.OK;
-                result.Authenticated = true;
-
-                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
-                Span<char> nameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
-                Debug.Assert(nameChars.Length == decodedCharCount);
-                result.SetName(nameChars);
-                result.SetSendName(nameChars);
-
-                result.SetSquad("");
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: authenticated.");
-            }
-            else if (fallbackResult == BillingFallbackResult.NotFound)
-            {
-                // Add ^ in front of name and accept as unathenticated.
-                result.Code = AuthCode.OK;
-                result.Authenticated = false;
-
-                ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)playerData.AuthRequest.LoginPacket.Name).SliceNullTerminated();
-                int charCount = StringUtils.DefaultEncoding.GetCharCount(nameBytes);
-                Span<char> nameChars = stackalloc char[1 + charCount];
-                nameChars[0] = '^';
-                int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars[1..]);
-                Debug.Assert(charCount == decodedCharCount);
-                result.SetName(nameChars);
-                result.SetSendName(nameChars);
-
-                result.SetSquad("");
-                playerData.IsKnownToBiller = false;
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: no entry for this player.");
-            }
-            else // Mismatch or anything else
-            {
-                result.Code = AuthCode.BadPassword;
-                result.Authenticated = false;
-                _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: invalid password.");
-            }
-
-            playerData.AuthRequest.Done();
-            playerData.AuthRequest = null;
         }
 
         private void LoggedIn()
@@ -1184,7 +1225,7 @@ namespace SS.Core.Modules
                 _chat.SendArenaMessage((Arena)null, "Notice: Connection to user database server lost.");
             }
 
-            // Clear KnownToBiller values
+            // Clear IsKnownToBiller values
             _playerData.Lock();
 
             try
@@ -1230,18 +1271,21 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Mainloop_ReliableCallback_ServerDisconnect(ClientConnection connection, bool success)
+        private void Mainloop_ReliableCallback_ServerDisconnect(IClientConnection connection, bool success)
         {
             if (success)
             {
-                if (_cc is not null)
+                lock(_lockObj)
                 {
-                    _networkClient.DropConnection(_cc);
+                    if (_cc is not null)
+                    {
+                        _networkClient.DropConnection(_cc);
+                    }
                 }
             }
         }
 
-        private void Mainloop_ReliableCallback_BannerComplete(ClientConnection connection, bool success)
+        private void Mainloop_ReliableCallback_BannerComplete(IClientConnection connection, bool success)
         {
             Interlocked.Decrement(ref _bannerUploadPendingCount);
         }

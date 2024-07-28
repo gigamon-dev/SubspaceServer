@@ -24,6 +24,8 @@ namespace SS.Core.Modules
 
         private PlayerDataKey<EncData> _pdKey;
 
+        private readonly DefaultObjectPool<EncData> _encDataPool = new(new DefaultPooledObjectPolicy<EncData>(), Constants.TargetPlayerCount + Constants.TargetClientConnectionCount);
+
         #region Module methods
 
         public bool Load(
@@ -34,7 +36,7 @@ namespace SS.Core.Modules
             _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            _pdKey = playerData.AllocatePlayerData<EncData>();
+            _pdKey = playerData.AllocatePlayerData(_encDataPool);
             _rawNetwork.AppendConnectionInitHandler(ProcessConnectionInit);
             _iEncryptToken = broker.RegisterInterface<IEncrypt>(this, InterfaceIdentifier);
             _iClientEncryptToken = broker.RegisterInterface<IClientEncrypt>(this, InterfaceIdentifier);
@@ -90,14 +92,24 @@ namespace SS.Core.Modules
 
         #region IClientEncrypt members
 
-        void IClientEncrypt.Initialze(ClientConnection cc)
+        void IClientEncrypt.Initialize(IClientConnection connection)
         {
-            cc?.TryAddExtraData(new EncData());
+            if (connection is null)
+                return;
+
+            EncData encData = _encDataPool.Get();
+            if (!connection.TryAddExtraData(encData))
+            {
+                _encDataPool.Return(encData);
+
+                if (connection.TryGetExtraData(out encData))
+                    encData.Reset();
+            }
         }
 
-        int IClientEncrypt.Encrypt(ClientConnection cc, Span<byte> data, int len)
+        int IClientEncrypt.Encrypt(IClientConnection connection, Span<byte> data, int len)
         {
-            if (cc == null || !cc.TryGetExtraData(out EncData ed) || ed == null)
+            if (connection is null || !connection.TryGetExtraData(out EncData ed) || ed is null)
                 return len;
 
             if (data[0] == 0x00 && data[1] == 0x01)
@@ -113,9 +125,9 @@ namespace SS.Core.Modules
             }
         }
 
-        int IClientEncrypt.Decrypt(ClientConnection cc, Span<byte> data, int len)
+        int IClientEncrypt.Decrypt(IClientConnection connection, Span<byte> data, int len)
         {
-            if (cc == null || !cc.TryGetExtraData(out EncData ed) || ed == null)
+            if (connection is null || !connection.TryGetExtraData(out EncData ed) || ed is null)
                 return len;
 
             if (data[0] == 0x00 && data[1] == 0x02)
@@ -131,9 +143,15 @@ namespace SS.Core.Modules
             }
         }
 
-        void IClientEncrypt.Void(ClientConnection cc)
+        void IClientEncrypt.Void(IClientConnection connection)
         {
-            cc?.TryRemoveExtraData(out EncData _);
+            if (connection is null)
+                return;
+
+            if (connection.TryRemoveExtraData(out EncData encData))
+            {
+                _encDataPool.Return(encData);
+            }
         }
 
         #endregion
@@ -169,7 +187,7 @@ namespace SS.Core.Modules
             if (player is null)
             {
                 // no slots left?
-                Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
+                Span<byte> disconnect = [0x00, 0x07];
                 _rawNetwork.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }

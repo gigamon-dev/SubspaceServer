@@ -117,6 +117,15 @@ namespace SS.Core
         public const int TargetPlayerCount = 512;
 
         /// <summary>
+        /// The expected upper limit on the # of client connections.
+        /// </summary>
+        /// <remarks>
+        /// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
+        /// <para>Technically, only one client connection is expected, the connection to the billing server.</para>
+        /// </remarks>
+        public const int TargetClientConnectionCount = 8;
+
+        /// <summary>
         /// The expected upper limit on the # of arenas.
         /// </summary>
         /// <remarks>
