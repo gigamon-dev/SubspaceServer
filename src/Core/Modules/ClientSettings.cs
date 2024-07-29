@@ -21,7 +21,7 @@ namespace SS.Core.Modules
         private IArenaManager _arenaManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
-        private INetwork _net;
+        private INetwork _network;
         private IPlayerData _playerData;
         private IPrng _prng;
         private InterfaceRegistrationToken<IClientSettings> _iClientSettingsToken;
@@ -81,7 +81,7 @@ namespace SS.Core.Modules
             IArenaManager arenaManager,
             IConfigManager configManager,
             ILogManager logManager,
-            INetwork net,
+            INetwork network,
             IPlayerData playerData,
             IPrng prng)
         {
@@ -89,7 +89,7 @@ namespace SS.Core.Modules
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
@@ -983,7 +983,7 @@ namespace SS.Core.Modules
 
             if (playerData.Settings.Type == (byte)S2CPacketType.Settings)
             {
-                _net.SendToOne(
+                _network.SendToOne(
                     player,
                     ref playerData.Settings,
                     NetSendFlags.Reliable);

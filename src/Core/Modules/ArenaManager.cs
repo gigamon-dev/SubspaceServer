@@ -122,17 +122,8 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
-            _network = broker.GetInterface<INetwork>();
-            _chatNetwork = broker.GetInterface<IChatNetwork>();
-
             _spawnKey = _playerData.AllocatePlayerData<SpawnLoc>();
             _adKey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
-
-            _network?.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _network?.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
-
-            _chatNetwork.AddHandler("GO", ChatHandler_GotoArena);
-            _chatNetwork.AddHandler("LEAVE", ChatHandler_LeaveArena);
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
             _mainloopTimer.SetTimer(MainloopTimer_ReapArenas, 1700, 1700, null);
@@ -161,6 +152,20 @@ namespace SS.Core.Modules
                 """)]
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
+            _network = broker.GetInterface<INetwork>();
+            if (_network is not null)
+            {
+                _network.AddPacket(C2SPacketType.GotoArena, Packet_GotoArena);
+                _network.AddPacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+            }
+
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
+            if (_chatNetwork is not null)
+            {
+                _chatNetwork.AddHandler("GO", ChatHandler_GotoArena);
+                _chatNetwork.AddHandler("LEAVE", ChatHandler_LeaveArena);
+            }
+
             _persistExecutor = broker.GetInterface<IPersistExecutor>();
 
             string permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
@@ -190,6 +195,20 @@ namespace SS.Core.Modules
                 broker.ReleaseInterface(ref _persistExecutor);
             }
 
+            if (_network is not null)
+            {
+                _network.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
+                _network.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
+                broker.ReleaseInterface(ref _network);
+            }
+
+            if (_chatNetwork is not null)
+            {
+                _chatNetwork.RemoveHandler("GO", ChatHandler_GotoArena);
+                _chatNetwork.RemoveHandler("LEAVE", ChatHandler_LeaveArena);
+                broker.ReleaseInterface(ref _chatNetwork);
+            }
+
             return true;
         }
 
@@ -211,12 +230,6 @@ namespace SS.Core.Modules
                 _knownArenaWatcher = null;
             }
 
-            _network?.RemovePacket(C2SPacketType.GotoArena, Packet_GotoArena);
-            _network?.RemovePacket(C2SPacketType.LeaveArena, Packet_LeaveArena);
-
-            _chatNetwork?.RemoveHandler("GO", ChatHandler_GotoArena);
-            _chatNetwork?.RemoveHandler("LEAVE", ChatHandler_LeaveArena);
-
             _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessArenaStates, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ReapArenas, null);
@@ -228,16 +241,6 @@ namespace SS.Core.Modules
 
             _arenaDictionary.Clear();
             _arenaTrie.Clear();
-
-            if (_network is not null)
-            {
-                broker.ReleaseInterface(ref _network);
-            }
-
-            if (_chatNetwork is not null)
-            {
-                broker.ReleaseInterface(ref _chatNetwork);
-            }
 
             return true;
         }

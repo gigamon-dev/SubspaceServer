@@ -110,8 +110,8 @@ namespace SS.Core.Modules
 
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
 
-            _network.AddPacket(C2SPacketType.Login, Packet_Login);
-            _network.AddPacket(C2SPacketType.ContLogin, Packet_Login);
+            _network?.AddPacket(C2SPacketType.Login, Packet_Login);
+            _network?.AddPacket(C2SPacketType.ContLogin, Packet_Login);
 
             _chatNetwork?.AddHandler("LOGIN", ChatHandler_Login);
 

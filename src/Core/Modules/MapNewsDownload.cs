@@ -22,7 +22,7 @@ namespace SS.Core.Modules
     {
         private ComponentBroker _broker;
         private IPlayerData _playerData;
-        private INetwork _net;
+        private INetwork _network;
         private ILogManager _logManager;
         private IConfigManager _configManager;
         private IMainloop _mainloop;
@@ -70,7 +70,7 @@ namespace SS.Core.Modules
         public bool Load(
             ComponentBroker broker,
             IPlayerData playerData,
-            INetwork net,
+            INetwork network,
             ILogManager logManager,
             IConfigManager configManager,
             IMainloop mainloop,
@@ -80,7 +80,7 @@ namespace SS.Core.Modules
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
@@ -90,9 +90,9 @@ namespace SS.Core.Modules
 
             _dlKey = _arenaManager.AllocateArenaData(new ListPooledObjectPolicy<MapDownloadData>() { InitialCapacity = S2C_MapFilename.MaxFiles });
 
-            _net.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
-            _net.AddPacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
-            _net.AddPacket(C2SPacketType.NewsRequest, Packet_MapNewsRequest);
+            _network.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
+            _network.AddPacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
+            _network.AddPacket(C2SPacketType.NewsRequest, Packet_MapNewsRequest);
 
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
 
@@ -113,9 +113,9 @@ namespace SS.Core.Modules
 
             _newsManager.Dispose();
 
-            _net.RemovePacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
-            _net.RemovePacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
-            _net.RemovePacket(C2SPacketType.NewsRequest, Packet_MapNewsRequest);
+            _network.RemovePacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
+            _network.RemovePacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
+            _network.RemovePacket(C2SPacketType.NewsRequest, Packet_MapNewsRequest);
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
 
@@ -173,7 +173,7 @@ namespace SS.Core.Modules
 
             if (len > 0)
             {
-                _net.SendToOne(
+                _network.SendToOne(
                     player,
                     MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1))[..len],
                     NetSendFlags.Reliable);
@@ -404,7 +404,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                _net.SendSized(player, mdd.Data.Length, _getMapData, new MapDownloadContext(player, mdd));
+                _network.SendSized(player, mdd.Data.Length, _getMapData, new MapDownloadContext(player, mdd));
 
                 _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), player, $"Sending map/lvz {lvznum} ({mdd.Data.Length} bytes) (transfer '{mdd.FileName}').");
 
@@ -436,7 +436,7 @@ namespace SS.Core.Modules
 
                 if (_newsManager.TryGetNews(out ReadOnlyMemory<byte> compressedNewsData, out _))
                 {
-                    _net.SendSized(player, compressedNewsData.Length, _getNewsData, new NewsDownloadContext(player, compressedNewsData));
+                    _network.SendSized(player, compressedNewsData.Length, _getNewsData, new NewsDownloadContext(player, compressedNewsData));
                     _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), player, $"Sending news.txt ({compressedNewsData.Length} bytes).");
                 }
                 else

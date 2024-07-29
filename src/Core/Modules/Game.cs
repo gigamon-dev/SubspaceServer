@@ -35,7 +35,7 @@ namespace SS.Core.Modules
         private ILogManager _logManager;
         private IMainloop _mainloop;
         private IMapData _mapData;
-        private INetwork _net;
+        private INetwork _network;
         private IObjectPoolManager _objectPoolManager;
         private IPlayerData _playerData;
         private IPrng _prng;
@@ -69,7 +69,7 @@ namespace SS.Core.Modules
             ILogManager logManager,
             IMainloop mainloop,
             IMapData mapData,
-            INetwork net,
+            INetwork network,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IPrng prng)
@@ -85,7 +85,7 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _net = net ?? throw new ArgumentNullException(nameof(net));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
@@ -121,14 +121,14 @@ namespace SS.Core.Modules
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
             FlagGameResetCallback.Register(_broker, Callback_FlagGameReset);
 
-            _net.AddPacket(C2SPacketType.Position, Packet_Position);
-            _net.AddPacket(C2SPacketType.SpecRequest, Packet_SpecRequest);
-            _net.AddPacket(C2SPacketType.SetShip, Packet_SetShip);
-            _net.AddPacket(C2SPacketType.SetFreq, Packet_SetFreq);
-            _net.AddPacket(C2SPacketType.Die, Packet_Die);
-            _net.AddPacket(C2SPacketType.Green, Packet_Green);
-            _net.AddPacket(C2SPacketType.AttachTo, Packet_AttachTo);
-            _net.AddPacket(C2SPacketType.TurretKickOff, Packet_TurretKickoff);
+            _network.AddPacket(C2SPacketType.Position, Packet_Position);
+            _network.AddPacket(C2SPacketType.SpecRequest, Packet_SpecRequest);
+            _network.AddPacket(C2SPacketType.SetShip, Packet_SetShip);
+            _network.AddPacket(C2SPacketType.SetFreq, Packet_SetFreq);
+            _network.AddPacket(C2SPacketType.Die, Packet_Die);
+            _network.AddPacket(C2SPacketType.Green, Packet_Green);
+            _network.AddPacket(C2SPacketType.AttachTo, Packet_AttachTo);
+            _network.AddPacket(C2SPacketType.TurretKickOff, Packet_TurretKickoff);
 
             _chatNetwork?.AddHandler("CHANGEFREQ", ChatHandler_ChangeFreq);
 
@@ -156,14 +156,14 @@ namespace SS.Core.Modules
 
             _chatNetwork?.RemoveHandler("CHANGEFREQ", ChatHandler_ChangeFreq);
 
-            _net.RemovePacket(C2SPacketType.Position, Packet_Position);
-            _net.RemovePacket(C2SPacketType.SpecRequest, Packet_SpecRequest);
-            _net.RemovePacket(C2SPacketType.SetShip, Packet_SetShip);
-            _net.RemovePacket(C2SPacketType.SetFreq, Packet_SetFreq);
-            _net.RemovePacket(C2SPacketType.Die, Packet_Die);
-            _net.RemovePacket(C2SPacketType.Green, Packet_Green);
-            _net.RemovePacket(C2SPacketType.AttachTo, Packet_AttachTo);
-            _net.RemovePacket(C2SPacketType.TurretKickOff, Packet_TurretKickoff);
+            _network.RemovePacket(C2SPacketType.Position, Packet_Position);
+            _network.RemovePacket(C2SPacketType.SpecRequest, Packet_SpecRequest);
+            _network.RemovePacket(C2SPacketType.SetShip, Packet_SetShip);
+            _network.RemovePacket(C2SPacketType.SetFreq, Packet_SetFreq);
+            _network.RemovePacket(C2SPacketType.Die, Packet_Die);
+            _network.RemovePacket(C2SPacketType.Green, Packet_Green);
+            _network.RemovePacket(C2SPacketType.AttachTo, Packet_AttachTo);
+            _network.RemovePacket(C2SPacketType.TurretKickOff, Packet_TurretKickoff);
 
             ArenaActionCallback.Unregister(_broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
@@ -224,7 +224,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(target));
 
             S2C_WarpTo warpTo = new(x, y);
-            _net.SendToTarget(target, ref warpTo, NetSendFlags.Reliable | NetSendFlags.Urgent);
+            _network.SendToTarget(target, ref warpTo, NetSendFlags.Reliable | NetSendFlags.Urgent);
         }
 
         void IGame.GivePrize(ITarget target, Prize prize, short count)
@@ -233,7 +233,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(target));
 
             S2C_PrizeReceive packet = new(count, prize);
-            _net.SendToTarget(target, ref packet, NetSendFlags.Reliable);
+            _network.SendToTarget(target, ref packet, NetSendFlags.Reliable);
         }
 
         void IGame.Lock(ITarget target, bool notify, bool spec, int timeout)
@@ -335,7 +335,7 @@ namespace SS.Core.Modules
                 throw new ArgumentNullException(nameof(target));
 
             ReadOnlySpan<byte> shipResetBytes = stackalloc byte[1] { (byte)S2CPacketType.ShipReset };
-            _net.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
+            _network.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
 
             _playerData.Lock();
 
@@ -970,7 +970,7 @@ namespace SS.Core.Modules
                 return;
 
             ReadOnlySpan<byte> specBytes = stackalloc byte[2] { (byte)S2CPacketType.SpecData, sendExtraPositionData ? (byte)1 : (byte)0 };
-            _net.SendToOne(t, specBytes, NetSendFlags.Reliable);
+            _network.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
         private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
@@ -1411,7 +1411,7 @@ namespace SS.Core.Modules
                                         if (data.Length > length)
                                             data = data[..length];
 
-                                        _net.SendToOne(i, data, nflags);
+                                        _network.SendToOne(i, data, nflags);
                                     }
                                     else
                                     {
@@ -1442,7 +1442,7 @@ namespace SS.Core.Modules
                                         if (data.Length > length)
                                             data = data[..length];
 
-                                        _net.SendToOne(i, data, nflags);
+                                        _network.SendToOne(i, data, nflags);
                                     }
                                 }
                             }
@@ -1758,11 +1758,11 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send it to him, with a callback
-                _net.SendWithCallback(player, data, ResetDuringChange);
+                _network.SendWithCallback(player, data, ResetDuringChange);
             }
 
             // send it to everyone else
-            _net.SendToArena(arena, player, data, NetSendFlags.Reliable);
+            _network.SendToArena(arena, player, data, NetSendFlags.Reliable);
             _chatNetwork?.SendToArena(arena, null, $"SHIPFREQCHANGE:{player.Name}:{ship:D}:{freq:D}");
 
             PreShipFreqChangeCallback.Fire(arena, player, ship, oldShip, freq, oldFreq);
@@ -1830,10 +1830,10 @@ namespace SS.Core.Modules
 
             // him with callback
             if (player.IsStandard)
-                _net.SendWithCallback(player, data, ResetDuringChange);
+                _network.SendWithCallback(player, data, ResetDuringChange);
 
             // everyone else
-            _net.SendToArena(arena, player, data, NetSendFlags.Reliable);
+            _network.SendToArena(arena, player, data, NetSendFlags.Reliable);
             _chatNetwork?.SendToArena(arena, null, $"SHIPFREQCHANGE:{player.Name}:{player.Ship:D}:{freq:D}");
 
             PreShipFreqChangeCallback.Fire(arena, player, player.Ship, player.Ship, freq, oldFreq);
@@ -2072,7 +2072,7 @@ namespace SS.Core.Modules
                 return;
 
             S2C_Kill packet = new(green, (short)killer.Id, (short)killed.Id, pts, flagCount);
-            _net.SendToArena(killer.Arena, null, ref packet, NetSendFlags.Reliable);
+            _network.SendToArena(killer.Arena, null, ref packet, NetSendFlags.Reliable);
             _chatNetwork?.SendToArena(killer.Arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
@@ -2106,7 +2106,7 @@ namespace SS.Core.Modules
                 && !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
             {
                 S2C_Green s2c = new(ref c2s, (short)player.Id);
-                _net.SendToArena(arena, player, ref s2c, NetSendFlags.Unreliable);
+                _network.SendToArena(arena, player, ref s2c, NetSendFlags.Unreliable);
             }
 
             FireGreenEvent(arena, player, c2s.X, c2s.Y, prize);
@@ -2136,7 +2136,7 @@ namespace SS.Core.Modules
             {
                 // Send the packet
                 S2C_Turret packet = new((short)player.Id, toPlayerId);
-                _net.SendToArena(player.Arena, null, ref packet, NetSendFlags.Reliable);
+                _network.SendToArena(player.Arena, null, ref packet, NetSendFlags.Reliable);
 
                 // Update the state
                 player.Attached = toPlayerId;
@@ -2226,7 +2226,7 @@ namespace SS.Core.Modules
                 return;
 
             S2C_TurretKickoff packet = new((short)player.Id);
-            _net.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
+            _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
         }
 
         private static int Hypot(int dx, int dy)

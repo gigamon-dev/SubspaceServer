@@ -33,13 +33,13 @@ namespace SS.Core.Modules
 
         public bool Load(
             ComponentBroker broker,
-            INetwork net,
+            INetwork network,
             ILogManager logManager,
             ICapabilityManager capabilityManager,
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _network = net ?? throw new ArgumentNullException(nameof(net));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));

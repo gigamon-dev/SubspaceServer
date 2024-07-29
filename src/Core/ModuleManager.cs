@@ -72,6 +72,11 @@ namespace SS.Core
         private readonly HashSet<Type> _pluginModuleTypeSet = new();
 
         /// <summary>
+        /// Whether the post-load stage of the startup sequence has been run.
+        /// </summary>
+        private bool _isPostLoaded = false;
+
+        /// <summary>
         /// Constructs a <see cref="ModuleManager"/>.
         /// </summary>
         public ModuleManager()
@@ -597,7 +602,7 @@ namespace SS.Core
                 // Unload the moduleLoadContext if it's the last module from that context/assembly
                 if (_pluginModuleTypeSet.Any((t) => t.Assembly == assembly) == false)
                 {
-                    WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}]");
+                    WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}].");
 
                     _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
 
@@ -657,20 +662,13 @@ namespace SS.Core
         {
             lock (_moduleLockObj)
             {
-                RecursiveUnload(_loadedModules.First);
-            }
-        }
-
-        private void RecursiveUnload(LinkedListNode<Type> node)
-        {
-            if (node == null)
-                return;
-
-            RecursiveUnload(node.Next);
-
-            if (UnloadModule(node) == false)
-            {
-                //Console.Error.WriteLine("<ModuleManager> Error unloading ")
+                LinkedListNode<Type> node = _loadedModules.Last;
+                while (node is not null)
+                {
+                    LinkedListNode<Type> previous = node.Previous;
+                    UnloadModule(node);
+                    node = previous;
+                }
             }
         }
 
@@ -777,15 +775,52 @@ namespace SS.Core
         {
             lock (_moduleLockObj)
             {
-                foreach (ModuleData moduleData in _moduleTypeLookup.Values)
+                if (!_isPostLoaded)
                 {
-                    if (moduleData.IsLoaded
-                        && moduleData.Module is IModuleLoaderAware loaderAwareModule)
+                    _isPostLoaded = true;
+
+                    LinkedListNode<Type> node = _loadedModules.First;
+                    while (node is not null)
                     {
-                        loaderAwareModule.PostLoad(this);
+                        if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData moduleData))
+                        {
+                            PostLoad(moduleData);
+                        }
+
+                        node = node.Next;
                     }
                 }
             }
+        }
+
+        private bool PostLoad(ModuleData moduleData)
+        {
+            if (moduleData is null)
+                return false;
+
+            if (moduleData.IsLoaded
+                && !moduleData.IsPostLoaded
+                && moduleData.Module is IModuleLoaderAware loaderAwareModule)
+            {
+                try
+                {
+                    if (loaderAwareModule.PostLoad(this))
+                    {
+                        moduleData.IsPostLoaded = true;
+                        return true;
+                    }
+                    else
+                    {
+                        WriteLogM(LogLevel.Warn, $"Error post-loading module [{moduleData.ModuleType.FullName}].");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLogM(LogLevel.Warn, $"Error post-loading module [{moduleData.ModuleType.FullName}]. Exception: {ex.Message}");
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -795,15 +830,52 @@ namespace SS.Core
         {
             lock (_moduleLockObj)
             {
-                foreach (ModuleData moduleData in _moduleTypeLookup.Values)
+                if (_isPostLoaded)
                 {
-                    if (moduleData.IsLoaded
-                        && moduleData.Module is IModuleLoaderAware loaderAwareModule)
+                    _isPostLoaded = false;
+
+                    LinkedListNode<Type> node = _loadedModules.Last;
+                    while (node is not null)
                     {
-                        loaderAwareModule.PreUnload(this);
+                        if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData moduleData))
+                        {
+                            PreUnload(moduleData);
+                        }
+
+                        node = node.Previous;
                     }
                 }
             }
+        }
+
+        private bool PreUnload(ModuleData moduleData)
+        {
+            if (moduleData is null)
+                return false;
+
+            if (moduleData.IsLoaded
+                && moduleData.IsPostLoaded
+                && moduleData.Module is IModuleLoaderAware loaderAwareModule)
+            {
+                try
+                {
+                    if (loaderAwareModule.PreUnload(this))
+                    {
+                        moduleData.IsPostLoaded = false;
+                        return true;
+                    }
+                    else
+                    {
+                        WriteLogM(LogLevel.Warn, $"Error pre-unloading module [{moduleData.ModuleType.FullName}].");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLogM(LogLevel.Warn, $"Error pre-unloading module [{moduleData.ModuleType.FullName}]. Exception: {ex.Message}");
+                }
+            }
+
+            return false;
         }
 
         #endregion
@@ -912,6 +984,19 @@ namespace SS.Core
             }
 
             /// <summary>
+            /// Whether the module has been post-loaded.
+            /// </summary>
+            /// <remarks>
+            /// This becomes <see langword="true"/> after <see cref="IModuleLoaderAware.PostLoad(ComponentBroker)"/> has been successfully called,
+            /// and goes back to <see langword="false"/> after <see cref="IModuleLoaderAware.PreUnload(ComponentBroker)(ComponentBroker)"/> has been successfully called.
+            /// </remarks>
+            public bool IsPostLoaded
+            {
+                get;
+                set;
+            }
+
+            /// <summary>
             /// The load method.
             /// </summary>
             public MethodInfo LoadMethod
@@ -996,7 +1081,7 @@ namespace SS.Core
 
                 if (!success)
                 {
-                    WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]");
+                    WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}].");
                 }
             }
             catch (Exception ex)
@@ -1014,7 +1099,15 @@ namespace SS.Core
 
             moduleData.IsLoaded = true;
             _loadedModules.AddLast(moduleData.ModuleType);
-            WriteLogM(LogLevel.Info, $"Loaded module [{moduleData.ModuleType.FullName}]");
+            WriteLogM(LogLevel.Info, $"Loaded module [{moduleData.ModuleType.FullName}].");
+
+            if (_isPostLoaded)
+            {
+                // The startup sequence post load stage has already run.
+                // After that, any module that gets loaded should also immediately get post loaded too.
+                PostLoad(moduleData);
+            }
+
             return true;
         }
 
@@ -1041,11 +1134,17 @@ namespace SS.Core
                 }
             }
 
+            if (moduleData.IsPostLoaded && !PreUnload(moduleData))
+            {
+                WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to pre-unload.");
+                return false;
+            }
+
             try
             {
                 if (moduleData.Module.Unload(this) == false)
                 {
-                    WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]");
+                    WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}].");
                     return false;
                 }
             }
@@ -1063,7 +1162,7 @@ namespace SS.Core
             ReleaseInterfaces(moduleData);
 
             moduleData.IsLoaded = false;
-            WriteLogM(LogLevel.Info, $"Unloaded module [{moduleData.ModuleType.FullName}]");
+            WriteLogM(LogLevel.Info, $"Unloaded module [{moduleData.ModuleType.FullName}].");
             return true;
         }
 
@@ -1122,7 +1221,7 @@ namespace SS.Core
                     assembly = loadContext.LoadFromAssemblyName(assemblyName);
                     _loadedPluginAssemblies[path] = assembly;
 
-                    WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\"");
+                    WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\".");
 
                     PluginAssemblyLoadedCallback.Fire(this, assembly);
                 }
@@ -1132,7 +1231,7 @@ namespace SS.Core
             }
             catch (Exception ex)
             {
-                WriteLogM(LogLevel.Error, $"Error loading assembly from path \"{path}\", exception: {ex}");
+                WriteLogM(LogLevel.Error, $"Error loading assembly from path \"{path}\". Exception: {ex}");
                 return null;
             }
         }
