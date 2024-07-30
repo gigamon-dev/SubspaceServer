@@ -9,6 +9,9 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class BandwidthNoLimit : IModule, IBandwidthLimiterProvider
     {
+        public const string InterfaceIdentifier = nameof(BandwidthNoLimit);
+
+        private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderNamedToken;
         private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
 
         // This limiter does not keep any state; it is immutable. Therefore, we just use one instance for all.
@@ -18,12 +21,16 @@ namespace SS.Core.Modules
 
         public bool Load(ComponentBroker broker)
         {
+            _iBandwidthLimiterProviderNamedToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this, InterfaceIdentifier);
             _iBandwidthLimiterProviderToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this);
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            if (broker.UnregisterInterface(ref _iBandwidthLimiterProviderNamedToken) != 0)
+                return false;
+
             if (broker.UnregisterInterface(ref _iBandwidthLimiterProviderToken) != 0)
                 return false;
 

@@ -110,11 +110,13 @@ namespace SS.Core.ComponentInterfaces
         /// <para>All calls to the handler are guaranteed to be executed on the mainloop thread.</para>
         /// </param>
         /// <param name="encryptorName">The name of the encryptor (<see cref="IClientEncrypt"/>) to use for the connection.</param>
+        /// <param name="bandwidthLimiterProviderName">The name of the bandwidth limiter provider (<see cref="IBandwidthLimiterProvider"/>) to use for the connection.</param>
         /// <returns>The connection if one was created. <see langword="null"/> if there was a problem.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="endPoint"/> is null.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="encryptorName"/> is null or white-space.</exception>
-        IClientConnection MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName);
+        /// <exception cref="ArgumentException"><paramref name="bandwidthLimiterProviderName"/> is null or white-space.</exception>
+        IClientConnection MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName, string bandwidthLimiterProviderName);
 
         /// <summary>
         /// Sends data to the server.

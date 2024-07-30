@@ -560,6 +560,9 @@ namespace SS.Core.Modules
             Description = "The IP address of the user database server (no DNS hostnames allowed).")]
         [ConfigHelp("Billing", "Port", ConfigScope.Global, typeof(int), DefaultValue = "1850",
             Description = "The port to connect to on the user database server.")]
+        // Billing:Encryptor is purposely not documented. The EncryptionVIE module is the only usable option.
+        [ConfigHelp("Billing", "BandwidthLimiterProvider", ConfigScope.Global, typeof(int), DefaultValue = "1850",
+            Description = "The bandwidth limiter provider to use for the connection to the user database server.")]
         private bool MainloopTimer_DoWork()
         {
             lock (_lockObj)
@@ -568,6 +571,8 @@ namespace SS.Core.Modules
                 {
                     string ipAddressStr = _configManager.GetStr(_configManager.Global, "Billing", "IP");
                     int port = _configManager.GetInt(_configManager.Global, "Billing", "Port", 1850);
+                    string encryptorName = _configManager.GetStr(_configManager.Global, "Billing", "Encryptor") ?? EncryptionVIE.InterfaceIdentifier;
+                    string bandwidthLimiterProviderName = _configManager.GetStr(_configManager.Global, "Billing", "BandwidthLimiterProvider") ?? BandwidthNoLimit.InterfaceIdentifier;
 
                     if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
                     {
@@ -604,7 +609,7 @@ namespace SS.Core.Modules
                     
                     try
                     {
-                        _cc = _networkClient.MakeClientConnection(billerEndpoint, this, EncryptionVIE.InterfaceIdentifier);
+                        _cc = _networkClient.MakeClientConnection(billerEndpoint, this, encryptorName, bandwidthLimiterProviderName);
                     }
                     catch (Exception ex)
                     {

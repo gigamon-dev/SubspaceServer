@@ -1133,22 +1133,30 @@ namespace SS.Core.Modules
 
         #region INetworkClient Members
 
-        IClientConnection INetworkClient.MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName)
+        IClientConnection INetworkClient.MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName, string bandwidthLimiterProviderName)
         {
             ArgumentNullException.ThrowIfNull(endPoint);
             ArgumentNullException.ThrowIfNull(handler);
             ArgumentException.ThrowIfNullOrWhiteSpace(encryptorName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(bandwidthLimiterProviderName);
 
-            IClientEncrypt encryptor = null;
-            encryptor = _broker.GetInterface<IClientEncrypt>(encryptorName);
+            IClientEncrypt encryptor = _broker.GetInterface<IClientEncrypt>(encryptorName);
             if (encryptor is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to find an {nameof(IClientEncrypt)} named '{encryptorName}'.");
                 return null;
             }
 
+            IBandwidthLimiterProvider bandwidthLimitProvider = _broker.GetInterface<IBandwidthLimiterProvider>(bandwidthLimiterProviderName);
+            if (bandwidthLimitProvider is null)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to find an {nameof(IBandwidthLimiterProvider)} named '{bandwidthLimiterProviderName}'.");
+                _broker.ReleaseInterface(ref encryptor, encryptorName);
+                return null;
+            }
+
             ClientConnection clientConnection = _clientConnectionPool.Get();
-            clientConnection.Initialize(endPoint, _clientSocket, handler, encryptor, encryptorName, _bandwithLimiterProvider.New());
+            clientConnection.Initialize(endPoint, _clientSocket, handler, encryptor, encryptorName, bandwidthLimitProvider, bandwidthLimiterProviderName);
 
             bool added;
 
@@ -1170,8 +1178,11 @@ namespace SS.Core.Modules
                 clientConnection.Encryptor.Void(clientConnection);
                 _broker.ReleaseInterface(ref clientConnection.Encryptor, clientConnection.EncryptorName);
 
-                _bandwithLimiterProvider.Free(clientConnection.BandwidthLimiter);
+                clientConnection.BandwidthLimiterProvider.Free(clientConnection.BandwidthLimiter);
                 clientConnection.BandwidthLimiter = null;
+
+                _broker.ReleaseInterface(ref clientConnection.BandwidthLimiterProvider, clientConnection.BandwidthLimiterProviderName);
+                clientConnection.BandwidthLimiterProviderName = null;
 
                 _clientConnectionPool.Return(clientConnection);
                 return null;
@@ -2795,8 +2806,14 @@ namespace SS.Core.Modules
 
             if (conn.BandwidthLimiter is not null)
             {
-                _bandwithLimiterProvider.Free(conn.BandwidthLimiter);
+                (conn.BandwidthLimiterProvider ?? _bandwithLimiterProvider).Free(conn.BandwidthLimiter);
                 conn.BandwidthLimiter = null;
+            }
+
+            if (conn.BandwidthLimiterProvider is not null)
+            {
+                _broker.ReleaseInterface(ref conn.BandwidthLimiterProvider, conn.BandwidthLimiterProviderName);
+                conn.BandwidthLimiterProviderName = null;
             }
 
             // NOTE: The encryptor can't be removed yet since the disconnect packet still needs to be sent.
@@ -4705,7 +4722,17 @@ namespace SS.Core.Modules
             public int AverageRoundTripDeviation;
 
             /// <summary>
-            /// bandwidth limiting
+            /// The bandwidth limiter provider to use for the connection. <see langword="null"/> if using the default (<see cref="_bandwithLimiterProvider"/>).
+            /// </summary>
+            public IBandwidthLimiterProvider BandwidthLimiterProvider;
+
+            /// <summary>
+            /// The name of the <see cref="IBandwidthLimiterProvider"/> interface. <see langword="null"/> if using the default (<see cref="_bandwithLimiterProvider"/>).
+            /// </summary>
+            public string BandwidthLimiterProviderName;
+
+            /// <summary>
+            /// The bandwidth limiter to use for the connection.
             /// </summary>
             /// <remarks>
             /// Synchronized with <see cref="OutLock"/>.
@@ -4972,17 +4999,23 @@ namespace SS.Core.Modules
                 IClientConnectionHandler handler,
                 IClientEncrypt encryptor,
                 string encryptorName,
-                IBandwidthLimiter bandwidthLimiter)
+                IBandwidthLimiterProvider bandwidthLimiterProvider,
+                string bandwidthLimiterProviderName)
             {
+                ArgumentException.ThrowIfNullOrWhiteSpace(encryptorName);
+                ArgumentException.ThrowIfNullOrWhiteSpace(bandwidthLimiterProviderName);
+
                 Initialize();
 
                 Handler = handler ?? throw new ArgumentNullException(nameof(handler));
                 RemoteEndpoint = remoteEndpoint ?? throw new ArgumentNullException(nameof(remoteEndpoint));
                 RemoteAddress = remoteEndpoint.Serialize();
                 SendSocket = socket ?? throw new ArgumentNullException(nameof(socket));
-                Encryptor = encryptor;
+                Encryptor = encryptor ?? throw new ArgumentNullException(nameof(encryptor));
                 EncryptorName = encryptorName;
-                BandwidthLimiter = bandwidthLimiter;
+                BandwidthLimiterProvider = bandwidthLimiterProvider ?? throw new ArgumentNullException(nameof(bandwidthLimiterProvider));
+                BandwidthLimiterProviderName = bandwidthLimiterProviderName;
+                BandwidthLimiter = bandwidthLimiterProvider.New();
                 Status = ClientConnectionStatus.Connecting;
 
                 Encryptor.Initialize(this);

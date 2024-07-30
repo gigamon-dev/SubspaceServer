@@ -43,7 +43,10 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class BandwidthDefault : IModule, IBandwidthLimiterProvider
     {
+        public const string InterfaceIdentifier = nameof(BandwidthDefault);
+
         private IConfigManager _configManager;
+        private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderNamedToken;
         private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
 
         private Settings _settings;
@@ -76,12 +79,16 @@ namespace SS.Core.Modules
 
             _bandwidthLimiterPool = new DefaultObjectPool<DefaultBandwidthLimiter>(new BandwidthLimiterPooledObjectPolicy(_settings), Constants.TargetPlayerCount);
 
+            _iBandwidthLimiterProviderNamedToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this, InterfaceIdentifier);
             _iBandwidthLimiterProviderToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this);
             return true;
         }
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            if (broker.UnregisterInterface(ref _iBandwidthLimiterProviderNamedToken) != 0)
+                return false;
+
             if (broker.UnregisterInterface(ref _iBandwidthLimiterProviderToken) != 0)
                 return false;
 
