@@ -1692,11 +1692,11 @@ namespace SS.Core.Modules
             string prefix = targetPlayer.Name;
             TimeSpan connectedTimeSpan = DateTime.UtcNow - targetPlayer.ConnectTime;
 
-            _chat.SendMessage(player, $"{prefix}: pid={targetPlayer.Id}  name='{targetPlayer.Name}'  squad='{targetPlayer.Squad}'  " +
-                $"auth={(targetPlayer.Flags.Authenticated ? 'Y' : 'N')}  ship={targetPlayer.Ship}  freq={targetPlayer.Freq}");
-            _chat.SendMessage(player, $"{prefix}: arena={(targetPlayer.Arena != null ? targetPlayer.Arena.Name : "(none)")}  " +
-                $"client={targetPlayer.ClientName}  res={targetPlayer.Xres}x{targetPlayer.Yres}  onFor={connectedTimeSpan}  " +
-                $"connectAs={(!string.IsNullOrWhiteSpace(targetPlayer.ConnectAs) ? targetPlayer.ConnectAs : "<default>")}");
+            _chat.SendMessage(player, $"{prefix}: pid: {targetPlayer.Id}  name: '{targetPlayer.Name}'  squad: '{targetPlayer.Squad}'  " +
+                $"auth: {(targetPlayer.Flags.Authenticated ? 'Y' : 'N')}  ship: {targetPlayer.Ship}  freq: {targetPlayer.Freq}");
+            _chat.SendMessage(player, $"{prefix}: arena: {(targetPlayer.Arena != null ? targetPlayer.Arena.Name : "(none)")}  " +
+                $"client: {targetPlayer.ClientName}  res: {targetPlayer.Xres}x{targetPlayer.Yres}  onFor: {connectedTimeSpan}  " +
+                $"connectAs: {(!string.IsNullOrWhiteSpace(targetPlayer.ConnectAs) ? targetPlayer.ConnectAs : "<default>")}");
 
             if (targetPlayer.IsStandard)
             {
@@ -1714,8 +1714,8 @@ namespace SS.Core.Modules
                         if (chatNetwork.TryGetClientStats(targetPlayer, ip, out int ipBytesWritten, out int port, out ChatClientStats stats))
                         {
                             ip = ip[..ipBytesWritten];
-                            _chat.SendMessage(player, $"{prefix}: ip={ip}  port={port}");
-                            _chat.SendMessage(player, $"{prefix}: sent={stats.BytesSent} B  received={stats.BytesReceived} B");
+                            _chat.SendMessage(player, $"{prefix}: ip: {ip}  port: {port}");
+                            _chat.SendMessage(player, $"{prefix}: sent: {stats.BytesSent} B  received: {stats.BytesReceived} B");
                         }
                     }
                     finally
@@ -1732,7 +1732,7 @@ namespace SS.Core.Modules
 
             if (targetPlayer.Status != PlayerState.Playing)
             {
-                _chat.SendMessage(player, $"{prefix}: status={targetPlayer.Status}");
+                _chat.SendMessage(player, $"{prefix}: status: {targetPlayer.Status}");
             }
         }
 
@@ -1926,18 +1926,18 @@ namespace SS.Core.Modules
 
                 if (includeSensitive)
                 {
-                    _chat.SendMessage(player, $"{prefix}: ip={stats.IPEndPoint.Address}  port={stats.IPEndPoint.Port}  " +
-                        $"encName={stats.EncryptorName}  macId={targetPlayer.MacId}  permId={targetPlayer.PermId}");
+                    _chat.SendMessage(player, $"{prefix}: ip: {stats.IPEndPoint.Address}  port: {stats.IPEndPoint.Port}  " +
+                        $"encName: {stats.EncryptorName}  macId: {targetPlayer.MacId}  permId: {targetPlayer.PermId}");
                 }
 
                 int ignoringwpns = _game != null ? (int)(100f * _game.GetIgnoreWeapons(targetPlayer)) : 0;
 
                 _chat.SendMessage(player,
                     $"{prefix}: " +
-                    $"ave bw in/out={(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0}  " +
-                    $"ignoringWpns={ignoringwpns}%  dropped={stats.PacketsDropped}");
+                    $"ave bw in/out: {(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0}  " +
+                    $"ignoringWpns: {ignoringwpns}%  dropped: {stats.PacketsDropped}");
 
-                _chat.SendMessage(player, $"{prefix}: bwlimit={stats.BandwidthLimitInfo}");
+                _chat.SendMessage(player, $"{prefix}: bwlimit: {stats.BandwidthLimitInfo}");
             }
             finally
             {
