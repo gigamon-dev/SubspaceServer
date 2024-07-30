@@ -62,14 +62,14 @@ namespace SS.Core
         public void Quit()
         {
             ModuleManager mm = _mm;
-            if (mm == null)
+            if (mm is null)
             {
                 Console.WriteLine("The server is not running.");
                 return;
             }
 
             IMainloop mainloop = mm.GetInterface<IMainloop>();
-            if (mainloop == null)
+            if (mainloop is null)
             {
                 Console.WriteLine("Mainloop is not loaded.");
                 return;
@@ -87,7 +87,7 @@ namespace SS.Core
 
         private bool Start()
         {
-            if (_mm != null)
+            if (_mm is not null)
                 throw new InvalidOperationException("The server is already running.");
 
             _mm = new ModuleManager();
@@ -106,7 +106,7 @@ namespace SS.Core
         private bool LoadModulesFromConfig(string moduleConfigFilename)
         {
             IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
-            if (loader == null)
+            if (loader is null)
             {
                 if (!_mm.LoadModule<ModuleLoader>())
                 {
@@ -115,7 +115,7 @@ namespace SS.Core
                 }
 
                 loader = _mm.GetInterface<IModuleLoader>();
-                if (loader == null)
+                if (loader is null)
                 {
                     Console.Error.WriteLine("Loaded ModuleLoader, but unable to get it via its interface.");
                     return false;
@@ -138,7 +138,7 @@ namespace SS.Core
 
             // Run the mainloop.
             IMainloop mainloop = _mm.GetInterface<IMainloop>();
-            if (mainloop == null)
+            if (mainloop is null)
             {
                 Console.Error.WriteLine("Unable to get IMainloop. Check that the Mainloop module is in the Modules.config.");
                 return ExitCode.General;
@@ -147,44 +147,51 @@ namespace SS.Core
             try
             {
                 ret = mainloop.RunLoop();
+
+                Console.WriteLine($"I <{nameof(Server)}> Exited main loop.");
+
+                // Try to send a friendly message to anyone connected.
+                // Note: There is no guarantee the Network module will send it before being unloaded.
+                IChat chat = _mm.GetInterface<IChat>();
+                if (chat is not null)
+                {
+                    try
+                    {
+                        chat.SendArenaMessage(null, $"The server is {(ret == ExitCode.Recycle ? "recycling" : "shutting down")} now!");
+                    }
+                    finally
+                    {
+                        _mm.ReleaseInterface(ref chat);
+                    }
+                }
+
+                IPersistExecutor persistExecutor = _mm.GetInterface<IPersistExecutor>();
+                if (persistExecutor is not null)
+                {
+                    try
+                    {
+                        Console.WriteLine($"I <{nameof(Server)}> Saving scores.");
+
+                        using AutoResetEvent autoResetEvent = new(false);
+                        persistExecutor.SaveAll(() => autoResetEvent.Set());
+
+                        while (true)
+                        {
+                            if (autoResetEvent.WaitOne(10))
+                                break;
+
+                            mainloop.WaitForMainWorkItemDrain();
+                        }
+                    }
+                    finally
+                    {
+                        _mm.ReleaseInterface(ref persistExecutor);
+                    }
+                }
             }
             finally
             {
                 _mm.ReleaseInterface(ref mainloop);
-            }
-
-            Console.WriteLine($"I <{nameof(Server)}> Exited main loop.");
-
-            // Try to send a friendly message to anyone connected.
-            // Note: There is no guarantee the Network module will send it before being unloaded.
-            IChat chat = _mm.GetInterface<IChat>();
-            if (chat != null)
-            {
-                try
-                {
-                    chat.SendArenaMessage(null, $"The server is {(ret == ExitCode.Recycle ? "recycling" : "shutting down")} now!");
-                }
-                finally
-                {
-                    _mm.ReleaseInterface(ref chat);
-                }
-            }
-
-            IPersistExecutor persistExecutor = _mm.GetInterface<IPersistExecutor>();
-            if (persistExecutor != null)
-            {
-                try
-                {
-                    Console.WriteLine($"I <{nameof(Server)}> Saving scores.");
-
-                    using AutoResetEvent autoResetEvent = new(false);
-                    persistExecutor.SaveAll(() => autoResetEvent.Set());
-                    autoResetEvent.WaitOne();
-                }
-                finally
-                {
-                    _mm.ReleaseInterface(ref persistExecutor);
-                }
             }
 
             // Unload.

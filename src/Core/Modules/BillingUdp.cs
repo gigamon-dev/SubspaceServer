@@ -27,7 +27,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class BillingUdp : IModule, IBilling, IAuth, IClientConnectionHandler
+    public sealed class BillingUdp : IModule, IModuleLoaderAware, IBilling, IAuth, IClientConnectionHandler, IDisposable
     {
         private ComponentBroker _broker;
 
@@ -37,6 +37,7 @@ namespace SS.Core.Modules
         private ICommandManager _commandManager;
         private IConfigManager _configManager;
         private ILogManager _logManager;
+        private IMainloop _mainloop;
         private IMainloopTimer _mainloopTimer;
         private INetwork _network;
         private INetworkClient _networkClient;
@@ -63,6 +64,7 @@ namespace SS.Core.Modules
         private DateTime? _interruptedAuthsDampTime;
         private BillingState _state = BillingState.NoSocket;
         private IClientConnection _cc;
+        private readonly AutoResetEvent _disconnectedAutoResetEvent = new(false);
         private DateTime _lastEvent;
         private byte[] _identity = null;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
@@ -96,6 +98,7 @@ namespace SS.Core.Modules
             ICommandManager commandManager,
             IConfigManager configManager,
             ILogManager logManager,
+            IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             INetwork network,
             INetworkClient networkClient,
@@ -108,6 +111,7 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _networkClient = networkClient ?? throw new ArgumentNullException(nameof(networkClient));
@@ -126,9 +130,6 @@ namespace SS.Core.Modules
             _cfgRetryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", 180));
             _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", 5);
 
-            _mainloopTimer.SetTimer(MainloopTimer_DoWork, 100, 100, null);
-            _pendingAuths = _interruptedAuths = 0;
-
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             ChatMessageCallback.Register(broker, Callback_ChatMessage);
@@ -145,6 +146,54 @@ namespace SS.Core.Modules
             return true;
         }
 
+        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        {
+            _pendingAuths = _interruptedAuths = 0;
+            _mainloopTimer.SetTimer(MainloopTimer_DoWork, 100, 100, null);
+
+            return true;
+        }
+
+        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
+        {
+            _mainloopTimer.ClearTimer(MainloopTimer_DoWork, null);
+
+            // The following disconnect logic is in PreUnload because we want to gracefully disconnect.
+            // The Network module forcefully disconnects all connections when it PreUnloads.
+            // So, by the time the Unload method is called, the connection would already have been forcefully disconnected.
+            // Since this module is loaded after the Network module, it is guaranteed to PreUnload before the Network module,
+            // allowing us to disconnect in the nicest possible manner.
+
+            // Drop the connection.
+            lock (_lockObj)
+            {
+                if (_state != BillingState.Disabled)
+                {
+                    DropConnection(BillingState.Disabled);
+                }
+
+                if (_cc is not null)
+                {
+                    _logManager.LogM(LogLevel.Info, nameof(BillingUdp), "Waiting for the client connection to disconnect.");
+                }
+            }
+
+            // Wait for the connection to disconnect.
+            while (true)
+            {
+                lock (_lockObj)
+                {
+                    if (_cc is null)
+                        break;
+                }
+
+                _disconnectedAutoResetEvent.WaitOne(10);
+                _mainloop.WaitForMainWorkItemDrain();
+            }
+
+            return true;
+        }
+
         public bool Unload(ComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iBillingToken) != 0)
@@ -152,11 +201,6 @@ namespace SS.Core.Modules
 
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
-
-            lock (_lockObj)
-            {
-                DropConnection(BillingState.Disabled, false);
-            }
 
             _commandManager.RemoveCommand("usage", Command_usage);
             _commandManager.RemoveCommand("userid", Command_userid);
@@ -168,14 +212,15 @@ namespace SS.Core.Modules
             ChatMessageCallback.Unregister(broker, Callback_ChatMessage);
             BannerSetCallback.Unregister(broker, Callback_BannerSet);
 
-            _mainloopTimer.ClearTimer(MainloopTimer_DoWork, null);
-
             _network.RemovePacket(C2SPacketType.RegData, Packet_RegData);
 
             _playerData.FreePlayerData(ref _pdKey);
 
-            broker.ReleaseInterface(ref _arenaPlayerStats);
-            broker.ReleaseInterface(ref _billingFallback);
+            if (_arenaPlayerStats is not null)
+                broker.ReleaseInterface(ref _arenaPlayerStats);
+
+            if (_billingFallback is not null)
+                broker.ReleaseInterface(ref _billingFallback);
 
             return true;
         }
@@ -459,12 +504,22 @@ namespace SS.Core.Modules
             lock (_lockObj)
             {
                 _cc = null;
+                _disconnectedAutoResetEvent.Set();
 
                 if (_state != BillingState.Disabled)
                 {
-                    DropConnection(BillingState.Retry, true);
+                    DropConnection(BillingState.Retry);
                 }
             }
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        void IDisposable.Dispose()
+        {
+            _disconnectedAutoResetEvent.Dispose();
         }
 
         #endregion
@@ -517,21 +572,21 @@ namespace SS.Core.Modules
                     if (port < IPEndPoint.MinPort || port > IPEndPoint.MaxPort)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid Billing:Port (Min={IPEndPoint.MinPort}, Max={IPEndPoint.MaxPort}, Actual={port}). User database connectivity disabled.");
-                        DropConnection(BillingState.Disabled, true);
+                        DropConnection(BillingState.Disabled);
                         return true;
                     }
 
                     if (string.IsNullOrWhiteSpace(ipAddressStr))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "No Billing:IP set. User database connectivity disabled.");
-                        DropConnection(BillingState.Disabled, true);
+                        DropConnection(BillingState.Disabled);
                         return true;
                     }
 
                     if (!IPAddress.TryParse(ipAddressStr, out IPAddress ipAddress))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Invalid Billing:IP. Unable to parse as an IP address. User database connectivity disabled.");
-                        DropConnection(BillingState.Disabled, true);
+                        DropConnection(BillingState.Disabled);
                         return true;
                     }
 
@@ -543,7 +598,7 @@ namespace SS.Core.Modules
                     catch (Exception ex)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid Billing:IP and Billing:Port combination. {ex.Message} User database connectivity disabled.");
-                        DropConnection(BillingState.Disabled, true);
+                        DropConnection(BillingState.Disabled);
                         return true;
                     }
                     
@@ -910,7 +965,7 @@ namespace SS.Core.Modules
             {
                 if (parameters.Equals("drop", StringComparison.OrdinalIgnoreCase))
                 {
-                    DropConnection(BillingState.Disabled, true);
+                    DropConnection(BillingState.Disabled);
                     _chat.SendMessage(player, "User database connection disabled.");
                 }
                 else if (parameters.Equals("connect", StringComparison.OrdinalIgnoreCase))
@@ -1217,7 +1272,7 @@ namespace SS.Core.Modules
             _logManager.LogM(LogLevel.Info, nameof(BillingUdp), "Logged in to user database server.");
         }
 
-        private void DropConnection(BillingState newState, bool asyncDisconnect)
+        private void DropConnection(BillingState newState)
         {
             // Only announce if changing from LoggedIn
             if (_state == BillingState.LoggedIn)
@@ -1246,20 +1301,8 @@ namespace SS.Core.Modules
             // Close the client connection
             if (_cc is not null)
             {
-                ReadOnlySpan<byte> disconnect = [(byte)S2BPacketType.ServerDisconnect];
-
-                if (asyncDisconnect)
-                {
-                    // Send the billing server disconnect packet and then finally drop the connection only after the packet is ACK'd.
-                    _networkClient.SendWithCallback(_cc, disconnect, _mainloop_ReliableCallback_ServerDisconnect);
-                }
-                else
-                {
-                    // Ideally this would be sent reliably, but we can't wait for a response,
-                    // and INetworkClient.DropConnection cancels the send of any data that may be left in the outgoing queues.
-                    _networkClient.SendPacket(_cc, disconnect, NetSendFlags.PriorityP5); // P5 includes urgent flag
-                    _networkClient.DropConnection(_cc);
-                }
+                // Send the billing server disconnect packet and then finally drop the connection only after the packet is ACK'd.
+                _networkClient.SendWithCallback(_cc, [(byte)S2BPacketType.ServerDisconnect], _mainloop_ReliableCallback_ServerDisconnect);
             }
 
             _state = newState;
@@ -1275,7 +1318,7 @@ namespace SS.Core.Modules
         {
             if (success)
             {
-                lock(_lockObj)
+                lock (_lockObj)
                 {
                     if (_cc is not null)
                     {

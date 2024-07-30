@@ -30,6 +30,7 @@ namespace SS.Core.Modules
         // for main loop workitems
         private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = new(); // TODO: maybe we should use bounding?
         private readonly AutoResetEvent _runInMainAutoResetEvent = new(false);
+        private SynchronizationContext _originalSynchronizationContext;
 
         // for IMainloopTimer
         private readonly LinkedList<MainloopTimer> _mainloopTimerList = new();
@@ -75,6 +76,17 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(ComponentBroker broker)
         {
+            SynchronizationContext.SetSynchronizationContext(_originalSynchronizationContext);
+
+            // Don't allow any more work to be added.
+            _runInMainQueue.CompleteAdding();
+
+            // Complete any work that remains.
+            while (_runInMainQueue.Count > 0)
+            {
+                DrainRunInMain();
+            }
+
             // Make sure all timers are stopped.
             // There shouldn't be any left if all modules were correctly written to stop their timers when unloading.
             lock (_mainloopTimerLock)
@@ -135,7 +147,7 @@ namespace SS.Core.Modules
                 // ignore any errors
             }
 
-            SynchronizationContext oldSynchronizationContext = SynchronizationContext.Current;
+            _originalSynchronizationContext = SynchronizationContext.Current;
             SynchronizationContext.SetSynchronizationContext(new MainloopSynchronizationContext(this));
 
             WaitHandle[] waitHandles = new WaitHandle[]
@@ -212,16 +224,6 @@ namespace SS.Core.Modules
                         // at least one timer was added
                         break;
                 }
-            }
-
-            SynchronizationContext.SetSynchronizationContext(oldSynchronizationContext);
-
-            // We've been told to stop.
-            // At this point, nothing else can be added to the workitem queue.
-            // Process any that remain before exiting.
-            while (_runInMainQueue.Count > 0)
-            {
-                DrainRunInMain();
             }
 
             return _quitCode;
@@ -320,7 +322,6 @@ namespace SS.Core.Modules
         void IMainloop.Quit(ExitCode code)
         {
             _quitCode = code;
-            _runInMainQueue.CompleteAdding();
             _cancellationTokenSource.Cancel();
         }
 
@@ -1046,6 +1047,11 @@ namespace SS.Core.Modules
 
         #endregion
 
+        #region SynchronizationContext Helpers
+
+        /// <summary>
+        /// A synchronization context that processes work on the mainloop thread.
+        /// </summary>
         private sealed class MainloopSynchronizationContext : SynchronizationContext
         {
             private readonly IMainloop _mainloop;
@@ -1136,5 +1142,7 @@ namespace SS.Core.Modules
 
             #endregion
         }
+
+        #endregion
     }
 }
