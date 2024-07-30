@@ -112,7 +112,7 @@ namespace SS.Core.Modules
                             else
                                 sb.Append($"You have been temporarily kicked for {ban.Reason}. You may log in again in {ban.Expire - now}.");
 
-                            Span<char> text = stackalloc char[Math.Min(authRequest.Result.CustomText.Length, sb.Length)];
+                            Span<char> text = stackalloc char[Math.Min(authRequest.Result.GetMaxCustomTextLength(), sb.Length)];
                             sb.CopyTo(0, text, text.Length);
                             authRequest.Result.SetCustomText(text);
                         }

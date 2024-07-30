@@ -178,9 +178,15 @@ namespace SS.Core.ComponentInterfaces
         ReadOnlySpan<char> CustomText { get; }
 
         /// <summary>
+        /// Gets the maximum # of characters that the custom text can contain.
+        /// </summary>
+        /// <returns>The maximum # of characters.</returns>
+        int GetMaxCustomTextLength();
+
+        /// <summary>
         /// Sets the <see cref="CustomText"/>.
         /// </summary>
-        /// <param name="value"></param>
+        /// <param name="value">The value to set the custom text to.</param>
         void SetCustomText(ReadOnlySpan<char> value);
 
         #endregion

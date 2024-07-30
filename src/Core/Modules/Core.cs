@@ -1261,6 +1261,11 @@ namespace SS.Core.Modules
 
             public ReadOnlySpan<char> CustomText => new(_customTextChars, 0, _customTextLength);
 
+            public int GetMaxCustomTextLength()
+            {
+                return _customTextChars.Length;
+            }
+
             public void SetCustomText(ReadOnlySpan<char> value)
             {
                 if (value.Length > _customTextChars.Length)
