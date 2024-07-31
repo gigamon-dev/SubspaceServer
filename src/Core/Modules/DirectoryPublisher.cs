@@ -12,6 +12,16 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module for publishing the zone on directory servers.
     /// </summary>
+    /// <remarks>
+    /// As noted in the ASSS comments:
+    /// <code>
+    /// information on the directory server protocol was obtained from
+    /// Hammuravi's page at
+    /// http://www4.ncsu.edu/~rniyenga/subspace/old/dprotocol.html
+    /// </code>
+    /// It can be read on the Internet Archive's Wayback Machine. 
+    /// https://web.archive.org/web/20041208173200/http://www4.ncsu.edu/~rniyenga/subspace/old/dprotocol.html
+    /// </remarks>
     [CoreModuleInfo]
     public class DirectoryPublisher : IModule
     {
@@ -69,6 +79,30 @@ namespace SS.Core.Modules
             return true;
         }
 
+        [ConfigHelp("Directory", "Password", ConfigScope.Global, typeof(string), DefaultValue = "cane",
+            Description = "The password used to send information to the directory server. Don't change this.")]
+        [ConfigHelp("Directory", "Name", ConfigScope.Global, typeof(string),
+            Description = """
+                The server name to send to the directory server. Virtual
+                servers will use section name 'Directory-<vs-name>' for this
+                and other settings in this section, and will fall back to
+                'Directory' if that section doesn't exist. See Net:Listen
+                help for how to identify virtual servers.
+                """)]
+        [ConfigHelp("Directory", "Description", ConfigScope.Global, typeof(string),
+            Description = """
+                The server description to send to the directory server. See
+                Directory:Name for more information about the section name.
+                """)]
+        [ConfigHelp("Directory", "Port", ConfigScope.Global, typeof(int), DefaultValue = "4991",
+            Description = "The port to connect to for the directory server.")]
+        [ConfigHelp("Directory", "ServerN", ConfigScope.Global, typeof(int),
+            Description = "The DNS name to connect to for the Nth directory server.")]
+        [ConfigHelp("Directory", "PortN", ConfigScope.Global, typeof(int),
+            Description = """
+                The port to connect to for the Nth directory server.
+                If no port is specified, Directory:Port is used.
+                """)]
         private void Initialize()
         {
             lock (_lock)
@@ -149,14 +183,20 @@ namespace SS.Core.Modules
 
                 int defaultPort = _configManager.GetInt(_configManager.Global, "Directory", "Port", 4991);
 
-                index = 0;
-                while (++index > 0)
+                Span<char> keySpan = stackalloc char["Server##".Length];
+                for (index = 1; index <= 99; index++)
                 {
-                    string server = _configManager.GetStr(_configManager.Global, "Directory", $"Server{index}");
+                    if (!keySpan.TryWrite($"Server{index}", out int charsWritten))
+                        break;
+
+                    string server = _configManager.GetStr(_configManager.Global, "Directory", keySpan[..charsWritten]);
                     if (string.IsNullOrWhiteSpace(server))
                         break;
 
-                    int port = _configManager.GetInt(_configManager.Global, "Directory", $"Port{index}", defaultPort);
+                    if (!keySpan.TryWrite($"Port{index}", out charsWritten))
+                        break;
+
+                    int port = _configManager.GetInt(_configManager.Global, "Directory", keySpan[..charsWritten], defaultPort);
 
                     IPHostEntry entry;
                     IPEndPoint directoryEndpoint = null;
