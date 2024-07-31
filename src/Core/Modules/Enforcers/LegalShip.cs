@@ -94,7 +94,20 @@ namespace SS.Core.Modules.Enforcers
 
             // freq
             if (!ad.FreqMasks.TryGetValue(freq, out ShipMask freqMask))
-                ad.FreqMasks[freq] = freqMask = (ShipMask)_configManager.GetInt(player.Arena.Cfg, "Legalship", $"Freq{freq}Mask", 255);
+            {
+                Span<char> freqMaskKey = stackalloc char["Freq####Mask".Length];
+                if (freq >= 0 && freq <= 9999 && freqMaskKey.TryWrite($"Freq{freq}Mask", out int charsWritten))
+                {
+                    freqMaskKey = freqMaskKey[..charsWritten];
+                }
+                else
+                {
+                    "Freq0Mask".CopyTo(freqMaskKey);
+                    freqMaskKey = freqMaskKey[.."Freq0Mask".Length];
+                }
+
+                ad.FreqMasks[freq] = freqMask = (ShipMask)_configManager.GetInt(player.Arena.Cfg, "Legalship", freqMaskKey, 255);
+            }
 
             // combined
             ShipMask playerMask = arenaMask & freqMask;

@@ -876,10 +876,20 @@ namespace SS.Core.Modules
                 spawns[0].Y = _configManager.GetInt(arena.Cfg, "Soccer", "SpawnY", 512);
                 spawns[0].Radius = _configManager.GetInt(arena.Cfg, "Soccer", "SpawnRadius", 20);
 
+                Span<char> xName = stackalloc char["SpawnX#".Length];
+                Span<char> yName = stackalloc char["SpawnY#".Length];
+                Span<char> rName = stackalloc char["SpawnRadius#".Length];
+
+                "SpawnX".CopyTo(xName);
+                "SpawnY".CopyTo(yName);
+                "SpawnRadius".CopyTo(rName);
+
                 for (int i = 1; i < MaxBalls; i++)
                 {
-                    spawns[i].X = _configManager.GetInt(arena.Cfg, "Soccer", $"SpawnX{i}", -1);
-                    spawns[i].Y = _configManager.GetInt(arena.Cfg, "Soccer", $"SpawnY{i}", -1);
+                    xName[^1] = yName[^1] = rName[^1] = (char)('0' + i);
+                    
+                    spawns[i].X = _configManager.GetInt(arena.Cfg, "Soccer", xName, -1);
+                    spawns[i].Y = _configManager.GetInt(arena.Cfg, "Soccer", yName, -1);
 
                     if (spawns[i].X == -1 && spawns[i].Y == -1)
                     {
@@ -897,7 +907,7 @@ namespace SS.Core.Modules
                         spawns[i].Y = spawns[0].Y;
                     }
 
-                    spawns[i].Radius = _configManager.GetInt(arena.Cfg, "Soccer", $"SpawnRadius{i}", -1);
+                    spawns[i].Radius = _configManager.GetInt(arena.Cfg, "Soccer", rName, -1);
 
                     if (spawns[i].Radius == -1)
                     {
@@ -905,12 +915,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                if (ad.Spawns == null || ad.Spawns.Length != newSpawnCount)
-                {
-                    ad.Spawns = new BallSpawn[newSpawnCount];
-                }
-
-                spawns.Slice(0, newSpawnCount).CopyTo(ad.Spawns);
+                ad.SetSpawns(spawns[..newSpawnCount]);
 
                 ad.Settings.SendTime = _configManager.GetInt(arena.Cfg, "Soccer", "SendTime", 100);
                 if (ad.Settings.SendTime < 25)
@@ -1371,12 +1376,22 @@ namespace SS.Core.Modules
             /// <summary>
             /// Array of spawn locations.
             /// </summary>
-            public BallSpawn[] Spawns;
+            private readonly BallSpawn[] _spawns = new BallSpawn[MaxBalls];
+
+            /// <summary>
+            /// The # of <see cref="_spawns"/> that are populated.
+            /// </summary>
+            private int _spawnCount;
+
+            /// <summary>
+            /// Spawn locations.
+            /// </summary>
+            public ReadOnlySpan<BallSpawn> Spawns => new(_spawns, 0, _spawnCount);
 
             /// <summary>
             /// Some extra info about balls that others shouldn't touch.
             /// </summary>
-            public ExtraBallStateInfo[] ExtraBallStateInfo = new ExtraBallStateInfo[MaxBalls];
+            public readonly ExtraBallStateInfo[] ExtraBallStateInfo = new ExtraBallStateInfo[MaxBalls];
 
             /// <summary>
             /// When we last sent ball packets out to the arena.
@@ -1398,6 +1413,15 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
+            public void SetSpawns(ReadOnlySpan<BallSpawn> spawns)
+            {
+                if (spawns.Length > _spawns.Length)
+                    spawns = spawns[.._spawns.Length];
+
+                spawns.CopyTo(_spawns);
+                _spawnCount = spawns.Length;
+            }
+
             public bool TryReset()
             {
                 lock (Lock)
@@ -1405,8 +1429,8 @@ namespace SS.Core.Modules
                     BallCount = 0;
                     Array.Clear(Balls);
                     Array.Clear(Previous);
-
-                    Array.Clear(Spawns);
+                    Array.Clear(_spawns);
+                    _spawnCount = 0;
                     Array.Clear(ExtraBallStateInfo);
                     LastSendTime = default;
                     Settings = default;

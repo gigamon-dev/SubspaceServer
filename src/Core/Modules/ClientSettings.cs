@@ -677,12 +677,22 @@ namespace SS.Core.Modules
             }
 
             // spawn locations
+            Span<char> xKey = stackalloc char["Team#-X".Length];
+            Span<char> yKey = stackalloc char["Team#-Y".Length];
+            Span<char> rKey = stackalloc char["Team#-Radius".Length];
+
+            "Team#-X".CopyTo(xKey);
+            "Team#-Y".CopyTo(yKey);
+            "Team#-Radius".CopyTo(rKey);
+
             for (int i = 0; i < 4; i++)
             {
+                xKey[4] = yKey[4] = rKey[4] = (char)('0' + i);
+
                 ref SpawnPosition spawnPosition = ref cs.SpawnPositions[i];
-                spawnPosition.X = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-X", 0);
-                spawnPosition.Y = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Y", 0);
-                spawnPosition.Radius = (ushort)_configManager.GetInt(ch, "Spawn", $"Team{i}-Radius", 0);
+                spawnPosition.X = (ushort)_configManager.GetInt(ch, "Spawn", xKey, 0);
+                spawnPosition.Y = (ushort)_configManager.GetInt(ch, "Spawn", yKey, 0);
+                spawnPosition.Radius = (ushort)_configManager.GetInt(ch, "Spawn", rKey, 0);
             }
 
             // rest of settings
