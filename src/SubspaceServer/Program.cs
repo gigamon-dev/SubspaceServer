@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -51,6 +52,18 @@ namespace SubspaceServer
                 {
                     Console.WriteLine($"Error setting current directory. {ex.Message}");
                     return 1;
+                }
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // On Windows, the default timer resolution is not granular enough.
+                // Sleep(1) will wait at least 15.625 ms (1000/64).
+                // Request a 1 ms resolution time.
+                uint result = UnmanagedWinMM.TimeBeginPeriod(1);
+                if (result != UnmanagedWinMM.TIMERR_NOERROR)
+                {
+                    Console.WriteLine($"WARNING: Unable to set the minimum resolution time for periodic timers (result: {result}).");
                 }
             }
 
@@ -236,5 +249,24 @@ X. Exit
                 broker.ReleaseInterface(ref network);
             }
         }
+    }
+
+    
+    internal unsafe static partial class UnmanagedWinMM
+    {
+        /// <summary>
+        /// Requests a minimum resolution for periodic timers.
+        /// </summary>
+        /// <remarks>
+        /// https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
+        /// </remarks>
+        /// <param name="uPeriod">The minimum timer resolution, in milliseconds.</param>
+        /// <returns></returns>
+        [LibraryImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+        internal static partial uint TimeBeginPeriod(uint uPeriod);
+
+        private const uint TIMERR_BASE = 96;
+        internal const uint TIMERR_NOERROR = 0;
+        internal const uint TIMERR_NOCANDO = (TIMERR_BASE + 1);
     }
 }

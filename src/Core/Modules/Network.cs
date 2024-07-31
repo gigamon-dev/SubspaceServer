@@ -221,12 +221,14 @@ namespace SS.Core.Modules
         // Cached delegates
         private readonly Action<SubspaceBuffer> _mainloopWork_CallPacketHandlers;
         private readonly ReliableConnectionCallbackInvoker.ReliableConnectionCallback _sizedSendChunkCompleted;
+        private readonly Func<bool> _isCancellationRequested;
 
         public Network()
         {
             // Allocate callback delegates once rather than each time they're used.
             _mainloopWork_CallPacketHandlers = MainloopWork_CallPacketHandlers;
             _sizedSendChunkCompleted = SizedSendChunkCompleted;
+            _isCancellationRequested = IsCancellationRequested;
 
             _oohandlers = new CorePacketHandler[20];
 
@@ -2600,13 +2602,34 @@ namespace SS.Core.Modules
                 if (_stopToken.IsCancellationRequested)
                     return;
 
-                // TODO: Figure out a way that's better than a plain Sleep.
-                // Maybe separate out lagout/kick/free logic to a threadpool timer? leaving only outgoing/stats logic?
-                // Then maybe an AutoResetEvent for whenever a new outgoing packet is queued?
-                // and wait on the AutoResetEvent/stopToken.WaitHandle? 
-                // How to tell how long until a player's bandwidth limits pass a threshold that allows sending more?
-                // Need to investigate bandwidth limiting logic before deciding on this.
-                Thread.Sleep(10); // 1/100 second
+                // Wait at least 1 tick, 1/100 second                
+                if (_playerConnections.IsEmpty)
+                {
+                    // No players, so no urgency.
+                    Thread.Sleep(10); // 1/100 second
+                }
+                else
+                {
+                    // There are players, so use a more granular method for waiting if needed.
+                    switch (_config.SendThreadWaitOption)
+                    {
+                        case SendThreadWaitOption.BusyWait:
+                            long start = Stopwatch.GetTimestamp();
+                            while (Stopwatch.GetElapsedTime(start) < TimeSpan.FromMilliseconds(10) || _isCancellationRequested())
+                            {
+                            }
+                            break;
+
+                        case SendThreadWaitOption.SpinWait:
+                            SpinWait.SpinUntil(_isCancellationRequested, 10);
+                            break;
+
+                        case SendThreadWaitOption.Sleep:
+                        default:
+                            Thread.Sleep(10); // 1/100 second
+                            break;
+                    }
+                }
             }
 
             void SubmitRelStats(Player player)
@@ -2687,6 +2710,11 @@ namespace SS.Core.Modules
 
                 return false;
             }
+        }
+
+        private bool IsCancellationRequested()
+        {
+            return _stopToken.IsCancellationRequested;
         }
 
         private bool ProcessDisconnect(Player player, PlayerConnection playerConnection, bool force)
@@ -5776,6 +5804,24 @@ namespace SS.Core.Modules
             public TimeSpan PingRefreshThreshold { get; private set; }
 
             /// <summary>
+            /// Controls the way <see cref="SendThread"/> waits between each iteration.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// Thread.Sleep(1) will actually wait about 1 ms on Linux.
+            /// </para>
+            /// <para>
+            /// On Windows, Thread.Sleep(1) will wait at least 15.625 ms (1000/64) by default.
+            /// However, it can be modified using the timeBeginPeriod function API in timeapi.h
+            /// which should have been called by the executable.
+            /// </para>
+            /// <para>
+            /// This purposely undocumented setting gives further control on how a wait is performed, just in case it's needed.
+            /// </para>
+            /// </remarks>
+            public SendThreadWaitOption SendThreadWaitOption { get; private set; }
+
+            /// <summary>
             /// Display total or playing in simple ping responses.
             /// </summary>
             [ConfigHelp("Net", "SimplePingPopulationMode", ConfigScope.Global, typeof(PingPopulationMode), DefaultValue = "1",
@@ -5805,7 +5851,15 @@ namespace SS.Core.Modules
                 LimitReliableGroupingSize = configManager.GetInt(configManager.Global, "Net", "LimitReliableGroupingSize", 0) != 0;
                 PerPacketOverhead = configManager.GetInt(configManager.Global, "Net", "PerPacketOverhead", 28);
                 PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * configManager.GetInt(configManager.Global, "Net", "PingDataRefreshTime", 200));
+                SendThreadWaitOption = configManager.GetEnum(configManager.Global, "Net", "SendThreadWaitOption", SendThreadWaitOption.Sleep);
             }
+        }
+
+        private enum SendThreadWaitOption
+        {
+            Sleep,
+            BusyWait,
+            SpinWait,
         }
 
         /// <summary>
