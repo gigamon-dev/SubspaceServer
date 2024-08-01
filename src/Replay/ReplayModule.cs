@@ -1675,7 +1675,7 @@ namespace SS.Replay
                             // So, using a SpinWait since we expect to be doing lots of work pretty much continuously.
                             int waitMs = (int)(head.Ticks - (now - started)) * 10;
                             //_logManager.LogA(LogLevel.Drivel, nameof(ReplayModule), arena, $"ticks {head.Ticks} waiting for {waitMs} ms");
-                            SpinWait.SpinUntil(() => ad.PlaybackQueue.Count > 0, waitMs);
+                            SpinWait.SpinUntil(ad.HasPlaybackCommandFunc, waitMs);
                             continue;
                         }
 
@@ -2499,6 +2499,19 @@ namespace SS.Replay
             /// For thread synchronization.
             /// </summary>
             public readonly object Lock = new();
+
+            // Cached delegate
+            public readonly Func<bool> HasPlaybackCommandFunc;
+
+            public ArenaData()
+            {
+                HasPlaybackCommandFunc = HasPlaybackCommand;
+            }
+
+            private bool HasPlaybackCommand()
+            {
+                return PlaybackQueue.Count > 0;
+            }
 
             public bool TryReset()
             {
