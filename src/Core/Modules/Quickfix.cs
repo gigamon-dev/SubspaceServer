@@ -288,7 +288,20 @@ namespace SS.Core.Modules
                             description.Replace('\r', ' ');
                             description.Replace('\n', ' ');
 
-                            writer.Write($"{sectionName}:{attribute.Key}:{value}:::{description}\r\n");
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                            try
+                            {
+                                sb.Append($"{sectionName}:{attribute.Key}:{value}:::");
+                                sb.Append(description);
+                                sb.Append("\r\n");
+
+                                writer.Write(sb);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
                         }
                         finally
                         {

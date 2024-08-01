@@ -1032,14 +1032,14 @@ namespace SS.Core.Modules
 
                     _chat.SendMessage(player, $"User database status: {status}  Pending auths: {_pendingAuths}");
 
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                    StringBuilder bwLimitBuilder = _objectPoolManager.StringBuilderPool.Get();
 
                     try
                     {
                         // Connection stats
                         if (_cc is not null)
                         {
-                            NetConnectionStats stats = new() { BandwidthLimitInfo = sb };
+                            NetConnectionStats stats = new() { BandwidthLimitInfo = bwLimitBuilder };
                             _networkClient.GetConnectionStats(_cc, ref stats);
 
                             _chat.SendMessage(player, $"IP: {stats.IPEndPoint.Address}  Port: {stats.IPEndPoint.Port}  Encryption: {stats.EncryptorName}");
@@ -1048,12 +1048,24 @@ namespace SS.Core.Modules
                             _chat.SendMessage(player, $"Reliable Packets: Sent: {stats.ReliablePacketsSent}  Received: {stats.ReliablePacketsReceived}");
                             _chat.SendMessage(player, $"Reliable: Dups: {stats.RelDups} {stats.RelDups * 100d / stats.ReliablePacketsReceived:F2}%  Resends: {stats.Retries} {stats.Retries * 100d / stats.ReliablePacketsSent:F2}%");
                             _chat.SendMessage(player, $"Reliable S2B Packetloss: {((stats.Retries == 0) ? 0d : ((stats.Retries - stats.AckDups) * 100d / stats.ReliablePacketsSent)):F2}%");
-                            _chat.SendMessage(player, $"BW limit: {stats.BandwidthLimitInfo}");
+
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                            try
+                            {
+                                sb.Append($"BW limit: ");
+                                sb.Append(bwLimitBuilder);
+                                _chat.SendMessage(player, sb);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }                            
                         }
                     }
                     finally
                     {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
+                        _objectPoolManager.StringBuilderPool.Return(bwLimitBuilder);
                     }
                 }
             }

@@ -176,8 +176,11 @@ namespace SS.Core.Modules
 
                 try
                 {
+                    sb.Append("Time left: ");
                     AppendTimerDuration(sb, remaining);
-                    _chat.SendMessage(player, $"Time left: {sb}.");
+                    sb.Append('.');
+
+                    _chat.SendMessage(player, sb);
                 }
                 finally
                 {
@@ -190,8 +193,11 @@ namespace SS.Core.Modules
 
                 try
                 {
+                    sb.Append("Timer paused at: ");
                     AppendTimerDuration(sb, ad.PausedRemaining.Value);
-                    _chat.SendMessage(player, $"Timer paused at: {sb}.");
+                    sb.Append('.');
+
+                    _chat.SendMessage(player, sb);
                 }
                 finally
                 {
@@ -258,8 +264,11 @@ namespace SS.Core.Modules
 
                     try
                     {
+                        sb.Append("Timer resumed at: ");
                         AppendTimerDuration(sb, remaining);
-                        _chat.SendMessage(player, $"Timer resumed at: {sb}.");
+                        sb.Append('.');
+
+                        _chat.SendMessage(player, sb);
                     }
                     finally
                     {
@@ -358,8 +367,11 @@ namespace SS.Core.Modules
 
                         try
                         {
+                            sb.Append("NOTICE: ");
                             AppendTimerDuration(sb, warningTimeSpan);
-                            _chat.SendArenaMessage(arena, $"NOTICE: {sb} remaining.");
+                            sb.Append(" remaining.");
+
+                            _chat.SendArenaMessage(arena, sb);
                         }
                         finally
                         {

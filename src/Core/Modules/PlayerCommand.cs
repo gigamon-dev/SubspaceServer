@@ -1916,11 +1916,11 @@ namespace SS.Core.Modules
             if (_network == null)
                 return;
 
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            StringBuilder bwLimitBuilder = _objectPoolManager.StringBuilderPool.Get();
 
             try
             {
-                NetConnectionStats stats = new() { BandwidthLimitInfo = sb };
+                NetConnectionStats stats = new() { BandwidthLimitInfo = bwLimitBuilder };
 
                 _network.GetConnectionStats(targetPlayer, ref stats);
 
@@ -1937,11 +1937,22 @@ namespace SS.Core.Modules
                     $"ave bw in/out: {(stats.BytesReceived / connectedTimeSpan.TotalSeconds):N0}/{(stats.BytesSent / connectedTimeSpan.TotalSeconds):N0}  " +
                     $"ignoringWpns: {ignoringwpns}%  dropped: {stats.PacketsDropped}");
 
-                _chat.SendMessage(player, $"{prefix}: bwlimit: {stats.BandwidthLimitInfo}");
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                try
+                {
+                    sb.Append($"{prefix}: bwlimit: ");
+                    sb.Append(stats.BandwidthLimitInfo);
+                    _chat.SendMessage(player, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
             }
             finally
             {
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                _objectPoolManager.StringBuilderPool.Return(bwLimitBuilder);
             }
 
             if (targetPlayer.Flags.NoShip)
@@ -2242,7 +2253,7 @@ namespace SS.Core.Modules
 
             IFreqManager freqManager = useFreqManager ? player.Arena.GetInterface<IFreqManager>() : null;
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            StringBuilder errorBuilder = _objectPoolManager.StringBuilderPool.Get();
 
             try
             {
@@ -2252,12 +2263,25 @@ namespace SS.Core.Modules
                 {
                     if (freqManager is not null)
                     {
-                        freqManager.FreqChange(targetPlayer, freq.Value, sb);
+                        freqManager.FreqChange(targetPlayer, freq.Value, errorBuilder);
 
-                        if (sb.Length > 0)
+                        if (errorBuilder.Length > 0)
                         {
-                            _chat.SendMessage(player, $"{targetPlayer.Name}: {sb}");
-                            sb.Clear();
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                            try
+                            {
+                                sb.Append($"{targetPlayer.Name}: ");
+                                sb.Append(errorBuilder);
+
+                                _chat.SendMessage(player, sb);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
+                            
+                            errorBuilder.Clear();
                         }
                     }
                     else
@@ -2268,7 +2292,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                _objectPoolManager.StringBuilderPool.Return(errorBuilder);
                 _objectPoolManager.PlayerSetPool.Return(players);
 
                 if (freqManager is not null)
@@ -2318,7 +2342,7 @@ namespace SS.Core.Modules
 
             IFreqManager freqManager = useFreqManager ? player.Arena.GetInterface<IFreqManager>() : null;
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            StringBuilder errorBuilder = _objectPoolManager.StringBuilderPool.Get();
 
             try
             {
@@ -2328,12 +2352,25 @@ namespace SS.Core.Modules
                 {
                     if (freqManager is not null)
                     {
-                        freqManager.ShipChange(targetPlayer, ship.Value, sb);
+                        freqManager.ShipChange(targetPlayer, ship.Value, errorBuilder);
 
-                        if (sb.Length > 0)
+                        if (errorBuilder.Length > 0)
                         {
-                            _chat.SendMessage(player, $"{targetPlayer.Name}: {sb}");
-                            sb.Clear();
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                            try
+                            {
+                                sb.Append($"{targetPlayer.Name}: ");
+                                sb.Append(errorBuilder);
+
+                                _chat.SendMessage(player, sb);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
+                            
+                            errorBuilder.Clear();
                         }
                     }
                     else
@@ -2344,7 +2381,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                _objectPoolManager.StringBuilderPool.Return(errorBuilder);
                 _objectPoolManager.PlayerSetPool.Return(players);
 
                 if (freqManager is not null)
@@ -2545,22 +2582,34 @@ namespace SS.Core.Modules
 
                     if (info.AttachedArenas.Length > 0)
                     {
-                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        StringBuilder attachedBuilder = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
                             foreach (Arena arena in info.AttachedArenas)
                             {
-                                if (sb.Length > 0)
-                                    sb.Append(", ");
+                                if (attachedBuilder.Length > 0)
+                                    attachedBuilder.Append(", ");
 
-                                sb.Append(arena.Name);
+                                attachedBuilder.Append(arena.Name);
                             }
 
-                            _chat.SendMessage(player, $"  Attached Arenas: {sb}");
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                            try
+                            {
+                                sb.Append("  Attached Arenas: ");
+                                sb.Append(attachedBuilder);
+
+                                _chat.SendMessage(player, sb);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
                         }
                         finally
                         {
-                            _objectPoolManager.StringBuilderPool.Return(sb);
+                            _objectPoolManager.StringBuilderPool.Return(attachedBuilder);
                         }
                     }
 
@@ -2952,11 +3001,38 @@ namespace SS.Core.Modules
                     || _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena)
                     || IsInArena(player, bestArena))
                 {
-                    _chat.SendMessage(player, $"{bestPlayer} is in arena {bestArena}.");
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        sb.Append(bestPlayer);
+                        sb.Append(" is in arena ");
+                        sb.Append(bestArena);
+                        sb.Append('.');
+
+                        _chat.SendMessage(player, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{bestPlayer} is in a private arena.");
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        sb.Append(bestPlayer);
+                        sb.Append(" is in a private arena.");
+                        sb.Append('.');
+
+                        _chat.SendMessage(player, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
                 }
             }
 

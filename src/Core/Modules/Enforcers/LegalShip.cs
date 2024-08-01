@@ -135,16 +135,26 @@ namespace SS.Core.Modules.Enforcers
                     if (freqMask == ShipMask.All)
                     {
                         if (playerMask == ShipMask.None)
+                        {
                             errorMessage.Append("You may not leave spectator mode in this arena.");
+                        }
                         else
-                            errorMessage.Append($"Your allowed ships in this arena are: {shipBuilder}");
+                        {
+                            errorMessage.Append($"Your allowed ships in this arena are: ");
+                            errorMessage.Append(shipBuilder);
+                        }
                     }
                     else
                     {
                         if (playerMask == ShipMask.None)
+                        {
                             errorMessage.Append("You may not leave spectator mode on this frequency.");
+                        }
                         else
-                            errorMessage.Append($"Your allowed ships on this frequency are: {shipBuilder}");
+                        {
+                            errorMessage.Append($"Your allowed ships on this frequency are: ");
+                            errorMessage.Append(shipBuilder);
+                        }
                     }
                 }
                 finally
