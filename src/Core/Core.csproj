@@ -8,10 +8,6 @@
     <VersionSuffix>preview-1</VersionSuffix>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DefineConstants>$(DefineConstants);CFG_DUMP_RAW_PACKETS;CFG_LOG_STUPID_STUFF</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.2.2" />
     <PackageReference Include="Google.Protobuf" Version="3.26.1" />

@@ -1376,13 +1376,10 @@ namespace SS.Core.Modules
                 // send the ack
                 AckPacket ap = new(sn);
 
-                lock (conn.OutLock)
-                {
-                    SendOrBufferPacket(
-                        conn,
-                        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref ap, 1)),
-                        NetSendFlags.Ack);
-                }
+                SendOrBufferPacket(
+                    conn,
+                    MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref ap, 1)),
+                    NetSendFlags.Ack);
             }
         }
 
@@ -2409,6 +2406,8 @@ namespace SS.Core.Modules
 
             while (_stopToken.IsCancellationRequested == false)
             {
+                long start = Stopwatch.GetTimestamp();
+
                 //
                 // Players
                 //
@@ -2602,32 +2601,48 @@ namespace SS.Core.Modules
                 if (_stopToken.IsCancellationRequested)
                     return;
 
-                // Wait at least 1 tick, 1/100 second                
-                if (_playerConnections.IsEmpty)
+                // Wait at least 1 tick from the start of the iteration, 1/100 second
+                int msToWait = (10 - (int)Math.Floor(Stopwatch.GetElapsedTime(start).TotalMilliseconds));
+
+#if CFG_LOG_SEND_THREAD_PERFORMANCE
+                if (msToWait < 10)
                 {
-                    // No players, so no urgency.
-                    Thread.Sleep(10); // 1/100 second
+                    _logManager.LogM(LogLevel.Drivel, nameof(Network), $"SendThread wait {msToWait} ms.");
+                }
+#endif
+                if (msToWait <= 0)
+                {
+                    // The processing took 10 ms or longer. Continue processing again immediately.
+                    continue;
                 }
                 else
                 {
-                    // There are players, so use a more granular method for waiting if needed.
-                    switch (_config.SendThreadWaitOption)
+                    if (_playerConnections.IsEmpty)
                     {
-                        case SendThreadWaitOption.BusyWait:
-                            long start = Stopwatch.GetTimestamp();
-                            while (Stopwatch.GetElapsedTime(start) < TimeSpan.FromMilliseconds(10) || _isCancellationRequested())
-                            {
-                            }
-                            break;
+                        // No players, so no urgency.
+                        Thread.Sleep(msToWait);
+                    }
+                    else
+                    {
+                        // There are players, so use a more granular method for waiting if needed.
+                        switch (_config.SendThreadWaitOption)
+                        {
+                            case SendThreadWaitOption.BusyWait:
+                                TimeSpan waitTimeSpan = TimeSpan.FromMilliseconds(msToWait);
+                                while (Stopwatch.GetElapsedTime(start) < waitTimeSpan || _isCancellationRequested())
+                                {
+                                }
+                                break;
 
-                        case SendThreadWaitOption.SpinWait:
-                            SpinWait.SpinUntil(_isCancellationRequested, 10);
-                            break;
+                            case SendThreadWaitOption.SpinWait:
+                                SpinWait.SpinUntil(_isCancellationRequested, msToWait);
+                                break;
 
-                        case SendThreadWaitOption.Sleep:
-                        default:
-                            Thread.Sleep(10); // 1/100 second
-                            break;
+                            case SendThreadWaitOption.Sleep:
+                            default:
+                                Thread.Sleep(msToWait);
+                                break;
+                        }
                     }
                 }
             }
@@ -3388,8 +3403,11 @@ namespace SS.Core.Modules
                 //
                 // The global player data read lock is taken to access the Player.Status and held to prevent the status from changing while processing.
 
+                PlayerConnection playerConnection = conn as PlayerConnection;
+                ClientConnection clientConnection = conn as ClientConnection;
                 Player player = null;
-                if (conn is PlayerConnection playerConnection)
+
+                if (playerConnection is not null)
                 {
                     player = playerConnection.Player;
                     if (player is null)
@@ -3465,9 +3483,14 @@ namespace SS.Core.Modules
                                 Span<byte> bufferSpan = buffer.AsSpan(0, lengthWithHeader);
                                 sizedSend.RequestData(bufferSpan[headerSpan.Length..]);
 
-                                if (player is not null)
+                                // Lock (connection status)
+                                if (playerConnection is not null)
                                 {
                                     _playerData.Lock();
+                                }
+                                else if (clientConnection is not null)
+                                {
+                                    _clientConnectionsLock.EnterReadLock();
                                 }
 
                                 try
@@ -3477,8 +3500,10 @@ namespace SS.Core.Modules
                                         // Now that we reaquired the lock, the sized send should still be the current one since only this thread removes items.
                                         Debug.Assert(sizedSend == conn.SizedSends.First?.Value);
 
-                                        // Cancel out if the sized send was cancelled while we were requesting data OR if the player's connection is being disconnected.
-                                        cancelled = sizedSend.IsCancellationRequested || player.Status == PlayerState.TimeWait;
+                                        // Cancel out if the sized send was cancelled while we were requesting data OR if the connection is being disconnected.
+                                        cancelled = sizedSend.IsCancellationRequested 
+                                            || (player is not null && player.Status == PlayerState.TimeWait)
+                                            || (clientConnection is not null && clientConnection.Status >= ClientConnectionStatus.Disconnecting);
 
                                         if (!cancelled)
                                         {
@@ -3486,35 +3511,37 @@ namespace SS.Core.Modules
                                             // Queue data
                                             //
 
-                                            lock (conn.OutLock)
+                                            // Break the data into sized send (0x0A) packets and queue them up.
+                                            while (bufferSpan.Length > headerSpan.Length)
                                             {
-                                                // Break the data into sized send (0x0A) packets and queue them up.
-                                                while (bufferSpan.Length > headerSpan.Length)
-                                                {
-                                                    Span<byte> packetSpan = bufferSpan[..int.Min(bufferSpan.Length, headerSpan.Length + Constants.ChunkSize)];
+                                                Span<byte> packetSpan = bufferSpan[..int.Min(bufferSpan.Length, headerSpan.Length + Constants.ChunkSize)];
 
-                                                    // Write the header in front of the data.
-                                                    headerSpan.CopyTo(packetSpan);
+                                                // Write the header in front of the data.
+                                                headerSpan.CopyTo(packetSpan);
 
-                                                    // We want to get a callback when we receive an ACK back.
-                                                    ReliableConnectionCallbackInvoker invoker = _reliableConnectionCallbackInvokerPool.Get();
-                                                    invoker.SetCallback(_sizedSendChunkCompleted, ReliableCallbackExecutionOption.Synchronous);
+                                                // We want to get a callback when we receive an ACK back.
+                                                ReliableConnectionCallbackInvoker invoker = _reliableConnectionCallbackInvokerPool.Get();
+                                                invoker.SetCallback(_sizedSendChunkCompleted, ReliableCallbackExecutionOption.Synchronous);
 
-                                                    Interlocked.Increment(ref conn.SizedSendQueuedCount);
-                                                    SendOrBufferPacket(conn, packetSpan, NetSendFlags.PriorityN1 | NetSendFlags.Reliable, invoker);
-                                                    queuedData = true;
+                                                Interlocked.Increment(ref conn.SizedSendQueuedCount);
+                                                SendOrBufferPacket(conn, packetSpan, NetSendFlags.PriorityN1 | NetSendFlags.Reliable, invoker);
+                                                queuedData = true;
 
-                                                    bufferSpan = bufferSpan[(packetSpan.Length - headerSpan.Length)..];
-                                                }
+                                                bufferSpan = bufferSpan[(packetSpan.Length - headerSpan.Length)..];
                                             }
                                         }
                                     }
                                 }
                                 finally
                                 {
-                                    if (player is not null)
+                                    // Unlock (connection status)
+                                    if (playerConnection is not null)
                                     {
                                         _playerData.Unlock();
+                                    }
+                                    else if(clientConnection is not null)
+                                    {
+                                        _clientConnectionsLock.ExitReadLock();
                                     }
                                 }
                             }
@@ -3559,9 +3586,13 @@ namespace SS.Core.Modules
                             // The sized send was cancelled because it was requested by the connection (0x00 0x0B).
                             // This means we are supposed to respond with a sized cancellation ACK (0x00 0x0C),
 
-                            if (player is not null)
+                            if (playerConnection is not null)
                             {
                                 _playerData.Lock();
+                            }
+                            else if (clientConnection is not null)
+                            {
+                                _clientConnectionsLock.EnterReadLock();
                             }
 
                             try
@@ -3569,7 +3600,8 @@ namespace SS.Core.Modules
                                 // Send the sized cancellation ACK packet.
                                 ReadOnlySpan<byte> cancelSizedAckSpan = [0x00, 0x0C];
 
-                                if (player is not null && player.Status == PlayerState.TimeWait)
+                                if ((player is not null && player.Status == PlayerState.TimeWait)
+                                    || (clientConnection is not null && clientConnection.Status >= ClientConnectionStatus.Disconnecting))
                                 {
                                     // The connection is being disconnected.
                                     // We can only send it unreliably since the SendThread does not process outgoing queues for connections in this state.
@@ -3577,17 +3609,18 @@ namespace SS.Core.Modules
                                 }
                                 else
                                 {
-                                    lock (conn.OutLock)
-                                    {
-                                        SendOrBufferPacket(conn, cancelSizedAckSpan, NetSendFlags.Reliable);
-                                    }
+                                    SendOrBufferPacket(conn, cancelSizedAckSpan, NetSendFlags.Reliable);
                                 }
                             }
                             finally
                             {
-                                if (player is not null)
+                                if (playerConnection is not null)
                                 {
                                     _playerData.Unlock();
+                                }
+                                else if (clientConnection is not null)
+                                {
+                                    _clientConnectionsLock.ExitReadLock();
                                 }
                             }
                         }
@@ -3660,7 +3693,7 @@ namespace SS.Core.Modules
             _sizedSendQueue.TryEnqueue(connData);
         }
 
-        #endregion
+#endregion
 
         /// <summary>
         /// Processes a data received from a known connection.
@@ -3966,31 +3999,62 @@ namespace SS.Core.Modules
                 // Only one 'big' data transfer can be 'buffering up' at a time for a connection.
                 // 'Buffering up' meaning from the point the the first 0x00 0x08 packet is buffered till the closing 0x00 0x09 packet is buffered.
                 // In other words, no other 0x00 0x08 or 0x00 0x09 packets can be interleaved with the ones we're buffering.
-                // Therefore, we hold the lock the entire time we buffer up the 0x00 0x08 or 0x00 0x09 packets.
-                lock (conn.OutLock)
+                // Therefore, we hold the OutLock the entire time we buffer up the 0x00 0x08 or 0x00 0x09 packets.
+                //
+                // However, SendOrBufferPacket needs to read the status of the connection, which requires taking the connection status lock.
+                // To read the status of player connections, it's the global player data lock.
+                // To read the status of client connections, it's the _clientConnectionsLock.
+                // The connection status lock must be taken before Outlock, otherwise we risk deadlock.
+
+                PlayerConnection playerConnection = conn as PlayerConnection;
+                ClientConnection clientConnection = conn as ClientConnection;
+
+                // Lock (connection status).
+                if (playerConnection is not null)
                 {
-                    while (!data.IsEmpty)
+                    _playerData.Lock();
+                }
+                else if (clientConnection is not null)
+                {
+                    _clientConnectionsLock.EnterReadLock();
+                }
+
+                try
+                {
+                    lock (conn.OutLock)
                     {
-                        ReadOnlySpan<byte> fragment = data[..int.Min(data.Length, Constants.ChunkSize)];
-                        fragment.CopyTo(bufferDataSpan);
-
-                        data = data[fragment.Length..];
-                        if (data.IsEmpty)
+                        while (!data.IsEmpty)
                         {
-                            // The final packet is 00 09 (signals the end of the big data)
-                            bufferSpan[1] = 0x09;
-                        }
+                            ReadOnlySpan<byte> fragment = data[..int.Min(data.Length, Constants.ChunkSize)];
+                            fragment.CopyTo(bufferDataSpan);
 
-                        SendOrBufferPacket(conn, bufferSpan[..(2 + fragment.Length)], flags | NetSendFlags.Reliable);
+                            data = data[fragment.Length..];
+                            if (data.IsEmpty)
+                            {
+                                // The final packet is 00 09 (signals the end of the big data)
+                                bufferSpan[1] = 0x09;
+                            }
+
+                            SendOrBufferPacket(conn, bufferSpan[..(2 + fragment.Length)], flags | NetSendFlags.Reliable);
+                        }
+                    }
+                }
+                finally
+                {
+                    // Unlock (connection status).
+                    if (playerConnection is not null)
+                    {
+                        _playerData.Unlock();
+                    }
+                    else if (clientConnection is not null)
+                    {
+                        _clientConnectionsLock.ExitReadLock();
                     }
                 }
             }
             else
             {
-                lock (conn.OutLock)
-                {
-                    SendOrBufferPacket(conn, data, flags);
-                }
+                SendOrBufferPacket(conn, data, flags);
             }
         }
 
@@ -4009,10 +4073,7 @@ namespace SS.Core.Modules
             // we can't handle big packets here
             Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
 
-            lock (conn.OutLock)
-            {
-                return SendOrBufferPacket(conn, data, NetSendFlags.Reliable, callbackInvoker);
-            }
+            return SendOrBufferPacket(conn, data, NetSendFlags.Reliable, callbackInvoker);
         }
 
         private bool SendWithCallback(ClientConnection clientConnection, ReadOnlySpan<byte> data, IReliableCallbackInvoker callbackInvoker)
@@ -4024,10 +4085,7 @@ namespace SS.Core.Modules
             // we can't handle big packets here
             Debug.Assert(data.Length <= (Constants.MaxPacket - ReliableHeader.Length));
 
-            lock (clientConnection.OutLock)
-            {
-                return SendOrBufferPacket(clientConnection, data, NetSendFlags.Reliable, callbackInvoker);
-            }
+            return SendOrBufferPacket(clientConnection, data, NetSendFlags.Reliable, callbackInvoker);
         }
 
         /// <summary>
@@ -4167,6 +4225,34 @@ namespace SS.Core.Modules
             PlayerConnection playerConnection = conn as PlayerConnection;
             ClientConnection clientConnection = conn as ClientConnection;
 
+            bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
+
+            //
+            // Check some conditions that should be true and would normally be caught when developing in debug mode.
+            //
+
+            // TODO: If OutLock is already being held, then the lock to read connection status must already be held too.
+            //Debug.Assert(
+            //    !Monitor.IsEntered(conn.OutLock)
+            //    || (Monitor.IsEntered(conn.OutLock)
+            //        && ((playerConnection is not null && (_playerData.IsReadLockHeld || _playerData.IsWriteLockHeld || _playerData.IsUpgradeableReadLockHeld))
+            //            || (clientConnection is not null && (_clientConnectionsLock.IsReadLockHeld || _clientConnectionsLock.IsWriteLockHeld || _clientConnectionsLock.IsUpgradeableReadLockHeld))
+            //        )
+            //    )
+            //);
+
+            // data has to be able to fit (a reliable packet has an additional header, so account for that too)
+            Debug.Assert((isReliable && len <= Constants.MaxPacket - ReliableHeader.Length) || (!isReliable && len <= Constants.MaxPacket));
+
+            // you can't buffer already-reliable packets
+            Debug.Assert(!(len >= 2 && data[0] == 0x00 && data[1] == 0x03));
+
+            // reliable packets can't be droppable
+            Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
+
+            // If there's a callback, then it must be reliable.
+            Debug.Assert(callbackInvoker is null || (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable);
+
             try
             {
                 if (playerConnection is not null)
@@ -4189,27 +4275,6 @@ namespace SS.Core.Modules
                     if (clientConnection.Status != ClientConnectionStatus.Connected)
                         return false;
                 }
-
-                bool isReliable = (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable;
-
-                //
-                // Check some conditions that should be true and would normally be caught when developing in debug mode.
-                //
-
-                // OutLock should be held before calling this method.
-                Debug.Assert(Monitor.IsEntered(conn.OutLock));
-
-                // data has to be able to fit (a reliable packet has an additional header, so account for that too)
-                Debug.Assert((isReliable && len <= Constants.MaxPacket - ReliableHeader.Length) || (!isReliable && len <= Constants.MaxPacket));
-
-                // you can't buffer already-reliable packets
-                Debug.Assert(!(len >= 2 && data[0] == 0x00 && data[1] == 0x03));
-
-                // reliable packets can't be droppable
-                Debug.Assert((flags & (NetSendFlags.Reliable | NetSendFlags.Droppable)) != (NetSendFlags.Reliable | NetSendFlags.Droppable));
-
-                // If there's a callback, then it must be reliable.
-                Debug.Assert(callbackInvoker is null || (flags & NetSendFlags.Reliable) == NetSendFlags.Reliable);
 
                 //
                 // Determine the priority.
@@ -4239,55 +4304,58 @@ namespace SS.Core.Modules
                 // update global stats based on requested priority
                 Interlocked.Add(ref _globalStats.PriorityStats[(int)pri], (ulong)len);
 
-                //
-                // Check if it can be sent immediately instead of being buffered.
-                //
-
-                // try the fast path
-                if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
+                lock (conn.OutLock)
                 {
-                    // urgent and not reliable
-                    if (conn.BandwidthLimiter.Check(len + _config.PerPacketOverhead, pri))
+                    //
+                    // Check if it can be sent immediately instead of being buffered.
+                    //
+
+                    // try the fast path
+                    if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
                     {
-                        SendRaw(conn, data);
-                        return true;
+                        // urgent and not reliable
+                        if (conn.BandwidthLimiter.Check(len + _config.PerPacketOverhead, pri))
+                        {
+                            SendRaw(conn, data);
+                            return true;
+                        }
+                        else
+                        {
+                            if ((flags & NetSendFlags.Droppable) == NetSendFlags.Droppable)
+                            {
+                                Interlocked.Increment(ref conn.PacketsDropped);
+                                return false;
+                            }
+                        }
+                    }
+
+                    //
+                    // Buffer the packet.
+                    //
+
+                    SubspaceBuffer buf = _bufferPool.Get();
+                    buf.Conn = conn;
+                    buf.LastTryTimestamp = null;
+                    buf.Tries = 0;
+                    buf.CallbackInvoker = callbackInvoker;
+                    buf.SendFlags = flags;
+                    buf.NumBytes = len;
+                    data.CopyTo(buf.Bytes);
+
+                    LinkedListNode<SubspaceBuffer> node = _bufferNodePool.Get();
+                    node.Value = buf;
+
+                    if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
+                    {
+                        conn.UnsentRelOutList.AddLast(node);
                     }
                     else
                     {
-                        if ((flags & NetSendFlags.Droppable) == NetSendFlags.Droppable)
-                        {
-                            Interlocked.Increment(ref conn.PacketsDropped);
-                            return false;
-                        }
+                        conn.OutList[(int)pri].AddLast(node);
                     }
+
+                    return true;
                 }
-
-                //
-                // Buffer the packet.
-                //
-
-                SubspaceBuffer buf = _bufferPool.Get();
-                buf.Conn = conn;
-                buf.LastTryTimestamp = null;
-                buf.Tries = 0;
-                buf.CallbackInvoker = callbackInvoker;
-                buf.SendFlags = flags;
-                buf.NumBytes = len;
-                data.CopyTo(buf.Bytes);
-
-                LinkedListNode<SubspaceBuffer> node = _bufferNodePool.Get();
-                node.Value = buf;
-
-                if ((flags & NetSendFlags.Reliable) == NetSendFlags.Reliable)
-                {
-                    conn.UnsentRelOutList.AddLast(node);
-                }
-                else
-                {
-                    conn.OutList[(int)pri].AddLast(node);
-                }
-
-                return true;
             }
             finally
             {
