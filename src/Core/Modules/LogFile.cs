@@ -81,7 +81,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_Log(in LogEntry logEntry)
+        private void Callback_Log(ref readonly LogEntry logEntry)
         {
             if (!_logManager.FilterLog(in logEntry, "log_file"))
                 return;
@@ -194,11 +194,14 @@ namespace SS.Core.Modules
                 {
                     sb.Append($"I <{nameof(LogFile)}> Opening log file ==================================");
 
-                    Callback_Log(
-                        new LogEntry()
-                        {
-                            LogText = sb,
-                        });
+                    LogEntry logEntry = new()
+                    {
+                        Level = LogLevel.Info,
+                        Module = nameof(LogFile),
+                        LogText = sb,
+                    };
+                    
+                    Callback_Log(ref logEntry);
                 }
                 finally
                 {

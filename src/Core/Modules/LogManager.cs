@@ -2,9 +2,10 @@ using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
-using System.Collections.Concurrent;
 using System.Text;
 using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -14,16 +15,49 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class LogManager : IModule, IModuleLoaderAware, ILogManager, IStringBuilderPoolProvider, IDisposable
     {
+        /// <summary>
+        /// A reasonable limit, way higher than we should ever reach, but in the worst case scenario, not too high memory-wise.
+        /// </summary>
+        private const int ChannelCapacity = 8192;
+
         private ComponentBroker _broker;
         private IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<ILogManager> _iLogManagerToken;
 
-        private DefaultObjectPool<StringBuilder> _stringBuilderPool;
-        private readonly BlockingCollection<LogEntry> _logQueue = new(4096);
-        private Thread _loggingThread;
+        // Optional dependency that gets loaded after this module.
+        private IConfigManager _configManager;
 
         private readonly ReaderWriterLockSlim _rwLock = new();
-        private IConfigManager _configManager = null;
+
+        // IObjectPoolManager provides a pool of StringBuilder objects, but those are meant for
+        // scenarios where a thread synchronously rents, uses, and then returns the object.
+        // We need StringBuilder objects that will be passed through a producer-consumer queue,
+        // such that the objects are asynchronously processed. Therefore, this uses its own separate pool.
+        private readonly DefaultObjectPool<StringBuilder> _stringBuilderPool = new(
+                new StringBuilderPooledObjectPolicy()
+                {
+                    InitialCapacity = 1024,
+                    MaximumRetainedCapacity = 4096,
+                },
+                ChannelCapacity + Environment.ProcessorCount
+            );
+
+        private readonly Channel<LogEntry> _logChannel;
+        private Task _loggingTask;
+        private int _dropCount = 0;
+
+        public LogManager()
+        {
+            _logChannel = Channel.CreateBounded<LogEntry>(
+                new BoundedChannelOptions(ChannelCapacity)
+                {
+                    SingleReader = true,
+                    SingleWriter = false,
+                    AllowSynchronousContinuations = false,
+                    FullMode = BoundedChannelFullMode.DropWrite,
+                },
+                ProcessDropped);
+        }
 
         #region Module Members
 
@@ -32,63 +66,9 @@ namespace SS.Core.Modules
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-            // IObjectPoolManager provides a pool of StringBuilder objects, but those are meant for
-            // scenarios where a single thread synchronously rents, uses, and then returns the object.
-            // We need StringBuilder objects that will be passed through a producer-consumer queue,
-            // such that the objects are asynchronously processed. We have one or more threads producing,
-            // and a dedicated thread that consumes. Therefore, this uses its own separate pool.
-            _stringBuilderPool = new DefaultObjectPool<StringBuilder>(
-                new StringBuilderPooledObjectPolicy()
-                {
-                    InitialCapacity = 1024,
-                    MaximumRetainedCapacity = 4096,
-                },
-                32768 // an arbitrarily large retention limit that it ordinarily should never get to
-            );
-
             _iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
         }
-
-        bool IModule.Unload(ComponentBroker broker)
-        {
-            if (broker.UnregisterInterface(ref _iLogManagerToken) != 0)
-                return false;
-
-            _logQueue.CompleteAdding();
-
-            Thread workerThread;
-
-            _rwLock.EnterReadLock();
-
-            try
-            {
-                workerThread = _loggingThread;
-            }
-            finally
-            {
-                _rwLock.ExitReadLock();
-            }
-
-            workerThread?.Join();
-
-            _rwLock.EnterWriteLock();
-
-            try
-            {
-                _loggingThread = null;
-            }
-            finally
-            {
-                _rwLock.ExitWriteLock();
-            }
-
-            return true;
-        }
-
-        #endregion
-
-        #region IModuleLoaderAware Members
 
         bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
         {
@@ -97,18 +77,13 @@ namespace SS.Core.Modules
             try
             {
                 _configManager = broker.GetInterface<IConfigManager>();
-
-                _loggingThread = new Thread(new ThreadStart(LoggingThread))
-                {
-                    Name = nameof(LogManager)
-                };
             }
             finally
             {
                 _rwLock.ExitWriteLock();
             }
 
-            _loggingThread.Start();
+            _loggingTask = Task.Run(ProcessLogs);
 
             return true;
         }
@@ -130,9 +105,21 @@ namespace SS.Core.Modules
             }
         }
 
+        bool IModule.Unload(ComponentBroker broker)
+        {
+            if (broker.UnregisterInterface(ref _iLogManagerToken) != 0)
+                return false;
+
+            _logChannel.Writer.Complete();
+            _loggingTask?.Wait();
+            return true;
+        }
+
         #endregion
 
         #region ILogManager Members
+
+        #region Log
 
         void ILogManager.Log(LogLevel level, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
@@ -141,20 +128,13 @@ namespace SS.Core.Modules
             sb.Append(' ');
             handler.CopyToAndClear(sb);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    LogText = sb,
-                };
+                Level = level,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.Log(LogLevel level, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
@@ -169,43 +149,18 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    LogText = sb,
-                };
+                Level = level,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.Log(LogLevel level, string message)
         {
-            StringBuilder sb = _stringBuilderPool.Get();
-            Append(sb, level);
-            sb.Append(' ');
-            sb.Append(message);
-
-            try
-            {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    LogText = sb,
-                };
-
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            ((ILogManager)this).Log(level, message.AsSpan());
         }
 
         void ILogManager.Log(LogLevel level, StringBuilder message)
@@ -215,21 +170,18 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    LogText = sb,
-                };
+                Level = level,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
+
+        #endregion
+
+        #region Log Module
 
         void ILogManager.LogM(LogLevel level, string module, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
@@ -238,21 +190,14 @@ namespace SS.Core.Modules
             sb.Append(' ');
             handler.CopyToAndClear(sb);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.LogM(LogLevel level, string module, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
@@ -267,45 +212,19 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.LogM(LogLevel level, string module, string message)
         {
-            StringBuilder sb = _stringBuilderPool.Get();
-            Append(sb, level, module);
-            sb.Append(' ');
-            sb.Append(message);
-
-            try
-            {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    LogText = sb,
-                };
-
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            ((ILogManager)this).LogM(level, module, message.AsSpan());
         }
 
         void ILogManager.LogM(LogLevel level, string module, StringBuilder message)
@@ -315,22 +234,19 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
+
+        #endregion
+
+        #region Log Arena
 
         void ILogManager.LogA(LogLevel level, string module, Arena arena, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
@@ -339,22 +255,15 @@ namespace SS.Core.Modules
             sb.Append(' ');
             handler.CopyToAndClear(sb);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = arena,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                Arena = arena,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.LogA(LogLevel level, string module, Arena arena, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
@@ -369,47 +278,20 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = arena,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                Arena = arena,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.LogA(LogLevel level, string module, Arena arena, string message)
         {
-            StringBuilder sb = _stringBuilderPool.Get();
-            Append(sb, level, module, arena);
-            sb.Append(' ');
-            sb.Append(message);
-
-            try
-            {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = arena,
-                    LogText = sb,
-                };
-
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            ((ILogManager)this).LogA(level, module, arena, message.AsSpan());
         }
 
         void ILogManager.LogA(LogLevel level, string module, Arena arena, StringBuilder message)
@@ -419,23 +301,20 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = arena,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                Arena = arena,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
+
+        #endregion
+
+        #region Log Player
 
         void ILogManager.LogP(LogLevel level, string module, Player player, ref StringBuilderBackedInterpolatedStringHandler handler)
         {
@@ -444,24 +323,17 @@ namespace SS.Core.Modules
             sb.Append(' ');
             handler.CopyToAndClear(sb);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = player?.Arena,
-                    PlayerName = player?.Name,
-                    PlayerId = player?.Id,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                Arena = player?.Arena,
+                PlayerName = player?.Name,
+                PlayerId = player?.Id,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.LogP(LogLevel level, string module, Player player, IFormatProvider provider, ref StringBuilderBackedInterpolatedStringHandler handler)
@@ -476,51 +348,22 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = player?.Arena,
-                    PlayerName = player?.Name,
-                    PlayerId = player?.Id,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                Arena = player?.Arena,
+                PlayerName = player?.Name,
+                PlayerId = player?.Id,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
         void ILogManager.LogP(LogLevel level, string module, Player player, string message)
         {
-            StringBuilder sb = _stringBuilderPool.Get();
-            Append(sb, level, module, player);
-            sb.Append(' ');
-            sb.Append(message);
-
-            try
-            {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = player?.Arena,
-                    PlayerName = player?.Name,
-                    PlayerId = player?.Id,
-                    LogText = sb,
-                };
-
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            ((ILogManager)this).LogP(level, module, player, message.AsSpan());
         }
 
         void ILogManager.LogP(LogLevel level, string module, Player player, StringBuilder message)
@@ -530,27 +373,22 @@ namespace SS.Core.Modules
             sb.Append(' ');
             sb.Append(message);
 
-            try
+            LogEntry logEntry = new()
             {
-                LogEntry logEntry = new()
-                {
-                    Level = level,
-                    Module = module,
-                    Arena = player?.Arena,
-                    PlayerName = player?.Name,
-                    PlayerId = player?.Id,
-                    LogText = sb,
-                };
+                Level = level,
+                Module = module,
+                Arena = player?.Arena,
+                PlayerName = player?.Name,
+                PlayerId = player?.Id,
+                LogText = sb,
+            };
 
-                QueueOrWriteLog(ref logEntry);
-            }
-            catch (InvalidOperationException)
-            {
-                _stringBuilderPool.Return(sb);
-            }
+            QueueOrWriteLog(ref logEntry);
         }
 
-        bool ILogManager.FilterLog(in LogEntry logEntry, string logModuleName)
+        #endregion
+
+        bool ILogManager.FilterLog(ref readonly LogEntry logEntry, string logModuleName)
         {
             if (string.IsNullOrWhiteSpace(logModuleName))
                 return true;
@@ -585,9 +423,24 @@ namespace SS.Core.Modules
             }
         }
 
+        #endregion
+
+        #region IStringBuilderPoolProvider
+
         ObjectPool<StringBuilder> IStringBuilderPoolProvider.StringBuilderPool => _objectPoolManager.StringBuilderPool;
 
         #endregion
+
+        #region IDisposable
+
+        public void Dispose()
+        {
+            _rwLock.Dispose();
+        }
+
+        #endregion
+
+        #region Append
 
         private static void Append(StringBuilder sb, LogLevel level)
         {
@@ -637,36 +490,21 @@ namespace SS.Core.Modules
             sb.Append(']');
         }
 
+        #endregion
+
         private void QueueOrWriteLog(ref LogEntry logEntry)
         {
-            bool doAsync;
-
-            _rwLock.EnterReadLock();
-
-            try
-            {
-                doAsync = _loggingThread is not null;
-            }
-            finally
-            {
-                _rwLock.ExitReadLock();
-            }
-
-            if (doAsync && !_logQueue.IsAddingCompleted)
-            {
-                _logQueue.Add(logEntry);
-            }
-            else
+            if (!_logChannel.Writer.TryWrite(logEntry))
             {
                 WriteLog(ref logEntry);
             }
         }
 
-        private void WriteLog(ref LogEntry logEntry)
+        private void WriteLog(ref readonly LogEntry logEntry)
         {
             try
             {
-                LogCallback.Fire(_broker, logEntry);
+                LogCallback.Fire(_broker, in logEntry);
             }
             catch (Exception ex)
             {
@@ -690,37 +528,23 @@ namespace SS.Core.Modules
             }
         }
 
-        private void LoggingThread()
+        private async ValueTask ProcessLogs()
         {
-            try
+            ChannelReader<LogEntry> reader = _logChannel.Reader;
+            while (await reader.WaitToReadAsync().ConfigureAwait(false))
             {
-                while (!_logQueue.IsCompleted)
+                while (reader.TryRead(out LogEntry logEntry))
                 {
-                    if (!_logQueue.TryTake(out LogEntry logEntry, Timeout.Infinite))
-                        continue;
-
                     WriteLog(ref logEntry);
                 }
             }
-            catch (Exception ex)
-            {
-                StringBuilder sb = _stringBuilderPool.Get();
-                sb.Append($"{LogLevel.Error.ToChar()} <{nameof(LogManager)}> LoggingThread ending due to an unexpected exception. {ex}");
-
-                LogEntry logEntry = new()
-                {
-                    Level = LogLevel.Error,
-                    Module = nameof(LogManager),
-                    LogText = sb,
-                };
-
-                WriteLog(ref logEntry);
-            }
         }
 
-        public void Dispose()
+        private void ProcessDropped(LogEntry logEntry)
         {
-            _logQueue.Dispose();
+            _stringBuilderPool.Return(logEntry.LogText);
+
+            LogDroppedCallback.Fire(_broker, Interlocked.Increment(ref _dropCount));
         }
     }
 }

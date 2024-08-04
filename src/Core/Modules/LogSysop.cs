@@ -46,6 +46,8 @@ namespace SS.Core.Modules
         private int _logPosition = 0;
         private readonly object _lockObj = new();
 
+        private DateTime? _lastDroppedLogNotification = null;
+
         #region Module methods
 
         public bool Load(
@@ -73,6 +75,7 @@ namespace SS.Core.Modules
 
             LogCallback.Register(broker, Callback_Log);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
+            LogDroppedCallback.Register(broker, Callback_LogDropped);
 
             _commandManager.AddCommand("lastlog", Command_lastlog);
 
@@ -85,6 +88,7 @@ namespace SS.Core.Modules
 
             LogCallback.Unregister(broker, Callback_Log);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
+            LogDroppedCallback.Unregister(broker, Callback_LogDropped);
 
             _playerData.FreePlayerData(ref _pdKey);
 
@@ -95,7 +99,7 @@ namespace SS.Core.Modules
 
         #region Callback handlers
 
-        private void Callback_Log(in LogEntry logEntry)
+        private void Callback_Log(ref readonly LogEntry logEntry)
         {
             if (_logManager.FilterLog(in logEntry, "log_sysop"))
             {
@@ -106,15 +110,15 @@ namespace SS.Core.Modules
                     _playerData.Lock();
                     try
                     {
-                        foreach (Player p in _playerData.Players)
+                        foreach (Player player in _playerData.Players)
                         {
-                            if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+                            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
                                 return;
 
                             if (pd.SeeWhat == SeeWhat.All
-                                || pd.SeeWhat == SeeWhat.Arena && logEntry.Arena == p.Arena)
+                                || pd.SeeWhat == SeeWhat.Arena && logEntry.Arena == player.Arena)
                             {
-                                set.Add(p);
+                                set.Add(player);
                             }
                         }
                     }
@@ -158,6 +162,49 @@ namespace SS.Core.Modules
                     pd.SeeWhat = SeeWhat.Arena;
                 else
                     pd.SeeWhat = SeeWhat.None;
+            }
+        }
+
+        private void Callback_LogDropped(int totalDropped)
+        {
+            DateTime now = DateTime.UtcNow;
+            if (_lastDroppedLogNotification is not null && (now - _lastDroppedLogNotification) < TimeSpan.FromMinutes(10))
+            {
+                // Sent a notification too recently, ignore it.
+                return;
+            }
+
+            _lastDroppedLogNotification = now;
+
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.Lock();
+                try
+                {
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                            return;
+
+                        if (pd.SeeWhat == SeeWhat.All)
+                        {
+                            set.Add(player);
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, 
+                    $"A log was dropped (total: {totalDropped}). This indicates the logging infrastructure can't keep up. You should investigate.");
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
             }
         }
 

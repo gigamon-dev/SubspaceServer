@@ -11,7 +11,7 @@ namespace SS.Core.ComponentCallbacks
         /// Delegate for a callback that is invoked when a log is to be written.
         /// </summary>
         /// <param name="message">The log message to write.</param>
-        public delegate void LogDelegate(in LogEntry logEntry);
+        public delegate void LogDelegate(ref readonly LogEntry logEntry);
 
         public static void Register(ComponentBroker broker, LogDelegate handler)
         {
@@ -23,7 +23,7 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, in LogEntry logEntry)
+        public static void Fire(ComponentBroker broker, ref readonly LogEntry logEntry)
         {
             broker?.GetCallback<LogDelegate>()?.Invoke(in logEntry);
 

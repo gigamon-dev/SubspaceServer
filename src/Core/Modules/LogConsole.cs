@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     {
         private ILogManager _logManager;
 
-        private void LogToConsole(in LogEntry logEntry)
+        private void LogToConsole(ref readonly LogEntry logEntry)
         {
             if (_logManager.FilterLog(in logEntry, "log_console"))
                 Console.Out.WriteLine(logEntry.LogText);
