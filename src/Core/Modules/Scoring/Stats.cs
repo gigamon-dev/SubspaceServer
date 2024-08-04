@@ -424,7 +424,7 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private void DoNumberStatOperation<T>(StatScope scope, Player player, int statId, PersistInterval? interval, Action<NumberStatInfo<T>> operationCallback) where T : struct, INumber<T>
+        private void DoNumberStatOperation<T, TState>(StatScope scope, Player player, int statId, PersistInterval? interval, Action<NumberStatInfo<T>, TState> operationCallback, TState state) where T : struct, INumber<T>
         {
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
@@ -436,7 +436,7 @@ namespace SS.Core.Modules.Scoring
                     // all intervals
                     foreach (PersistInterval persistInterval in _intervals)
                     {
-                        DoNumberStatOperation(scope, player, statId, persistInterval, operationCallback);
+                        DoNumberStatOperation(scope, player, statId, persistInterval, operationCallback, state);
                     }
                 }
                 else
@@ -446,7 +446,7 @@ namespace SS.Core.Modules.Scoring
                         // global
                         var stats = GetGlobalStatsByInterval(pd, interval.Value);
                         if (stats != null)
-                            DoOperation(stats, statId, operationCallback);
+                            DoOperation(stats, statId, operationCallback, state);
                     }
 
                     if ((scope & StatScope.Arena) == StatScope.Arena)
@@ -454,22 +454,22 @@ namespace SS.Core.Modules.Scoring
                         // arena
                         var stats = GetArenaStatsByInterval(pd, interval.Value);
                         if (stats != null)
-                            DoOperation(stats, statId, operationCallback);
+                            DoOperation(stats, statId, operationCallback, state);
                     }
                 }
             }
 
-            void DoOperation(SortedDictionary<int, BaseStatInfo> stats, int statId, Action<NumberStatInfo<T>> operationCallback)
+            void DoOperation(SortedDictionary<int, BaseStatInfo> stats, int statId, Action<NumberStatInfo<T>, TState> operationCallback, TState state)
             {
                 NumberStatInfo<T> statInfo = GetOrCreateNumberStat<T>(stats, statId);
                 if (statInfo != null)
                 {
-                    operationCallback(statInfo);
+                    operationCallback(statInfo, state);
                 }
             }
         }
 
-        private void DoTimerStatOperation(StatScope scope, Player player, int statId, PersistInterval? interval, Action<TimerStatInfo> operationCallback)
+        private void DoTimerStatOperation<TState>(StatScope scope, Player player, int statId, PersistInterval? interval, Action<TimerStatInfo, TState> operationCallback, TState state)
         {
             if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
                 return;
@@ -481,7 +481,7 @@ namespace SS.Core.Modules.Scoring
                     // all intervals
                     foreach (PersistInterval persistInterval in _intervals)
                     {
-                        DoTimerStatOperation(scope, player, statId, persistInterval, operationCallback);
+                        DoTimerStatOperation(scope, player, statId, persistInterval, operationCallback, state);
                     }
                 }
                 else
@@ -491,7 +491,7 @@ namespace SS.Core.Modules.Scoring
                         // global
                         var stats = GetGlobalStatsByInterval(pd, interval.Value);
                         if (stats != null)
-                            DoOperation(stats, statId, operationCallback);
+                            DoOperation(stats, statId, operationCallback, state);
                     }
 
                     if ((scope & StatScope.Arena) == StatScope.Arena)
@@ -499,12 +499,12 @@ namespace SS.Core.Modules.Scoring
                         // arena
                         var stats = GetArenaStatsByInterval(pd, interval.Value);
                         if (stats != null)
-                            DoOperation(stats, statId, operationCallback);
+                            DoOperation(stats, statId, operationCallback, state);
                     }
                 }
             }
 
-            void DoOperation(SortedDictionary<int, BaseStatInfo> stats, int statId, Action<TimerStatInfo> operationCallback)
+            void DoOperation(SortedDictionary<int, BaseStatInfo> stats, int statId, Action<TimerStatInfo, TState> operationCallback, TState state)
             {
                 TimerStatInfo timerStatInfo;
                 if (stats.TryGetValue(statId, out BaseStatInfo statInfo))
@@ -522,15 +522,15 @@ namespace SS.Core.Modules.Scoring
                     stats.Add(statId, timerStatInfo);
                 }
 
-                operationCallback(timerStatInfo);
+                operationCallback(timerStatInfo, state);
             }
         }
 
         private void IncrementStat<T>(StatScope scope, Player player, StatCode<T> statCode, PersistInterval? interval, T amount) where T : struct, INumber<T>
         {
-            DoNumberStatOperation<T>(scope, player, statCode.StatId, interval, Increment);
+            DoNumberStatOperation<T, T>(scope, player, statCode.StatId, interval, Increment, amount);
 
-            void Increment(NumberStatInfo<T> statInfo)
+            static void Increment(NumberStatInfo<T> statInfo, T amount)
             {
                 statInfo.Value += amount;
                 statInfo.IsDirty = true;
@@ -539,9 +539,9 @@ namespace SS.Core.Modules.Scoring
 
         private void IncrementStat(StatScope scope, Player player, StatCode<TimeSpan> statCode, PersistInterval? interval, TimeSpan amount)
         {
-            DoTimerStatOperation(scope, player, statCode.StatId, interval, Increment);
+            DoTimerStatOperation(scope, player, statCode.StatId, interval, Increment, amount);
 
-            void Increment(TimerStatInfo timerStatInfo)
+            static void Increment(TimerStatInfo timerStatInfo, TimeSpan amount)
             {
                 timerStatInfo.Add(amount);
                 timerStatInfo.IsDirty = true;
@@ -875,11 +875,9 @@ namespace SS.Core.Modules.Scoring
 
         private void StartTimer(StatScope scope, Player player, int statId, PersistInterval? interval)
         {
-            DateTime now = DateTime.UtcNow;
+            DoTimerStatOperation(scope, player, statId, interval, DoStartTimer, DateTime.UtcNow);
 
-            DoTimerStatOperation(scope, player, statId, interval, DoStartTimer);
-
-            void DoStartTimer(TimerStatInfo timerStatInfo)
+            static void DoStartTimer(TimerStatInfo timerStatInfo, DateTime now)
             {
                 timerStatInfo.Start(now);
             }
@@ -887,11 +885,9 @@ namespace SS.Core.Modules.Scoring
 
         private void StopTimer(StatScope scope, Player player, int statId, PersistInterval? interval)
         {
-            DateTime now = DateTime.UtcNow;
+            DoTimerStatOperation(scope, player, statId, interval, DoStartTimer, DateTime.UtcNow);
 
-            DoTimerStatOperation(scope, player, statId, interval, DoStartTimer);
-
-            void DoStartTimer(TimerStatInfo timerStatInfo)
+            static void DoStartTimer(TimerStatInfo timerStatInfo, DateTime now)
             {
                 timerStatInfo.Stop(now);
             }
@@ -899,9 +895,9 @@ namespace SS.Core.Modules.Scoring
 
         private void ResetTimer(StatScope scope, Player player, int statId, PersistInterval? interval)
         {
-            DoTimerStatOperation(scope, player, statId, interval, DoStartTimer);
+            DoTimerStatOperation(scope, player, statId, interval, DoStartTimer, (object)null);
 
-            static void DoStartTimer(TimerStatInfo timerStatInfo)
+            static void DoStartTimer(TimerStatInfo timerStatInfo, object dummy)
             {
                 timerStatInfo.Reset();
             }
