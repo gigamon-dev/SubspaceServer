@@ -324,7 +324,7 @@ namespace SS.Core.Modules
 
             if (player.Status != PlayerState.Playing || player.Ship == ShipType.Spec || arena == null)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Bricks), player, $"Ignored request from bad state.");
+                _logManager.LogP(LogLevel.Warn, nameof(Bricks), player, "Ignored request from bad state.");
                 return;
             }
 

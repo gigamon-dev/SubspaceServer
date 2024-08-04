@@ -220,7 +220,7 @@ namespace SS.Core.Modules.Scoring
                         _crowns.ToggleOn(killer, ad.Settings.ExpireTimeSpan);
 
                         _chat.SendMessage(killer, $"You earned back a crown.");
-                        _logManager.LogP(LogLevel.Drivel, nameof(Koth), killer, $"Earned back a crown.");
+                        _logManager.LogP(LogLevel.Drivel, nameof(Koth), killer, "Earned back a crown.");
                     }
                     else
                     {
@@ -442,7 +442,7 @@ namespace SS.Core.Modules.Scoring
                 ad.GameState = GameState.Running;
 
                 _chat.SendArenaMessage(arena, ChatSound.Beep2, $"King of the Hill game started.");
-                _logManager.LogA(LogLevel.Info, nameof(Koth), arena, $"Game started.");
+                _logManager.LogA(LogLevel.Info, nameof(Koth), arena, "Game started.");
 
                 KothStartedCallback.Fire(arena, arena, crownSet);
 

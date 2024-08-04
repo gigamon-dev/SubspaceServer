@@ -724,7 +724,7 @@ namespace SS.Core.Modules
 
             if (pd.Permission == BroadcastAuthorization.None)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, $"Attempted to broadcast without permission.");
+                _logManager.LogP(LogLevel.Malicious, nameof(LvzObjects), player, "Attempted to broadcast without permission.");
                 return;
             }
 
@@ -875,7 +875,7 @@ namespace SS.Core.Modules
                 _arenaManager.HoldArena(arena);
                 if (!_mainloop.QueueThreadPoolWorkItem(_threadPoolWork_InitializeArena, arena))
                 {
-                    _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error queueing up arena action work.");
+                    _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, "Error queueing up arena action work.");
                     _arenaManager.UnholdArena(arena);
                 }
             }

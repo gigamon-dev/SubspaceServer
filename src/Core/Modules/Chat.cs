@@ -1123,7 +1123,7 @@ namespace SS.Core.Modules
                     Span<char> messageToSend = stackalloc char[1 + player.Name.Length + 3 + message.Length];
                     if (!messageToSend.TryWrite(CultureInfo.InvariantCulture, $"({player.Name})> {message}", out int _))
                     {
-                        _logManager.LogP(LogLevel.Error, nameof(Chat), player, $"Failed to write remote private message.");
+                        _logManager.LogP(LogLevel.Error, nameof(Chat), player, "Failed to write remote private message.");
                         return;
                     }
 
@@ -1282,7 +1282,7 @@ namespace SS.Core.Modules
                         Span<char> messageToSend = stackalloc char[player.Name.Length + 2 + message.Length];
                         if (!messageToSend.TryWrite(CultureInfo.InvariantCulture, $"{player.Name}> {message}", out int _))
                         {
-                            _logManager.LogP(LogLevel.Error, nameof(Chat), player, $"Failed to write mod chat message.");
+                            _logManager.LogP(LogLevel.Error, nameof(Chat), player, "Failed to write mod chat message.");
                             return;
                         }
 

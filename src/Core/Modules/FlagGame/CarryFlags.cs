@@ -462,7 +462,7 @@ namespace SS.Core.Modules.FlagGame
             Arena arena = player.Arena;
             if (arena == null)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but not in an arena.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, "C2S_TouchFlag packet but not in an arena.");
                 return;
             }
 
@@ -474,25 +474,25 @@ namespace SS.Core.Modules.FlagGame
 
             if (player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, $"C2S_TouchFlag packet but not in playing state.");
+                _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, "C2S_TouchFlag packet but not in playing state.");
                 return;
             }
 
             if (player.Ship == ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(StaticFlags), player, $"C2S_TouchFlag packet from spec.");
+                _logManager.LogP(LogLevel.Warn, nameof(StaticFlags), player, "C2S_TouchFlag packet from spec.");
                 return;
             }
 
             if (player.Flags.DuringChange)
             {
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"C2S_TouchFlag packet before ack from ship/freq change.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, "C2S_TouchFlag packet before ack from ship/freq change.");
                 return;
             }
 
             if (player.Flags.NoFlagsBalls)
             {
-                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, $"Too lagged to tag a flag.");
+                _logManager.LogP(LogLevel.Info, nameof(StaticFlags), player, "Too lagged to tag a flag.");
                 return;
             }
 
@@ -530,13 +530,13 @@ namespace SS.Core.Modules.FlagGame
             Arena arena = player.Arena;
             if (arena == null || player.Status != PlayerState.Playing)
             {
-                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, $"Flag drop from bad state/arena.");
+                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, "Flag drop from bad state/arena.");
                 return;
             }
 
             if (player.Ship == ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, $"State sync problem: drop flag from spec.");
+                _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, "State sync problem: drop flag from spec.");
                 return;
             }
 

@@ -1781,7 +1781,7 @@ namespace SS.Core.Modules
             if (header.ConnectionId == -1)
             {
                 // Send to all players not allowed.
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"B2S UserPacket filtered (target all).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "B2S UserPacket filtered (target all).");
                 return;
             }
 
@@ -1851,7 +1851,7 @@ namespace SS.Core.Modules
             int index = data.IndexOf((byte)0);
             if (index == -1)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid B2S UserMulticastChannelChat - Text not null-terminated.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Invalid B2S UserMulticastChannelChat - Text not null-terminated.");
                 return;
             }
 

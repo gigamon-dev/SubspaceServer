@@ -352,7 +352,7 @@ namespace SS.Core.Modules.Scoring
                 _game.GivePrize(arena, Prize.Warp, 1);
                 _game.ShipReset(arena);
                 _chat.SendArenaMessage(arena, ChatSound.Beep2, $"Speed game started.");
-                _logManager.LogA(LogLevel.Info, nameof(SpeedGame), arena, $"Game started.");
+                _logManager.LogA(LogLevel.Info, nameof(SpeedGame), arena, "Game started.");
 
                 _gameTimer.SetTimer(arena, ad.Settings.GameDuration);
                 _mainloopTimer.SetTimer(MainloopTimer_EndGameTimer, (int)ad.Settings.GameDuration.TotalMilliseconds, 1000, arena, arena);

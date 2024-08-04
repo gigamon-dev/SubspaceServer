@@ -384,7 +384,7 @@ namespace SS.Core.Modules
                     // Check if the timer ended.
                     if (now >= ad.EndingTimestamp.Value)
                     {
-                        _logManager.LogA(LogLevel.Drivel, nameof(GameTimer), arena, $"Timer expired.");
+                        _logManager.LogA(LogLevel.Drivel, nameof(GameTimer), arena, "Timer expired.");
 
                         GameTimerEndedCallback.Fire(arena, arena);
 

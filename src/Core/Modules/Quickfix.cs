@@ -230,7 +230,7 @@ namespace SS.Core.Modules
 
             if (!_fileTransfer.SendFile(player, stream, "server.set"))
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Quickfix), player, $"Failed to send server.set file.");
+                _logManager.LogP(LogLevel.Warn, nameof(Quickfix), player, "Failed to send server.set file.");
             }
         }
 

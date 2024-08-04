@@ -614,7 +614,7 @@ namespace SS.Core.Modules
 
                 if (clientSocket.RemoteEndPoint is not IPEndPoint remoteEndPoint)
                 {
-                    _logManager.LogM(LogLevel.Error, nameof(ChatNetwork), $"Error getting IP of accepted socket.");
+                    _logManager.LogM(LogLevel.Error, nameof(ChatNetwork), "Error getting IP of accepted socket.");
                     clientSocket.Dispose();
                     return null;
                 }

@@ -456,7 +456,7 @@ namespace SS.Core.Modules
         {
             if (key.Id == 0)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(ArenaManager), $"There was an attempt to FreeArenaData with an uninitialized key (Id = 0).");
+                _logManager.LogM(LogLevel.Warn, nameof(ArenaManager), "There was an attempt to FreeArenaData with an uninitialized key (Id = 0).");
                 return false;
             }
 

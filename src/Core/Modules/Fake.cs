@@ -110,7 +110,7 @@ namespace SS.Core.Modules
 
             player.Status = PlayerState.Playing;
 
-            _logManager.LogP(LogLevel.Info, nameof(Fake), player, $"Fake player created.");
+            _logManager.LogP(LogLevel.Info, nameof(Fake), player, "Fake player created.");
 
             return player;
         }
@@ -124,7 +124,7 @@ namespace SS.Core.Modules
                 return false;
 
             if (player.Status != PlayerState.Playing || player.Arena == null)
-                _logManager.LogP(LogLevel.Warn, nameof(Fake), player, $"Fake player in bad status.");
+                _logManager.LogP(LogLevel.Warn, nameof(Fake), player, "Fake player in bad status.");
 
             _mainloop.QueueMainWorkItem(MainloopWork_EndFake, player);
             return true;
@@ -140,7 +140,7 @@ namespace SS.Core.Modules
                     _chatNetwork?.SendToArena(arena, player, $"LEAVING:{player.Name}");
                 }
 
-                _logManager.LogP(LogLevel.Info, nameof(Fake), player, $"Fake player destroyed.");
+                _logManager.LogP(LogLevel.Info, nameof(Fake), player, "Fake player destroyed.");
 
                 _playerData.FreePlayer(player);
             }

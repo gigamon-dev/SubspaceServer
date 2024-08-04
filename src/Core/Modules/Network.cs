@@ -757,7 +757,7 @@ namespace SS.Core.Modules
                 else
                 {
                     // otherwise, something is horribly wrong. make a note to this effect
-                    _logManager.LogP(LogLevel.Error, nameof(Network), player, $"NewConnection called for an established address.");
+                    _logManager.LogP(LogLevel.Error, nameof(Network), player, "NewConnection called for an established address.");
                     return null;
                 }
             }
@@ -766,7 +766,7 @@ namespace SS.Core.Modules
 
             if (!player.TryGetExtraData(_connKey, out PlayerConnection conn))
             {
-                _logManager.LogP(LogLevel.Error, nameof(Network), player, $"NewConnection created a new player, but ConnData not found.");
+                _logManager.LogP(LogLevel.Error, nameof(Network), player, "NewConnection created a new player, but PlayerConnection not found.");
                 return null;
             }
 
@@ -2767,7 +2767,7 @@ namespace SS.Core.Modules
                 _broker.ReleaseInterface(ref playerConnection.Encryptor, playerConnection.EncryptorName);
             }
 
-            _logManager.LogP(LogLevel.Info, nameof(Network), player, $"Disconnected.");
+            _logManager.LogP(LogLevel.Info, nameof(Network), player, "Disconnected.");
             return true;
         }
 

@@ -224,7 +224,7 @@ namespace SS.Core.Modules
             // This implicitly catches setting from pre-playing states.
             if (player.Arena is null)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, $"Tried to set a banner from outside an arena.");
+                _logManager.LogP(LogLevel.Malicious, nameof(Banners), player, "Tried to set a banner from outside an arena.");
                 return;
             }
 
